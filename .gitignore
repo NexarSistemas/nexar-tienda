@@ -1,0 +1,31 @@
+# Base de datos (no subir al repositorio)
+*.db
+*.db-wal
+*.db-shm
+
+# Respaldos
+respaldo/
+
+# Entorno virtual de Python
+venv/
+.venv/
+env/
+
+# Cache de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Variables de entorno
+.env
+.env.local
+
+# VS Code
+.vscode/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

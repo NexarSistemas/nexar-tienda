@@ -1,0 +1,18 @@
+/*
+  Nexar Tienda — main.css
+  Paleta: Azul marino + plateado
+  Este archivo se completará en el Paso 4 (base.html)
+*/
+
+/* Las variables de color ya están definidas aquí para referencia */
+:root {
+  --sidebar-bg:     #1e3a5f;
+  --sidebar-hover:  #2d5282;
+  --sidebar-active: #3b82f6;
+  --accent:         #3b82f6;
+  --accent-light:   #eff6ff;
+  --silver:         #94a3b8;
+  --silver-light:   #f1f5f9;
+  --danger:         #dc2626;
+  --warning-color:  #d97706;
+}

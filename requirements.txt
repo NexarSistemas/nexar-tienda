@@ -1,0 +1,20 @@
+# =========================
+# 🌐 Backend
+# =========================
+Flask==3.0.3
+
+# =========================
+# 🔐 Seguridad de sesiones
+# =========================
+# (Flask ya incluye werkzeug para password hashing)
+
+# =========================
+# 📊 Exportaciones (opcionales, instalar cuando se necesiten)
+# =========================
+# openpyxl==3.1.2       # Exportar Excel
+# reportlab==4.2.0      # Exportar PDF
+
+# =========================
+# 🖥️ UI nativa (opcional, para ventana desktop)
+# =========================
+# pywebview==4.4
