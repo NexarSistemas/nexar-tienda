@@ -2,13 +2,22 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v0.7.0` - PASO 7: Gestión de Clientes
+**Versión actual:** `v0.8.0` - PASO 8: Gestión de Proveedores
 
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 8: Gestión de Proveedores (v0.8.0)
+- **🚚 CRUD de proveedores completo** (crear, editar, listar, desactivar)
+- **💼 Gestión de cuentas corrientes** (debe/haber, saldo, movimientos)
+- **📊 Historial de compras por proveedor** con estadísticas y última compra
+- **🧾 Soporte de pagos y verificaciones** en movimientos de proveedores
+- **🗂️ Integración con el módulo de compras** (facturas/ordenes)
+- **📌 Soft delete** de proveedores (mantiene historial y coherencia)
+- **💻 Interfaz responsive** con Bootstrap + validación de formularios
 
 ### ✅ PASO 7: Gestión de Clientes (v0.7.0)
 - **👥 CRUD de clientes completo** (crear, editar, listar, desactivar)
@@ -56,11 +65,12 @@ Desarrollado con **Python + Flask + SQLite**.
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
+| 8 | Gestión de Proveedores | `v0.8.0` | 8/8 ✅ | Completo |
+| 7 | Gestión de Clientes | `v0.7.0` | 8/8 ✅ | Completo |
 | 6 | **POS System** | `v0.6.0` | 8/10 ✅ | **COMPLETO** |
 | 5 | Stock Management | `v0.5.0` | 23/23 ✅ | Completo |
 | 4 | Productos CRUD + TIER | `v0.4.0` | 12/12 ✅ | Completo |
 | 3 | Auth + Dashboard | `v0.3.0` | 6/6 ✅ | Completo |
-| 7 | Gestión de Clientes | `v0.7.0` | 8/8 ✅ | Completo |
 
 **Total Tests:** 49/51 ✅ (96%)
 
