@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Compras - Nexar Tienda{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h3 mb-0"><i class="fas fa-shopping-cart text-primary me-2"></i>Gestión de Compras</h1>
+                <p class="text-muted mb-0">Registrar y administrar las compras de inventario</p>
+            </div>
+            <a href="{{ url_for('compra_nueva') }}" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Nueva Compra</a>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Buscar</label>
+                            <input type="text" class="form-control" name="q" value="{{ buscar }}" placeholder="Proveedor, producto, remito...">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Fecha desde</label>
+                            <input type="date" class="form-control" name="fecha_desde" value="{{ fecha_desde }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Fecha hasta</label>
+                            <input type="date" class="form-control" name="fecha_hasta" value="{{ fecha_hasta }}">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-outline-primary w-100" type="submit"><i class="fas fa-search me-1"></i>Filtrar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-primary">
+                <div class="card-body text-center">
+                    <i class="fas fa-shopping-bag fa-2x text-primary mb-2"></i>
+                    <h4 class="mb-0">{{ compras|length }}</h4>
+                    <small class="text-muted">Compras totales</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Lista de Compras</h5>
+                </div>
+                <div class="card-body">
+                    {% if compras %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Fecha</th>
+                                    <th>Proveedor</th>
+                                    <th>Remito</th>
+                                    <th>Producto</th>
+                                    <th class="text-center">Cant.</th>
+                                    <th class="text-end">Costo unit.</th>
+                                    <th class="text-end">Total</th>
+                                    <th class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for compra in compras %}
+                                <tr>
+                                    <td>{{ compra.id }}</td>
+                                    <td>{{ compra.fecha }}</td>
+                                    <td>{{ compra.proveedor_nombre or '-' }}</td>
+                                    <td>{{ compra.numero_remito or '-' }}</td>
+                                    <td>{{ compra.descripcion or '-' }}</td>
+                                    <td class="text-center">{{ compra.cantidad }}</td>
+                                    <td class="text-end">$ {{ "%.2f"|format(compra.costo_unitario) }}</td>
+                                    <td class="text-end fw-bold">$ {{ "%.2f"|format(compra.total) }}</td>
+                                    <td class="text-center">
+                                        <div class="btn-group" role="group">
+                                            <a href="{{ url_for('compra_detalle', cid=compra.id) }}" class="btn btn-sm btn-outline-primary" title="Ver detalle"><i class="fas fa-eye"></i></a>
+                                            <form method="POST" action="{{ url_for('compra_eliminar', cid=compra.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar compra #{{ compra.id }}?')">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="fas fa-trash"></i></button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-shopping-cart fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No se encontraron compras</h5>
+                        <p class="text-muted">Registra tu primera compra para comenzar a actualizar stock.</p>
+                        <a href="{{ url_for('compra_nueva') }}" class="btn btn-primary">Crear compra</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

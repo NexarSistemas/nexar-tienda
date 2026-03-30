@@ -4,6 +4,40 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [0.9.0] - 30 Marzo 2026 - Módulo de Compras
+
+### ✨ Características Nuevas
+- Registro de compras (fecha, remito, proveedor, producto, cantidad, costo unitario, total, observaciones)
+- Incremento automático de stock y registro en `stock_movimientos`
+- Listado y filtrado de compras por texto y rango de fechas
+- Detalle de compra y eliminación de compra
+- Navegación en `base.html` para módulo Compras
+
+### 🛠️ Cambios Técnicos
+- **database.py**:
+  - Nueva tabla `compras` con metadata de compra
+  - Nuevas funciones: `get_compras()`, `get_compra()`, `add_compra()`, `update_compra()`, `delete_compra()`
+  - Integración con `stock_movimientos` y `get_stock` para sumas automáticas
+
+- **app.py**:
+  - Nuevas rutas:
+    - `GET /compras` - listado
+    - `GET/POST /compras/nuevo` - crear compra
+    - `GET /compras/<id>` - detalle
+    - `POST /compras/<id>/eliminar` - eliminar compra
+
+- **templates**:
+  - `compras.html`, `compra_form.html`, `compra_detalle.html`
+  - `base.html`: navegación Compras
+
+- **tests**:
+  - Nuevo `test_paso9.py` con 5 tests de rutas de compras y verificación de stock
+
+### 🧪 Tests
+- ✅ `test_paso9.py`: 5/5 tests pasando
+
+---
+
 ## [0.8.0] - 30 Marzo 2026 - Módulo de Gestión de Proveedores
 
 ### ✨ Características Nuevas

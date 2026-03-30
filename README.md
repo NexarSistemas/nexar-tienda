@@ -2,13 +2,20 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v0.8.0` - PASO 8: Gestión de Proveedores
+**Versión actual:** `v0.9.0` - PASO 9: Compras
 
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 9: Módulo de Compras (v0.9.0)
+- **🛒 Registro de compras** (fecha, proveedor, producto, cantidad, costo, remito)
+- **📈 Incremento automático de stock** y auditoría en `stock_movimientos`
+- **🗂️ Listado, detalle y eliminación** de compras
+- **🔍 Filtros por proveedor, producto y rango de fechas**
+- **✅ Integración con proveedores y productos existentes**
 
 ### ✅ PASO 8: Gestión de Proveedores (v0.8.0)
 - **🚚 CRUD de proveedores completo** (crear, editar, listar, desactivar)
@@ -65,9 +72,9 @@ Desarrollado con **Python + Flask + SQLite**.
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
+| 9 | Compras | `v0.9.0` | 5/5 ✅ | Completo |
 | 8 | Gestión de Proveedores | `v0.8.0` | 8/8 ✅ | Completo |
 | 7 | Gestión de Clientes | `v0.7.0` | 8/8 ✅ | Completo |
-| 6 | **POS System** | `v0.6.0` | 8/10 ✅ | **COMPLETO** |
 | 5 | Stock Management | `v0.5.0` | 23/23 ✅ | Completo |
 | 4 | Productos CRUD + TIER | `v0.4.0` | 12/12 ✅ | Completo |
 | 3 | Auth + Dashboard | `v0.3.0` | 6/6 ✅ | Completo |
@@ -180,7 +187,7 @@ Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) par
 
 **Nexar Sistemas** - [GitHub](https://github.com/NexarSistemas)
 
-**Última actualización:** 29 de marzo de 2026 - v0.5.0
+**Última actualización:** 30 de marzo de 2026 - v0.9.0
 │   ├── base.html
 │   ├── login.html
 │   ├── dashboard.html

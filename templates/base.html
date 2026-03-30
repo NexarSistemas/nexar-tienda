@@ -98,6 +98,20 @@
                 </div>
             </li>
 
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint in ['compras', 'compra_nueva', 'compra_detalle'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseCompras">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span>Compras</span>
+                    <i class="fas fa-chevron-down"></i>
+                </a>
+                <div class="collapse {% if request.endpoint in ['compras', 'compra_nueva', 'compra_detalle'] %}show{% endif %}" id="collapseCompras">
+                    <ul class="nav flex-column ms-3">
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'compras' %}active{% endif %}" href="{{ url_for('compras') }}">Lista</a></li>
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'compra_nueva' %}active{% endif %}" href="{{ url_for('compra_nueva') }}">Nuevo</a></li>
+                    </ul>
+                </div>
+            </li>
+
             {% if session['user']['rol'] == 'admin' %}
             <li class="nav-header">Administración</li>
             <li class="nav-item">

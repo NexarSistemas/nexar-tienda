@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Compra #{{ compra.id }} - Nexar Tienda{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h3 mb-0"><i class="fas fa-shopping-cart me-2"></i>Compra #{{ compra.id }}</h1>
+                <p class="text-muted mb-0">Detalle de la compra registrada</p>
+            </div>
+            <a href="{{ url_for('compras') }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Volver</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="mb-0">Resumen de Compra</h5></div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4"><strong>ID:</strong><br>{{ compra.id }}</div>
+                        <div class="col-md-4"><strong>Fecha:</strong><br>{{ compra.fecha }}</div>
+                        <div class="col-md-4"><strong>Remito:</strong><br>{{ compra.numero_remito or '-' }}</div>
+                        <div class="col-md-6"><strong>Proveedor:</strong><br>{{ compra.proveedor_nombre or '-' }}</div>
+                        <div class="col-md-6"><strong>Producto:</strong><br>{{ compra.descripcion or '-' }}</div>
+                        <div class="col-md-4"><strong>Cantidad:</strong><br>{{ compra.cantidad }}</div>
+                        <div class="col-md-4"><strong>Costo Unitario:</strong><br>$ {{ "%.2f"|format(compra.costo_unitario) }}</div>
+                        <div class="col-md-4"><strong>Total:</strong><br>$ {{ "%.2f"|format(compra.total) }}</div>
+                        <div class="col-12"><strong>Observaciones:</strong><br>{{ compra.observaciones or '-' }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -920,8 +920,10 @@ def add_proveedor(data):
         (codigo, data['nombre'], data.get('cuit', ''), data.get('telefono', ''),
          data.get('email', ''), int(data.get('dias_credito', 30)))
     )
+    proveedor_id = c.lastrowid
     conn.commit()
     conn.close()
+    return proveedor_id
 
 
 def update_proveedor(pid, data):
@@ -1079,9 +1081,59 @@ def get_compras(search='', fecha_desde='', fecha_hasta='', limit=200):
     return q(sql, params)
 
 
+def get_compra(cid):
+    """Devuelve una compra por ID."""
+    return q("SELECT * FROM compras WHERE id=?", (cid,), fetchone=True)
+
+
+def update_compra(cid, data):
+    """Actualiza una compra."""
+    q(
+        """UPDATE compras SET fecha=?,numero_remito=?,proveedor_id=?,proveedor_nombre=?,producto_id=?,codigo_interno=?,descripcion=?,cantidad=?,costo_unitario=?,total=?,observaciones=? WHERE id=?""",
+        (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('numero_remito', ''),
+         data.get('proveedor_id', 0), data.get('proveedor_nombre', ''), data.get('producto_id', 0),
+         data.get('codigo_interno', ''), data.get('descripcion', ''), float(data.get('cantidad', 1)),
+         float(data.get('costo_unitario', 0)), float(data.get('total', 0)), data.get('observaciones', ''), cid),
+        fetchall=False, commit=True
+    )
+
+
+def delete_compra(cid):
+    """Elimina una compra."""
+    q("DELETE FROM compras WHERE id=?", (cid,), fetchall=False, commit=True)
+
+
+def incrementar_stock_compra(producto_id, cantidad, compra_id=None):
+    """Incrementa stock al registrar una compra."""
+    if cantidad <= 0:
+        return
+
+    stock_actual = q("SELECT * FROM stock WHERE producto_id=?", (producto_id,), fetchone=True)
+    if stock_actual:
+        nuevo = stock_actual['stock_actual'] + cantidad
+        q("UPDATE stock SET stock_actual=? WHERE producto_id=?", (nuevo, producto_id), fetchall=False, commit=True)
+    else:
+        q(
+            "INSERT INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo, ultimo_ingreso, proveedor_habitual) VALUES (?,?,?,?,?,?)",
+            (producto_id, cantidad, 5, 50, datetime.now().strftime('%Y-%m-%d'), ''),
+            fetchall=False, commit=True
+        )
+
+    q(
+        """INSERT INTO stock_movimientos
+        (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo)
+        VALUES (?,?,?,?,?,?)""",
+        (producto_id, 'COMPRA', cantidad,
+         stock_actual['stock_actual'] if stock_actual else 0,
+         stock_actual['stock_actual'] + cantidad if stock_actual else cantidad,
+         f'Compra #{compra_id}' if compra_id else 'Compra'),
+        fetchall=False, commit=True
+    )
+
+
 def add_compra(data):
     """Agrega una compra."""
-    q(
+    compra_id = q(
         """INSERT INTO compras
         (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
@@ -1091,6 +1143,12 @@ def add_compra(data):
          float(data.get('costo_unitario', 0)), float(data.get('total', 0)), data.get('observaciones', '')),
         fetchall=False, commit=True
     )
+
+    # Actualizar stock y registrar movimiento de compra
+    if data.get('producto_id') and float(data.get('cantidad', 1)) > 0:
+        incrementar_stock_compra(int(data.get('producto_id')), float(data.get('cantidad', 1)), compra_id)
+
+    return compra_id
 
 
 # ─── CAJA ────────────────────────────────────────────────────────────────────

@@ -778,6 +778,115 @@ def proveedor_eliminar(pid):
     return redirect(url_for('proveedores'))
 
 
+# ─── COMPRAS (PASO 9) ───────────────────────────────────────────────────────
+
+@app.route('/compras')
+@login_required
+def compras():
+    """Lista de compras con búsqueda y filtros."""
+    buscar = request.args.get('q', '').strip()
+    fecha_desde = request.args.get('fecha_desde', '').strip()
+    fecha_hasta = request.args.get('fecha_hasta', '').strip()
+
+    compras_list = db.get_compras(search=buscar, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
+    proveedores = db.get_proveedores()
+    productos = db.get_productos()
+
+    return render_template(
+        'compras.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        compras=compras_list,
+        proveedores=proveedores,
+        productos=productos,
+        buscar=buscar,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta
+    )
+
+
+@app.route('/compras/nuevo', methods=['GET', 'POST'])
+@login_required
+def compra_nueva():
+    """Crear nueva compra."""
+    if request.method == 'POST':
+        try:
+            data = request.form.to_dict()
+            cantidad = float(data.get('cantidad', 0))
+            costo_unitario = float(data.get('costo_unitario', 0))
+            data['monto_total'] = cantidad * costo_unitario
+
+            if not data.get('proveedor_id') or not data.get('producto_id'):
+                flash('❌ Proveedor y producto son requeridos.', 'danger')
+                return redirect(url_for('compra_nueva'))
+
+            proveedor = db.get_proveedor(int(data.get('proveedor_id', 0)))
+            producto = db.get_producto(int(data.get('producto_id', 0)))
+            if not proveedor or not producto:
+                flash('❌ Proveedor o producto inválido.', 'danger')
+                return redirect(url_for('compra_nueva'))
+
+            data['proveedor_nombre'] = proveedor['nombre']
+            data['codigo_interno'] = producto['codigo_interno']
+            data['descripcion'] = producto['descripcion']
+            data['fecha'] = data.get('fecha') or datetime.now().strftime('%Y-%m-%d')
+
+            db.add_compra(data)
+            flash('✅ Compra registrada exitosamente.', 'success')
+            return redirect(url_for('compras'))
+
+        except Exception as e:
+            flash(f'❌ Error al registrar compra: {str(e)}', 'danger')
+            return redirect(url_for('compra_nueva'))
+
+    proveedores = db.get_proveedores()
+    productos = db.get_productos()
+    return render_template(
+        'compra_form.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        proveedores=proveedores,
+        productos=productos,
+        compra=None,
+        accion='Crear'
+    )
+
+
+@app.route('/compras/<int:cid>')
+@login_required
+def compra_detalle(cid):
+    """Detalle de compra."""
+    compra = db.get_compra(cid)
+    if not compra:
+        flash('❌ Compra no encontrada.', 'danger')
+        return redirect(url_for('compras'))
+
+    return render_template(
+        'compra_detalle.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        compra=compra
+    )
+
+
+@app.route('/compras/<int:cid>/eliminar', methods=['POST'])
+@login_required
+def compra_eliminar(cid):
+    """Eliminar compra."""
+    compra = db.get_compra(cid)
+    if not compra:
+        flash('❌ Compra no encontrada.', 'danger')
+        return redirect(url_for('compras'))
+
+    try:
+        db.delete_compra(cid)
+        flash(f"✅ Compra #{cid} eliminada.", 'success')
+    except Exception as e:
+        flash(f'❌ Error al eliminar compra: {str(e)}', 'danger')
+
+    return redirect(url_for('compras'))
+
+
 @app.route('/stock', methods=['GET'])
 @login_required
 def stock():
