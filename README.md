@@ -10,6 +10,15 @@ Desarrollado con **Python + Flask + SQLite**.
 
 ## 🚀 Características Implementadas
 
+### ✅ PASO 7: Gestión de Clientes (v0.7.0)
+- **👥 CRUD de clientes completo** (crear, editar, listar, desactivar)
+- **💼 Gestión de cuentas corrientes** (debe/haber, saldo, movimientos)
+- **📊 Historial de ventas por cliente** con estadísticas y última compra
+- **🧾 Soporte de pagos y verificaciones** en movimientos de clientes
+- **🗂️ Integración con el mecanismo de ventas** existente (cliente en ticket)
+- **📌 Soft delete** de clientes (mantiene historial y coherencia)
+- **💻 Interfaz responsive** con Bootstrap + validación de formularios
+
 ### ✅ PASO 6: Módulo de Punto de Venta (POS) (v0.6.0)
 - **🛒 Sistema completo de ventas** con carrito de compras
 - **🔍 Búsqueda inteligente** de productos por nombre/código/categoría
