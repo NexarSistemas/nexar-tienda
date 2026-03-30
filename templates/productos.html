@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}Productos — Nexar Tienda{% endblock %}
+
+{% block content %}
+<div class="productos-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>
+            <i class="fas fa-boxes"></i>
+            Productos
+        </h2>
+        <a href="{{ url_for('producto_nuevo') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Nuevo Producto
+        </a>
+    </div>
+
+    <!-- ─── BÚSQUEDA Y FILTROS ─── -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                <input 
+                    type="text" 
+                    class="form-control" 
+                    id="search-input" 
+                    placeholder="Buscar por código, nombre o categoría..."
+                    value="{{ buscar }}"
+                >
+            </div>
+        </div>
+        <div class="col-md-6">
+            <select class="form-select" id="categoria-filter">
+                <option value="">Todas las categorías</option>
+                {% for cat in categorias %}
+                <option value="{{ cat }}" {% if cat == categoria_filtro %}selected{% endif %}>{{ cat }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!-- ─── TABLA DE PRODUCTOS ─── -->
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="productos-table">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Descripción</th>
+                        <th>Categoría</th>
+                        <th>Costo</th>
+                        <th>Venta</th>
+                        <th>Margen</th>
+                        <th style="width: 150px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if productos %}
+                        {% for producto in productos %}
+                        <tr data-id="{{ producto['id'] }}" data-search="{{ producto['codigo_interno']|lower }} {{ producto['descripcion']|lower }} {{ producto['categoria']|lower }}">
+                            <td>
+                                <code>{{ producto['codigo_interno'] }}</code>
+                            </td>
+                            <td>
+                                <strong>{{ producto['descripcion'] }}</strong>
+                                {% if producto['marca'] %}
+                                <br><small class="text-muted">{{ producto['marca'] }}</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark">{{ producto['categoria'] or 'Sin categoría' }}</span>
+                            </td>
+                            <td>{{ producto['costo']|fmt_ars }}</td>
+                            <td><strong>{{ producto['precio_venta']|fmt_ars }}</strong></td>
+                            <td>
+                                {% set margen = ((producto['precio_venta'] - producto['costo']) / producto['precio_venta'] * 100) if producto['precio_venta'] > 0 else 0 %}
+                                <span class="badge {% if margen >= 30 %}bg-success{% elif margen >= 20 %}bg-warning{% else %}bg-danger{% endif %}">
+                                    {{ "%.1f"|format(margen) }}%
+                                </span>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <a href="{{ url_for('producto_editar', pid=producto['id']) }}" class="btn btn-outline-primary" title="Editar">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmDelete" data-id="{{ producto['id'] }}" data-name="{{ producto['descripcion'] }}" title="Eliminar">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            <i class="fas fa-inbox fa-2x mb-2" style="display: block; opacity: 0.3;"></i>
+                            No hay productos registrados
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ─── ESTADÍSTICAS ─── -->
+    {% if productos %}
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Total Productos</h6>
+                    <h3 class="text-primary">{{ productos|length }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Precio Promedio</h6>
+                    <h3 class="text-success">
+                        {% set prom = (productos|map(attribute='precio_venta')|sum) / (productos|length) %}
+                        {{ prom|fmt_ars }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Costo Total</h6>
+                    <h3 class="text-warning">
+                        {% set costo_total = (productos|map(attribute='costo')|sum) %}
+                        {{ costo_total|fmt_ars }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Margen Promedio</h6>
+                    <h3 class="text-info">
+                        {% set margen_prom = ((productos|map(attribute='precio_venta')|sum - productos|map(attribute='costo')|sum) / (productos|map(attribute='precio_venta')|sum) * 100) if (productos|map(attribute='precio_venta')|sum) > 0 else 0 %}
+                        {{ "%.1f"|format(margen_prom) }}%
+                    </h3>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ─── MODAL DE CONFIRMACIÓN DE ELIMINACIÓN ─── -->
+<div class="modal fade" id="confirmDelete" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirmar eliminación</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Desactivar el producto <strong id="product-name"></strong>?</p>
+                <p class="text-muted small">Esto lo marcará como inactivo pero conservará todos los datos históricos.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form method="POST" id="deleteForm" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash"></i> Desactivar
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('search-input');
+    const categoriaFilter = document.getElementById('categoria-filter');
+    const table = document.getElementById('productos-table');
+    const rows = table.querySelectorAll('tbody tr');
+
+    // Modal de confirmación
+    const confirmModal = document.getElementById('confirmDelete');
+    confirmModal.addEventListener('show.bs.modal', function(event) {
+        const button = event.relatedTarget;
+        const id = button.getAttribute('data-id');
+        const name = button.getAttribute('data-name');
+        
+        document.getElementById('product-name').textContent = name;
+        document.getElementById('deleteForm').action = `/productos/${id}/eliminar`;
+    });
+
+    // Búsqueda en tiempo real
+    function filterRows() {
+        const searchTerm = searchInput.value.toLowerCase();
+        const categoria = categoriaFilter.value;
+
+        rows.forEach(row => {
+            const search = row.getAttribute('data-search') || '';
+            const rowCategoria = row.getAttribute('data-categoria') || '';
+            
+            const matchesSearch = search.includes(searchTerm);
+            const matchesCategoria = !categoria || row.querySelector('td:nth-child(3)').textContent.includes(categoria);
+
+            row.style.display = (matchesSearch && matchesCategoria) ? '' : 'none';
+        });
+    }
+
+    searchInput.addEventListener('keyup', filterRows);
+    categoriaFilter.addEventListener('change', filterRows);
+
+    // Atributo data-categoria para cada fila
+    rows.forEach(row => {
+        const catText = row.querySelector('td:nth-child(3)').textContent.trim();
+        row.setAttribute('data-categoria', catText);
+    });
+});
+</script>
+{% endblock %}

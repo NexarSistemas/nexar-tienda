@@ -5,6 +5,7 @@
 
 # Respaldos
 respaldo/
+*.zip
 
 # Entorno virtual de Python
 venv/
@@ -29,3 +30,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# otros
+nexar-almacen-source/

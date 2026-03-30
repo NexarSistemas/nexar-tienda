@@ -4,15 +4,41 @@ Conexión, tablas y consultas SQLite.
 
 Basado en Nexar Almacén, adaptado para tienda de regalos:
   - Sin sistema de licencias ni OpenFoodFacts
-  - Categorías propias de tienda (bijouterie, mates, etc.)
+  - Categorías propias de tienda (bijouterie, mates, regalos, etc.)
   - Módulo de temporadas (Día de la Madre, Navidad, etc.)
-  - IVA dual: incluido o discriminado por cliente
+  - Sistema de backups automáticos desde el inicio
 """
 
 import sqlite3
 import os
 import hashlib
 from datetime import datetime, date, timedelta
+
+# ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
+# Define limites de productos, clientes y proveedores por tipo de licencia
+TIER_LIMITS = {
+    "DEMO": {
+        "productos": None,      # ilimitado por 30 dias
+        "clientes": None,
+        "proveedores": None,
+        "dias_prueba": 30,
+        "descripcion": "Periodo de prueba (30 dias)"
+    },
+    "BASICA": {
+        "productos": 200,       # max 200 productos
+        "clientes": 100,        # max 100 clientes
+        "proveedores": 50,      # max 50 proveedores
+        "dias_prueba": None,
+        "descripcion": "Licencia Basica"
+    },
+    "PRO": {
+        "productos": None,      # ilimitado
+        "clientes": None,
+        "proveedores": None,
+        "dias_prueba": None,
+        "descripcion": "Licencia Profesional"
+    },
+}
 
 # ─── RUTA DE LA BASE DE DATOS ────────────────────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tienda.db')
@@ -53,7 +79,7 @@ def q(sql, params=(), fetchall=True, fetchone=False, commit=False):
 
 
 def qm(statements):
-    """Ejecuta múltiples sentencias SQL en una sola transacción."""
+    """Ejecuta múltiples statements en una transacción."""
     conn = get_conn()
     try:
         c = conn.cursor()
@@ -66,14 +92,12 @@ def qm(statements):
 
 
 # ─── INICIALIZACIÓN ──────────────────────────────────────────────────────────
+
 _db_initialized = False
 
 
 def init_db():
-    """
-    Crea todas las tablas si no existen y carga datos iniciales.
-    Se llama en cada request, pero solo inicializa la primera vez.
-    """
+    """Inicializa la BD con todas las tablas necesarias para Nexar Tienda."""
     global _db_initialized
     if _db_initialized:
         return
@@ -82,7 +106,7 @@ def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    # ── TABLAS ────────────────────────────────────────────────────────────────
+    # Crear todas las tablas
     c.executescript("""
         CREATE TABLE IF NOT EXISTS config (
             clave TEXT PRIMARY KEY,
@@ -90,273 +114,327 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS usuarios (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            username         TEXT UNIQUE NOT NULL,
-            password_hash    TEXT NOT NULL,
-            rol              TEXT DEFAULT 'usuario',
-            nombre_completo  TEXT DEFAULT '',
-            activo           INTEGER DEFAULT 1,
-            created_at       TEXT DEFAULT CURRENT_TIMESTAMP
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            rol TEXT DEFAULT 'usuario',
+            nombre_completo TEXT DEFAULT '',
+            activo INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS categorias (
-            id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre TEXT UNIQUE NOT NULL,
             activa INTEGER DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS productos (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            codigo_interno  TEXT UNIQUE NOT NULL,
-            codigo_barras   TEXT DEFAULT '',
-            descripcion     TEXT NOT NULL,
-            marca           TEXT DEFAULT '',
-            categoria       TEXT DEFAULT '',
-            unidad          TEXT DEFAULT 'Unidad',
-            costo           REAL DEFAULT 0,
-            precio_venta    REAL DEFAULT 0,
-            iva_porcentaje  REAL DEFAULT 21.0,
-            iva_tipo        TEXT DEFAULT 'incluido',
-            tags            TEXT DEFAULT '',
-            activo          INTEGER DEFAULT 1,
-            created_at      TEXT DEFAULT CURRENT_TIMESTAMP
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            codigo_interno TEXT UNIQUE NOT NULL,
+            codigo_barras TEXT DEFAULT '',
+            descripcion TEXT NOT NULL,
+            marca TEXT DEFAULT '',
+            categoria TEXT DEFAULT '',
+            unidad TEXT DEFAULT 'Unidad',
+            por_peso INTEGER DEFAULT 0,
+            costo REAL DEFAULT 0,
+            precio_venta REAL DEFAULT 0,
+            iva TEXT DEFAULT '21%',
+            activo INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS stock (
-            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-            producto_id        INTEGER UNIQUE REFERENCES productos(id) ON DELETE CASCADE,
-            stock_actual       REAL DEFAULT 0,
-            stock_minimo       REAL DEFAULT 3,
-            stock_maximo       REAL DEFAULT 30,
-            ultimo_ingreso     TEXT DEFAULT '',
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            producto_id INTEGER UNIQUE REFERENCES productos(id) ON DELETE CASCADE,
+            stock_actual REAL DEFAULT 0,
+            stock_minimo REAL DEFAULT 5,
+            stock_maximo REAL DEFAULT 50,
+            ultimo_ingreso TEXT DEFAULT '',
             proveedor_habitual TEXT DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS stock_movimientos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            producto_id INTEGER REFERENCES productos(id) ON DELETE CASCADE,
+            tipo TEXT DEFAULT 'AJUSTE',
+            cantidad REAL DEFAULT 0,
+            stock_anterior REAL DEFAULT 0,
+            stock_nuevo REAL DEFAULT 0,
+            motivo TEXT DEFAULT '',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS clientes (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            codigo         TEXT UNIQUE,
-            nombre         TEXT NOT NULL,
-            dni_cuit       TEXT DEFAULT '',
-            telefono       TEXT DEFAULT '',
-            email          TEXT DEFAULT '',
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            codigo TEXT UNIQUE,
+            nombre TEXT NOT NULL,
+            dni_cuit TEXT DEFAULT '',
+            telefono TEXT DEFAULT '',
+            email TEXT DEFAULT '',
             limite_credito REAL DEFAULT 0,
-            iva_tipo       TEXT DEFAULT 'incluido',
-            activo         INTEGER DEFAULT 1
+            activo INTEGER DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS proveedores (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            codigo       TEXT UNIQUE,
-            nombre       TEXT NOT NULL,
-            cuit         TEXT DEFAULT '',
-            telefono     TEXT DEFAULT '',
-            email        TEXT DEFAULT '',
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            codigo TEXT UNIQUE,
+            nombre TEXT NOT NULL,
+            cuit TEXT DEFAULT '',
+            telefono TEXT DEFAULT '',
+            email TEXT DEFAULT '',
             dias_credito INTEGER DEFAULT 30,
-            activo       INTEGER DEFAULT 1
+            activo INTEGER DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS ventas (
-            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-            numero_ticket       INTEGER,
-            fecha               TEXT,
-            hora                TEXT,
-            cliente_id          INTEGER DEFAULT 0,
-            cliente_nombre      TEXT DEFAULT 'Mostrador',
-            medio_pago          TEXT DEFAULT 'Efectivo',
-            subtotal            REAL DEFAULT 0,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero_ticket INTEGER,
+            fecha TEXT,
+            hora TEXT,
+            cliente_id INTEGER DEFAULT 0,
+            cliente_nombre TEXT DEFAULT 'Mostrador',
+            medio_pago TEXT DEFAULT 'Efectivo',
+            subtotal REAL DEFAULT 0,
             descuento_adicional REAL DEFAULT 0,
-            total               REAL DEFAULT 0,
-            iva_discriminado    INTEGER DEFAULT 0,
-            vendedor            TEXT DEFAULT '',
-            temporada_id        INTEGER DEFAULT 0,
-            temporada_nombre    TEXT DEFAULT ''
+            total REAL DEFAULT 0,
+            vendedor TEXT DEFAULT '',
+            temporada TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS ventas_detalle (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            venta_id        INTEGER REFERENCES ventas(id) ON DELETE CASCADE,
-            producto_id     INTEGER DEFAULT 0,
-            codigo_interno  TEXT DEFAULT '',
-            descripcion     TEXT DEFAULT '',
-            categoria       TEXT DEFAULT '',
-            unidad          TEXT DEFAULT '',
-            cantidad        REAL DEFAULT 1,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            venta_id INTEGER REFERENCES ventas(id) ON DELETE CASCADE,
+            producto_id INTEGER DEFAULT 0,
+            codigo_interno TEXT DEFAULT '',
+            descripcion TEXT DEFAULT '',
+            categoria TEXT DEFAULT '',
+            unidad TEXT DEFAULT '',
+            cantidad REAL DEFAULT 1,
             precio_unitario REAL DEFAULT 0,
-            descuento       REAL DEFAULT 0,
-            subtotal        REAL DEFAULT 0
+            descuento REAL DEFAULT 0,
+            subtotal REAL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS compras (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha            TEXT,
-            numero_remito    TEXT DEFAULT '',
-            proveedor_id     INTEGER DEFAULT 0,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT,
+            numero_remito TEXT DEFAULT '',
+            proveedor_id INTEGER DEFAULT 0,
             proveedor_nombre TEXT DEFAULT '',
-            producto_id      INTEGER DEFAULT 0,
-            codigo_interno   TEXT DEFAULT '',
-            descripcion      TEXT DEFAULT '',
-            cantidad         REAL DEFAULT 1,
-            costo_unitario   REAL DEFAULT 0,
-            total            REAL DEFAULT 0,
-            observaciones    TEXT DEFAULT ''
+            producto_id INTEGER DEFAULT 0,
+            codigo_interno TEXT DEFAULT '',
+            descripcion TEXT DEFAULT '',
+            cantidad REAL DEFAULT 1,
+            costo_unitario REAL DEFAULT 0,
+            total REAL DEFAULT 0,
+            observaciones TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS caja_historial (
-            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha                 TEXT UNIQUE,
-            saldo_apertura        REAL DEFAULT 0,
-            ventas_efectivo       REAL DEFAULT 0,
-            ventas_debito         REAL DEFAULT 0,
-            ventas_credito        REAL DEFAULT 0,
-            ventas_qr             REAL DEFAULT 0,
-            ventas_cta_cte        REAL DEFAULT 0,
-            ventas_transferencia  REAL DEFAULT 0,
-            total_ventas          REAL DEFAULT 0,
-            gastos_dia            REAL DEFAULT 0,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT UNIQUE,
+            saldo_apertura REAL DEFAULT 0,
+            ventas_efectivo REAL DEFAULT 0,
+            ventas_debito REAL DEFAULT 0,
+            ventas_credito REAL DEFAULT 0,
+            ventas_qr REAL DEFAULT 0,
+            ventas_cta_cte REAL DEFAULT 0,
+            ventas_transferencia REAL DEFAULT 0,
+            total_ventas REAL DEFAULT 0,
+            gastos_dia REAL DEFAULT 0,
             saldo_cierre_esperado REAL DEFAULT 0,
-            saldo_cierre_real     REAL DEFAULT 0,
-            diferencia            REAL DEFAULT 0,
-            cerrada               INTEGER DEFAULT 0,
-            responsable_apertura  TEXT DEFAULT '',
-            responsable_cierre    TEXT DEFAULT '',
-            hora_apertura         TEXT DEFAULT '',
-            hora_cierre           TEXT DEFAULT ''
+            saldo_cierre_real REAL DEFAULT 0,
+            diferencia REAL DEFAULT 0,
+            cerrada INTEGER DEFAULT 0,
+            responsable_apertura TEXT DEFAULT '',
+            responsable_cierre TEXT DEFAULT '',
+            hora_apertura TEXT DEFAULT '',
+            hora_cierre TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS gastos (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha         TEXT,
-            categoria     TEXT DEFAULT '',
-            descripcion   TEXT DEFAULT '',
-            monto         REAL DEFAULT 0,
-            medio_pago    TEXT DEFAULT 'Efectivo',
-            proveedor     TEXT DEFAULT '',
-            comprobante   TEXT DEFAULT '',
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT,
+            tipo TEXT DEFAULT 'Gasto',
+            categoria TEXT DEFAULT '',
+            descripcion TEXT DEFAULT '',
+            monto REAL DEFAULT 0,
+            iva_incluido INTEGER DEFAULT 1,
+            medio_pago TEXT DEFAULT 'Efectivo',
+            proveedor TEXT DEFAULT '',
+            necesario TEXT DEFAULT 'SI (necesario)',
+            comprobante TEXT DEFAULT '',
             observaciones TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS cc_clientes_mov (
-            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente_id         INTEGER REFERENCES clientes(id),
-            fecha              TEXT,
-            tipo               TEXT DEFAULT 'Venta',
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER REFERENCES clientes(id),
+            fecha TEXT,
+            tipo TEXT DEFAULT 'Venta',
             numero_comprobante TEXT DEFAULT '',
-            debe               REAL DEFAULT 0,
-            haber              REAL DEFAULT 0,
-            vencimiento        TEXT DEFAULT '',
-            observaciones      TEXT DEFAULT ''
+            debe REAL DEFAULT 0,
+            haber REAL DEFAULT 0,
+            vencimiento TEXT DEFAULT '',
+            observaciones TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS facturas_proveedores (
-            id                INTEGER PRIMARY KEY AUTOINCREMENT,
-            proveedor_id      INTEGER REFERENCES proveedores(id),
-            numero_factura    TEXT DEFAULT '',
-            fecha             TEXT,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proveedor_id INTEGER REFERENCES proveedores(id),
+            numero_factura TEXT DEFAULT '',
+            fecha TEXT,
             fecha_vencimiento TEXT,
-            importe           REAL DEFAULT 0,
-            pagado            REAL DEFAULT 0,
-            observaciones     TEXT DEFAULT ''
+            importe REAL DEFAULT 0,
+            pagado REAL DEFAULT 0,
+            observaciones TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS temporadas (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre       TEXT NOT NULL,
-            fecha_inicio TEXT NOT NULL,
-            fecha_fin    TEXT NOT NULL,
-            descripcion  TEXT DEFAULT '',
-            color        TEXT DEFAULT '#3b82f6',
-            activa       INTEGER DEFAULT 1
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT UNIQUE NOT NULL,
+            descripcion TEXT DEFAULT '',
+            fecha_inicio TEXT,
+            fecha_fin TEXT,
+            activa INTEGER DEFAULT 1
         );
 
-        CREATE TABLE IF NOT EXISTS productos_temporada (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            temporada_id INTEGER REFERENCES temporadas(id) ON DELETE CASCADE,
-            producto_id  INTEGER REFERENCES productos(id) ON DELETE CASCADE,
-            UNIQUE(temporada_id, producto_id)
+        CREATE TABLE IF NOT EXISTS changelog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            version TEXT NOT NULL,
+            fecha TEXT NOT NULL,
+            tipo TEXT DEFAULT 'Actualización',
+            titulo TEXT NOT NULL,
+            descripcion TEXT DEFAULT ''
         );
     """)
 
-    # ── CONFIG POR DEFECTO ────────────────────────────────────────────────────
+    # ─── Configuración por defecto ────────────────────────────────────────────
     defaults = [
-        ('nombre_negocio',         'Nexar Tienda'),
-        ('direccion',              ''),
-        ('telefono',               ''),
-        ('cuit',                   ''),
-        ('responsable',            ''),
-        ('ticket_pie_texto',       'Gracias por su compra'),
-        ('margen_minimo',          '0.30'),
-        ('margen_objetivo',        '0.50'),
-        ('dias_alerta_proveedor',  '30'),
-        ('dias_alerta_cliente',    '15'),
-        ('siguiente_ticket',       '1001'),
-        ('siguiente_codigo',       '1'),
-        ('iva_porcentaje_default', '21'),
-        ('backup_intervalo_h',     '24'),
-        ('backup_keep',            '10'),
-        ('backup_ultimo',          ''),
+        ('nombre_negocio', 'Mi Tienda'),
+        ('direccion', ''),
+        ('telefono', ''),
+        ('cuit', ''),
+        ('responsable', ''),
+        ('margen_minimo', '0.20'),
+        ('margen_objetivo', '0.35'),
+        ('dias_alerta_proveedor', '30'),
+        ('dias_alerta_cliente', '15'),
+        ('siguiente_ticket', '1001'),
+        ('siguiente_codigo', '1'),
+        ('backup_intervalo_h', '24'),
+        ('backup_keep', '10'),
+        ('backup_dir', ''),
+        ('backup_ultimo', ''),
+        # ─── SISTEMA DE LICENCIAS ─────────────────────────────────────────────
+        ('license_type', 'MONO'),           # MONO / MULTI
+        ('license_tier', 'DEMO'),           # DEMO / BASICA / PRO
+        ('license_key', ''),                # Clave de licencia (vacio en DEMO)
+        ('license_activated_at', ''),       # Fecha de activacion
+        ('license_expires_at', ''),         # Fecha de expiracion (vacio = no vence)
+        ('license_last_check', ''),         # Ultimo chequeo exitoso
+        ('license_max_machines', '1'),      # Maquinas permitidas
     ]
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO config VALUES (?,?)", (k, v))
 
-    # ── USUARIOS POR DEFECTO ──────────────────────────────────────────────────
+    # ─── Generar machine_id ──────────────────────────────────────────────────
+    mid = c.execute("SELECT valor FROM config WHERE clave='machine_id'").fetchone()
+    if not mid:
+        import uuid
+        machine_id = str(uuid.uuid4()).replace('-', '').upper()[:16]
+        c.execute("INSERT INTO config VALUES ('machine_id',?)", (machine_id,))
+
+    # ─── Usuarios por defecto ─────────────────────────────────────────────────
     def _hash(pw):
         return hashlib.sha256(pw.encode()).hexdigest()
 
-    for uname, phash, rol, nombre in [
-        ('admin',    _hash('admin123'),    'admin',   'Administrador'),
+    default_users = [
+        ('admin', _hash('admin123'), 'admin', 'Administrador'),
         ('vendedor', _hash('vendedor123'), 'usuario', 'Vendedor'),
-    ]:
+    ]
+    for uname, phash, rol, nombre in default_users:
         c.execute(
             "INSERT OR IGNORE INTO usuarios (username,password_hash,rol,nombre_completo) VALUES (?,?,?,?)",
             (uname, phash, rol, nombre)
         )
 
-    # ── CATEGORÍAS DE LA TIENDA ───────────────────────────────────────────────
-    for cat in [
-        'Bijouterie', 'Marroquinería', 'Mates y Termos',
-        'Adornos y Decoración', 'Regalos Varios', 'Regalos de Temporada',
-        'Papelería y Librería', 'Textil e Indumentaria',
-        'Juguetería', 'Cotillón', 'Perfumería y Cosmética',
-        'Artículos del Hogar', 'Otros',
-    ]:
+    # ─── Categorías iniciales de tienda ──────────────────────────────────────
+    cats = [
+        'Bijouterie',
+        'Mates y Termos',
+        'Regalos Diversos',
+        'Adornos',
+        'Accesorios',
+        'Productos de Temporada',
+        'Navidad',
+        'Día de la Madre',
+        'Día del Padre',
+        'Otros',
+    ]
+    for cat in cats:
         c.execute("INSERT OR IGNORE INTO categorias (nombre) VALUES (?)", (cat,))
 
-    # ── TEMPORADAS PREDEFINIDAS ───────────────────────────────────────────────
-    yr = date.today().year
-    for nombre, fi, ff, desc, color in [
-        ('Día de la Madre',       f'{yr}-04-20', f'{yr}-05-25',       'Segunda quincena de mayo',     '#ec4899'),
-        ('Día del Padre',         f'{yr}-06-01', f'{yr}-06-22',       'Tercer domingo de junio',      '#3b82f6'),
-        ('Navidad',               f'{yr}-11-15', f'{yr}-12-25',       'Fin de año',                   '#dc2626'),
-        ('Año Nuevo',             f'{yr}-12-26', f'{yr+1}-01-05',     'Primera semana del año',       '#f59e0b'),
-        ('Día del Niño',          f'{yr}-07-20', f'{yr}-08-10',       'Segundo domingo de agosto',    '#10b981'),
-        ('Día de los Enamorados', f'{yr}-02-01', f'{yr}-02-14',       '14 de febrero',                '#f43f5e'),
-        ('Halloween',             f'{yr}-10-15', f'{yr}-10-31',       'Fin de octubre',               '#7c3aed'),
-        ('Día del Maestro',       f'{yr}-09-01', f'{yr}-09-11',       '11 de septiembre',             '#0891b2'),
-    ]:
+    # ─── Temporadas iniciales ────────────────────────────────────────────────
+    seasons = [
+        ('Navidad', 'Adornos y regalos navideños', '2026-11-01', '2026-12-31'),
+        ('Día de la Madre', 'Especiales para mamá', '2026-10-01', '2026-10-31'),
+        ('Día del Padre', 'Especiales para papá', '2026-06-01', '2026-06-30'),
+        ('Año Nuevo', 'Regalos y accesorios año nuevo', '2026-12-20', '2027-01-31'),
+    ]
+    for nombre, desc, inicio, fin in seasons:
         c.execute(
-            "INSERT OR IGNORE INTO temporadas (nombre,fecha_inicio,fecha_fin,descripcion,color) VALUES (?,?,?,?,?)",
-            (nombre, fi, ff, desc, color)
+            "INSERT OR IGNORE INTO temporadas (nombre,descripcion,fecha_inicio,fecha_fin) VALUES (?,?,?,?)",
+            (nombre, desc, inicio, fin)
         )
 
-    # ── REPARAR PRODUCTOS SIN STOCK ───────────────────────────────────────────
+    _seed_changelog(c)
+
+    # ─── Reparar stock ───────────────────────────────────────────────────────
     c.execute("""
         INSERT OR IGNORE INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo)
-        SELECT id, 0, 3, 30 FROM productos
-        WHERE activo=1 AND id NOT IN (SELECT producto_id FROM stock)
+        SELECT id, 0, 5, 50 FROM productos
+        WHERE activo=1
+        AND id NOT IN (SELECT producto_id FROM stock)
     """)
 
     conn.commit()
     conn.close()
 
 
+def _seed_changelog(c):
+    """Inserta el historial de versiones inicial."""
+    existing = c.execute("SELECT COUNT(*) FROM changelog").fetchone()[0]
+    if existing > 0:
+        return
+
+    entries = [
+        ('0.1.0', '2026-03-29', 'Nueva función',
+         'Estructura base de Nexar Tienda',
+         'Proyecto inicial basado en Nexar Almacén adaptado para tienda de regalos.'),
+        ('0.1.1', '2026-03-29', 'Nueva función',
+         'Módulos completos y sistema de backups',
+         'Se agregaron todas las tablas: Productos, Stock, Ventas, Clientes, Proveedores, Caja, Gastos, Temporadas. Sistema de backups automáticos.'),
+    ]
+    for ver, fecha, tipo, titulo, desc in entries:
+        c.execute(
+            "INSERT INTO changelog (version,fecha,tipo,titulo,descripcion) VALUES (?,?,?,?,?)",
+            (ver, fecha, tipo, titulo, desc)
+        )
+
+
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
 def get_config():
+    """Devuelve dict con toda la configuración."""
     rows = q("SELECT clave, valor FROM config")
     return {r['clave']: r['valor'] for r in rows}
 
 
 def set_config(data: dict):
+    """Actualiza multiples valores de configuracion."""
     conn = get_conn()
     c = conn.cursor()
     for k, v in data.items():
@@ -365,20 +443,90 @@ def set_config(data: dict):
     conn.close()
 
 
-# ─── CONTADORES ──────────────────────────────────────────────────────────────
+# ─── LICENCIAS ──────────────────────────────────────────────────────────────
+
+def get_license_info() -> dict:
+    """Devuelve informacion completa de la licencia actual."""
+    cfg = get_config()
+    return {
+        'type': cfg.get('license_type', 'MONO'),
+        'tier': cfg.get('license_tier', 'DEMO'),
+        'key': cfg.get('license_key', ''),
+        'activated_at': cfg.get('license_activated_at', ''),
+        'expires_at': cfg.get('license_expires_at', ''),
+        'last_check': cfg.get('license_last_check', ''),
+        'max_machines': int(cfg.get('license_max_machines', '1')),
+        'limits': TIER_LIMITS.get(cfg.get('license_tier', 'DEMO'), {})
+    }
+
+
+def activate_license(tier: str, key: str = '', expires_at: str = ''):
+    """Activa una nueva licencia."""
+    if tier not in TIER_LIMITS:
+        tier = 'DEMO'
+    set_config({
+        'license_tier': tier,
+        'license_key': key,
+        'license_activated_at': datetime.now().isoformat(),
+        'license_expires_at': expires_at,
+        'license_last_check': datetime.now().isoformat(),
+    })
+
+
+def check_license_limits(limit_key: str, current_count: int = None) -> dict:
+    """Verifica si se excedio un limite de licencia.
+    
+    Retorna: {'ok': bool, 'current': int, 'limit': int, 'message': str}
+    """
+    lic = get_license_info()
+    tier = lic['tier']
+    limits = lic['limits']
+    
+    limit = limits.get(limit_key)
+    
+    # Si no hay limite (None), no hay restriccion
+    if limit is None:
+        return {'ok': True, 'current': current_count or 0, 'limit': None, 'message': 'Ilimitado'}
+    
+    # Si hay un limite, verificar
+    if current_count is None:
+        # Contar desde BD segun el tipo de limite
+        if limit_key == 'productos':
+            current_count = q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchall=False)
+        elif limit_key == 'clientes':
+            current_count = q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchall=False)
+        elif limit_key == 'proveedores':
+            current_count = q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchall=False)
+        else:
+            current_count = 0
+    
+    if current_count > limit:
+        return {
+            'ok': False,
+            'current': current_count,
+            'limit': limit,
+            'message': f"Limite de {limit_key} ({limit}) excedido. Actual: {current_count}"
+        }
+    
+    return {
+        'ok': True,
+        'current': current_count,
+        'limit': limit,
+        'message': f"{limit_key.capitalize()}: {current_count}/{limit}"
+    }
+
+
+# ─── CÓDIGOS AUTOMÁTICOS ─────────────────────────────────────────────────────
 
 def next_codigo():
-    """Genera el próximo código de producto (PRD-0001, PRD-0002...)."""
+    """Genera next código de producto único."""
     conn = get_conn()
     c = conn.cursor()
     row = c.execute(
-        "SELECT MAX(CAST(SUBSTR(codigo_interno,5) AS INTEGER)) as mx "
-        "FROM productos WHERE codigo_interno LIKE 'PRD-%'"
+        "SELECT MAX(CAST(SUBSTR(codigo_interno,5) AS INTEGER)) as mx FROM productos WHERE codigo_interno LIKE 'PRD-%'"
     ).fetchone()
     max_n = (row['mx'] or 0) + 1
-    cfg_n = int(c.execute(
-        "SELECT valor FROM config WHERE clave='siguiente_codigo'"
-    ).fetchone()['valor'] or 1)
+    cfg_n = int(c.execute("SELECT valor FROM config WHERE clave='siguiente_codigo'").fetchone()['valor'] or 1)
     n = max(max_n, cfg_n)
     new_code = f"PRD-{n:04d}"
     c.execute("INSERT OR REPLACE INTO config VALUES ('siguiente_codigo', ?)", (str(n + 1),))
@@ -388,92 +536,72 @@ def next_codigo():
 
 
 def next_ticket():
+    """Devuelve el próximo número de ticket."""
     cfg = get_config()
     n = int(cfg.get('siguiente_ticket', 1001))
     set_config({'siguiente_ticket': str(n + 1)})
     return n
 
 
-# ─── AUTENTICACIÓN ───────────────────────────────────────────────────────────
-
-def _hash_pw(pw: str) -> str:
-    return hashlib.sha256(pw.encode()).hexdigest()
-
-
-def verificar_password(username: str, password: str):
-    u = q("SELECT * FROM usuarios WHERE username=? AND activo=1", (username,), fetchone=True)
-    if u and u['password_hash'] == _hash_pw(password):
-        return dict(u)
-    return None
-
-
-def get_usuarios():
-    return q("SELECT id,username,rol,nombre_completo,activo FROM usuarios ORDER BY rol,username")
-
-
-def crear_usuario(username, password, rol, nombre):
-    try:
-        q("INSERT INTO usuarios (username,password_hash,rol,nombre_completo) VALUES (?,?,?,?)",
-          (username.strip(), _hash_pw(password), rol, nombre.strip()),
-          fetchall=False, commit=True)
-        return True
-    except Exception:
-        return False
-
-
-def editar_usuario(uid, nombre, rol):
-    q("UPDATE usuarios SET nombre_completo=?, rol=? WHERE id=?",
-      (nombre, rol, uid), fetchall=False, commit=True)
-
-
-def cambiar_password(uid, nueva):
-    q("UPDATE usuarios SET password_hash=? WHERE id=?",
-      (_hash_pw(nueva), uid), fetchall=False, commit=True)
-
-
-def toggle_usuario(uid):
-    q("UPDATE usuarios SET activo=CASE WHEN activo=1 THEN 0 ELSE 1 END WHERE id=?",
-      (uid,), fetchall=False, commit=True)
-
-
-def delete_usuario(uid):
-    q("DELETE FROM usuarios WHERE id=? AND rol!='admin'",
-      (uid,), fetchall=False, commit=True)
-
-
 # ─── CATEGORÍAS ──────────────────────────────────────────────────────────────
 
 def get_categorias():
-    return [r['nombre'] for r in q(
-        "SELECT nombre FROM categorias WHERE activa=1 ORDER BY nombre"
-    )]
+    """Devuelve lista de categorías activas."""
+    return [r['nombre'] for r in q("SELECT nombre FROM categorias WHERE activa=1 ORDER BY nombre")]
 
 
 def add_categoria(nombre):
-    q("INSERT OR IGNORE INTO categorias (nombre) VALUES (?)",
-      (nombre,), fetchall=False, commit=True)
+    """Agrega una nueva categoría."""
+    q("INSERT OR IGNORE INTO categorias (nombre) VALUES (?)", (nombre,), fetchall=False, commit=True)
 
 
-def delete_categoria(nombre):
-    conn = get_conn()
-    conn.execute("DELETE FROM categorias WHERE nombre=?", (nombre,))
-    conn.commit()
-    conn.close()
+# ─── USUARIOS ────────────────────────────────────────────────────────────────
+
+def get_usuario_by_username(username):
+    """Obtiene usuario por username."""
+    return q("SELECT * FROM usuarios WHERE username=?", (username,), fetchone=True)
+
+
+def verify_password(password, password_hash):
+    """Verifica contraseña contra hash."""
+    return hashlib.sha256(password.encode()).hexdigest() == password_hash
+
+
+def get_usuarios():
+    """Devuelve todos los usuarios."""
+    return q("SELECT id,username,rol,nombre_completo,activo FROM usuarios ORDER BY nombre_completo")
+
+
+def add_usuario(username, password, rol, nombre_completo):
+    """Agrega un nuevo usuario."""
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    q(
+        """INSERT INTO usuarios (username,password_hash,rol,nombre_completo)
+        VALUES (?,?,?,?)""",
+        (username, password_hash, rol, nombre_completo),
+        fetchall=False, commit=True
+    )
+
+
+def update_usuario(uid, data):
+    """Actualiza usuario."""
+    updates = ["rol=?", "nombre_completo=?", "activo=?"]
+    params = [data.get('rol', 'usuario'), data.get('nombre_completo', ''), int(data.get('activo', 1)), uid]
+    q(f"UPDATE usuarios SET {','.join(updates)} WHERE id=?", params, fetchall=False, commit=True)
 
 
 # ─── PRODUCTOS ───────────────────────────────────────────────────────────────
 
-def get_productos(activo_only=True, search='', categoria=''):
+def get_productos(activo_only=True, search=''):
+    """Devuelve productos filtrables."""
     sql = "SELECT * FROM productos"
-    conds, params = [], []
+    conds = []
+    params = []
     if activo_only:
         conds.append("activo=1")
     if search:
-        conds.append("(descripcion LIKE ? OR codigo_interno LIKE ? OR marca LIKE ? OR tags LIKE ?)")
+        conds.append("(codigo_interno LIKE ? OR codigo_barras LIKE ? OR descripcion LIKE ? OR categoria LIKE ?)")
         params += [f'%{search}%'] * 4
-    if categoria:
-        conds.append("categoria=?")
-        params.append(categoria)
     if conds:
         sql += " WHERE " + " AND ".join(conds)
     sql += " ORDER BY descripcion"
@@ -481,38 +609,35 @@ def get_productos(activo_only=True, search='', categoria=''):
 
 
 def get_producto(pid):
+    """Devuelve un producto por ID."""
     return q("SELECT * FROM productos WHERE id=?", (pid,), fetchone=True)
 
 
+def get_producto_by_codigo(codigo):
+    """Busca por código interno o barras."""
+    r = q("SELECT * FROM productos WHERE codigo_interno=? AND activo=1", (codigo,), fetchone=True)
+    if not r:
+        r = q("SELECT * FROM productos WHERE codigo_barras=? AND activo=1", (codigo,), fetchone=True)
+    return r
+
+
 def add_producto(data):
+    """Agrega un nuevo producto."""
     codigo = next_codigo()
     conn = get_conn()
     c = conn.cursor()
-    c.execute("""
-        INSERT INTO productos
-            (codigo_interno, codigo_barras, descripcion, marca, categoria,
-             unidad, costo, precio_venta, iva_porcentaje, iva_tipo, tags, activo)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,1)
-    """, (
-        codigo,
-        data.get('codigo_barras', ''),
-        data['descripcion'],
-        data.get('marca', ''),
-        data.get('categoria', ''),
-        data.get('unidad', 'Unidad'),
-        float(data.get('costo', 0)),
-        float(data.get('precio_venta', 0)),
-        float(data.get('iva_porcentaje', 21)),
-        data.get('iva_tipo', 'incluido'),
-        data.get('tags', ''),
-    ))
+    c.execute(
+        """INSERT INTO productos
+        (codigo_interno,codigo_barras,descripcion,marca,categoria,unidad,por_peso,costo,precio_venta,iva,activo)
+        VALUES (?,?,?,?,?,?,?,?,?,?,1)""",
+        (codigo, data.get('codigo_barras', ''), data['descripcion'], data.get('marca', ''),
+         data.get('categoria', ''), data.get('unidad', 'Unidad'), int(data.get('por_peso', 0)),
+         float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'))
+    )
     pid = c.lastrowid
     c.execute(
-        "INSERT INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo) VALUES (?,?,?,?)",
-        (pid,
-         float(data.get('stock_actual', 0)),
-         float(data.get('stock_minimo', 3)),
-         float(data.get('stock_maximo', 30)))
+        "INSERT INTO stock (producto_id,stock_actual,stock_minimo,stock_maximo) VALUES (?,?,?,?)",
+        (pid, float(data.get('stock_actual', 0)), float(data.get('stock_minimo', 5)), float(data.get('stock_maximo', 50)))
     )
     conn.commit()
     conn.close()
@@ -520,71 +645,42 @@ def add_producto(data):
 
 
 def update_producto(pid, data):
-    q("""
-        UPDATE productos SET
-            codigo_barras=?, descripcion=?, marca=?, categoria=?, unidad=?,
-            costo=?, precio_venta=?, iva_porcentaje=?, iva_tipo=?, tags=?, activo=?
-        WHERE id=?
-    """, (
-        data.get('codigo_barras', ''),
-        data['descripcion'],
-        data.get('marca', ''),
-        data.get('categoria', ''),
-        data.get('unidad', 'Unidad'),
-        float(data.get('costo', 0)),
-        float(data.get('precio_venta', 0)),
-        float(data.get('iva_porcentaje', 21)),
-        data.get('iva_tipo', 'incluido'),
-        data.get('tags', ''),
-        int(data.get('activo', 1)),
-        pid,
-    ), fetchall=False, commit=True)
+    """Actualiza un producto."""
+    q(
+        """UPDATE productos SET codigo_barras=?,descripcion=?,marca=?,categoria=?,unidad=?,por_peso=?,
+        costo=?,precio_venta=?,iva=?,activo=? WHERE id=?""",
+        (data.get('codigo_barras', ''), data['descripcion'], data.get('marca', ''),
+         data.get('categoria', ''), data.get('unidad', 'Unidad'), int(data.get('por_peso', 0)),
+         float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'),
+         int(data.get('activo', 1)), pid),
+        fetchall=False, commit=True
+    )
 
 
 def delete_producto(pid):
-    """Baja lógica."""
+    """Desactiva un producto."""
     q("UPDATE productos SET activo=0 WHERE id=?", (pid,), fetchall=False, commit=True)
-
-
-def buscar_productos_pos(term, limit=12):
-    """Búsqueda instantánea para el POS (mín. 2 caracteres)."""
-    if not term or len(term.strip()) < 2:
-        return []
-    t = f'%{term.strip()}%'
-    return q("""
-        SELECT p.id, p.codigo_interno, p.descripcion, p.categoria,
-               p.unidad, p.precio_venta, p.iva_porcentaje, p.iva_tipo,
-               COALESCE(s.stock_actual, 0) as stock_actual
-        FROM productos p
-        LEFT JOIN stock s ON s.producto_id = p.id
-        WHERE p.activo=1
-          AND (p.descripcion LIKE ? OR p.categoria LIKE ?
-               OR p.codigo_interno LIKE ? OR p.tags LIKE ?)
-        ORDER BY p.descripcion
-        LIMIT ?
-    """, (t, t, t, t, limit))
 
 
 # ─── STOCK ───────────────────────────────────────────────────────────────────
 
 def get_stock_full(search='', alerta_only=False):
-    sql = """
-        SELECT p.id, p.codigo_interno, p.descripcion, p.categoria,
-               p.unidad, p.costo, p.precio_venta,
-               s.stock_actual, s.stock_minimo, s.stock_maximo,
-               s.ultimo_ingreso, s.proveedor_habitual,
-               CASE
-                   WHEN s.stock_actual <= 0                    THEN 'SIN STOCK'
-                   WHEN s.stock_actual <= s.stock_minimo       THEN 'CRITICO'
-                   WHEN s.stock_actual <= s.stock_minimo * 1.5 THEN 'BAJO'
-                   WHEN s.stock_actual >= s.stock_maximo       THEN 'EXCESO'
-                   ELSE 'NORMAL'
-               END as estado,
-               s.stock_actual * p.costo as valor_stock
-        FROM productos p
-        JOIN stock s ON s.producto_id = p.id
-        WHERE p.activo=1
-    """
+    """Devuelve stock completo con estados."""
+    sql = """SELECT p.id, p.codigo_interno, p.descripcion, p.categoria, p.unidad,
+                    p.costo, p.precio_venta,
+                    s.stock_actual, s.stock_minimo, s.stock_maximo,
+                    s.ultimo_ingreso, s.proveedor_habitual,
+                    CASE
+                        WHEN s.stock_actual <= 0 THEN 'SIN STOCK'
+                        WHEN s.stock_actual <= s.stock_minimo THEN 'CRITICO'
+                        WHEN s.stock_actual <= s.stock_minimo * 1.5 THEN 'BAJO'
+                        WHEN s.stock_actual >= s.stock_maximo THEN 'EXCESO'
+                        ELSE 'NORMAL'
+                    END as estado,
+                    s.stock_actual * p.costo as valor_stock
+             FROM productos p
+             JOIN stock s ON s.producto_id = p.id
+             WHERE p.activo=1"""
     params = []
     if search:
         sql += " AND (p.descripcion LIKE ? OR p.categoria LIKE ? OR p.codigo_interno LIKE ?)"
@@ -595,300 +691,82 @@ def get_stock_full(search='', alerta_only=False):
     return q(sql, params)
 
 
-def update_stock_item(pid, stock_actual=None, stock_minimo=None,
-                      stock_maximo=None, proveedor=None):
-    updates, params = [], []
+def update_stock_item(pid, stock_actual=None, stock_minimo=None, stock_maximo=None, proveedor=None):
+    """Actualiza valores de stock."""
+    updates = []
+    params = []
     if stock_actual is not None:
-        updates.append("stock_actual=?");      params.append(stock_actual)
+        updates.append("stock_actual=?")
+        params.append(stock_actual)
     if stock_minimo is not None:
-        updates.append("stock_minimo=?");      params.append(stock_minimo)
+        updates.append("stock_minimo=?")
+        params.append(stock_minimo)
     if stock_maximo is not None:
-        updates.append("stock_maximo=?");      params.append(stock_maximo)
+        updates.append("stock_maximo=?")
+        params.append(stock_maximo)
     if proveedor is not None:
-        updates.append("proveedor_habitual=?"); params.append(proveedor)
+        updates.append("proveedor_habitual=?")
+        params.append(proveedor)
     if updates:
         params.append(pid)
-        q(f"UPDATE stock SET {','.join(updates)} WHERE producto_id=?",
-          params, fetchall=False, commit=True)
+        q(f"UPDATE stock SET {','.join(updates)} WHERE producto_id=?", params, fetchall=False, commit=True)
 
 
 def get_alertas_count():
-    r = q("""
-        SELECT
-            COALESCE(SUM(CASE WHEN s.stock_actual <= 0 THEN 1 ELSE 0 END), 0) as sin_stock,
-            COALESCE(SUM(CASE WHEN s.stock_actual > 0 AND s.stock_actual <= s.stock_minimo THEN 1 ELSE 0 END), 0) as critico,
-            COALESCE(SUM(CASE WHEN s.stock_actual > s.stock_minimo AND s.stock_actual <= s.stock_minimo*1.5 THEN 1 ELSE 0 END), 0) as bajo
-        FROM stock s JOIN productos p ON p.id = s.producto_id WHERE p.activo=1
-    """, fetchone=True)
-    return {
-        'sin_stock': r['sin_stock'] or 0,
-        'critico':   r['critico']   or 0,
-        'bajo':      r['bajo']      or 0,
-    }
-
-
-# ─── VENTAS ──────────────────────────────────────────────────────────────────
-
-def get_ventas(search='', fecha_desde='', fecha_hasta='', limit=200):
-    sql = """
-        SELECT v.*, COUNT(d.id) as items
-        FROM ventas v LEFT JOIN ventas_detalle d ON d.venta_id=v.id
-        WHERE 1=1
-    """
-    params = []
-    if search:
-        sql += " AND (v.cliente_nombre LIKE ? OR v.medio_pago LIKE ? OR CAST(v.numero_ticket AS TEXT) LIKE ?)"
-        params += [f'%{search}%'] * 3
-    if fecha_desde:
-        sql += " AND v.fecha >= ?"; params.append(fecha_desde)
-    if fecha_hasta:
-        sql += " AND v.fecha <= ?"; params.append(fecha_hasta)
-    sql += " GROUP BY v.id ORDER BY v.fecha DESC, v.id DESC LIMIT ?"
-    params.append(limit)
-    return q(sql, params)
-
-
-def get_venta_detalle(vid):
-    return q("SELECT * FROM ventas_detalle WHERE venta_id=? ORDER BY id", (vid,))
-
-
-def crear_venta(items, cliente_nombre, medio_pago, descuento_adicional,
-                vendedor, cliente_id=0, iva_discriminado=False):
-    """
-    Registra una venta completa.
-
-    items: lista de dicts con producto_id, codigo_interno, descripcion,
-           categoria, unidad, cantidad, precio_unitario, descuento
-    """
-    today     = date.today()
-    ticket    = next_ticket()
-    temporada = _get_temporada_activa(today)
-
-    subtotal = sum(
-        i['cantidad'] * i['precio_unitario'] * (1 - i.get('descuento', 0))
-        for i in items
+    """Cuenta alertas de stock."""
+    r = q(
+        """SELECT
+        COALESCE(SUM(CASE WHEN s.stock_actual<=0 THEN 1 ELSE 0 END),0) as sin_stock,
+        COALESCE(SUM(CASE WHEN s.stock_actual>0 AND s.stock_actual<=s.stock_minimo THEN 1 ELSE 0 END),0) as critico,
+        COALESCE(SUM(CASE WHEN s.stock_actual>s.stock_minimo AND s.stock_actual<=s.stock_minimo*1.5 THEN 1 ELSE 0 END),0) as bajo
+        FROM stock s JOIN productos p ON p.id=s.producto_id WHERE p.activo=1""",
+        fetchone=True
     )
-    total = subtotal * (1 - descuento_adicional)
-
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO ventas
-            (numero_ticket, fecha, hora, cliente_id, cliente_nombre, medio_pago,
-             subtotal, descuento_adicional, total, iva_discriminado,
-             vendedor, temporada_id, temporada_nombre)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        ticket,
-        today.isoformat(),
-        datetime.now().strftime('%H:%M'),
-        cliente_id, cliente_nombre, medio_pago,
-        subtotal, descuento_adicional, total,
-        1 if iva_discriminado else 0,
-        vendedor,
-        temporada['id']     if temporada else 0,
-        temporada['nombre'] if temporada else '',
-    ))
-    vid = c.lastrowid
-
-    for item in items:
-        item_sub = item['cantidad'] * item['precio_unitario'] * (1 - item.get('descuento', 0))
-        c.execute("""
-            INSERT INTO ventas_detalle
-                (venta_id, producto_id, codigo_interno, descripcion,
-                 categoria, unidad, cantidad, precio_unitario, descuento, subtotal)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        """, (vid, item['producto_id'], item['codigo_interno'],
-              item['descripcion'], item['categoria'], item['unidad'],
-              item['cantidad'], item['precio_unitario'],
-              item.get('descuento', 0), item_sub))
-        c.execute(
-            "UPDATE stock SET stock_actual=stock_actual-? WHERE producto_id=?",
-            (item['cantidad'], item['producto_id'])
-        )
-
-    # Actualizar caja
-    field = {
-        'Efectivo': 'ventas_efectivo', 'Débito': 'ventas_debito',
-        'Crédito': 'ventas_credito', 'QR / Billetera Virtual': 'ventas_qr',
-        'Cuenta Corriente': 'ventas_cta_cte', 'Transferencia': 'ventas_transferencia',
-    }.get(medio_pago, 'ventas_efectivo')
-    c.execute(f"""
-        INSERT INTO caja_historial (fecha, {field}, total_ventas) VALUES (?,?,?)
-        ON CONFLICT(fecha) DO UPDATE SET
-            {field}={field}+excluded.{field},
-            total_ventas=total_ventas+excluded.total_ventas
-    """, (today.isoformat(), total, total))
-
-    # Cuenta corriente
-    if medio_pago == 'Cuenta Corriente' and cliente_id:
-        venc = (today + timedelta(days=15)).isoformat()
-        c.execute("""
-            INSERT INTO cc_clientes_mov
-                (cliente_id, fecha, tipo, numero_comprobante, debe, vencimiento)
-            VALUES (?,?,?,?,?,?)
-        """, (cliente_id, today.isoformat(), 'Venta', str(ticket), total, venc))
-
-    conn.commit()
-    conn.close()
-    return vid, ticket
+    if r:
+        return {'sin_stock': r['sin_stock'] or 0, 'critico': r['critico'] or 0, 'bajo': r['bajo'] or 0}
+    return {'sin_stock': 0, 'critico': 0, 'bajo': 0}
 
 
-# ─── COMPRAS ─────────────────────────────────────────────────────────────────
+def get_stock_movimientos(pid):
+    """Obtiene historial de movimientos de un producto."""
+    return q(
+        """SELECT * FROM stock_movimientos WHERE producto_id=? 
+           ORDER BY created_at DESC LIMIT 50""",
+        (pid,)
+    )
 
-def get_compras(search='', limit=200):
-    sql = """
-        SELECT c.*, p.nombre as proveedor_obj FROM compras c
-        LEFT JOIN proveedores p ON p.id=c.proveedor_id WHERE 1=1
-    """
+
+def get_stock_movimientos_all(start_date='', end_date=''):
+    """Obtiene todos los movimientos con filtro opcional por fecha."""
+    sql = "SELECT m.*, p.descripcion, p.codigo_interno FROM stock_movimientos m JOIN productos p ON p.id=m.producto_id"
     params = []
-    if search:
-        sql += " AND (c.descripcion LIKE ? OR c.proveedor_nombre LIKE ? OR c.numero_remito LIKE ?)"
-        params += [f'%{search}%'] * 3
-    sql += " ORDER BY c.fecha DESC, c.id DESC LIMIT ?"
-    params.append(limit)
+    
+    if start_date:
+        sql += " WHERE m.created_at >= ?"
+        params.append(start_date)
+    
+    if end_date:
+        if start_date:
+            sql += " AND m.created_at <= ?"
+        else:
+            sql += " WHERE m.created_at <= ?"
+        params.append(end_date)
+    
+    sql += " ORDER BY m.created_at DESC"
     return q(sql, params)
-
-
-def registrar_compra(data):
-    conn = get_conn()
-    c = conn.cursor()
-    total = float(data.get('cantidad', 1)) * float(data.get('costo_unitario', 0))
-    c.execute("""
-        INSERT INTO compras
-            (fecha, numero_remito, proveedor_id, proveedor_nombre, producto_id,
-             codigo_interno, descripcion, cantidad, costo_unitario, total, observaciones)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        data.get('fecha', date.today().isoformat()),
-        data.get('numero_remito', ''),
-        int(data.get('proveedor_id', 0)),
-        data.get('proveedor_nombre', ''),
-        int(data.get('producto_id', 0)),
-        data.get('codigo_interno', ''),
-        data.get('descripcion', ''),
-        float(data.get('cantidad', 1)),
-        float(data.get('costo_unitario', 0)),
-        total,
-        data.get('observaciones', ''),
-    ))
-    pid = int(data.get('producto_id', 0))
-    if pid:
-        c.execute(
-            "UPDATE stock SET stock_actual=stock_actual+?, ultimo_ingreso=? WHERE producto_id=?",
-            (float(data.get('cantidad', 1)), data.get('fecha', date.today().isoformat()), pid)
-        )
-        if float(data.get('costo_unitario', 0)) > 0:
-            c.execute("UPDATE productos SET costo=? WHERE id=?",
-                      (float(data.get('costo_unitario', 0)), pid))
-    conn.commit()
-    conn.close()
-
-
-# ─── CAJA ────────────────────────────────────────────────────────────────────
-
-def get_caja_hoy():
-    row = q("SELECT * FROM caja_historial WHERE fecha=?",
-            (date.today().isoformat(),), fetchone=True)
-    return dict(row) if row else None
-
-
-def abrir_caja(saldo_apertura, responsable):
-    q("""
-        INSERT OR IGNORE INTO caja_historial
-            (fecha, saldo_apertura, responsable_apertura, hora_apertura, cerrada)
-        VALUES (?,?,?,?,0)
-    """, (date.today().isoformat(), saldo_apertura, responsable,
-          datetime.now().strftime('%H:%M')),
-    fetchall=False, commit=True)
-
-
-def cerrar_caja(saldo_real, responsable):
-    row = get_caja_hoy()
-    if not row:
-        return
-    total_ventas = sum(row.get(f, 0) for f in [
-        'ventas_efectivo', 'ventas_debito', 'ventas_credito',
-        'ventas_qr', 'ventas_cta_cte', 'ventas_transferencia',
-    ])
-    esperado   = row['saldo_apertura'] + row.get('ventas_efectivo', 0) - row.get('gastos_dia', 0)
-    diferencia = saldo_real - esperado
-    q("""
-        UPDATE caja_historial SET
-            total_ventas=?, saldo_cierre_esperado=?, saldo_cierre_real=?,
-            diferencia=?, cerrada=1, responsable_cierre=?, hora_cierre=?
-        WHERE fecha=?
-    """, (total_ventas, esperado, saldo_real, diferencia, responsable,
-          datetime.now().strftime('%H:%M'), date.today().isoformat()),
-    fetchall=False, commit=True)
-
-
-def get_caja_historial(limit=60):
-    return q("SELECT * FROM caja_historial ORDER BY fecha DESC LIMIT ?", (limit,))
-
-
-def _add_gasto_a_caja(monto):
-    q("""
-        INSERT INTO caja_historial (fecha, gastos_dia) VALUES (?,?)
-        ON CONFLICT(fecha) DO UPDATE SET gastos_dia=gastos_dia+excluded.gastos_dia
-    """, (date.today().isoformat(), monto), fetchall=False, commit=True)
-
-
-# ─── GASTOS ──────────────────────────────────────────────────────────────────
-
-def get_gastos(search='', limit=500):
-    sql = "SELECT * FROM gastos WHERE 1=1"
-    params = []
-    if search:
-        sql += " AND (descripcion LIKE ? OR categoria LIKE ? OR proveedor LIKE ?)"
-        params += [f'%{search}%'] * 3
-    sql += " ORDER BY fecha DESC LIMIT ?"
-    params.append(limit)
-    return q(sql, params)
-
-
-def add_gasto(data):
-    monto = float(data.get('monto', 0))
-    q("""
-        INSERT INTO gastos
-            (fecha, categoria, descripcion, monto, medio_pago, proveedor, comprobante, observaciones)
-        VALUES (?,?,?,?,?,?,?,?)
-    """, (
-        data.get('fecha', date.today().isoformat()),
-        data.get('categoria', ''), data.get('descripcion', ''),
-        monto, data.get('medio_pago', 'Efectivo'),
-        data.get('proveedor', ''), data.get('comprobante', ''),
-        data.get('observaciones', ''),
-    ), fetchall=False, commit=True)
-    _add_gasto_a_caja(monto)
-
-
-def update_gasto(gid, data):
-    q("""
-        UPDATE gastos SET fecha=?, categoria=?, descripcion=?, monto=?,
-            medio_pago=?, proveedor=?, comprobante=?, observaciones=?
-        WHERE id=?
-    """, (
-        data.get('fecha'), data.get('categoria', ''), data.get('descripcion', ''),
-        float(data.get('monto', 0)), data.get('medio_pago', 'Efectivo'),
-        data.get('proveedor', ''), data.get('comprobante', ''),
-        data.get('observaciones', ''), gid,
-    ), fetchall=False, commit=True)
-
-
-def delete_gasto(gid):
-    q("DELETE FROM gastos WHERE id=?", (gid,), fetchall=False, commit=True)
 
 
 # ─── CLIENTES ────────────────────────────────────────────────────────────────
 
 def get_clientes(activo_only=True, search=''):
+    """Devuelve clientes filtrables."""
     sql = "SELECT * FROM clientes"
-    conds, params = [], []
+    conds = []
+    params = []
     if activo_only:
         conds.append("activo=1")
     if search:
-        conds.append("(nombre LIKE ? OR codigo LIKE ? OR telefono LIKE ?)")
+        conds.append("(nombre LIKE ? OR codigo LIKE ? OR dni_cuit LIKE ?)")
         params += [f'%{search}%'] * 3
     if conds:
         sql += " WHERE " + " AND ".join(conds)
@@ -897,84 +775,52 @@ def get_clientes(activo_only=True, search=''):
 
 
 def get_cliente(cid):
+    """Devuelve un cliente por ID."""
     return q("SELECT * FROM clientes WHERE id=?", (cid,), fetchone=True)
 
 
 def add_cliente(data):
+    """Agrega un nuevo cliente."""
     conn = get_conn()
     c = conn.cursor()
     n = c.execute("SELECT COUNT(*)+1 as n FROM clientes").fetchone()['n']
-    c.execute("""
-        INSERT INTO clientes (codigo, nombre, dni_cuit, telefono, email, limite_credito, iva_tipo)
-        VALUES (?,?,?,?,?,?,?)
-    """, (f"CLI-{n:03d}", data['nombre'], data.get('dni_cuit', ''),
-          data.get('telefono', ''), data.get('email', ''),
-          float(data.get('limite_credito', 0)),
-          data.get('iva_tipo', 'incluido')))
+    codigo = f"CLI-{n:03d}"
+    c.execute(
+        """INSERT INTO clientes (codigo,nombre,dni_cuit,telefono,email,limite_credito)
+        VALUES (?,?,?,?,?,?)""",
+        (codigo, data['nombre'], data.get('dni_cuit', ''), data.get('telefono', ''),
+         data.get('email', ''), float(data.get('limite_credito', 0)))
+    )
     conn.commit()
     conn.close()
 
 
 def update_cliente(cid, data):
-    q("""
-        UPDATE clientes SET
-            nombre=?, dni_cuit=?, telefono=?, email=?,
-            limite_credito=?, iva_tipo=?, activo=?
-        WHERE id=?
-    """, (data['nombre'], data.get('dni_cuit', ''), data.get('telefono', ''),
-          data.get('email', ''), float(data.get('limite_credito', 0) or 0),
-          data.get('iva_tipo', 'incluido'), int(data.get('activo', 1)), cid),
-    fetchall=False, commit=True)
-
-
-def delete_cliente(cid):
-    q("UPDATE clientes SET activo=0 WHERE id=?", (cid,), fetchall=False, commit=True)
+    """Actualiza un cliente."""
+    q(
+        """UPDATE clientes SET nombre=?,dni_cuit=?,telefono=?,email=?,limite_credito=?,activo=? WHERE id=?""",
+        (data['nombre'], data.get('dni_cuit', ''), data.get('telefono', ''), data.get('email', ''),
+         float(data.get('limite_credito', 0)), int(data.get('activo', 1)), cid),
+        fetchall=False, commit=True
+    )
 
 
 def get_saldo_cliente(cid):
-    r = q("SELECT COALESCE(SUM(debe),0)-COALESCE(SUM(haber),0) as saldo FROM cc_clientes_mov WHERE cliente_id=?",
-          (cid,), fetchone=True)
+    """Calcula saldo de cuenta corriente del cliente."""
+    r = q(
+        "SELECT COALESCE(SUM(debe),0)-COALESCE(SUM(haber),0) as saldo FROM cc_clientes_mov WHERE cliente_id=?",
+        (cid,), fetchone=True
+    )
     return r['saldo'] if r else 0
-
-
-def get_cc_clientes_resumen():
-    return q("""
-        SELECT cl.*,
-            COALESCE(SUM(m.debe),0)-COALESCE(SUM(m.haber),0) as saldo_actual,
-            MAX(CASE WHEN m.debe>0 THEN m.vencimiento ELSE NULL END) as proximo_vto
-        FROM clientes cl
-        LEFT JOIN cc_clientes_mov m ON m.cliente_id=cl.id
-        WHERE cl.activo=1
-        GROUP BY cl.id ORDER BY cl.nombre
-    """)
-
-
-def get_cc_movimientos(cliente_id):
-    return q("SELECT * FROM cc_clientes_mov WHERE cliente_id=? ORDER BY fecha DESC, id DESC",
-             (cliente_id,))
-
-
-def add_cc_mov(cliente_id, data):
-    q("""
-        INSERT INTO cc_clientes_mov
-            (cliente_id, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones)
-        VALUES (?,?,?,?,?,?,?,?)
-    """, (cliente_id, data.get('fecha', date.today().isoformat()),
-          data.get('tipo', 'Venta'), data.get('numero_comprobante', ''),
-          float(data.get('debe', 0)), float(data.get('haber', 0)),
-          data.get('vencimiento', ''), data.get('observaciones', '')),
-    fetchall=False, commit=True)
-
-
-def delete_cc_mov(mid):
-    q("DELETE FROM cc_clientes_mov WHERE id=?", (mid,), fetchall=False, commit=True)
 
 
 # ─── PROVEEDORES ─────────────────────────────────────────────────────────────
 
 def get_proveedores(activo_only=True, search=''):
+    """Devuelve proveedores filtrables."""
     sql = "SELECT * FROM proveedores"
-    conds, params = [], []
+    conds = []
+    params = []
     if activo_only:
         conds.append("activo=1")
     if search:
@@ -987,82 +833,209 @@ def get_proveedores(activo_only=True, search=''):
 
 
 def get_proveedor(pid):
+    """Devuelve un proveedor por ID."""
     return q("SELECT * FROM proveedores WHERE id=?", (pid,), fetchone=True)
 
 
 def add_proveedor(data):
+    """Agrega un nuevo proveedor."""
     conn = get_conn()
     c = conn.cursor()
     n = c.execute("SELECT COUNT(*)+1 as n FROM proveedores").fetchone()['n']
-    c.execute("""
-        INSERT INTO proveedores (codigo, nombre, cuit, telefono, email, dias_credito)
-        VALUES (?,?,?,?,?,?)
-    """, (f"PROV-{n:03d}", data['nombre'], data.get('cuit', ''),
-          data.get('telefono', ''), data.get('email', ''),
-          int(data.get('dias_credito', 30))))
+    codigo = f"PROV-{n:03d}"
+    c.execute(
+        """INSERT INTO proveedores (codigo,nombre,cuit,telefono,email,dias_credito)
+        VALUES (?,?,?,?,?,?)""",
+        (codigo, data['nombre'], data.get('cuit', ''), data.get('telefono', ''),
+         data.get('email', ''), int(data.get('dias_credito', 30)))
+    )
     conn.commit()
     conn.close()
 
 
 def update_proveedor(pid, data):
-    q("""
-        UPDATE proveedores SET nombre=?, cuit=?, telefono=?, email=?, dias_credito=?, activo=?
-        WHERE id=?
-    """, (data['nombre'], data.get('cuit', ''), data.get('telefono', ''),
-          data.get('email', ''), int(data.get('dias_credito', 30) or 30),
-          int(data.get('activo', 1)), pid),
-    fetchall=False, commit=True)
+    """Actualiza un proveedor."""
+    q(
+        """UPDATE proveedores SET nombre=?,cuit=?,telefono=?,email=?,dias_credito=?,activo=? WHERE id=?""",
+        (data['nombre'], data.get('cuit', ''), data.get('telefono', ''), data.get('email', ''),
+         int(data.get('dias_credito', 30)), int(data.get('activo', 1)), pid),
+        fetchall=False, commit=True
+    )
 
 
-def delete_proveedor(pid):
-    q("UPDATE proveedores SET activo=0 WHERE id=?", (pid,), fetchall=False, commit=True)
+# ─── VENTAS ──────────────────────────────────────────────────────────────────
 
-
-def get_facturas_proveedores(search=''):
-    sql = """
-        SELECT fp.*, p.nombre as proveedor_nombre_obj,
-               fp.importe - fp.pagado as saldo,
-               CASE
-                   WHEN fp.fecha_vencimiento < date('now') AND fp.importe > fp.pagado THEN 'VENCIDA'
-                   WHEN fp.fecha_vencimiento <= date('now','+30 days') AND fp.importe > fp.pagado THEN 'POR VENCER'
-                   WHEN fp.importe <= fp.pagado THEN 'PAGADA'
-                   ELSE 'VIGENTE'
-               END as estado
-        FROM facturas_proveedores fp
-        JOIN proveedores p ON p.id=fp.proveedor_id WHERE 1=1
-    """
+def get_ventas(search='', fecha_desde='', fecha_hasta='', limit=200):
+    """Devuelve ventas filtrables."""
+    sql = """SELECT v.*, COUNT(d.id) as items
+             FROM ventas v LEFT JOIN ventas_detalle d ON d.venta_id=v.id
+             WHERE 1=1"""
     params = []
     if search:
-        sql += " AND (p.nombre LIKE ? OR fp.numero_factura LIKE ?)"
-        params += [f'%{search}%'] * 2
-    sql += " ORDER BY fp.fecha_vencimiento ASC"
+        sql += " AND (v.cliente_nombre LIKE ? OR v.medio_pago LIKE ? OR CAST(v.numero_ticket AS TEXT) LIKE ?)"
+        params += [f'%{search}%'] * 3
+    if fecha_desde:
+        sql += " AND v.fecha >= ?"
+        params.append(fecha_desde)
+    if fecha_hasta:
+        sql += " AND v.fecha <= ?"
+        params.append(fecha_hasta)
+    sql += " GROUP BY v.id ORDER BY v.fecha DESC, v.id DESC LIMIT ?"
+    params.append(limit)
     return q(sql, params)
 
 
-def add_factura_proveedor(data):
-    q("""
-        INSERT INTO facturas_proveedores
-            (proveedor_id, numero_factura, fecha, fecha_vencimiento, importe, pagado, observaciones)
-        VALUES (?,?,?,?,?,?,?)
-    """, (int(data['proveedor_id']), data.get('numero_factura', ''),
-          data.get('fecha', date.today().isoformat()), data['fecha_vencimiento'],
-          float(data['importe']), float(data.get('pagado', 0)),
-          data.get('observaciones', '')),
-    fetchall=False, commit=True)
+def get_venta_detalle(vid):
+    """Devuelve items de una venta."""
+    return q("SELECT * FROM ventas_detalle WHERE venta_id=? ORDER BY id", (vid,))
 
 
-def pagar_factura(fid, monto):
-    q("UPDATE facturas_proveedores SET pagado=pagado+? WHERE id=?",
-      (monto, fid), fetchall=False, commit=True)
+def crear_venta(items, cliente_nombre, medio_pago, descuento_adicional, vendedor, cliente_id=0, temporada=''):
+    """Crea una venta con detalle."""
+    conn = get_conn()
+    c = conn.cursor()
+
+    numero_ticket = next_ticket()
+    ahora = datetime.now()
+    fecha = ahora.strftime('%Y-%m-%d')
+    hora = ahora.strftime('%H:%M:%S')
+
+    subtotal = sum(item.get('subtotal', 0) for item in items)
+    total = subtotal - descuento_adicional
+
+    c.execute(
+        """INSERT INTO ventas
+        (numero_ticket,fecha,hora,cliente_id,cliente_nombre,medio_pago,subtotal,descuento_adicional,total,vendedor,temporada)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (numero_ticket, fecha, hora, cliente_id, cliente_nombre, medio_pago, subtotal, descuento_adicional, total, vendedor, temporada)
+    )
+    venta_id = c.lastrowid
+
+    for item in items:
+        c.execute(
+            """INSERT INTO ventas_detalle
+            (venta_id,producto_id,codigo_interno,descripcion,categoria,unidad,cantidad,precio_unitario,descuento,subtotal)
+            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (venta_id, item.get('producto_id', 0), item.get('codigo_interno', ''), item.get('descripcion', ''),
+             item.get('categoria', ''), item.get('unidad', ''), item.get('cantidad', 1),
+             item.get('precio_unitario', 0), item.get('descuento', 0), item.get('subtotal', 0))
+        )
+
+    conn.commit()
+    conn.close()
+    return venta_id
 
 
-def delete_factura_proveedor(fid):
-    q("DELETE FROM facturas_proveedores WHERE id=?", (fid,), fetchall=False, commit=True)
+# ─── COMPRAS ─────────────────────────────────────────────────────────────────
+
+def get_compras(search='', fecha_desde='', fecha_hasta='', limit=200):
+    """Devuelve compras filtrables."""
+    sql = "SELECT * FROM compras WHERE 1=1"
+    params = []
+    if search:
+        sql += " AND (descripcion LIKE ? OR numero_remito LIKE ? OR proveedor_nombre LIKE ?)"
+        params += [f'%{search}%'] * 3
+    if fecha_desde:
+        sql += " AND fecha >= ?"
+        params.append(fecha_desde)
+    if fecha_hasta:
+        sql += " AND fecha <= ?"
+        params.append(fecha_hasta)
+    sql += " ORDER BY fecha DESC LIMIT ?"
+    params.append(limit)
+    return q(sql, params)
 
 
-# ─── TEMPORADAS ★ ────────────────────────────────────────────────────────────
+def add_compra(data):
+    """Agrega una compra."""
+    q(
+        """INSERT INTO compras
+        (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('numero_remito', ''),
+         data.get('proveedor_id', 0), data.get('proveedor_nombre', ''), data.get('producto_id', 0),
+         data.get('codigo_interno', ''), data.get('descripcion', ''), float(data.get('cantidad', 1)),
+         float(data.get('costo_unitario', 0)), float(data.get('total', 0)), data.get('observaciones', '')),
+        fetchall=False, commit=True
+    )
+
+
+# ─── CAJA ────────────────────────────────────────────────────────────────────
+
+def get_caja_dia(fecha):
+    """Devuelve caja del día."""
+    return q("SELECT * FROM caja_historial WHERE fecha=?", (fecha,), fetchone=True)
+
+
+def init_caja_dia(fecha):
+    """Inicializa caja del día."""
+    ahora = datetime.now()
+    hora = ahora.strftime('%H:%M:%S')
+    q(
+        """INSERT OR REPLACE INTO caja_historial
+        (fecha,saldo_apertura,responsable_apertura,hora_apertura)
+        VALUES (?,?,?,?)""",
+        (fecha, 0, 'Sistema', hora),
+        fetchall=False, commit=True
+    )
+
+
+def cerrar_caja_dia(fecha, saldo_real):
+    """Cierra la caja del día."""
+    ahora = datetime.now()
+    hora = ahora.strftime('%H:%M:%S')
+    caja = get_caja_dia(fecha)
+    if not caja:
+        return False
+    saldo_esperado = caja['saldo_apertura'] + caja['total_ventas'] - caja['gastos_dia']
+    diferencia = saldo_real - saldo_esperado
+    q(
+        """UPDATE caja_historial SET saldo_cierre_real=?,saldo_cierre_esperado=?,diferencia=?,
+        cerrada=1,responsable_cierre=?,hora_cierre=? WHERE fecha=?""",
+        (saldo_real, saldo_esperado, diferencia, 'Sistema', hora, fecha),
+        fetchall=False, commit=True
+    )
+    return True
+
+
+# ─── GASTOS ──────────────────────────────────────────────────────────────────
+
+def get_gastos(search='', fecha_desde='', fecha_hasta='', limit=200):
+    """Devuelve gastos filtrables."""
+    sql = "SELECT * FROM gastos WHERE 1=1"
+    params = []
+    if search:
+        sql += " AND (descripcion LIKE ? OR categoria LIKE ? OR proveedor LIKE ?)"
+        params += [f'%{search}%'] * 3
+    if fecha_desde:
+        sql += " AND fecha >= ?"
+        params.append(fecha_desde)
+    if fecha_hasta:
+        sql += " AND fecha <= ?"
+        params.append(fecha_hasta)
+    sql += " ORDER BY fecha DESC LIMIT ?"
+    params.append(limit)
+    return q(sql, params)
+
+
+def add_gasto(data):
+    """Agrega un gasto."""
+    q(
+        """INSERT INTO gastos
+        (fecha,tipo,categoria,descripcion,monto,iva_incluido,medio_pago,proveedor,necesario,comprobante,observaciones)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('tipo', 'Gasto'),
+         data.get('categoria', ''), data.get('descripcion', ''), float(data.get('monto', 0)),
+         int(data.get('iva_incluido', 1)), data.get('medio_pago', 'Efectivo'), data.get('proveedor', ''),
+         data.get('necesario', 'SI (necesario)'), data.get('comprobante', ''), data.get('observaciones', '')),
+        fetchall=False, commit=True
+    )
+
+
+# ─── TEMPORADAS ──────────────────────────────────────────────────────────────
 
 def get_temporadas(activa_only=False):
+    """Devuelve temporadas."""
     sql = "SELECT * FROM temporadas"
     if activa_only:
         sql += " WHERE activa=1"
@@ -1070,225 +1043,57 @@ def get_temporadas(activa_only=False):
     return q(sql)
 
 
-def get_temporada(tid):
-    return q("SELECT * FROM temporadas WHERE id=?", (tid,), fetchone=True)
+def get_temporada_actual():
+    """Devuelve la temporada actual o None."""
+    hoy = date.today().isoformat()
+    return q(
+        """SELECT * FROM temporadas
+        WHERE activa=1 AND fecha_inicio <= ? AND fecha_fin >= ? LIMIT 1""",
+        (hoy, hoy), fetchone=True
+    )
 
 
 def add_temporada(data):
-    return q("""
-        INSERT INTO temporadas (nombre, fecha_inicio, fecha_fin, descripcion, color, activa)
-        VALUES (?,?,?,?,?,1)
-    """, (data['nombre'], data['fecha_inicio'], data['fecha_fin'],
-          data.get('descripcion', ''), data.get('color', '#3b82f6')),
-    fetchall=False, commit=True)
+    """Agrega una temporada."""
+    q(
+        """INSERT INTO temporadas
+        (nombre,descripcion,fecha_inicio,fecha_fin)
+        VALUES (?,?,?,?)""",
+        (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio', ''), data.get('fecha_fin', '')),
+        fetchall=False, commit=True
+    )
 
 
-def update_temporada(tid, data):
-    q("""
-        UPDATE temporadas SET
-            nombre=?, fecha_inicio=?, fecha_fin=?, descripcion=?, color=?, activa=?
-        WHERE id=?
-    """, (data['nombre'], data['fecha_inicio'], data['fecha_fin'],
-          data.get('descripcion', ''), data.get('color', '#3b82f6'),
-          int(data.get('activa', 1)), tid),
-    fetchall=False, commit=True)
+# ─── UTILIDADES ──────────────────────────────────────────────────────────────
+
+def fmt_ars(valor):
+    """Formatea valor en ARS."""
+    return f"${valor:,.2f}"
 
 
-def delete_temporada(tid):
-    q("DELETE FROM temporadas WHERE id=?", (tid,), fetchall=False, commit=True)
+def get_dashboard_stats():
+    """Calcula estadísticas para dashboard."""
+    hoy = date.today().isoformat()
 
+    # Ventas del día
+    ventas_hoy = q(
+        "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM ventas WHERE fecha=?",
+        (hoy,), fetchone=True
+    )
 
-def _get_temporada_activa(hoy=None):
-    """Devuelve la temporada activa hoy (la que termina antes si hay varias)."""
-    hoy_str = (hoy or date.today()).isoformat()
-    return q("""
-        SELECT * FROM temporadas
-        WHERE activa=1 AND fecha_inicio <= ? AND fecha_fin >= ?
-        ORDER BY fecha_fin ASC LIMIT 1
-    """, (hoy_str, hoy_str), fetchone=True)
-
-
-def get_temporada_activa():
-    return _get_temporada_activa()
-
-
-def get_temporadas_proximas(dias=45):
-    """Devuelve temporadas que empiezan en los próximos N días."""
-    desde = date.today().isoformat()
-    hasta = (date.today() + timedelta(days=dias)).isoformat()
-    return q("""
-        SELECT * FROM temporadas
-        WHERE activa=1 AND fecha_inicio > ? AND fecha_inicio <= ?
-        ORDER BY fecha_inicio ASC
-    """, (desde, hasta))
-
-
-def get_productos_temporada(tid):
-    return q("""
-        SELECT p.*, pt.id as pt_id FROM productos p
-        JOIN productos_temporada pt ON pt.producto_id=p.id
-        WHERE pt.temporada_id=? AND p.activo=1 ORDER BY p.descripcion
-    """, (tid,))
-
-
-def toggle_producto_temporada(tid, pid):
-    """Agrega o quita un producto de una temporada. Devuelve True si fue agregado."""
-    existing = q("SELECT id FROM productos_temporada WHERE temporada_id=? AND producto_id=?",
-                 (tid, pid), fetchone=True)
-    if existing:
-        q("DELETE FROM productos_temporada WHERE temporada_id=? AND producto_id=?",
-          (tid, pid), fetchall=False, commit=True)
-        return False
-    else:
-        q("INSERT INTO productos_temporada (temporada_id, producto_id) VALUES (?,?)",
-          (tid, pid), fetchall=False, commit=True)
-        return True
-
-
-# ─── ESTADÍSTICAS ────────────────────────────────────────────────────────────
-
-def get_ventas_por_mes(year=None):
-    if not year:
-        year = date.today().year
-    rows = q("""
-        SELECT strftime('%m',fecha) as mes, ROUND(SUM(total),2) as total, COUNT(DISTINCT id) as tickets
-        FROM ventas WHERE strftime('%Y',fecha)=? GROUP BY mes ORDER BY mes
-    """, (str(year),))
-    return {int(r['mes']): {'total': r['total'], 'tickets': r['tickets']} for r in rows}
-
-
-def get_ventas_por_semana(weeks=8):
-    rows = []
-    today = date.today()
-    for i in range(weeks - 1, -1, -1):
-        start = today - timedelta(days=today.weekday()) - timedelta(weeks=i)
-        end   = start + timedelta(days=6)
-        r = q("SELECT ROUND(SUM(total),2) as total, COUNT(id) as tickets FROM ventas WHERE fecha>=? AND fecha<=?",
-              (start.isoformat(), end.isoformat()), fetchone=True)
-        rows.append({
-            'label':   f'{start.strftime("%d/%m")}-{end.strftime("%d/%m")}',
-            'total':   r['total']   or 0,
-            'tickets': r['tickets'] or 0,
-        })
-    return rows
-
-
-def get_ventas_por_medio_pago(year=None, month=None):
-    if not year:  year  = date.today().year
-    if not month: month = date.today().month
-    return q("""
-        SELECT medio_pago, ROUND(SUM(total),2) as total, COUNT(id) as ops
-        FROM ventas WHERE strftime('%Y',fecha)=? AND strftime('%m',fecha)=?
-        GROUP BY medio_pago ORDER BY total DESC
-    """, (str(year), f'{month:02d}'))
-
-
-def get_ventas_por_categoria(fecha_desde='', fecha_hasta=''):
-    sql = """
-        SELECT d.categoria, ROUND(SUM(d.subtotal),2) as total, ROUND(SUM(d.cantidad),2) as unidades
-        FROM ventas_detalle d JOIN ventas v ON v.id=d.venta_id WHERE 1=1
-    """
-    params = []
-    if fecha_desde:
-        sql += " AND v.fecha>=?"; params.append(fecha_desde)
-    if fecha_hasta:
-        sql += " AND v.fecha<=?"; params.append(fecha_hasta)
-    sql += " GROUP BY d.categoria ORDER BY total DESC"
-    return q(sql, params)
-
-
-def get_ventas_por_temporada():
-    return q("""
-        SELECT temporada_nombre, ROUND(SUM(total),2) as total, COUNT(id) as tickets
-        FROM ventas WHERE temporada_nombre != ''
-        GROUP BY temporada_nombre ORDER BY total DESC
-    """)
-
-
-def get_top_productos(limit=10, fecha_desde='', fecha_hasta=''):
-    sql = """
-        SELECT d.descripcion, d.categoria,
-               ROUND(SUM(d.cantidad),2) as total_unidades,
-               ROUND(SUM(d.subtotal),2) as total_pesos,
-               COUNT(DISTINCT d.venta_id) as num_ventas
-        FROM ventas_detalle d JOIN ventas v ON v.id=d.venta_id WHERE 1=1
-    """
-    params = []
-    if fecha_desde:
-        sql += " AND v.fecha>=?"; params.append(fecha_desde)
-    if fecha_hasta:
-        sql += " AND v.fecha<=?"; params.append(fecha_hasta)
-    sql += " GROUP BY d.descripcion ORDER BY total_pesos DESC LIMIT ?"
-    params.append(limit)
-    return q(sql, params)
-
-
-def get_rentabilidad_mes(year=None, month=None):
-    if not year:  year  = date.today().year
-    if not month: month = date.today().month
-    ym = f"{year}-{month:02d}"
-    vr = q("SELECT ROUND(SUM(total),2) as v FROM ventas WHERE strftime('%Y-%m',fecha)=?", (ym,), fetchone=True)
-    gr = q("SELECT ROUND(SUM(monto),2) as g FROM gastos WHERE strftime('%Y-%m',fecha)=?", (ym,), fetchone=True)
-    ventas = vr['v'] or 0
-    gastos = gr['g'] or 0
-    return {
-        'ventas': ventas, 'gastos': gastos,
-        'utilidad': ventas - gastos,
-        'rentabilidad': (ventas - gastos) / ventas * 100 if ventas else 0,
-        'mes': month, 'anio': year,
-    }
-
-
-def get_dashboard_kpis():
-    today = date.today().isoformat()
-    month = date.today().strftime('%Y-%m')
-    r_hoy = q("SELECT ROUND(SUM(total),2) as v, COUNT(id) as t FROM ventas WHERE fecha=?",
-              (today,), fetchone=True)
-    r_mes = q("SELECT ROUND(SUM(total),2) as v FROM ventas WHERE strftime('%Y-%m',fecha)=?",
-              (month,), fetchone=True)
-    g_mes = q("SELECT ROUND(SUM(monto),2) as g FROM gastos WHERE strftime('%Y-%m',fecha)=?",
-              (month,), fetchone=True)
+    # Stock en alerta
     alertas = get_alertas_count()
-    fv = q("SELECT COUNT(*) as n FROM facturas_proveedores WHERE fecha_vencimiento <= date('now','+30 days') AND importe > pagado",
-           fetchone=True)
-    temporada_activa = get_temporada_activa()
-    proximas = get_temporadas_proximas(45)
+
+    # Últimas ventas
+    ultimas_ventas = q("SELECT * FROM ventas ORDER BY fecha DESC, id DESC LIMIT 5")
+
+    # Temporada actual
+    temporada = get_temporada_actual()
+
     return {
-        'ventas_hoy':          r_hoy['v'] or 0,
-        'tickets_hoy':         r_hoy['t'] or 0,
-        'ventas_mes':          r_mes['v'] or 0,
-        'gastos_mes':          g_mes['g'] or 0,
-        'sin_stock':           alertas['sin_stock'],
-        'stock_critico':       alertas['critico'],
-        'facturas_por_vencer': fv['n'] or 0,
-        'temporada_activa':    dict(temporada_activa) if temporada_activa else None,
-        'temporadas_proximas': [dict(t) for t in proximas],
+        'ventas_hoy': ventas_hoy['total'] or 0,
+        'monto_hoy': ventas_hoy['monto'] or 0,
+        'alertas': alertas,
+        'ultimas_ventas': ultimas_ventas,
+        'temporada': temporada['nombre'] if temporada else 'Ninguna',
     }
-
-
-# ─── EXPORTACIÓN ─────────────────────────────────────────────────────────────
-
-def get_catalogo_export():
-    return q("""
-        SELECT p.codigo_interno, p.codigo_barras, p.descripcion, p.categoria,
-               p.unidad, p.costo, p.precio_venta, p.iva_porcentaje, p.iva_tipo, p.tags,
-               CASE WHEN p.costo>0
-                    THEN ROUND((p.precio_venta-p.costo)/p.costo*100,2) ELSE 0
-               END as margen_pct,
-               COALESCE(s.stock_actual,0) as stock_actual,
-               COALESCE(s.stock_minimo,0) as stock_minimo,
-               COALESCE(s.stock_maximo,0) as stock_maximo,
-               COALESCE(s.proveedor_habitual,'') as proveedor_habitual,
-               CASE
-                   WHEN COALESCE(s.stock_actual,0)<=0                              THEN 'SIN STOCK'
-                   WHEN COALESCE(s.stock_actual,0)<=COALESCE(s.stock_minimo,0)     THEN 'CRITICO'
-                   WHEN COALESCE(s.stock_actual,0)<=COALESCE(s.stock_minimo,0)*1.5 THEN 'BAJO'
-                   WHEN COALESCE(s.stock_actual,0)>=COALESCE(s.stock_maximo,30)    THEN 'EXCESO'
-                   ELSE 'NORMAL'
-               END as estado_stock,
-               COALESCE(s.stock_actual,0)*p.costo as valor_stock
-        FROM productos p
-        LEFT JOIN stock s ON s.producto_id=p.id
-        WHERE p.activo=1
-        ORDER BY p.categoria, p.descripcion
-    """)

@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Gestión de Stock - Nexar Tienda{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>📦 Gestión de Stock</h1>
+    </div>
+
+    <!-- Alertas de Stock -->
+    {% if alertas %}
+    <div class="row mb-3">
+        {% if alertas.sin_stock > 0 %}
+        <div class="col-md-4">
+            <div class="alert alert-danger d-flex align-items-center" role="alert">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                <strong>{{ alertas.sin_stock }}</strong> Sin Stock
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if alertas.critico > 0 %}
+        <div class="col-md-4">
+            <div class="alert alert-warning d-flex align-items-center" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>{{ alertas.critico }}</strong> Crítico
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if alertas.bajo > 0 %}
+        <div class="col-md-4">
+            <div class="alert alert-info d-flex align-items-center" role="alert">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>{{ alertas.bajo }}</strong> Bajo
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Herramientas de búsqueda y filtro -->
+    <div class="card mb-3" style="background-color: #f8f9fa; border-color: #dee2e6;">
+        <div class="card-body">
+            <form method="GET" class="row g-2 align-items-end">
+                <div class="col-md-6">
+                    <label for="buscar" class="form-label">
+                        <i class="fas fa-search"></i> Buscar Producto
+                    </label>
+                    <input 
+                        type="text" 
+                        id="buscar" 
+                        name="buscar" 
+                        class="form-control" 
+                        placeholder="Código, descripción, categoría..."
+                        value="{{ request.args.get('buscar', '') }}"
+                    >
+                </div>
+                
+                <div class="col-md-4">
+                    <label for="estado" class="form-label">
+                        <i class="fas fa-filter"></i> Estado
+                    </label>
+                    <select id="estado" name="estado" class="form-select">
+                        <option value="">Todos los estados</option>
+                        <option value="SIN_STOCK" {% if request.args.get('estado') == 'SIN_STOCK' %}selected{% endif %}>
+                            Sin Stock
+                        </option>
+                        <option value="CRITICO" {% if request.args.get('estado') == 'CRITICO' %}selected{% endif %}>
+                            Crítico
+                        </option>
+                        <option value="BAJO" {% if request.args.get('estado') == 'BAJO' %}selected{% endif %}>
+                            Bajo
+                        </option>
+                        <option value="NORMAL" {% if request.args.get('estado') == 'NORMAL' %}selected{% endif %}>
+                            Normal
+                        </option>
+                        <option value="EXCESO" {% if request.args.get('estado') == 'EXCESO' %}selected{% endif %}>
+                            Exceso
+                        </option>
+                    </select>
+                </div>
+                
+                <div class="col-md-2">
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Buscar
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Estadísticas -->
+    {% if productos %}
+    <div class="row mb-3">
+        <div class="col-md-3">
+            <div class="card text-center" style="border-left: 4px solid #1e3a5f;">
+                <div class="card-body">
+                    <h5 class="card-title text-muted" style="font-size: 0.9rem;">Total Productos</h5>
+                    <h3 class="card-text" style="color: #1e3a5f;">{{ productos|length }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center" style="border-left: 4px solid #3b82f6;">
+                <div class="card-body">
+                    <h5 class="card-title text-muted" style="font-size: 0.9rem;">Valor Total Stock</h5>
+                    <h3 class="card-text" style="color: #3b82f6;">
+                        {{ "{:,.2f}".format(total_stock_value) }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center" style="border-left: 4px solid #10b981;">
+                <div class="card-body">
+                    <h5 class="card-title text-muted" style="font-size: 0.9rem;">Productos Normales</h5>
+                    <h3 class="card-text" style="color: #10b981;">
+                        {{ productos|selectattr('estado', 'equalto', 'NORMAL')|list|length }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center" style="border-left: 4px solid #ec4899;">
+                <div class="card-body">
+                    <h5 class="card-title text-muted" style="font-size: 0.9rem;">Con Alerta</h5>
+                    <h3 class="card-text" style="color: #ec4899;">
+                        {{ productos|selectattr('estado', 'in', ['SIN_STOCK', 'CRITICO', 'BAJO'])|list|length }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Tabla de productos -->
+    {% if productos %}
+    <div class="table-responsive">
+        <table class="table table-hover" style="border: 1px solid #dee2e6;">
+            <thead style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                <tr>
+                    <th style="color: #1e3a5f;"><i class="fas fa-barcode"></i> Código</th>
+                    <th style="color: #1e3a5f;"><i class="fas fa-box"></i> Descripción</th>
+                    <th style="color: #1e3a5f;"><i class="fas fa-tag"></i> Categoría</th>
+                    <th style="color: #1e3a5f;" class="text-end">Costo</th>
+                    <th style="color: #1e3a5f;" class="text-end">Precio</th>
+                    <th style="color: #1e3a5f;" class="text-center">Stock Actual</th>
+                    <th style="color: #1e3a5f;" class="text-center">Mín/Máx</th>
+                    <th style="color: #1e3a5f;" class="text-center">Estado</th>
+                    <th style="color: #1e3a5f;" class="text-end">Valor Stock</th>
+                    <th style="color: #1e3a5f;" class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for prod in productos %}
+                <tr class="align-middle">
+                    <td>
+                        <code>{{ prod['codigo_interno'] }}</code>
+                    </td>
+                    <td>
+                        <strong>{{ prod['descripcion'] }}</strong>
+                        {% if prod['unidad'] %}
+                        <br><small class="text-muted">{{ prod['unidad'] }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge" style="background-color: #1e3a5f;">
+                            {{ prod['categoria'] }}
+                        </span>
+                    </td>
+                    <td class="text-end">
+                        {{ "{:,.2f}".format(prod['costo']) }}
+                    </td>
+                    <td class="text-end">
+                        {{ "{:,.2f}".format(prod['precio_venta']) }}
+                    </td>
+                    <td class="text-center">
+                        <span class="badge" 
+                              style="background-color: {% if prod['stock_actual'] <= 0 %}#dc2626{% elif prod['stock_actual'] <= prod['stock_minimo'] %}#f97316{% else %}#10b981{% endif %}; color: white;">
+                            {{ prod['stock_actual'] }}
+                        </span>
+                    </td>
+                    <td class="text-center">
+                        <small>
+                            {{ prod['stock_minimo'] }} / {{ prod['stock_maximo'] }}
+                        </small>
+                    </td>
+                    <td class="text-center">
+                        {% if prod['estado'] == 'SIN_STOCK' %}
+                        <span class="badge bg-danger">Sin Stock</span>
+                        {% elif prod['estado'] == 'CRITICO' %}
+                        <span class="badge bg-warning text-dark">Crítico</span>
+                        {% elif prod['estado'] == 'BAJO' %}
+                        <span class="badge bg-info">Bajo</span>
+                        {% elif prod['estado'] == 'EXCESO' %}
+                        <span class="badge bg-secondary">Exceso</span>
+                        {% else %}
+                        <span class="badge bg-success">Normal</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <strong>{{ "{:,.2f}".format(prod['valor_stock']) }}</strong>
+                    </td>
+                    <td class="text-center">
+                        <a href="{{ url_for('stock_ajustar', pid=prod['id']) }}" 
+                           class="btn btn-sm btn-outline-primary"
+                           title="Ajustar stock">
+                            <i class="fas fa-pencil-alt"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info text-center">
+        <i class="fas fa-info-circle"></i> No se encontraron productos con los criterios de búsqueda.
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    .table td, .table th {
+        vertical-align: middle;
+        border-color: #e5e7eb;
+    }
+    
+    .badge {
+        font-size: 0.85rem;
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .btn-sm {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.875rem;
+    }
+    
+    .card {
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    }
+    
+    .card:hover {
+        transform: translateY(-2px);
+    }
+</style>
+{% endblock %}

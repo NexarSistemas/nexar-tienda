@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Nexar Tienda{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if 'user' in session %}
+    <!-- ─── SIDEBAR ─── -->
+    <nav class="sidebar">
+        <div class="sidebar-brand">
+            <i class="fas fa-store"></i>
+            <span>Nexar Tienda</span>
+        </div>
+
+        <div class="sidebar-user">
+            <div class="user-info">
+                <div class="user-name">{{ session['user']['nombre_completo'] }}</div>
+                <div class="user-role">{{ session['user']['rol'] }}</div>
+            </div>
+        </div>
+
+        <ul class="nav flex-column sidebar-nav">
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+
+            <li class="nav-header">Operaciones</li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#collapseVentas">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span>Punto de Venta</span>
+                    <i class="fas fa-chevron-down"></i>
+                </a>
+                <div class="collapse" id="collapseVentas">
+                    <ul class="nav flex-column ms-3">
+                        <li class="nav-item"><a class="nav-link" href="#">Nueva Venta</a></li>
+                        <li class="nav-item"><a class="nav-link" href="#">Historial</a></li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="nav-header">Gestión</li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint in ['productos', 'producto_nuevo', 'producto_editar', 'producto_eliminar'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseProductos">
+                    <i class="fas fa-boxes"></i>
+                    <span>Productos</span>
+                    <i class="fas fa-chevron-down"></i>
+                </a>
+                <div class="collapse {% if request.endpoint in ['productos', 'producto_nuevo', 'producto_editar', 'producto_eliminar'] %}show{% endif %}" id="collapseProductos">
+                    <ul class="nav flex-column ms-3">
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'productos' %}active{% endif %}" href="{{ url_for('productos') }}">Lista</a></li>
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'producto_nuevo' %}active{% endif %}" href="{{ url_for('producto_nuevo') }}">Nuevo</a></li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint in ['stock', 'stock_ajustar'] %}active{% endif %}" href="{{ url_for('stock') }}">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Stock</span>
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a class="nav-link" href="#">
+                    <i class="fas fa-users"></i>
+                    <span>Clientes</span>
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a class="nav-link" href="#">
+                    <i class="fas fa-truck"></i>
+                    <span>Proveedores</span>
+                </a>
+            </li>
+
+            {% if session['user']['rol'] == 'admin' %}
+            <li class="nav-header">Administración</li>
+            <li class="nav-item">
+                <a class="nav-link" href="#">
+                    <i class="fas fa-cog"></i>
+                    <span>Configuración</span>
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a class="nav-link" href="#">
+                    <i class="fas fa-users-cog"></i>
+                    <span>Usuarios</span>
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a class="nav-link" href="#">
+                    <i class="fas fa-hdd"></i>
+                    <span>Respaldos</span>
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'licencia' %}active{% endif %}" href="{{ url_for('licencia') }}">
+                    <i class="fas fa-key"></i>
+                    <span>Licencia</span>
+                </a>
+            </li>
+            {% endif %}
+        </ul>
+
+        <div class="sidebar-footer">
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm w-100">
+                <i class="fas fa-sign-out-alt"></i> Salir
+            </a>
+        </div>
+    </nav>
+
+    <!-- ─── MAIN CONTENT ─── -->
+    <main class="main-content">
+        <header class="navbar navbar-expand-lg navbar-light navbar-top">
+            <div class="container-fluid">
+                <span class="navbar-brand ms-3">
+                    <strong>Nexar Tienda</strong> v{{ app_version }}
+                </span>
+                <div class="ms-auto">
+                    <span class="text-muted" id="current-time"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ─── ALERTS ─── -->
+        <div class="container-fluid pt-3">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if 'éxito' in message or '✅' in message else 'danger' if '❌' in message else 'warning' if '⚠' in message else 'info' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        <!-- ─── CONTENT ─── -->
+        <div class="container-fluid content-area">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    {% else %}
+    <!-- ─── SIN SIDEBAR (LOGIN, etc) ─── -->
+    {% block login_content %}{% endblock %}
+    {% endif %}
+
+    <!-- ─── SCRIPTS ─── -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <script>
+        // Mostrar hora actual
+        function updateTime() {
+            const now = new Date();
+            const formatted = now.toLocaleString('es-AR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            const elem = document.getElementById('current-time');
+            if (elem) elem.textContent = formatted;
+        }
+        updateTime();
+        setInterval(updateTime, 1000);
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
