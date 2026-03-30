@@ -4,6 +4,43 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [0.8.0] - 30 Marzo 2026 - Módulo de Gestión de Proveedores
+
+### ✨ Características Nuevas
+- CRUD de proveedores completo con creación, edición, detalle y desactivación (soft delete)
+- Gestión de cuentas corrientes (debe/haber, saldo actual, movimientos)
+- Historial de compras por proveedor con estadísticas y detalles
+- UI responsive de proveedores con Bootstrap 5 y modal para movimiento
+- Integración de proveedor en módulo de compras y reportes
+
+### 🛠️ Cambios Técnicos
+- **database.py**:
+  - Nueva tabla `cc_proveedores_mov` para movimientos de cuenta corriente
+  - Nuevas funciones: `get_saldo_proveedor()`, `get_movimientos_proveedor()`, `agregar_movimiento_proveedor()`
+  - Nuevas funciones: `get_historial_compras_proveedor()`, `get_estadisticas_proveedor()`
+  - Mejora de CRUD de proveedores ya existente
+
+- **app.py**:
+  - Nuevas rutas:
+    - `GET /proveedores` - listado
+    - `GET/POST /proveedores/nuevo` - crear
+    - `GET/POST /proveedores/<id>/editar` - editar
+    - `GET /proveedores/<id>` - detalle
+    - `POST /proveedores/<id>/movimiento` - movimiento
+    - `POST /proveedores/<id>/eliminar` - desactivar
+
+- **templates**:
+  - `proveedores.html`, `proveedor_form.html`, `proveedor_detalle.html`
+  - `base.html` con navegación Proveedores
+
+- **tests**:
+  - Nuevo `test_paso8.py` con 8 tests de rutas de proveedores
+
+### 🧪 Tests
+- ✅ `test_paso8.py`: 8/8 tests pasando
+
+---
+
 ## [0.7.0] - 30 Marzo 2026 - Módulo de Gestión de Clientes
 
 ### ✨ Características Nuevas
@@ -41,43 +78,6 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ### 🧪 Tests
 - ✅ `test_paso7.py`: 8/8 tests pasando
-
----
-
-## [0.8.0] - 30 Marzo 2026 - Módulo de Gestión de Proveedores
-
-### ✨ Características Nuevas
-- CRUD de proveedores completo con creación, edición, detalle y desactivación (soft delete)
-- Gestión de cuentas corrientes (debe/haber, saldo actual, movimientos)
-- Historial de compras por proveedor con estadísticas y detalles
-- UI responsive de proveedores con Bootstrap 5 y modal para movimiento
-- Integración de proveedor en módulo de compras y reportes
-
-### 🛠️ Cambios Técnicos
-- **database.py**:
-  - Nueva tabla `cc_proveedores_mov` para movimientos de cuenta corriente
-  - Nuevas funciones: `get_saldo_proveedor()`, `get_movimientos_proveedor()`, `agregar_movimiento_proveedor()`
-  - Nuevas funciones: `get_historial_compras_proveedor()`, `get_estadisticas_proveedor()`
-  - Mejora de CRUD de proveedores ya existente
-
-- **app.py**:
-  - Nuevas rutas:
-    - `GET /proveedores` - listado
-    - `GET/POST /proveedores/nuevo` - crear
-    - `GET/POST /proveedores/<id>/editar` - editar
-    - `GET /proveedores/<id>` - detalle
-    - `POST /proveedores/<id>/movimiento` - movimiento
-    - `POST /proveedores/<id>/eliminar` - desactivar
-
-- **templates**:
-  - `proveedores.html`, `proveedor_form.html`, `proveedor_detalle.html`
-  - `base.html` con navegación Proveedores
-
-- **tests**:
-  - Nuevo `test_paso8.py` con 8 tests de rutas de proveedores
-
-### 🧪 Tests
-- ✅ `test_paso8.py`: 8/8 tests pasando
 
 ---
 
