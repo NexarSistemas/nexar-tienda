@@ -100,30 +100,23 @@ Desarrollado con **Python + Flask + SQLite**.
 
 ## 📋 Próximos Pasos (Roadmap)
 
-### 🔄 PASO 6: Módulo POS (v0.6.0)
-- Sistema de ventas con carrito
-- Generación de boletas
-- Decremento automático de stock
-
-### 🔄 PASO 7: Gestión de Clientes (v0.7.0)
-- CRUD de clientes
-- Historial de compras
-- Cuenta corriente
-
-### 🔄 PASO 8: Gestión de Proveedores (v0.8.0)
-- CRUD de proveedores
-- Historial de compras
-- Contacto
-
-### 🔄 PASO 9: Módulo de Compras (v0.9.0)
-- Órdenes de compra
-- Incremento de stock
-- Recepción de mercadería
-
 ### 🎯 PASO 10: Release 1.0.0
-- Caja y liquidación
-- Estadísticas completas
-- POS con multi-usuario
+- Caja y liquidación diaria
+- Estadísticas completas y reportes
+- POS con multi-usuario y permisos avanzados
+- Sistema de licencias completo
+- Backup automático y restauración
+- Interfaz de administración completa
+
+### 🔄 PASO 11: Módulo de Gastos (v0.11.0)
+- Registro de gastos operativos
+- Categorización y análisis de gastos
+- Integración con caja diaria
+
+### 🔄 PASO 12: Estadísticas Avanzadas (v0.12.0)
+- Dashboard con gráficos y métricas
+- Reportes de ventas por período
+- Análisis de rentabilidad por producto
 
 ---
 
