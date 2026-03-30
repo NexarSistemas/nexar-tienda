@@ -1,71 +1,98 @@
 # Nexar Tienda 🛍️
 
-Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.  
-**Versión 0.5.0 — Módulo de Stock completado.**
+Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
+
+**Versión actual:** `v0.5.0` - PASO 5: Módulo de Stock
+
+Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
-## Funcionalidades principales
+## 🚀 Características Implementadas
 
-### Gestión de Inventario y Stock
+### ✅ PASO 5: Módulo de Stock (v0.5.0)
+- **📦 Gestión completa de inventario** con estados dinámicos
+- **📊 Estados de stock**: SIN STOCK, CRÍTICO, BAJO, NORMAL, EXCESO
+- **🔍 Búsqueda y filtrado** por estado de stock
+- **📈 Alertas en tiempo real** con endpoint `/api/alertas`
+- **📝 Historial de movimientos** completo (auditoría)
+- **⚡ Formulario inteligente** de ajuste con cálculo automático
+- **📋 Panel de rangos recomendados** y historial integrado
 
-- Estados automáticos: **SIN STOCK, CRÍTICO, BAJO, NORMAL, EXCESO**.
-- Historial completo de movimientos con auditoría.
-- Ajustes de stock con cálculo automático de diferencias.
-- Panel de rangos recomendados y alertas en tiempo real.
-- Filtros avanzados por estado y búsqueda por nombre.
+### ✅ PASO 4: CRUD de Productos + Sistema TIER (v0.4.0)
+- **📝 Productos CRUD completo** (crear, editar, listar, borrar)
+- **🏷️ Gestión de categorías** dinámica
+- **🔒 Sistema TIER**: DEMO (5 productos), BÁSICA (50), PRO (1000)
+- **📊 Dashboard de licencia** con barra de progreso
 
-### Productos y Categorías
-
-- CRUD completo de productos.
-- Categorías dinámicas.
-- Soft delete con restauración.
-- Integración con sistema TIER.
-
-### Sistema TIER de Licenciamiento
-
-- Modos: **DEMO, BÁSICA, PRO**.
-- Límites automáticos de productos según licencia.
-- Panel visual del estado de licencia.
-
-### Autenticación y Seguridad
-
-- Login/logout con sesiones seguras.
-- Roles: **admin** y **vendedor**.
-- Decoradores `@login_required` y `@admin_required`.
-- Validaciones server-side y client-side.
-- Prevención de SQL injection.
-
-### Dashboard Administrativo
-
-- Estadísticas generales.
-- Alertas de stock.
-- Accesos rápidos a módulos clave.
-
-### Sistema de Backups
-
-- Backups automáticos y manuales.
-- Historial de copias.
+### ✅ PASO 3: Autenticación + Dashboard + Backups (v0.3.0)
+- **🔐 Sistema de autenticación** con login/logout
+- **📊 Dashboard administrativo** con estadísticas
+- **💾 Sistema de backups** automáticos y manuales
+- **👥 Gestión de usuarios** (admin y vendedor)
 
 ---
 
-## Tecnologías utilizadas
+## 📊 Estado del Proyecto
 
-| Componente      | Tecnología                          |
-|----------------|------------------------------------|
-| Backend        | Python 3.11+ / Flask 3.0           |
-| Base de datos  | SQLite (archivo local)             |
-| Frontend       | Bootstrap 5.3 + Font Awesome 6     |
-| Seguridad      | Hash SHA256 + validaciones         |
-| Testing        | pytest (23 tests pasando en v0.5.0)|
+| Paso | Módulo | Versión | Tests | Estado |
+|------|--------|---------|-------|--------|
+| 5 | **Stock Management** | `v0.5.0` | 23/23 ✅ | **COMPLETO** |
+| 4 | Productos CRUD + TIER | `v0.4.0` | 12/12 ✅ | Completo |
+| 3 | Auth + Dashboard | `v0.3.0` | 6/6 ✅ | Completo |
+| 6 | **POS (Próximo)** | `v0.6.0` | - | En desarrollo |
+
+**Total Tests:** 41/41 ✅ (100%)
 
 ---
 
-## Instalación
+## 🛠️ Tecnologías
+
+| Componente | Tecnología |
+|---|---|
+| Backend | Python 3.11+ / Flask 3.0 |
+| Base de datos | SQLite (archivo local) |
+| Frontend | Bootstrap 5.3 + Font Awesome 6 |
+| Paleta | Azul marino + plateado |
+| Testing | pytest |
+| Versionado | Git + Semantic Versioning |
+
+---
+
+## 📋 Próximos Pasos (Roadmap)
+
+### 🔄 PASO 6: Módulo POS (v0.6.0)
+- Sistema de ventas con carrito
+- Generación de boletas
+- Decremento automático de stock
+
+### 🔄 PASO 7: Gestión de Clientes (v0.7.0)
+- CRUD de clientes
+- Historial de compras
+- Cuenta corriente
+
+### 🔄 PASO 8: Gestión de Proveedores (v0.8.0)
+- CRUD de proveedores
+- Historial de compras
+- Contacto
+
+### 🔄 PASO 9: Módulo de Compras (v0.9.0)
+- Órdenes de compra
+- Incremento de stock
+- Recepción de mercadería
+
+### 🎯 PASO 10: Release 1.0.0
+- Caja y liquidación
+- Estadísticas completas
+- POS con multi-usuario
+
+---
+
+## 🚀 Instalación rápida
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/tu-usuario/nexar-tienda.git
+git clone https://github.com/NexarSistemas/nexar-tienda.git
 cd nexar-tienda
 
 # 2. Crear entorno virtual
@@ -79,25 +106,49 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Abrir en el navegador:  
-👉 http://localhost:5000  
-
-**Usuario inicial:** admin  
-**Contraseña:** admin123  
-
-⚠️ Cambiar la contraseña en el primer inicio.
+Luego abrir el navegador en: **http://localhost:5000**
 
 ---
 
-## Estructura del proyecto
+## 🧪 Ejecutar Tests
 
 ```bash
-nexar-tienda/
-├── app.py                  # Rutas y lógica principal
-├── database.py             # Conexión y consultas SQLite
-├── VERSION                 # Versión actual del sistema
-├── CHANGELOG.md            # Historial de cambios
-├── templates/              # HTML (Jinja2)
+# Ejecutar todos los tests
+python -m pytest test_paso*.py -v
+
+# Ejecutar tests de un paso específico
+python -m pytest test_paso5.py -v
+```
+
+---
+
+## 📝 Changelog
+
+Ver [CHANGELOG.md](CHANGELOG.md) para el historial completo de cambios.
+
+---
+
+## 🤝 Contribución
+
+1. Fork el proyecto
+2. Crea tu rama de feature (`git checkout -b feature/AmazingFeature`)
+3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Push a la rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
+
+---
+
+## 📄 Licencia
+
+Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
+
+---
+
+## 📞 Contacto
+
+**Nexar Sistemas** - [GitHub](https://github.com/NexarSistemas)
+
+**Última actualización:** 29 de marzo de 2026 - v0.5.0
 │   ├── base.html
 │   ├── login.html
 │   ├── dashboard.html
