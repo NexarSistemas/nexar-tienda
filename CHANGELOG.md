@@ -4,6 +4,46 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [0.7.0] - 30 Marzo 2026 - Módulo de Gestión de Clientes
+
+### ✨ Características Nuevas
+- CRUD de clientes completo con creación, edición, detalle y desactivación (soft delete)
+- Gestión de cuentas corrientes (debe/haber, saldo actual, movimientos)
+- Historial de ventas por cliente con cálculo de estadísticas y últimos movimientos
+- UI responsive de clientes con Bootstrap 5 y modal para movimientos
+- Integración de cliente en compras/ventas y reportes de estado
+
+### 🛠️ Cambios Técnicos
+- **database.py**:
+  - Nueva función `get_clientes()` con filtro de búsqueda
+  - Nueva función `get_cliente(id)`
+  - Nuevas funciones de cuentas corrientes: `get_movimientos_cliente()`, `agregar_movimiento_cliente()`, `get_saldo_cliente()`
+  - Nuevas funciones de estadísticas: `get_estadisticas_cliente()`, `get_historial_ventas_cliente()`
+  - Actualización de `get_ventas_cliente()` para incluir cliente en detalles de venta
+
+- **app.py**:
+  - Nuevas rutas:
+    - `GET /clientes` - listado de clientes
+    - `GET/POST /clientes/nuevo` - crear cliente
+    - `GET/POST /clientes/<id>/editar` - editar cliente
+    - `GET /clientes/<id>` - detalle cliente y cuenta corriente
+    - `POST /clientes/<id>/movimiento` - registrar movimiento cuenta corriente
+    - `POST /clientes/<id>/eliminar` - desactivar cliente
+
+- **templates**:
+  - `clientes.html` - listado y búsqueda
+  - `cliente_form.html` - formulario creación/edición
+  - `cliente_detalle.html` - detalle + saldo cuenta corriente + movimientos + ventas
+  - `base.html` - menu Clientes en sidebar
+
+- **tests**:
+  - Nuevo `test_paso7.py` con 8 tests de rutas para clientes y cuenta corriente
+
+### 🧪 Tests
+- ✅ `test_paso7.py`: 8/8 tests pasando
+
+---
+
 ## [0.6.0] - 29 Marzo 2026 - Módulo de Punto de Venta (POS)
 
 ### ✨ Características Nuevas

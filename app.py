@@ -448,6 +448,173 @@ def api_productos():
 
 # ─── LICENCIAS ──────────────────────────────────────────────────────────────
 
+# ─── CLIENTES (PASO 7) ──────────────────────────────────────────────────────
+
+@app.route('/clientes')
+@login_required
+def clientes():
+    """Lista de clientes con búsqueda."""
+    buscar = request.args.get('q', '').strip()
+
+    clientes_list = db.get_clientes(search=buscar)
+
+    return render_template(
+        'clientes.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        clientes=clientes_list,
+        buscar=buscar
+    )
+
+
+@app.route('/clientes/nuevo', methods=['GET', 'POST'])
+@login_required
+def cliente_nuevo():
+    """Crear nuevo cliente."""
+    if request.method == 'POST':
+        try:
+            data = request.form.to_dict()
+
+            # Validación
+            if not data.get('nombre', '').strip():
+                flash('❌ El nombre del cliente es requerido.', 'danger')
+                return redirect(url_for('cliente_nuevo'))
+
+            # Verificar límite de clientes (según tier de licencia)
+            limite_check = db.check_license_limits('clientes')
+            if not limite_check['ok']:
+                flash(f"❌ {limite_check['message']}", 'danger')
+                return redirect(url_for('clientes'))
+
+            # Crear cliente
+            db.add_cliente(data)
+            flash("✅ Cliente creado exitosamente.", 'success')
+            return redirect(url_for('clientes'))
+
+        except Exception as e:
+            flash(f'❌ Error al crear cliente: {str(e)}', 'danger')
+            return redirect(url_for('cliente_nuevo'))
+
+    return render_template(
+        'cliente_form.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        cliente=None,
+        accion='Crear'
+    )
+
+
+@app.route('/clientes/<int:cid>/editar', methods=['GET', 'POST'])
+@login_required
+def cliente_editar(cid):
+    """Editar cliente existente."""
+    cliente = db.get_cliente(cid)
+    if not cliente:
+        flash('❌ Cliente no encontrado.', 'danger')
+        return redirect(url_for('clientes'))
+
+    if request.method == 'POST':
+        try:
+            data = request.form.to_dict()
+
+            # Validación
+            if not data.get('nombre', '').strip():
+                flash('❌ El nombre del cliente es requerido.', 'danger')
+                return redirect(url_for('cliente_editar', cid=cid))
+
+            # Actualizar cliente
+            db.update_cliente(cid, data)
+            flash("✅ Cliente actualizado exitosamente.", 'success')
+            return redirect(url_for('clientes'))
+
+        except Exception as e:
+            flash(f'❌ Error al actualizar cliente: {str(e)}', 'danger')
+            return redirect(url_for('cliente_editar', cid=cid))
+
+    return render_template(
+        'cliente_form.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        cliente=cliente,
+        accion='Editar'
+    )
+
+
+@app.route('/clientes/<int:cid>')
+@login_required
+def cliente_detalle(cid):
+    """Detalle de cliente con cuenta corriente."""
+    cliente = db.get_cliente(cid)
+    if not cliente:
+        flash('❌ Cliente no encontrado.', 'danger')
+        return redirect(url_for('clientes'))
+
+    # Obtener datos adicionales
+    saldo = db.get_saldo_cliente(cid)
+    movimientos = db.get_movimientos_cliente(cid)
+    estadisticas = db.get_estadisticas_cliente(cid)
+    historial_ventas = db.get_historial_ventas_cliente(cid, limit=10)
+
+    return render_template(
+        'cliente_detalle.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        cliente=cliente,
+        saldo=saldo,
+        movimientos=movimientos,
+        estadisticas=estadisticas,
+        historial_ventas=historial_ventas
+    )
+
+
+@app.route('/clientes/<int:cid>/movimiento', methods=['POST'])
+@login_required
+def cliente_agregar_movimiento(cid):
+    """Agregar movimiento a cuenta corriente."""
+    cliente = db.get_cliente(cid)
+    if not cliente:
+        flash('❌ Cliente no encontrado.', 'danger')
+        return redirect(url_for('clientes'))
+
+    try:
+        tipo = request.form.get('tipo')
+        numero_comprobante = request.form.get('numero_comprobante', '').strip()
+        debe = float(request.form.get('debe', 0))
+        haber = float(request.form.get('haber', 0))
+        vencimiento = request.form.get('vencimiento', '').strip()
+        observaciones = request.form.get('observaciones', '').strip()
+
+        if not tipo:
+            flash('❌ El tipo de movimiento es requerido.', 'danger')
+            return redirect(url_for('cliente_detalle', cid=cid))
+
+        db.agregar_movimiento_cliente(cid, tipo, numero_comprobante, debe, haber, vencimiento, observaciones)
+        flash("✅ Movimiento agregado exitosamente.", 'success')
+
+    except Exception as e:
+        flash(f'❌ Error al agregar movimiento: {str(e)}', 'danger')
+
+    return redirect(url_for('cliente_detalle', cid=cid))
+
+
+@app.route('/clientes/<int:cid>/eliminar', methods=['POST'])
+@login_required
+def cliente_eliminar(cid):
+    """Eliminar (desactivar) cliente."""
+    cliente = db.get_cliente(cid)
+    if not cliente:
+        flash('❌ Cliente no encontrado.', 'danger')
+        return redirect(url_for('clientes'))
+
+    try:
+        # Soft delete - marcar como inactivo
+        db.update_cliente(cid, {**cliente, 'activo': 0})
+        flash(f"✅ Cliente '{cliente['nombre']}' desactivado.", 'success')
+    except Exception as e:
+        flash(f'❌ Error al desactivar cliente: {str(e)}', 'danger')
+
+    return redirect(url_for('clientes'))
+
 @app.route('/stock', methods=['GET'])
 @login_required
 def stock():

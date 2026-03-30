@@ -71,10 +71,17 @@
             </li>
 
             <li class="nav-item">
-                <a class="nav-link" href="#">
+                <a class="nav-link {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle', 'cliente_eliminar'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseClientes">
                     <i class="fas fa-users"></i>
                     <span>Clientes</span>
+                    <i class="fas fa-chevron-down"></i>
                 </a>
+                <div class="collapse {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle', 'cliente_eliminar'] %}show{% endif %}" id="collapseClientes">
+                    <ul class="nav flex-column ms-3">
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'clientes' %}active{% endif %}" href="{{ url_for('clientes') }}">Lista</a></li>
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'cliente_nuevo' %}active{% endif %}" href="{{ url_for('cliente_nuevo') }}">Nuevo</a></li>
+                    </ul>
+                </div>
             </li>
 
             <li class="nav-item">

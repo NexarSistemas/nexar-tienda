@@ -791,8 +791,10 @@ def add_cliente(data):
         (codigo, data['nombre'], data.get('dni_cuit', ''), data.get('telefono', ''),
          data.get('email', ''), float(data.get('limite_credito', 0)))
     )
+    cliente_id = c.lastrowid
     conn.commit()
     conn.close()
+    return cliente_id
 
 
 def update_cliente(cid, data):
@@ -812,6 +814,63 @@ def get_saldo_cliente(cid):
         (cid,), fetchone=True
     )
     return r['saldo'] if r else 0
+
+
+def get_movimientos_cliente(cid, limit=50):
+    """Obtiene movimientos de cuenta corriente de un cliente."""
+    return q(
+        """SELECT * FROM cc_clientes_mov 
+        WHERE cliente_id=? 
+        ORDER BY fecha DESC, id DESC 
+        LIMIT ?""",
+        (cid, limit)
+    )
+
+
+def agregar_movimiento_cliente(cid, tipo, numero_comprobante, debe=0, haber=0, vencimiento='', observaciones=''):
+    """Agrega un movimiento a la cuenta corriente del cliente."""
+    fecha = datetime.now().strftime('%Y-%m-%d')
+    q(
+        """INSERT INTO cc_clientes_mov 
+        (cliente_id, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (cid, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones),
+        commit=True
+    )
+
+
+def get_historial_ventas_cliente(cid, limit=20):
+    """Obtiene historial de ventas de un cliente."""
+    return q(
+        """SELECT v.*, vd.producto_id, vd.descripcion, vd.cantidad, vd.precio_unitario, vd.subtotal
+        FROM ventas v
+        LEFT JOIN ventas_detalle vd ON v.id = vd.venta_id
+        WHERE v.cliente_id = ?
+        ORDER BY v.fecha DESC, v.id DESC
+        LIMIT ?""",
+        (cid, limit * 10)  # Multiplicar por 10 para incluir detalles
+    )
+
+
+def get_estadisticas_cliente(cid):
+    """Obtiene estadísticas de un cliente."""
+    # Total de compras
+    total_compras = q(
+        "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM ventas WHERE cliente_id=?",
+        (cid,), fetchone=True
+    )
+    
+    # Última compra
+    ultima_compra = q(
+        "SELECT fecha, total FROM ventas WHERE cliente_id=? ORDER BY fecha DESC LIMIT 1",
+        (cid,), fetchone=True
+    )
+    
+    return {
+        'total_compras': total_compras['total'],
+        'monto_total': total_compras['monto'],
+        'ultima_compra': ultima_compra
+    }
 
 
 # ─── PROVEEDORES ─────────────────────────────────────────────────────────────

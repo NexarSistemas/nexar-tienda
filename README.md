@@ -2,7 +2,7 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v0.6.0` - PASO 6: Módulo de Punto de Venta (POS)
+**Versión actual:** `v0.7.0` - PASO 7: Gestión de Clientes
 
 Desarrollado con **Python + Flask + SQLite**.
 
@@ -51,7 +51,7 @@ Desarrollado con **Python + Flask + SQLite**.
 | 5 | Stock Management | `v0.5.0` | 23/23 ✅ | Completo |
 | 4 | Productos CRUD + TIER | `v0.4.0` | 12/12 ✅ | Completo |
 | 3 | Auth + Dashboard | `v0.3.0` | 6/6 ✅ | Completo |
-| 7 | **Clientes (Próximo)** | `v0.7.0` | - | En desarrollo |
+| 7 | Gestión de Clientes | `v0.7.0` | 8/8 ✅ | Completo |
 
 **Total Tests:** 49/51 ✅ (96%)
 
