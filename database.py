@@ -1097,3 +1097,56 @@ def get_dashboard_stats():
         'ultimas_ventas': ultimas_ventas,
         'temporada': temporada['nombre'] if temporada else 'Ninguna',
     }
+
+
+# ─── PUNTO DE VENTA ──────────────────────────────────────────────────────────
+
+def next_ticket():
+    """Devuelve el próximo número de ticket."""
+    ultimo = q("SELECT MAX(numero_ticket) as max FROM ventas", fetchone=True)
+    return (ultimo['max'] or 0) + 1
+
+
+def buscar_productos_pos(search):
+    """Busca productos para POS por nombre/código/categoría."""
+    sql = """SELECT p.id, p.codigo_interno, p.descripcion, p.categoria, p.unidad,
+                    p.precio_venta, s.stock_actual
+             FROM productos p
+             JOIN stock s ON s.producto_id = p.id
+             WHERE p.activo=1 AND s.stock_actual > 0"""
+    params = []
+    if search:
+        sql += " AND (p.descripcion LIKE ? OR p.categoria LIKE ? OR p.codigo_interno LIKE ?)"
+        params += [f'%{search}%'] * 3
+    sql += " ORDER BY p.descripcion LIMIT 50"
+    return q(sql, params)
+
+
+def decrementar_stock_venta(venta_id):
+    """Decrementa stock de productos vendidos."""
+    items = get_venta_detalle(venta_id)
+    for item in items:
+        pid = item['producto_id']
+        cantidad = item['cantidad']
+        # Obtener stock actual
+        stock_actual = q("SELECT stock_actual FROM stock WHERE producto_id=?", (pid,), fetchone=True)
+        if stock_actual:
+            nuevo_stock = stock_actual['stock_actual'] - cantidad
+            q("UPDATE stock SET stock_actual=? WHERE producto_id=?", (nuevo_stock, pid), fetchall=False, commit=True)
+            # Registrar movimiento
+            q(
+                """INSERT INTO stock_movimientos
+                (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo)
+                VALUES (?,?,?,?,?,?)""",
+                (pid, 'VENTA', -cantidad, stock_actual['stock_actual'], nuevo_stock, f'Venta #{venta_id}'),
+                fetchall=False, commit=True
+            )
+
+
+def get_venta_ticket(vid):
+    """Devuelve venta completa para ticket."""
+    venta = q("SELECT * FROM ventas WHERE id=?", (vid,), fetchone=True)
+    if venta:
+        venta = dict(venta)
+        venta['detalle'] = get_venta_detalle(vid)
+    return venta

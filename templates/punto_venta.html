@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Punto de Venta - Nexar Tienda{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <!-- Panel de búsqueda y productos -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-search"></i> Buscar Productos</h5>
+                </div>
+                <div class="card-body">
+                    <div class="input-group mb-3">
+                        <input type="text" id="busqueda" class="form-control" placeholder="Buscar por nombre, código o categoría..." autocomplete="off">
+                        <button class="btn btn-outline-primary" type="button" id="btn-buscar">
+                            <i class="fas fa-search"></i> Buscar
+                        </button>
+                    </div>
+                    
+                    <div id="resultados" class="row">
+                        <!-- Resultados de búsqueda aparecerán aquí -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Panel del carrito -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-shopping-cart"></i> Carrito</h5>
+                </div>
+                <div class="card-body">
+                    <div id="carrito-items">
+                        <!-- Items del carrito aparecerán aquí -->
+                        <p class="text-muted text-center">Carrito vacío</p>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div id="carrito-total" class="d-none">
+                        <div class="row mb-2">
+                            <div class="col-6">Subtotal:</div>
+                            <div class="col-6 text-end" id="subtotal">$0.00</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6">Descuento:</div>
+                            <div class="col-6 text-end">
+                                <input type="number" id="descuento-adicional" class="form-control form-control-sm d-inline-block w-75" value="0" min="0" step="0.01">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6 fw-bold">Total:</div>
+                            <div class="col-6 text-end fw-bold" id="total">$0.00</div>
+                        </div>
+                    </div>
+                    
+                    <form id="form-venta" method="POST" action="{{ url_for('venta_finalizar') }}">
+                        <div class="mb-3">
+                            <label for="cliente" class="form-label">Cliente</label>
+                            <select name="cliente_id" id="cliente" class="form-select">
+                                <option value="0">Mostrador</option>
+                                {% for cliente in clientes %}
+                                <option value="{{ cliente.id }}">{{ cliente.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <input type="text" name="cliente_nombre" id="cliente-nombre" class="form-control mt-1" placeholder="Nombre del cliente" style="display: none;">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="medio-pago" class="form-label">Medio de Pago</label>
+                            <select name="medio_pago" id="medio-pago" class="form-select">
+                                <option value="Efectivo">Efectivo</option>
+                                <option value="Débito">Débito</option>
+                                <option value="Crédito">Crédito</option>
+                                <option value="Transferencia">Transferencia</option>
+                                <option value="QR">QR</option>
+                                <option value="Cuenta Corriente">Cuenta Corriente</option>
+                            </select>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" id="btn-finalizar" class="btn btn-success" disabled>
+                                <i class="fas fa-check"></i> Finalizar Venta
+                            </button>
+                            <button type="button" id="btn-vaciar" class="btn btn-outline-danger">
+                                <i class="fas fa-trash"></i> Vaciar Carrito
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para cantidad -->
+<div class="modal fade" id="modal-cantidad" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Cantidad</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="cantidad-input" class="form-label">Cantidad a agregar:</label>
+                    <input type="number" id="cantidad-input" class="form-control" value="1" min="0.01" step="0.01">
+                </div>
+                <div class="text-muted small">
+                    Stock disponible: <span id="stock-disponible"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-agregar-carrito">Agregar al Carrito</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pos.js') }}"></script>
+{% endblock %}

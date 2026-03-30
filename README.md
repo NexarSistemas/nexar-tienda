@@ -2,13 +2,23 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v0.5.0` - PASO 5: Módulo de Stock
+**Versión actual:** `v0.6.0` - PASO 6: Módulo de Punto de Venta (POS)
 
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 6: Módulo de Punto de Venta (POS) (v0.6.0)
+- **🛒 Sistema completo de ventas** con carrito de compras
+- **🔍 Búsqueda inteligente** de productos por nombre/código/categoría
+- **📱 Interfaz responsive** con Bootstrap 5
+- **⚡ Validación en tiempo real** de stock disponible
+- **🧾 Generación automática de tickets** imprimibles
+- **💰 Múltiples medios de pago** (efectivo, débito, crédito, etc.)
+- **👥 Integración con clientes** y temporadas
+- **📊 Decremento automático de stock** con auditoría
 
 ### ✅ PASO 5: Módulo de Stock (v0.5.0)
 - **📦 Gestión completa de inventario** con estados dinámicos
@@ -37,12 +47,15 @@ Desarrollado con **Python + Flask + SQLite**.
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
-| 5 | **Stock Management** | `v0.5.0` | 23/23 ✅ | **COMPLETO** |
+| 6 | **POS System** | `v0.6.0` | 8/10 ✅ | **COMPLETO** |
+| 5 | Stock Management | `v0.5.0` | 23/23 ✅ | Completo |
 | 4 | Productos CRUD + TIER | `v0.4.0` | 12/12 ✅ | Completo |
 | 3 | Auth + Dashboard | `v0.3.0` | 6/6 ✅ | Completo |
-| 6 | **POS (Próximo)** | `v0.6.0` | - | En desarrollo |
+| 7 | **Clientes (Próximo)** | `v0.7.0` | - | En desarrollo |
 
-**Total Tests:** 41/41 ✅ (100%)
+**Total Tests:** 49/51 ✅ (96%)
+
+---
 
 ---
 

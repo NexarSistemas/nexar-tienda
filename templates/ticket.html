@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}Ticket #{{ venta.numero_ticket }} - Nexar Tienda{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-primary text-white text-center">
+                    <h4 class="mb-0">TICKET DE VENTA</h4>
+                    <h5 class="mb-0">#{{ venta.numero_ticket }}</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Información de la venta -->
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <strong>Fecha:</strong><br>
+                            {{ venta.fecha }} {{ venta.hora }}
+                        </div>
+                        <div class="col-6 text-end">
+                            <strong>Vendedor:</strong><br>
+                            {{ venta.vendedor }}
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <strong>Cliente:</strong><br>
+                            {{ venta.cliente_nombre }}
+                        </div>
+                        <div class="col-6 text-end">
+                            <strong>Medio de Pago:</strong><br>
+                            {{ venta.medio_pago }}
+                        </div>
+                    </div>
+                    
+                    {% if venta.temporada %}
+                    <div class="mb-3">
+                        <strong>Temporada:</strong> {{ venta.temporada }}
+                    </div>
+                    {% endif %}
+                    
+                    <hr>
+                    
+                    <!-- Detalle de productos -->
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th class="text-center">Cant</th>
+                                    <th class="text-end">Precio</th>
+                                    <th class="text-end">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in venta.detalle %}
+                                <tr>
+                                    <td>
+                                        <div class="fw-bold">{{ item.descripcion }}</div>
+                                        <small class="text-muted">{{ item.categoria }} - {{ item.unidad }}</small>
+                                    </td>
+                                    <td class="text-center">{{ item.cantidad }}</td>
+                                    <td class="text-end">{{ item.precio_unitario | fmt_ars }}</td>
+                                    <td class="text-end">{{ item.subtotal | fmt_ars }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Totales -->
+                    <div class="row">
+                        <div class="col-6">
+                            <strong>Subtotal:</strong>
+                        </div>
+                        <div class="col-6 text-end">
+                            {{ venta.subtotal | fmt_ars }}
+                        </div>
+                    </div>
+                    
+                    {% if venta.descuento_adicional > 0 %}
+                    <div class="row">
+                        <div class="col-6">
+                            <strong>Descuento:</strong>
+                        </div>
+                        <div class="col-6 text-end text-danger">
+                            -{{ venta.descuento_adicional | fmt_ars }}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <strong class="fs-5">TOTAL:</strong>
+                        </div>
+                        <div class="col-6 text-end">
+                            <strong class="fs-5">{{ venta.total | fmt_ars }}</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer text-center">
+                    <div class="btn-group">
+                        <button onclick="window.print()" class="btn btn-primary">
+                            <i class="fas fa-print"></i> Imprimir
+                        </button>
+                        <a href="{{ url_for('punto_venta') }}" class="btn btn-success">
+                            <i class="fas fa-plus"></i> Nueva Venta
+                        </a>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                            <i class="fas fa-home"></i> Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    .card, .card * {
+        visibility: visible;
+    }
+    .card {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+    .btn-group {
+        display: none !important;
+    }
+}
+</style>
+{% endblock %}

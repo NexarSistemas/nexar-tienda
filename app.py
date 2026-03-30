@@ -575,6 +575,187 @@ def api_alertas():
     })
 
 
+# ─── PUNTO DE VENTA ──────────────────────────────────────────────────────────
+
+@app.route('/punto_venta')
+@login_required
+def punto_venta():
+    """Página principal del punto de venta."""
+    # Inicializar carrito si no existe
+    if 'carrito' not in session:
+        session['carrito'] = []
+    
+    clientes = db.get_clientes()
+    temporada = db.get_temporada_actual()
+    
+    return render_template('punto_venta.html', 
+                         app_version=APP_VERSION,
+                         clientes=clientes,
+                         temporada=temporada)
+
+
+@app.route('/api/buscar_productos', methods=['GET'])
+@login_required
+def api_buscar_productos():
+    """API: busca productos para POS."""
+    search = request.args.get('q', '').strip()
+    productos = db.buscar_productos_pos(search)
+    
+    return jsonify({
+        'ok': True,
+        'productos': [
+            {
+                'id': p['id'],
+                'codigo_interno': p['codigo_interno'],
+                'descripcion': p['descripcion'],
+                'categoria': p['categoria'],
+                'unidad': p['unidad'],
+                'precio_venta': p['precio_venta'],
+                'stock_actual': p['stock_actual']
+            }
+            for p in productos
+        ]
+    })
+
+
+@app.route('/api/carrito/agregar', methods=['POST'])
+@login_required
+def api_carrito_agregar():
+    """API: agrega producto al carrito."""
+    data = request.get_json()
+    pid = data.get('producto_id')
+    cantidad = float(data.get('cantidad', 1))
+    
+    if not pid or cantidad <= 0:
+        return jsonify({'ok': False, 'error': 'Datos inválidos'})
+    
+    # Obtener producto
+    producto = db.get_producto(pid)
+    if not producto:
+        return jsonify({'ok': False, 'error': 'Producto no encontrado'})
+    
+    # Verificar stock
+    stock = db.q("SELECT stock_actual FROM stock WHERE producto_id=?", (pid,), fetchone=True)
+    if not stock or stock['stock_actual'] < cantidad:
+        return jsonify({'ok': False, 'error': 'Stock insuficiente'})
+    
+    # Inicializar carrito
+    if 'carrito' not in session:
+        session['carrito'] = []
+    
+    carrito = session['carrito']
+    
+    # Buscar si ya existe en carrito
+    encontrado = False
+    for item in carrito:
+        if item['producto_id'] == pid:
+            item['cantidad'] += cantidad
+            item['subtotal'] = item['cantidad'] * item['precio_unitario']
+            encontrado = True
+            break
+    
+    if not encontrado:
+        carrito.append({
+            'producto_id': pid,
+            'codigo_interno': producto['codigo_interno'],
+            'descripcion': producto['descripcion'],
+            'categoria': producto['categoria'],
+            'unidad': producto['unidad'],
+            'cantidad': cantidad,
+            'precio_unitario': producto['precio_venta'],
+            'subtotal': cantidad * producto['precio_venta']
+        })
+    
+    session['carrito'] = carrito
+    session.modified = True
+    
+    return jsonify({'ok': True, 'carrito': carrito})
+
+
+@app.route('/api/carrito/quitar/<int:pid>', methods=['POST'])
+@login_required
+def api_carrito_quitar(pid):
+    """API: quita producto del carrito."""
+    if 'carrito' not in session:
+        return jsonify({'ok': False, 'error': 'Carrito vacío'})
+    
+    carrito = session['carrito']
+    carrito = [item for item in carrito if item['producto_id'] != pid]
+    session['carrito'] = carrito
+    session.modified = True
+    
+    return jsonify({'ok': True, 'carrito': carrito})
+
+
+@app.route('/api/carrito/vaciar', methods=['POST'])
+@login_required
+def api_carrito_vaciar():
+    """API: vacía el carrito."""
+    session['carrito'] = []
+    session.modified = True
+    return jsonify({'ok': True})
+
+
+@app.route('/venta/finalizar', methods=['POST'])
+@login_required
+def venta_finalizar():
+    """Finaliza la venta."""
+    if 'carrito' not in session or not session['carrito']:
+        flash('❌ Carrito vacío', 'error')
+        return redirect(url_for('punto_venta'))
+    
+    cliente_id = int(request.form.get('cliente_id', 0))
+    cliente_nombre = request.form.get('cliente_nombre', 'Mostrador')
+    medio_pago = request.form.get('medio_pago', 'Efectivo')
+    descuento_adicional = float(request.form.get('descuento_adicional', 0))
+    
+    # Obtener temporada actual
+    temporada = db.get_temporada_actual()
+    temporada_nombre = temporada['nombre'] if temporada else ''
+    
+    # Usuario actual
+    usuario = db.get_usuario_by_username(session['username'])
+    vendedor = usuario['nombre_completo'] or usuario['username']
+    
+    try:
+        # Crear venta
+        venta_id = db.crear_venta(
+            items=session['carrito'],
+            cliente_nombre=cliente_nombre,
+            medio_pago=medio_pago,
+            descuento_adicional=descuento_adicional,
+            vendedor=vendedor,
+            cliente_id=cliente_id,
+            temporada=temporada_nombre
+        )
+        
+        # Decrementar stock
+        db.decrementar_stock_venta(venta_id)
+        
+        # Limpiar carrito
+        session['carrito'] = []
+        session.modified = True
+        
+        flash(f'✅ Venta #{venta_id} realizada exitosamente', 'success')
+        return redirect(url_for('ticket', vid=venta_id))
+        
+    except Exception as e:
+        flash(f'❌ Error al procesar venta: {str(e)}', 'error')
+        return redirect(url_for('punto_venta'))
+
+
+@app.route('/ticket/<int:vid>')
+@login_required
+def ticket(vid):
+    """Muestra ticket de venta."""
+    venta = db.get_venta_ticket(vid)
+    if not venta:
+        flash('❌ Ticket no encontrado', 'error')
+        return redirect(url_for('dashboard'))
+    
+    return render_template('ticket.html', venta=venta, app_version=APP_VERSION)
+
+
 
 
 @app.errorhandler(404)

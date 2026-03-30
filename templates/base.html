@@ -35,14 +35,14 @@
 
             <li class="nav-header">Operaciones</li>
             <li class="nav-item">
-                <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#collapseVentas">
+                <a class="nav-link {% if request.endpoint in ['punto_venta', 'ticket'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseVentas">
                     <i class="fas fa-shopping-cart"></i>
                     <span>Punto de Venta</span>
                     <i class="fas fa-chevron-down"></i>
                 </a>
-                <div class="collapse" id="collapseVentas">
+                <div class="collapse {% if request.endpoint in ['punto_venta', 'ticket'] %}show{% endif %}" id="collapseVentas">
                     <ul class="nav flex-column ms-3">
-                        <li class="nav-item"><a class="nav-link" href="#">Nueva Venta</a></li>
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'punto_venta' %}active{% endif %}" href="{{ url_for('punto_venta') }}">Nueva Venta</a></li>
                         <li class="nav-item"><a class="nav-link" href="#">Historial</a></li>
                     </ul>
                 </div>
@@ -107,12 +107,6 @@
                 </a>
             </li>
 
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'licencia' %}active{% endif %}" href="{{ url_for('licencia') }}">
-                    <i class="fas fa-key"></i>
-                    <span>Licencia</span>
-                </a>
-            </li>
             {% endif %}
         </ul>
 
