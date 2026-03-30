@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}{{ accion }} Proveedor - Nexar Tienda{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-truck text-primary me-2"></i>
+                        {{ accion }} Proveedor
+                    </h1>
+                    <p class="text-muted mb-0">Completa los datos del proveedor</p>
+                </div>
+                <a href="{{ url_for('proveedores') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>
+                    Volver
+                </a>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" class="row g-3">
+                        <div class="col-md-6">
+                            <label for="nombre" class="form-label">Nombre</label>
+                            <input type="text" class="form-control" id="nombre" name="nombre" required
+                                   value="{{ proveedor.nombre if proveedor else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="cuit" class="form-label">CUIT</label>
+                            <input type="text" class="form-control" id="cuit" name="cuit"
+                                   value="{{ proveedor.cuit if proveedor else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="telefono" class="form-label">Teléfono</label>
+                            <input type="text" class="form-control" id="telefono" name="telefono"
+                                   value="{{ proveedor.telefono if proveedor else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email"
+                                   value="{{ proveedor.email if proveedor else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="dias_credito" class="form-label">Días de crédito</label>
+                            <input type="number" class="form-control" id="dias_credito" name="dias_credito" min="0"
+                                   value="{{ proveedor.dias_credito if proveedor else 30 }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Activo</label>
+                            <select class="form-select" name="activo">
+                                <option value="1" {% if proveedor and proveedor.activo == 1 %}selected{% endif %}>Activo</option>
+                                <option value="0" {% if proveedor and proveedor.activo == 0 %}selected{% endif %}>Inactivo</option>
+                            </select>
+                        </div>
+
+                        <div class="col-12 text-end">
+                            <button type="submit" class="btn btn-primary">{{ accion }} proveedor</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

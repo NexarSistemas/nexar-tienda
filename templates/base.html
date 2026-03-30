@@ -85,10 +85,17 @@
             </li>
 
             <li class="nav-item">
-                <a class="nav-link" href="#">
+                <a class="nav-link {% if request.endpoint in ['proveedores', 'proveedor_nuevo', 'proveedor_editar', 'proveedor_detalle', 'proveedor_eliminar'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseProveedores">
                     <i class="fas fa-truck"></i>
                     <span>Proveedores</span>
+                    <i class="fas fa-chevron-down"></i>
                 </a>
+                <div class="collapse {% if request.endpoint in ['proveedores', 'proveedor_nuevo', 'proveedor_editar', 'proveedor_detalle', 'proveedor_eliminar'] %}show{% endif %}" id="collapseProveedores">
+                    <ul class="nav flex-column ms-3">
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'proveedores' %}active{% endif %}" href="{{ url_for('proveedores') }}">Lista</a></li>
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'proveedor_nuevo' %}active{% endif %}" href="{{ url_for('proveedor_nuevo') }}">Nuevo</a></li>
+                    </ul>
+                </div>
             </li>
 
             {% if session['user']['rol'] == 'admin' %}

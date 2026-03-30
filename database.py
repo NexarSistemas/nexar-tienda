@@ -281,6 +281,18 @@ def init_db():
             observaciones TEXT DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS cc_proveedores_mov (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proveedor_id INTEGER REFERENCES proveedores(id),
+            fecha TEXT,
+            tipo TEXT DEFAULT 'Compra',
+            numero_comprobante TEXT DEFAULT '',
+            debe REAL DEFAULT 0,
+            haber REAL DEFAULT 0,
+            vencimiento TEXT DEFAULT '',
+            observaciones TEXT DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS facturas_proveedores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             proveedor_id INTEGER REFERENCES proveedores(id),
@@ -920,6 +932,68 @@ def update_proveedor(pid, data):
          int(data.get('dias_credito', 30)), int(data.get('activo', 1)), pid),
         fetchall=False, commit=True
     )
+
+
+def get_saldo_proveedor(pid):
+    """Calcula saldo de cuenta corriente del proveedor."""
+    r = q(
+        "SELECT COALESCE(SUM(debe),0)-COALESCE(SUM(haber),0) as saldo FROM cc_proveedores_mov WHERE proveedor_id=?",
+        (pid,), fetchone=True
+    )
+    return r['saldo'] if r else 0
+
+
+def get_movimientos_proveedor(pid, limit=50):
+    """Obtiene movimientos de cuenta corriente del proveedor."""
+    return q(
+        """SELECT * FROM cc_proveedores_mov 
+        WHERE proveedor_id=? 
+        ORDER BY fecha DESC, id DESC 
+        LIMIT ?""",
+        (pid, limit)
+    )
+
+
+def agregar_movimiento_proveedor(pid, tipo, numero_comprobante, debe=0, haber=0, vencimiento='', observaciones=''):
+    """Agrega un movimiento a la cuenta corriente del proveedor."""
+    fecha = datetime.now().strftime('%Y-%m-%d')
+    q(
+        """INSERT INTO cc_proveedores_mov 
+        (proveedor_id, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (pid, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones),
+        commit=True
+    )
+
+
+def get_historial_compras_proveedor(pid, limit=20):
+    """Obtiene historial de compras del proveedor."""
+    return q(
+        """SELECT c.* FROM compras c 
+        WHERE c.proveedor_id = ? 
+        ORDER BY c.fecha DESC, c.id DESC 
+        LIMIT ?""",
+        (pid, limit)
+    )
+
+
+def get_estadisticas_proveedor(pid):
+    """Obtiene estadísticas de un proveedor."""
+    total_compras = q(
+        "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM compras WHERE proveedor_id=?",
+        (pid,), fetchone=True
+    )
+
+    ultima_compra = q(
+        "SELECT fecha, total FROM compras WHERE proveedor_id=? ORDER BY fecha DESC LIMIT 1",
+        (pid,), fetchone=True
+    )
+
+    return {
+        'total_compras': total_compras['total'],
+        'monto_total': total_compras['monto'],
+        'ultima_compra': ultima_compra
+    }
 
 
 # ─── VENTAS ──────────────────────────────────────────────────────────────────

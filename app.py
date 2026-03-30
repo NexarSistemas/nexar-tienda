@@ -615,6 +615,169 @@ def cliente_eliminar(cid):
 
     return redirect(url_for('clientes'))
 
+
+# ─── PROVEEDORES (PASO 8) ───────────────────────────────────────────────────
+
+@app.route('/proveedores')
+@login_required
+def proveedores():
+    """Lista de proveedores con búsqueda."""
+    buscar = request.args.get('q', '').strip()
+    proveedores_list = db.get_proveedores(search=buscar)
+    return render_template(
+        'proveedores.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        proveedores=proveedores_list,
+        buscar=buscar
+    )
+
+
+@app.route('/proveedores/nuevo', methods=['GET', 'POST'])
+@login_required
+def proveedor_nuevo():
+    """Crear nuevo proveedor."""
+    if request.method == 'POST':
+        try:
+            data = request.form.to_dict()
+
+            # Validación
+            if not data.get('nombre', '').strip():
+                flash('❌ El nombre del proveedor es requerido.', 'danger')
+                return redirect(url_for('proveedor_nuevo'))
+
+            # Verificar límite de proveedores (según tier de licencia)
+            limite_check = db.check_license_limits('proveedores')
+            if not limite_check['ok']:
+                flash(f"❌ {limite_check['message']}", 'danger')
+                return redirect(url_for('proveedores'))
+
+            # Crear proveedor
+            db.add_proveedor(data)
+            flash('✅ Proveedor creado exitosamente.', 'success')
+            return redirect(url_for('proveedores'))
+
+        except Exception as e:
+            flash(f'❌ Error al crear proveedor: {str(e)}', 'danger')
+            return redirect(url_for('proveedor_nuevo'))
+
+    return render_template(
+        'proveedor_form.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        proveedor=None,
+        accion='Crear'
+    )
+
+
+@app.route('/proveedores/<int:pid>/editar', methods=['GET', 'POST'])
+@login_required
+def proveedor_editar(pid):
+    """Editar proveedor existente."""
+    proveedor = db.get_proveedor(pid)
+    if not proveedor:
+        flash('❌ Proveedor no encontrado.', 'danger')
+        return redirect(url_for('proveedores'))
+
+    if request.method == 'POST':
+        try:
+            data = request.form.to_dict()
+
+            if not data.get('nombre', '').strip():
+                flash('❌ El nombre del proveedor es requerido.', 'danger')
+                return redirect(url_for('proveedor_editar', pid=pid))
+
+            db.update_proveedor(pid, data)
+            flash('✅ Proveedor actualizado exitosamente.', 'success')
+            return redirect(url_for('proveedores'))
+
+        except Exception as e:
+            flash(f'❌ Error al actualizar proveedor: {str(e)}', 'danger')
+            return redirect(url_for('proveedor_editar', pid=pid))
+
+    return render_template(
+        'proveedor_form.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        proveedor=proveedor,
+        accion='Editar'
+    )
+
+
+@app.route('/proveedores/<int:pid>')
+@login_required
+def proveedor_detalle(pid):
+    """Detalle de proveedor con cuenta corriente."""
+    proveedor = db.get_proveedor(pid)
+    if not proveedor:
+        flash('❌ Proveedor no encontrado.', 'danger')
+        return redirect(url_for('proveedores'))
+
+    saldo = db.get_saldo_proveedor(pid)
+    movimientos = db.get_movimientos_proveedor(pid)
+    estadisticas = db.get_estadisticas_proveedor(pid)
+    historial_compras = db.get_historial_compras_proveedor(pid, limit=10)
+
+    return render_template(
+        'proveedor_detalle.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        proveedor=proveedor,
+        saldo=saldo,
+        movimientos=movimientos,
+        estadisticas=estadisticas,
+        historial_compras=historial_compras
+    )
+
+
+@app.route('/proveedores/<int:pid>/movimiento', methods=['POST'])
+@login_required
+def proveedor_agregar_movimiento(pid):
+    """Agregar movimiento a cuenta corriente."""
+    proveedor = db.get_proveedor(pid)
+    if not proveedor:
+        flash('❌ Proveedor no encontrado.', 'danger')
+        return redirect(url_for('proveedores'))
+
+    try:
+        tipo = request.form.get('tipo')
+        numero_comprobante = request.form.get('numero_comprobante', '').strip()
+        debe = float(request.form.get('debe', 0))
+        haber = float(request.form.get('haber', 0))
+        vencimiento = request.form.get('vencimiento', '').strip()
+        observaciones = request.form.get('observaciones', '').strip()
+
+        if not tipo:
+            flash('❌ El tipo de movimiento es requerido.', 'danger')
+            return redirect(url_for('proveedor_detalle', pid=pid))
+
+        db.agregar_movimiento_proveedor(pid, tipo, numero_comprobante, debe, haber, vencimiento, observaciones)
+        flash('✅ Movimiento agregado exitosamente.', 'success')
+
+    except Exception as e:
+        flash(f'❌ Error al agregar movimiento: {str(e)}', 'danger')
+
+    return redirect(url_for('proveedor_detalle', pid=pid))
+
+
+@app.route('/proveedores/<int:pid>/eliminar', methods=['POST'])
+@login_required
+def proveedor_eliminar(pid):
+    """Eliminar (desactivar) proveedor."""
+    proveedor = db.get_proveedor(pid)
+    if not proveedor:
+        flash('❌ Proveedor no encontrado.', 'danger')
+        return redirect(url_for('proveedores'))
+
+    try:
+        db.update_proveedor(pid, {**proveedor, 'activo': 0})
+        flash(f"✅ Proveedor '{proveedor['nombre']}' desactivado.", 'success')
+    except Exception as e:
+        flash(f'❌ Error al desactivar proveedor: {str(e)}', 'danger')
+
+    return redirect(url_for('proveedores'))
+
+
 @app.route('/stock', methods=['GET'])
 @login_required
 def stock():
