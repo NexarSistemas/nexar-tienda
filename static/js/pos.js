@@ -70,6 +70,10 @@ document.addEventListener('DOMContentLoaded', function() {
         stockDisponibleSpan.textContent = stock;
         modalCantidad.show();
     }
+    
+    // Exponer a nivel global para que los onclick de los resultados funcionen
+    window.agregarProducto = agregarProducto;
+    window.quitarDelCarrito = quitarDelCarrito;
 
     function agregarAlCarrito() {
         const cantidad = parseFloat(cantidadInput.value);
@@ -256,13 +260,3 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ─── FUNCIONES GLOBALES ───────────────────────────────────────────────────
-
-function agregarProducto(productoId, descripcion, stock) {
-    // Esta función es llamada desde el HTML generado dinámicamente
-    window.pos_agregarProducto(productoId, descripcion, stock);
-}
-
-function quitarDelCarrito(productoId) {
-    // Esta función es llamada desde el HTML generado dinámicamente
-    window.pos_quitarDelCarrito(productoId);
-}

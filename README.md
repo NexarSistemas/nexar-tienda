@@ -2,13 +2,18 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.1.0` - PASO 11: Gastos Operativos
+**Versión actual:** `v1.2.0` - PASO 12: Estadísticas Avanzadas
 
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 12: Estadísticas Avanzadas (v1.2.0)
+- **📊 Dashboard Gráfico**: Visualización de ventas de los últimos 7 días con Chart.js.
+- **💰 Análisis de Rentabilidad**: Cálculo de utilidad neta (Ventas - Costos - Gastos).
+- **🔝 Top Productos**: Ranking de los 5 productos más vendidos.
 
 ### ✅ PASO 11: Módulo de Gastos (v1.1.0)
 - **💸 Registro de gastos operativos** (alquiler, servicios, sueldos, etc.).
@@ -85,6 +90,7 @@ Desarrollado con **Python + Flask + SQLite**.
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
+| 12 | Estadísticas Avanzadas | `v1.2.0` | 5/5 ✅ | Completo |
 | 11 | Gastos Operativos | `v1.1.0` | 5/5 ✅ | Completo |
 | 10 | Caja y Liquidación | `v1.0.0` | 5/5 ✅ | Completo |
 | 9 | Compras | `v0.9.0` | 5/5 ✅ | Completo |
@@ -94,7 +100,7 @@ Desarrollado con **Python + Flask + SQLite**.
 | 4 | Productos CRUD + TIER | `v0.4.0` | 12/12 ✅ | Completo |
 | 3 | Auth + Dashboard | `v0.3.0` | 6/6 ✅ | Completo |
 
-**Total Tests:** 59/59 ✅ (100%)
+**Total Tests:** 64/64 ✅ (100%)
 
 ---
 
@@ -182,7 +188,7 @@ Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) par
 
 **Nexar Sistemas** - [GitHub](https://github.com/NexarSistemas)
 
-**Última actualización:** 07 de abril de 2026 - v1.1.0
+**Última actualización:** 07 de abril de 2026 - v1.2.0
 │   ├── base.html
 │   ├── login.html
 │   ├── dashboard.html

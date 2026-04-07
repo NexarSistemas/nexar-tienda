@@ -4,6 +4,69 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.2.0] - 07 Abril 2026 - Estadísticas Avanzadas
+
+### ✨ Características Nuevas
+- **Dashboard Gráfico**: Visualización de tendencias de ventas de los últimos 7 días utilizando Chart.js.
+- **Análisis de Rentabilidad**: Cálculo automatizado de utilidad neta (Ingresos - Costo de Mercadería - Gastos Operativos).
+- **Top de Ventas**: Ranking de los 5 productos más vendidos por cantidad y recaudación.
+- **Distribución de Pagos**: Gráfico de torta/doughnut para visualizar el uso de diferentes medios de pago.
+
+### 🛠️ Cambios Técnicos
+- **database.py**: 
+  - Nuevas funciones analíticas: `get_stats_rentabilidad()` y `get_top_productos_vendidos()`.
+- **app.py**: 
+  - Nueva ruta `/reportes` (protegida para administradores).
+  - Procesamiento de series de tiempo para gráficos de barras y líneas.
+- **templates**: 
+  - Nuevo template `reportes.html` con integración de Chart.js.
+
+---
+
+## [1.1.0] - 07 Abril 2026 - Módulo de Gastos Operativos
+
+### ✨ Características Nuevas
+- **Gestión de Gastos**: Registro de egresos no relacionados con mercadería (servicios, alquiler, sueldos).
+- **Integración con Caja**: Los gastos abonados en "Efectivo" generan automáticamente un movimiento de egreso en la caja abierta.
+- **Categorización**: Clasificación de gastos para reportes financieros.
+- **Filtros**: Búsqueda por descripción, proveedor y rangos de fechas.
+
+### 🛠️ Cambios Técnicos
+- **database.py**: 
+  - Implementación de la tabla `gastos` y funciones CRUD asociadas.
+- **app.py**: 
+  - Rutas `/gastos`, `/gastos/nuevo` y `/gastos/<id>/eliminar`.
+  - Lógica de descuento automático en `caja_movimientos`.
+- **templates**: 
+  - `gastos.html` y `gasto_form.html`.
+
+---
+
+## [1.0.0] - 07 Abril 2026 - Release Oficial: Caja y Liquidación
+
+### ✨ Características Nuevas
+- **Caja Diaria**: Control de apertura con saldo inicial y cierre con arqueo/liquidación.
+- **Movimientos de Caja**: Registro de ingresos y egresos manuales con motivo y hora.
+- **Integración POS**: Las ventas en efectivo se registran automáticamente como movimientos de entrada en la caja activa.
+- **Historial de Cierres**: Auditoría de los últimos 10 arqueos de caja realizados.
+
+### 🛠️ Cambios Técnicos
+- **database.py**: 
+  - Nuevas tablas `caja` y `caja_movimientos`.
+  - Centralización de DDLs en `init_db`.
+  - Normalización de la función `next_ticket()` para evitar saltos en la numeración.
+- **app.py**: 
+  - Rutas `/caja`, `/caja/abrir`, `/caja/movimiento` y `/caja/cerrar`.
+  - Modificación de la ruta de finalización de venta para interactuar con la caja activa.
+- **static/js/pos.js**: 
+  - Corrección de visibilidad de funciones globales y mapeo de campos JSON.
+- **templates**: 
+  - Nuevo template `caja.html`.
+  - Integración del módulo en el sidebar de `base.html`.
+
+### 🧪 Tests
+- ✅ 100% de cobertura en flujos de apertura, venta y arqueo.
+
 ## [0.9.0] - 30 Marzo 2026 - Módulo de Compras
 
 ### ✨ Características Nuevas

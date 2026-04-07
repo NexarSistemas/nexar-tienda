@@ -1093,6 +1093,10 @@ def api_carrito_agregar():
     pid = data.get('producto_id')
     cantidad = float(data.get('cantidad', 1))
     
+    # Si es una petición de carga inicial (-1) devolver carrito actual
+    if pid == -1:
+        return jsonify({'ok': True, 'carrito': session.get('carrito', [])})
+
     if not pid or cantidad <= 0:
         return jsonify({'ok': False, 'error': 'Datos inválidos'})
     
@@ -1408,6 +1412,38 @@ def gasto_eliminar(gid):
     except Exception as e:
         flash(f'❌ Error al eliminar: {str(e)}', 'danger')
     return redirect(url_for('gastos'))
+
+# ─── REPORTES (PASO 12) ──────────────────────────────────────────────────────
+
+@app.route('/reportes')
+@admin_required
+def reportes():
+    """Vista de estadísticas y reportes gráficos."""
+    mes_actual = datetime.now().strftime('%Y-%m')
+    rentabilidad = db.get_stats_rentabilidad(mes_actual)
+    top_productos = db.get_top_productos_vendidos(5)
+    
+    # Datos para gráfico de ventas últimos 7 días
+    ventas_7_dias = []
+    for i in range(6, -1, -1):
+        dia = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+        monto = db.q("SELECT COALESCE(SUM(total), 0) FROM ventas WHERE fecha = ?", (dia,), fetchone=True)[0]
+        ventas_7_dias.append({'dia': dia[8:], 'monto': monto})
+
+    # Distribución de medios de pago (Mes actual)
+    pagos = db.q("""
+        SELECT medio_pago, COUNT(*) as cant, SUM(total) as monto 
+        FROM ventas WHERE fecha LIKE ? GROUP BY medio_pago
+    """, (f"{mes_actual}%",))
+
+    return render_template(
+        'reportes.html',
+        app_version=APP_VERSION,
+        rentabilidad=rentabilidad,
+        top_productos=top_productos,
+        ventas_7_dias=ventas_7_dias,
+        pagos=pagos
+    )
 
 # ─── INÍCIO ────────────────────────────────────────────────────────────────────
 

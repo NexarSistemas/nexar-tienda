@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <h2 class="text-navy mb-4"><i class="fas fa-chart-line me-2"></i>Reportes y Estadísticas</h2>
+
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 bg-primary text-white">
+                <div class="card-body">
+                    <h6>Ventas Mes Actual</h6>
+                    <h3>{{ rentabilidad.ingresos | fmt_ars }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 bg-danger text-white">
+                <div class="card-body">
+                    <h6>Gastos Mes Actual</h6>
+                    <h3>- {{ rentabilidad.gastos_operativos | fmt_ars }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 bg-info text-white">
+                <div class="card-body">
+                    <h6>Costo Mercadería</h6>
+                    <h3>- {{ rentabilidad.costo_mercaderia | fmt_ars }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 {% if rentabilidad.utilidad_neta >= 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
+                <div class="card-body">
+                    <h6>Utilidad Neta</h6>
+                    <h3>{{ rentabilidad.utilidad_neta | fmt_ars }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white"><h5 class="mb-0">Ventas (Últimos 7 días)</h5></div>
+                <div class="card-body">
+                    <canvas id="chartVentas" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white"><h5 class="mb-0">Medios de Pago</h5></div>
+                <div class="card-body">
+                    <canvas id="chartPagos"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white"><h5 class="mb-0">Top 5 Productos más Vendidos</h5></div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Producto</th>
+                                <th class="text-center">Cantidad</th>
+                                <th class="text-end">Total Recaudado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in top_productos %}
+                            <tr>
+                                <td>{{ p.descripcion }}</td>
+                                <td class="text-center">{{ p.total_vendido }}</td>
+                                <td class="text-end fw-bold">{{ p.recaudado | fmt_ars }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Gráfico de Ventas
+    const ctxVentas = document.getElementById('chartVentas').getContext('2d');
+    new Chart(ctxVentas, {
+        type: 'line',
+        data: {
+            labels: {{ ventas_7_dias | map(attribute='dia') | list | tojson }},
+            datasets: [{
+                label: 'Monto Ventas ($)',
+                data: {{ ventas_7_dias | map(attribute='monto') | list | tojson }},
+                borderColor: '#1e3a5f',
+                backgroundColor: 'rgba(30, 58, 95, 0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+    });
+
+    // Gráfico de Pagos
+    const ctxPagos = document.getElementById('chartPagos').getContext('2d');
+    new Chart(ctxPagos, {
+        type: 'doughnut',
+        data: {
+            labels: {{ pagos | map(attribute='medio_pago') | list | tojson }},
+            datasets: [{
+                data: {{ pagos | map(attribute='monto') | list | tojson }},
+                backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b']
+            }]
+        },
+        options: { responsive: true }
+    });
+</script>
+{% endblock %}

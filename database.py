@@ -454,6 +454,9 @@ def _seed_changelog(c):
         ('1.1.0', '2026-04-07', 'Nueva función',
          'Paso 11: Gastos Operativos',
          'Registro de gastos operativos con integración a caja diaria y categorización de egresos.'),
+        ('1.2.0', '2026-04-07', 'Nueva función',
+         'Paso 12: Estadísticas Avanzadas',
+         'Dashboard con gráficos interactivos, análisis de rentabilidad y top de productos vendidos.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -531,7 +534,6 @@ def check_license_limits(limit_key: str, current_count: int = None) -> dict:
         if limit_key == 'productos':
             current_count = q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchone=True)[0]
         elif limit_key == 'clientes':
-            current_count = q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchall=False)
             current_count = q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchone=True)[0]
         elif limit_key == 'proveedores':
             current_count = q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchone=True)[0]
@@ -573,12 +575,28 @@ def next_codigo():
     return new_code
 
 
+# ─── TICKET AUTOMÁTICO ───────────────────────────────────────────────────────
+
 def next_ticket():
-    """Devuelve el próximo número de ticket."""
-    cfg = get_config()
-    n = int(cfg.get('siguiente_ticket', 1001))
-    set_config({'siguiente_ticket': str(n + 1)})
-    return n
+    """Devuelve el próximo número de ticket y lo actualiza en la configuración.
+    Asegura que el número de ticket siempre sea mayor que el último registrado en ventas."""
+    conn = get_conn()
+    c = conn.cursor()
+
+    # Obtener el último número de ticket de la tabla de ventas
+    last_sale_ticket = c.execute("SELECT MAX(numero_ticket) as max FROM ventas").fetchone()['max'] or 0
+
+    # Obtener el siguiente número de ticket de la configuración
+    cfg_next_ticket = int(c.execute("SELECT valor FROM config WHERE clave='siguiente_ticket'").fetchone()['valor'] or 1001)
+
+    # El próximo ticket debe ser el mayor entre el último de ventas + 1 y el de la configuración
+    next_num = max(last_sale_ticket + 1, cfg_next_ticket)
+
+    # Actualizar la configuración para el siguiente ticket
+    c.execute("INSERT OR REPLACE INTO config VALUES ('siguiente_ticket', ?)", (str(next_num + 1),))
+    conn.commit()
+    conn.close()
+    return next_num
 
 
 # ─── CATEGORÍAS ──────────────────────────────────────────────────────────────
@@ -1316,26 +1334,25 @@ def get_dashboard_stats():
     }
 
 
-# ─── PUNTO DE VENTA ──────────────────────────────────────────────────────────
-
-def next_ticket():
-    """Devuelve el próximo número de ticket."""
-    ultimo = q("SELECT MAX(numero_ticket) as max FROM ventas", fetchone=True)
-    return (ultimo['max'] or 0) + 1
-
-
 def buscar_productos_pos(search):
     """Busca productos para POS por nombre/código/categoría."""
     sql = """SELECT p.id, p.codigo_interno, p.descripcion, p.categoria, p.unidad,
                     p.precio_venta, s.stock_actual
              FROM productos p
              JOIN stock s ON s.producto_id = p.id
-             WHERE p.activo=1 AND s.stock_actual > 0"""
+             WHERE p.activo=1""" 
     params = []
     if search:
         sql += " AND (p.descripcion LIKE ? OR p.categoria LIKE ? OR p.codigo_interno LIKE ?)"
         params += [f'%{search}%'] * 3
     sql += " ORDER BY p.descripcion LIMIT 50"
+    
+    # DEBUG: Descomenta las siguientes líneas para ver la consulta SQL y los parámetros
+    # import os
+    # if os.environ.get('FLASK_DEBUG') == '1': # Solo imprime si Flask está en modo debug
+    #     print(f"DEBUG SQL (buscar_productos_pos): {sql}")
+    #     print(f"DEBUG Params (buscar_productos_pos): {params}")
+    
     return q(sql, params)
 
 
@@ -1367,3 +1384,45 @@ def get_venta_ticket(vid):
         venta = dict(venta)
         venta['detalle'] = get_venta_detalle(vid)
     return venta
+
+# ─── REPORTES Y ESTADÍSTICAS (PASO 12) ───────────────────────────────────────
+
+def get_stats_rentabilidad(mes_actual=None):
+    """Calcula la rentabilidad: Ingresos - Costos - Gastos."""
+    if not mes_actual:
+        mes_actual = datetime.now().strftime('%Y-%m')
+    
+    # Total ventas (bruto)
+    ventas = q("SELECT COALESCE(SUM(total), 0) as total FROM ventas WHERE fecha LIKE ?", (f"{mes_actual}%",), fetchone=True)['total']
+    
+    # Costo de lo vendido (para calcular utilidad bruta)
+    # Necesitamos un join con productos para obtener el costo al momento de la venta o el actual
+    costo_ventas = q("""
+        SELECT COALESCE(SUM(vd.cantidad * p.costo), 0) as total_costo
+        FROM ventas_detalle vd
+        JOIN ventas v ON v.id = vd.venta_id
+        JOIN productos p ON p.id = vd.producto_id
+        WHERE v.fecha LIKE ?
+    """, (f"{mes_actual}%",), fetchone=True)['total_costo']
+    
+    # Gastos operativos
+    gastos = q("SELECT COALESCE(SUM(monto), 0) as total FROM gastos WHERE fecha LIKE ?", (f"{mes_actual}%",), fetchone=True)['total']
+    
+    utilidad_neta = ventas - costo_ventas - gastos
+    
+    return {
+        'ingresos': ventas,
+        'costo_mercaderia': costo_ventas,
+        'gastos_operativos': gastos,
+        'utilidad_neta': utilidad_neta
+    }
+
+def get_top_productos_vendidos(limit=5):
+    """Obtiene los productos más vendidos por cantidad."""
+    return q("""
+        SELECT descripcion, SUM(cantidad) as total_vendido, SUM(subtotal) as recaudado
+        FROM ventas_detalle
+        GROUP BY producto_id
+        ORDER BY total_vendido DESC
+        LIMIT ?
+    """, (limit,))
