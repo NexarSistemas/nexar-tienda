@@ -449,6 +449,33 @@ def api_productos():
 
 # ─── LICENCIAS ──────────────────────────────────────────────────────────────
 
+@app.route('/licencia', methods=['GET', 'POST'])
+@admin_required
+def licencia():
+    """Gestión de licencias y tiers del sistema."""
+    if request.method == 'POST':
+        tier = request.form.get('tier', 'DEMO')
+        key = request.form.get('key', '')
+        vencimiento = request.form.get('vencimiento', '')
+        
+        db.activate_license(tier, key, vencimiento)
+        flash(f'✅ Licencia {tier} activada correctamente.', 'success')
+        return redirect(url_for('licencia'))
+
+    licencia_info = db.get_license_info()
+    
+    # Obtener uso actual para las barras de progreso en el template
+    stats_uso = {
+        'productos': db.q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchone=True)[0],
+        'clientes': db.q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchone=True)[0],
+        'proveedores': db.q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchone=True)[0]
+    }
+    
+    return render_template('licencia.html', 
+                         app_version=APP_VERSION, 
+                         licencia=licencia_info,
+                         uso=stats_uso)
+
 # ─── CLIENTES (PASO 7) ──────────────────────────────────────────────────────
 
 @app.route('/clientes')
@@ -1304,7 +1331,83 @@ def jinja_date(fecha_str):
         return datetime.strptime(fecha_str, '%Y-%m-%d').strftime('%d/%m/%Y')
     except:
         return fecha_str
+# ─── GASTOS (PASO 11) ────────────────────────────────────────────────────────
 
+@app.route('/gastos')
+@login_required
+def gastos():
+    """Lista de gastos con filtros."""
+    buscar = request.args.get('q', '').strip()
+    fecha_desde = request.args.get('fecha_desde', '').strip()
+    fecha_hasta = request.args.get('fecha_hasta', '').strip()
+
+    gastos_list = db.get_gastos(search=buscar, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
+    total_gastos = sum(g['monto'] for g in gastos_list)
+
+    return render_template(
+        'gastos.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        gastos=gastos_list,
+        total_gastos=total_gastos,
+        buscar=buscar,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta
+    )
+
+@app.route('/gastos/nuevo', methods=['GET', 'POST'])
+@login_required
+def gasto_nuevo():
+    """Registrar un nuevo gasto operativo."""
+    if request.method == 'POST':
+        try:
+            data = request.form.to_dict()
+            monto = float(data.get('monto', 0))
+            medio_pago = data.get('medio_pago', 'Efectivo')
+            
+            if monto <= 0:
+                flash('❌ El monto del gasto debe ser mayor a cero.', 'danger')
+                return redirect(url_for('gasto_nuevo'))
+
+            # Registrar el gasto en la tabla de gastos
+            db.add_gasto(data)
+
+            # Si el pago es en efectivo, impactar en la caja abierta
+            if medio_pago == 'Efectivo':
+                caja_abierta = db.q("SELECT id FROM caja WHERE estado = 1 LIMIT 1", fetchone=True)
+                if caja_abierta:
+                    db.q("""INSERT INTO caja_movimientos (caja_id, tipo, monto, motivo) 
+                            VALUES (?, 'EGRESO', ?, ?)""", 
+                         (caja_abierta['id'], monto, f"Gasto: {data.get('descripcion')}"), 
+                         commit=True)
+                else:
+                    flash('⚠️ Gasto registrado, pero no se descontó de caja porque no hay una abierta.', 'warning')
+
+            flash('✅ Gasto registrado exitosamente.', 'success')
+            return redirect(url_for('gastos'))
+
+        except Exception as e:
+            flash(f'❌ Error al registrar gasto: {str(e)}', 'danger')
+            return redirect(url_for('gasto_nuevo'))
+
+    return render_template(
+        'gasto_form.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        hoy=datetime.now().strftime('%Y-%m-%d'),
+        accion='Registrar'
+    )
+
+@app.route('/gastos/<int:gid>/eliminar', methods=['POST'])
+@admin_required
+def gasto_eliminar(gid):
+    """Elimina un registro de gasto."""
+    try:
+        db.q("DELETE FROM gastos WHERE id=?", (gid,), commit=True)
+        flash('✅ Registro de gasto eliminado.', 'success')
+    except Exception as e:
+        flash(f'❌ Error al eliminar: {str(e)}', 'danger')
+    return redirect(url_for('gastos'))
 
 # ─── INÍCIO ────────────────────────────────────────────────────────────────────
 
