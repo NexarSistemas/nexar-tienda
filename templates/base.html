@@ -48,6 +48,13 @@
                 </div>
             </li>
 
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'caja' %}active{% endif %}" href="{{ url_for('caja') }}">
+                    <i class="fas fa-cash-register"></i>
+                    <span>Caja Diaria</span>
+                </a>
+            </li>
+
             <li class="nav-header">Gestión</li>
             <li class="nav-item">
                 <a class="nav-link {% if request.endpoint in ['productos', 'producto_nuevo', 'producto_editar', 'producto_eliminar'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseProductos">
@@ -108,6 +115,20 @@
                     <ul class="nav flex-column ms-3">
                         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'compras' %}active{% endif %}" href="{{ url_for('compras') }}">Lista</a></li>
                         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'compra_nueva' %}active{% endif %}" href="{{ url_for('compra_nueva') }}">Nuevo</a></li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint in ['gastos', 'gasto_nuevo'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseGastos">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    <span>Gastos</span>
+                    <i class="fas fa-chevron-down"></i>
+                </a>
+                <div class="collapse {% if request.endpoint in ['gastos', 'gasto_nuevo'] %}show{% endif %}" id="collapseGastos">
+                    <ul class="nav flex-column ms-3">
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'gastos' %}active{% endif %}" href="{{ url_for('gastos') }}">Lista de Gastos</a></li>
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'gasto_nuevo' %}active{% endif %}" href="{{ url_for('gasto_nuevo') }}">Registrar Gasto</a></li>
                     </ul>
                 </div>
             </li>

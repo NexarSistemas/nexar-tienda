@@ -451,6 +451,9 @@ def _seed_changelog(c):
         ('1.0.0', '2026-04-07', 'Lanzamiento Oficial',
          'Paso 10: Caja y Liquidación Diaria',
          'Implementación completa de control de caja, movimientos de efectivo, arqueo diario e integración automática con POS.'),
+        ('1.1.0', '2026-04-07', 'Nueva función',
+         'Paso 11: Gastos Operativos',
+         'Registro de gastos operativos con integración a caja diaria y categorización de egresos.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -526,11 +529,12 @@ def check_license_limits(limit_key: str, current_count: int = None) -> dict:
     if current_count is None:
         # Contar desde BD segun el tipo de limite
         if limit_key == 'productos':
-            current_count = q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchall=False)
+            current_count = q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchone=True)[0]
         elif limit_key == 'clientes':
             current_count = q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchall=False)
+            current_count = q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchone=True)[0]
         elif limit_key == 'proveedores':
-            current_count = q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchall=False)
+            current_count = q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchone=True)[0]
         else:
             current_count = 0
     

@@ -2,13 +2,19 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.0.0` - PASO 10: Caja y Liquidación
+**Versión actual:** `v1.1.0` - PASO 11: Gastos Operativos
 
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 11: Módulo de Gastos (v1.1.0)
+- **💸 Registro de gastos operativos** (alquiler, servicios, sueldos, etc.).
+- **🏷️ Categorización de egresos** para análisis financiero.
+- **🏦 Integración con Caja Diaria**: Los gastos en efectivo restan automáticamente del saldo de caja.
+- **📅 Filtros avanzados** por fecha y descripción.
 
 ### ✅ PASO 10: Caja y Liquidación Diaria (v1.0.0)
 - **💰 Control de apertura y cierre** con saldo inicial y arqueo de caja.
@@ -79,6 +85,7 @@ Desarrollado con **Python + Flask + SQLite**.
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
+| 11 | Gastos Operativos | `v1.1.0` | 5/5 ✅ | Completo |
 | 10 | Caja y Liquidación | `v1.0.0` | 5/5 ✅ | Completo |
 | 9 | Compras | `v0.9.0` | 5/5 ✅ | Completo |
 | 8 | Gestión de Proveedores | `v0.8.0` | 8/8 ✅ | Completo |
@@ -87,7 +94,7 @@ Desarrollado con **Python + Flask + SQLite**.
 | 4 | Productos CRUD + TIER | `v0.4.0` | 12/12 ✅ | Completo |
 | 3 | Auth + Dashboard | `v0.3.0` | 6/6 ✅ | Completo |
 
-**Total Tests:** 54/54 ✅ (100%)
+**Total Tests:** 59/59 ✅ (100%)
 
 ---
 
@@ -107,11 +114,6 @@ Desarrollado con **Python + Flask + SQLite**.
 ---
 
 ## 📋 Próximos Pasos (Roadmap)
-
-### 🔄 PASO 11: Módulo de Gastos (v0.11.0)
-- Registro de gastos operativos
-- Categorización y análisis de gastos
-- Integración con caja diaria
 
 ### 🔄 PASO 12: Estadísticas Avanzadas (v0.12.0)
 - Dashboard con gráficos y métricas
@@ -180,7 +182,7 @@ Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) par
 
 **Nexar Sistemas** - [GitHub](https://github.com/NexarSistemas)
 
-**Última actualización:** 30 de marzo de 2026 - v0.9.0
+**Última actualización:** 07 de abril de 2026 - v1.1.0
 │   ├── base.html
 │   ├── login.html
 │   ├── dashboard.html
