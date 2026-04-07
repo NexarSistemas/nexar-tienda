@@ -182,13 +182,12 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% set saldo_acumulado = 0 %}
+                                {% set running_saldo = namespace(val=saldo) %}
                                 {% for movimiento in movimientos %}
-                                {% set saldo_acumulado = saldo_acumulado + movimiento.debe - movimiento.haber %}
                                 <tr>
                                     <td>{{ movimiento.fecha }}</td>
                                     <td>
-                                        <span class="badge bg-{{ 'danger' if movimiento.tipo == 'Venta' else 'success' if movimiento.tipo == 'Pago' else 'info' }}">
+                                        <span class="badge bg-{{ 'danger' if 'Venta' in movimiento.tipo else 'success' if 'Pago' in movimiento.tipo else 'info' }}">
                                             {{ movimiento.tipo }}
                                         </span>
                                     </td>
@@ -207,11 +206,12 @@
                                         </span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-end fw-bold {{ 'text-danger' if saldo_acumulado > 0 else 'text-success' if saldo_acumulado < 0 else 'text-muted' }}">
-                                        ${{ "%.2f"|format(saldo_acumulado) }}
+                                    <td class="text-end fw-bold {{ 'text-danger' if running_saldo.val > 0 else 'text-success' if running_saldo.val < 0 else 'text-muted' }}">
+                                        ${{ "%.2f"|format(running_saldo.val) }}
                                     </td>
                                     <td>{{ movimiento.observaciones or '-' }}</td>
                                 </tr>
+                                {% set running_saldo.val = running_saldo.val - (movimiento.debe - movimiento.haber) %}
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -246,10 +246,8 @@
                                     <th>Fecha</th>
                                     <th>Hora</th>
                                     <th>Ticket</th>
-                                    <th>Producto</th>
-                                    <th class="text-center">Cant.</th>
-                                    <th class="text-end">Precio</th>
-                                    <th class="text-end">Subtotal</th>
+                                    <th>Resumen Artículos</th>
+                                    <th class="text-end">Total Factura</th>
                                     <th>Medio Pago</th>
                                 </tr>
                             </thead>
@@ -263,10 +261,8 @@
                                             #{{ venta.numero_ticket }}
                                         </a>
                                     </td>
-                                    <td>{{ venta.descripcion }}</td>
-                                    <td class="text-center">{{ venta.cantidad }}</td>
-                                    <td class="text-end">${{ "%.2f"|format(venta.precio_unitario) }}</td>
-                                    <td class="text-end fw-bold">${{ "%.2f"|format(venta.subtotal) }}</td>
+                                    <td>{{ venta.resumen_articulos }}</td>
+                                    <td class="text-end fw-bold">${{ "%.2f"|format(venta.total) }}</td>
                                     <td>
                                         <span class="badge bg-secondary">{{ venta.medio_pago }}</span>
                                     </td>

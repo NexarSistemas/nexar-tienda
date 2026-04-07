@@ -2,7 +2,7 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.5.0` - PASO 15: Financiación y Cobranzas
+**Versión actual:** `v1.5.1` - Fixes en Cuenta Corriente y Saldo
 
 Desarrollado con **Python + Flask + SQLite**.
 
@@ -95,7 +95,7 @@ Desarrollado con **Python + Flask + SQLite**.
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
-| 15 | Financiación y Cobranzas | `v1.5.0` | 5/5 ✅ | Completo |
+| 15 | Financiación y Cobranzas | `v1.5.1` | 5/5 ✅ | Completo |
 | 14 | Gestión de Temporadas | `v1.4.0` | 5/5 ✅ | Completo |
 | 13 | Gestión de Usuarios y Permisos | `v1.3.0` | 5/5 ✅ | Completo |
 | 12 | Estadísticas Avanzadas | `v1.2.0` | 5/5 ✅ | Completo |

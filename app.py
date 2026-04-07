@@ -1374,6 +1374,15 @@ def venta_finalizar():
     medio_pago = request.form.get('medio_pago', 'Efectivo')
     descuento_adicional = float(request.form.get('descuento_adicional', 0))
     
+    # Calcular intereses antes de crear la venta si es cuenta corriente
+    interes_financiacion = 0
+    cuotas = int(request.form.get('cuotas', 1))
+    porcentaje_interes = float(request.form.get('interes_porcentaje', 0))
+    
+    if medio_pago.strip().lower() == 'cuenta corriente' and cliente_id > 0:
+        subtotal_carrito = sum(item['subtotal'] for item in session['carrito'])
+        interes_financiacion = (subtotal_carrito - descuento_adicional) * (porcentaje_interes / 100)
+
     # Obtener temporada actual
     temporada = db.get_temporada_actual()
     temporada_nombre = temporada['nombre'] if temporada else ''
@@ -1391,28 +1400,29 @@ def venta_finalizar():
             descuento_adicional=descuento_adicional,
             vendedor=vendedor,
             cliente_id=cliente_id,
-            temporada=temporada_nombre
+            temporada=temporada_nombre,
+            interes_financiacion=interes_financiacion
         )
         
         # Decrementar stock
         db.decrementar_stock_venta(venta_id)
         
         # Lógica de Cuenta Corriente (Deuda)
-        if medio_pago == 'Cuenta Corriente' and cliente_id > 0:
-            cuotas = int(request.form.get('cuotas', 1))
-            porcentaje_interes = float(request.form.get('interes_porcentaje', 0))
-            
-            total_venta = sum(item['subtotal'] for item in session['carrito']) - descuento_adicional
-            
-            monto_interes = total_venta * (porcentaje_interes / 100)
-            total_final = total_venta + monto_interes
+        if medio_pago.strip().lower() == 'cuenta corriente' and cliente_id > 0:
+            # El total final ya incluye descuento e interés
+            total_final = (sum(item['subtotal'] for item in session['carrito']) - descuento_adicional) + interes_financiacion
             monto_cuota = total_final / cuotas
             
             for i in range(cuotas):
                 # Calcular vencimiento: 30 días adicionales por cada cuota
                 venc = (datetime.now() + timedelta(days=30 * (i + 1))).strftime('%Y-%m-%d')
                 obs = f"Cuota {i+1}/{cuotas} de Venta #{venta_id}"
+                
+                # Construir una observación clara con el descuento reflejado
+                desc_info = f" [Desc: {db.fmt_ars(descuento_adicional)}]" if descuento_adicional > 0 else ""
+                obs = f"Cuota {i+1}/{cuotas} Venta #{venta_id}{desc_info}"
                 if porcentaje_interes > 0: obs += f" (Incluye {porcentaje_interes}% interés)"
+                
                 db.agregar_movimiento_cliente(
                     cid=cliente_id,
                     tipo='Venta (Crédito)',
@@ -1424,10 +1434,10 @@ def venta_finalizar():
                 )
 
         # Registrar en Caja si es Efectivo y hay caja abierta
-        if medio_pago == 'Efectivo':
+        if medio_pago.strip().lower() == 'efectivo':
             caja_abierta = db.q("SELECT id FROM caja WHERE estado = 1 LIMIT 1", fetchone=True)
             if caja_abierta:
-                total_venta = sum(item['subtotal'] for item in session['carrito']) - descuento_adicional
+                total_venta = (sum(item['subtotal'] for item in session['carrito']) - descuento_adicional)
                 db.q("""INSERT INTO caja_movimientos (caja_id, tipo, monto, motivo) 
                         VALUES (?, 'VENTA', ?, ?)""", 
                      (caja_abierta['id'], total_venta, f"Venta #{venta_id}"), 

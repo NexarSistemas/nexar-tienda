@@ -996,16 +996,16 @@ def agregar_movimiento_cliente(cid, tipo, numero_comprobante, debe=0, haber=0, v
 
 
 def get_historial_ventas_cliente(cid, limit=20):
-    """Obtiene historial de ventas de un cliente."""
-    return q(
-        """SELECT v.*, vd.producto_id, vd.descripcion, vd.cantidad, vd.precio_unitario, vd.subtotal
+    """Obtiene historial de ventas de un cliente (una fila por venta con resumen)."""
+    return q("""
+        SELECT v.*, 
+               (SELECT GROUP_CONCAT(descripcion || ' (x' || CAST(cantidad AS INTEGER) || ')', ', ') 
+                FROM ventas_detalle WHERE venta_id = v.id) as resumen_articulos
         FROM ventas v
-        LEFT JOIN ventas_detalle vd ON v.id = vd.venta_id
         WHERE v.cliente_id = ?
         ORDER BY v.fecha DESC, v.id DESC
-        LIMIT ?""",
-        (cid, limit * 10)  # Multiplicar por 10 para incluir detalles
-    )
+        LIMIT ?
+    """, (cid, limit))
 
 
 def get_estadisticas_cliente(cid):
@@ -1169,7 +1169,7 @@ def get_venta_detalle(vid):
     return q("SELECT * FROM ventas_detalle WHERE venta_id=? ORDER BY id", (vid,))
 
 
-def crear_venta(items, cliente_nombre, medio_pago, descuento_adicional, vendedor, cliente_id=0, temporada=''):
+def crear_venta(items, cliente_nombre, medio_pago, descuento_adicional, vendedor, cliente_id=0, temporada='', interes_financiacion=0):
     """Crea una venta con detalle."""
     conn = get_conn()
     c = conn.cursor()
@@ -1180,13 +1180,13 @@ def crear_venta(items, cliente_nombre, medio_pago, descuento_adicional, vendedor
     hora = ahora.strftime('%H:%M:%S')
 
     subtotal = sum(item.get('subtotal', 0) for item in items)
-    total = subtotal - descuento_adicional
+    total = subtotal - descuento_adicional + interes_financiacion
 
     c.execute(
         """INSERT INTO ventas
-        (numero_ticket,fecha,hora,cliente_id,cliente_nombre,medio_pago,subtotal,descuento_adicional,total,vendedor,temporada)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-        (numero_ticket, fecha, hora, cliente_id, cliente_nombre, medio_pago, subtotal, descuento_adicional, total, vendedor, temporada)
+        (numero_ticket,fecha,hora,cliente_id,cliente_nombre,medio_pago,subtotal,descuento_adicional,total,vendedor,temporada,interes_financiacion)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (numero_ticket, fecha, hora, cliente_id, cliente_nombre, medio_pago, subtotal, descuento_adicional, total, vendedor, temporada, interes_financiacion)
     )
     venta_id = c.lastrowid
 

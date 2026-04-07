@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.5.1] - 07 Abril 2026 - Correcciones en CC y Optimización Historial
+
+### 🛠️ Correcciones y Mejoras
+- **Migraciones Automáticas**: Se añadió lógica en `init_db` para crear columnas faltantes (`venta_id`, `interes_financiacion`) en bases de datos existentes.
+- **Optimización del Historial**: Se modificó la consulta SQL para agrupar artículos por ticket, evitando filas duplicadas en el detalle del cliente.
+- **Cálculo de Saldo**: Se corrigió la lógica de visualización del saldo acumulado en el frontend usando `namespace` de Jinja2.
+- **Normalización de Pagos**: Se implementó `.strip().lower()` en las validaciones de medio de pago para asegurar el impacto correcto en Caja y Cuenta Corriente.
+- **Visualización**: Se añadieron etiquetas de colores (badges) dinámicas para distinguir deudas de pagos en el historial.
+
+---
+
 ## [1.5.0] - 10 Abril 2026 - Financiación y Cobranzas Imputadas
 
 ### ✨ Características Nuevas
