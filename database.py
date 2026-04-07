@@ -199,6 +199,7 @@ def init_db():
             subtotal REAL DEFAULT 0,
             descuento_adicional REAL DEFAULT 0,
             total REAL DEFAULT 0,
+            interes_financiacion REAL DEFAULT 0,
             vendedor TEXT DEFAULT '',
             temporada TEXT DEFAULT ''
         );
@@ -291,6 +292,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS cc_clientes_mov (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             cliente_id INTEGER REFERENCES clientes(id),
+            venta_id INTEGER REFERENCES ventas(id) ON DELETE SET NULL,
             fecha TEXT,
             tipo TEXT DEFAULT 'Venta',
             numero_comprobante TEXT DEFAULT '',
@@ -520,6 +522,9 @@ def _seed_changelog(c):
         ('1.4.0', '2026-04-09', 'Nueva función',
          'Paso 14: Gestión de Temporadas',
          'CRUD completo de temporadas y vinculación de productos estacionales.'),
+        ('1.5.0', '2026-04-10', 'Nueva función',
+         'Paso 15: Financiación y Cobranzas Imputadas',
+         'Implementación de intereses por cuotas y vinculación de tickets en Cuenta Corriente.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -966,14 +971,15 @@ def get_movimientos_cliente(cid, limit=50):
     )
 
 
-def agregar_movimiento_cliente(cid, tipo, numero_comprobante, debe=0, haber=0, vencimiento='', observaciones=''):
+def agregar_movimiento_cliente(cid, tipo, numero_comprobante, debe=0, haber=0, vencimiento='', observaciones='', fecha=None, venta_id=None):
     """Agrega un movimiento a la cuenta corriente del cliente."""
-    fecha = datetime.now().strftime('%Y-%m-%d')
+    if not fecha:
+        fecha = datetime.now().strftime('%Y-%m-%d')
     q(
         """INSERT INTO cc_clientes_mov 
-        (cliente_id, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (cid, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones),
+        (cliente_id, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones, venta_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (cid, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones, venta_id),
         commit=True
     )
 

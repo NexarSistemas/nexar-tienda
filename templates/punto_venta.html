@@ -80,6 +80,21 @@
                                 <option value="Cuenta Corriente">Cuenta Corriente</option>
                             </select>
                         </div>
+
+                        <div class="mb-3" id="div-cuotas" style="display: none;">
+                            <label class="form-label text-primary fw-bold">Plan de Cuotas (CC)</label>
+                            <select name="cuotas" class="form-select border-primary">
+                                <option value="1">1 Cuota (Saldo total)</option>
+                                <option value="2">2 Cuotas mensuales</option>
+                                <option value="3">3 Cuotas mensuales</option>
+                                <option value="6">6 Cuotas mensuales</option>
+                            </select>
+                            <div class="mt-2">
+                                <label class="form-label small">Interés por financiación (%)</label>
+                                <input type="number" name="interes_porcentaje" class="form-control form-control-sm border-primary" value="0" min="0" step="0.1">
+                            </div>
+                            <small class="text-muted d-block mt-1">Se generarán vencimientos cada 30 días.</small>
+                        </div>
                         
                         <div class="d-grid gap-2">
                             <button type="submit" id="btn-finalizar" class="btn btn-success" disabled>

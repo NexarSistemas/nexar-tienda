@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.5.0] - 10 Abril 2026 - Financiación y Cobranzas Imputadas
+
+### ✨ Características Nuevas
+- **Intereses por Financiación**: Posibilidad de aplicar un % de interés a las ventas en cuotas en Cuenta Corriente.
+- **Vínculo Ticket-Movimiento**: Cada deuda generada en CC ahora guarda el ID de la venta original para facilitar auditorías.
+- **Cálculo de Cuotas Automatizado**: El sistema reparte el total + intereses proporcionalmente en el tiempo.
+
+### 🛠️ Cambios Técnicos
+- **database.py**: Alteración de tablas `ventas` y `cc_clientes_mov` para soportar `venta_id` e `interes_financiacion`.
+- **app.py**: Nueva lógica de cálculo de montos en `venta_finalizar`.
+
 ## [1.4.0] - 09 Abril 2026 - Gestión de Temporadas
 
 ### ✨ Características Nuevas
@@ -60,7 +71,7 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
-**Última actualización:** 08 de abril de 2026
+**Última actualización:** 10 de abril de 2026
 
 ## [1.1.0] - 07 Abril 2026 - Módulo de Gastos Operativos
 

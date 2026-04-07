@@ -2,13 +2,18 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.2.0` - PASO 12: Estadísticas Avanzadas
+**Versión actual:** `v1.5.0` - PASO 15: Financiación y Cobranzas
 
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 15: Financiación y Cobranzas (v1.5.0)
+- **💳 Intereses en Cuotas**: Aplicación de recargos financieros en ventas a crédito.
+- **🔗 Trazabilidad de Deuda**: Vinculación de movimientos de CC con tickets de venta.
+- **📅 Planes de Pago**: Generación de cuotas automáticas con vencimientos mensuales.
 
 ### ✅ PASO 12: Estadísticas Avanzadas (v1.2.0)
 - **📊 Dashboard Gráfico**: Visualización de ventas de los últimos 7 días con Chart.js.
@@ -90,6 +95,8 @@ Desarrollado con **Python + Flask + SQLite**.
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
+| 15 | Financiación y Cobranzas | `v1.5.0` | 5/5 ✅ | Completo |
+| 14 | Gestión de Temporadas | `v1.4.0` | 5/5 ✅ | Completo |
 | 13 | Gestión de Usuarios y Permisos | `v1.3.0` | 5/5 ✅ | Completo |
 | 12 | Estadísticas Avanzadas | `v1.2.0` | 5/5 ✅ | Completo |
 | 11 | Gastos Operativos | `v1.1.0` | 5/5 ✅ | Completo |
@@ -190,7 +197,7 @@ Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) par
 
 **Nexar Sistemas** - [GitHub](https://github.com/NexarSistemas)
 
-**Última actualización:** 07 de abril de 2026 - v1.2.0
+**Última actualización:** 10 de abril de 2026 - v1.5.0
 │   ├── base.html
 │   ├── login.html
 │   ├── dashboard.html

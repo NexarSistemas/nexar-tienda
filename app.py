@@ -695,8 +695,9 @@ def cliente_agregar_movimiento(cid):
     try:
         tipo = request.form.get('tipo')
         numero_comprobante = request.form.get('numero_comprobante', '').strip()
-        debe = float(request.form.get('debe', 0))
-        haber = float(request.form.get('haber', 0))
+        # Usamos 'or 0' para manejar cadenas vacías
+        debe = float(request.form.get('debe') or 0)
+        haber = float(request.form.get('haber') or 0)
         vencimiento = request.form.get('vencimiento', '').strip()
         observaciones = request.form.get('observaciones', '').strip()
 
@@ -710,6 +711,42 @@ def cliente_agregar_movimiento(cid):
     except Exception as e:
         flash(f'❌ Error al agregar movimiento: {str(e)}', 'danger')
 
+    return redirect(url_for('cliente_detalle', cid=cid))
+
+
+@app.route('/clientes/<int:cid>/pagar', methods=['POST'])
+@login_required
+def cliente_pagar(cid):
+    """Registra un pago de cuenta corriente e impacta en caja."""
+    monto = float(request.form.get('monto') or 0)
+    medio = request.form.get('medio_pago', 'Efectivo')
+    obs = request.form.get('observaciones', 'Pago recibido')
+    
+    if monto <= 0:
+        flash('❌ El monto debe ser mayor a cero.', 'danger')
+        return redirect(url_for('cliente_detalle', cid=cid))
+
+    # 1. Registrar en la Cuenta Corriente del Cliente (Haber)
+    db.agregar_movimiento_cliente(
+        cid=cid,
+        tipo='Pago Recibido',
+        numero_comprobante='Recibo Interno',
+        haber=monto,
+        observaciones=f"{obs} (Medio: {medio})"
+    )
+
+    # 2. Si el pago fue en efectivo, registrar ingreso en la Caja abierta
+    if medio == 'Efectivo':
+        caja_abierta = db.q("SELECT id FROM caja WHERE estado = 1 LIMIT 1", fetchone=True)
+        if caja_abierta:
+            db.q("""INSERT INTO caja_movimientos (caja_id, tipo, monto, motivo) 
+                    VALUES (?, 'INGRESO', ?, ?)""", 
+                 (caja_abierta['id'], monto, f"Cobro CC Cliente #{cid}"), 
+                 commit=True)
+        else:
+            flash('⚠️ Pago registrado en CC, pero no se sumó a caja porque no hay una abierta.', 'warning')
+
+    flash(f'✅ Pago de {db.fmt_ars(monto)} registrado correctamente.', 'success')
     return redirect(url_for('cliente_detalle', cid=cid))
 
 
@@ -1360,6 +1397,32 @@ def venta_finalizar():
         # Decrementar stock
         db.decrementar_stock_venta(venta_id)
         
+        # Lógica de Cuenta Corriente (Deuda)
+        if medio_pago == 'Cuenta Corriente' and cliente_id > 0:
+            cuotas = int(request.form.get('cuotas', 1))
+            porcentaje_interes = float(request.form.get('interes_porcentaje', 0))
+            
+            total_venta = sum(item['subtotal'] for item in session['carrito']) - descuento_adicional
+            
+            monto_interes = total_venta * (porcentaje_interes / 100)
+            total_final = total_venta + monto_interes
+            monto_cuota = total_final / cuotas
+            
+            for i in range(cuotas):
+                # Calcular vencimiento: 30 días adicionales por cada cuota
+                venc = (datetime.now() + timedelta(days=30 * (i + 1))).strftime('%Y-%m-%d')
+                obs = f"Cuota {i+1}/{cuotas} de Venta #{venta_id}"
+                if porcentaje_interes > 0: obs += f" (Incluye {porcentaje_interes}% interés)"
+                db.agregar_movimiento_cliente(
+                    cid=cliente_id,
+                    tipo='Venta (Crédito)',
+                    numero_comprobante=f"Ticket #{venta_id}",
+                    debe=monto_cuota,
+                    vencimiento=venc,
+                    observaciones=obs,
+                    venta_id=venta_id
+                )
+
         # Registrar en Caja si es Efectivo y hay caja abierta
         if medio_pago == 'Efectivo':
             caja_abierta = db.q("SELECT id FROM caja WHERE estado = 1 LIMIT 1", fetchone=True)
