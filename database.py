@@ -369,6 +369,17 @@ def init_db():
         );
     """)
 
+    # ─── MIGRACIONES MANUALES (Para bases de datos existentes) ───────────────
+    # Verificar y agregar columna 'venta_id' en 'cc_clientes_mov'
+    columnas_cc = [r['name'] for r in c.execute("PRAGMA table_info(cc_clientes_mov)").fetchall()]
+    if 'venta_id' not in columnas_cc:
+        c.execute("ALTER TABLE cc_clientes_mov ADD COLUMN venta_id INTEGER REFERENCES ventas(id) ON DELETE SET NULL")
+
+    # Verificar y agregar columna 'interes_financiacion' en 'ventas' (Paso 15)
+    columnas_v = [r['name'] for r in c.execute("PRAGMA table_info(ventas)").fetchall()]
+    if 'interes_financiacion' not in columnas_v:
+        c.execute("ALTER TABLE ventas ADD COLUMN interes_financiacion REAL DEFAULT 0")
+
     # ─── Configuración por defecto ────────────────────────────────────────────
     defaults = [
         ('nombre_negocio', 'Mi Tienda'),
