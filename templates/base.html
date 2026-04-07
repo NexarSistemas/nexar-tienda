@@ -140,7 +140,7 @@
                 </a>
             </li>
 
-            {% if session['user']['rol'] == 'admin' %}
+            {% if session['user']['rol'] in ['Administrador', 'admin'] %}
             <li class="nav-header">Administración</li>
             <li class="nav-item">
                 <a class="nav-link" href="#">

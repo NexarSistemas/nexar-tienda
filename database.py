@@ -332,6 +332,13 @@ def init_db():
             activa INTEGER DEFAULT 1
         );
 
+        CREATE TABLE IF NOT EXISTS productos_temporadas (
+            producto_id INTEGER REFERENCES productos(id) ON DELETE CASCADE,
+            temporada_id INTEGER REFERENCES temporadas(id) ON DELETE CASCADE,
+            destacado INTEGER DEFAULT 0,
+            PRIMARY KEY (producto_id, temporada_id)
+        );
+
         CREATE TABLE IF NOT EXISTS changelog (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             version TEXT NOT NULL,
@@ -510,6 +517,9 @@ def _seed_changelog(c):
         ('1.3.0', '2026-04-08', 'Nueva función',
          'Paso 13: Gestión de Usuarios y Permisos',
          'Implementación de sistema RBAC, control de accesos granulares y administración de usuarios.'),
+        ('1.4.0', '2026-04-09', 'Nueva función',
+         'Paso 14: Gestión de Temporadas',
+         'CRUD completo de temporadas y vinculación de productos estacionales.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -701,8 +711,8 @@ def update_usuario(uid, data):
 
 def has_permission(role_name, perm_key):
     """Verifica si un rol tiene un permiso específico."""
-    # El Administrador tiene acceso a todo por defecto
-    if role_name == 'Administrador':
+    # El Administrador (en cualquiera de sus nombres) tiene acceso total
+    if role_name in ['Administrador', 'admin']:
         return True
     
     res = q("""
@@ -1351,6 +1361,11 @@ def get_temporadas(activa_only=False):
     return q(sql)
 
 
+def get_temporada(tid):
+    """Devuelve una temporada por ID."""
+    return q("SELECT * FROM temporadas WHERE id=?", (tid,), fetchone=True)
+
+
 def get_temporada_actual():
     """Devuelve la temporada actual o None."""
     hoy = date.today().isoformat()
@@ -1370,6 +1385,21 @@ def add_temporada(data):
         (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio', ''), data.get('fecha_fin', '')),
         fetchall=False, commit=True
     )
+
+
+def update_temporada(tid, data):
+    """Actualiza una temporada."""
+    q(
+        "UPDATE temporadas SET nombre=?, descripcion=?, fecha_inicio=?, fecha_fin=?, activa=? WHERE id=?",
+        (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio', ''), 
+         data.get('fecha_fin', ''), int(data.get('activa', 1)), tid),
+        commit=True
+    )
+
+
+def delete_temporada(tid):
+    """Elimina una temporada."""
+    q("DELETE FROM temporadas WHERE id=?", (tid,), commit=True)
 
 
 # ─── UTILIDADES ──────────────────────────────────────────────────────────────

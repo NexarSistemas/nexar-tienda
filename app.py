@@ -135,7 +135,7 @@ def admin_required(f):
     def decorated(*args, **kwargs):
         if 'user' not in session:
             return redirect(url_for('login'))
-        if session['user'].get('rol') != 'admin':
+        if session['user'].get('rol') not in ['Administrador', 'admin']:
             flash('⛔ Acceso restringido: se requieren permisos de Administrador.', 'danger')
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)

@@ -4,6 +4,16 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.4.0] - 09 Abril 2026 - Gestión de Temporadas
+
+### ✨ Características Nuevas
+- **CRUD de Temporadas**: Implementación total de creación, edición y eliminación de eventos estacionales.
+- **Esquema de Asociación**: Nueva tabla `productos_temporadas` para vinculación de inventario estacional.
+
+### 🛠️ Cambios Técnicos
+- **database.py**: Funciones `update_temporada`, `delete_temporada` y esquema de relación Many-to-Many.
+- **app.py**: Rutas de gestión de temporadas protegidas por permisos.
+
 ## [1.3.0] - 08 Abril 2026 - Gestión de Usuarios y Permisos
 
 ### ✨ Características Nuevas

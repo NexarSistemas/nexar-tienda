@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-navy text-white">
+                    <h5 class="mb-0"><i class="fas fa-calendar-plus me-2"></i>{{ accion }} Temporada</h5>
+                </div>
+                <form method="POST" class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre del Evento</label>
+                        <input type="text" name="nombre" class="form-control" value="{{ temporada.nombre if temporada else '' }}" placeholder="Ej: Navidad 2026" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea name="descripcion" class="form-control" rows="2">{{ temporada.descripcion if temporada else '' }}</textarea>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha Inicio</label>
+                            <input type="date" name="fecha_inicio" class="form-control" value="{{ temporada.fecha_inicio if temporada else '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha Fin</label>
+                            <input type="date" name="fecha_fin" class="form-control" value="{{ temporada.fecha_fin if temporada else '' }}" required>
+                        </div>
+                    </div>
+                    {% if temporada %}
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="activa" id="activaSwitch" {% if temporada.activa %}checked{% endif %}>
+                            <label class="form-check-label" for="activaSwitch">Temporada Activa</label>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <div class="mt-4 d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>{{ 'Guardar Cambios' if temporada else 'Crear Temporada' }}
+                        </button>
+                        <a href="{{ url_for('temporadas') }}" class="btn btn-outline-secondary">Cancelar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
