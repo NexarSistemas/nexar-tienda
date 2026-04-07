@@ -90,17 +90,19 @@ Desarrollado con **Python + Flask + SQLite**.
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
+| 13 | Gestión de Usuarios y Permisos | `v1.3.0` | 5/5 ✅ | Completo |
 | 12 | Estadísticas Avanzadas | `v1.2.0` | 5/5 ✅ | Completo |
 | 11 | Gastos Operativos | `v1.1.0` | 5/5 ✅ | Completo |
 | 10 | Caja y Liquidación | `v1.0.0` | 5/5 ✅ | Completo |
 | 9 | Compras | `v0.9.0` | 5/5 ✅ | Completo |
 | 8 | Gestión de Proveedores | `v0.8.0` | 8/8 ✅ | Completo |
 | 7 | Gestión de Clientes | `v0.7.0` | 8/8 ✅ | Completo |
+| 6 | Punto de Venta (POS) | `v0.6.0` | 8/10 ✅ | Completo |
 | 5 | Stock Management | `v0.5.0` | 23/23 ✅ | Completo |
 | 4 | Productos CRUD + TIER | `v0.4.0` | 12/12 ✅ | Completo |
 | 3 | Auth + Dashboard | `v0.3.0` | 6/6 ✅ | Completo |
 
-**Total Tests:** 64/64 ✅ (100%)
+**Total Tests:** 69/69 ✅ (100%)
 
 ---
 

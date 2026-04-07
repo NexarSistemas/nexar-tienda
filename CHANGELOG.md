@@ -4,6 +4,33 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.3.0] - 08 Abril 2026 - Gestión de Usuarios y Permisos
+
+### ✨ Características Nuevas
+- **Sistema RBAC**: Implementación de Control de Acceso Basado en Roles.
+- **Granularidad**: Permisos específicos por módulo (Ventas, Stock, Reportes).
+- **Panel de Usuarios**: CRUD avanzado para gestionar empleados y sus accesos.
+- **Decorador de Permisos**: Nuevo decorador `@permission_required` para proteger rutas específicas basadas en capacidades.
+- **Gestión de Usuarios**: Rutas CRUD para administrar usuarios (Crear, Editar, Listar, Desactivar).
+- **Integración de Roles**: Vinculación de usuarios con perfiles predefinidos (Administrador, Encargado, Vendedor).
+
+### 🛠️ Cambios Técnicos
+- **database.py**: Nuevas tablas `roles`, `permisos` y `roles_permisos`.
+- **app.py**: 
+  - Nuevo decorador `@permission_required`.
+  - Rutas `/usuarios`, `/usuarios/nuevo`, `/usuarios/<uid>/editar`, `/usuarios/<uid>/eliminar`.
+  - Actualización de `@admin_required` a `@permission_required('reportes.ver')` en la ruta `/reportes`.
+- **templates**: 
+  - Nuevo template `usuarios.html`.
+  - Nuevo template `usuario_form.html`.
+  - Actualización de `base.html` para incluir el acceso al panel de usuarios.
+
+### 🧪 Tests
+- ✅ Verificación de asignación de roles y permisos.
+- ✅ Prueba de acceso denegado a rutas protegidas sin el permiso adecuado.
+- ✅ Validación de flujo de creación y edición de usuarios con asignación de roles.
+- ✅ Cobertura de desactivación de usuarios (soft delete).
+
 ## [1.2.0] - 07 Abril 2026 - Estadísticas Avanzadas
 
 ### ✨ Características Nuevas
@@ -22,6 +49,8 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
   - Nuevo template `reportes.html` con integración de Chart.js.
 
 ---
+
+**Última actualización:** 08 de abril de 2026
 
 ## [1.1.0] - 07 Abril 2026 - Módulo de Gastos Operativos
 

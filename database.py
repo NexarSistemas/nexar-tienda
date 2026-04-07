@@ -340,6 +340,24 @@ def init_db():
             titulo TEXT NOT NULL,
             descripcion TEXT DEFAULT ''
         );
+
+        CREATE TABLE IF NOT EXISTS roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT UNIQUE NOT NULL,
+            descripcion TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS permisos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clave TEXT UNIQUE NOT NULL,
+            descripcion TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS roles_permisos (
+            rol_id INTEGER REFERENCES roles(id) ON DELETE CASCADE,
+            permiso_id INTEGER REFERENCES permisos(id) ON DELETE CASCADE,
+            PRIMARY KEY (rol_id, permiso_id)
+        );
     """)
 
     # ─── Configuración por defecto ────────────────────────────────────────────
@@ -383,14 +401,46 @@ def init_db():
         return hashlib.sha256(pw.encode()).hexdigest()
 
     default_users = [
-        ('admin', _hash('admin123'), 'admin', 'Administrador'),
-        ('vendedor', _hash('vendedor123'), 'usuario', 'Vendedor'),
+        ('admin', _hash('admin123'), 'Administrador', 'Administrador'),
+        ('vendedor', _hash('vendedor123'), 'Vendedor', 'Vendedor'),
     ]
     for uname, phash, rol, nombre in default_users:
         c.execute(
             "INSERT OR IGNORE INTO usuarios (username,password_hash,rol,nombre_completo) VALUES (?,?,?,?)",
             (uname, phash, rol, nombre)
         )
+
+    # ─── Roles y Permisos Iniciales (Paso 13) ────────────────────────────────
+    roles_data = [
+        ('Administrador', 'Acceso total al sistema'),
+        ('Encargado', 'Gestión de stock, compras y caja'),
+        ('Vendedor', 'Acceso limitado a ventas y búsqueda de productos'),
+    ]
+    for nombre, desc in roles_data:
+        c.execute("INSERT OR IGNORE INTO roles (nombre, descripcion) VALUES (?,?)", (nombre, desc))
+
+    permisos_data = [
+        ('dashboard.ver', 'Visualizar el dashboard principal'),
+        ('pos.acceso', 'Acceder al punto de venta'),
+        ('stock.ver', 'Ver el inventario'),
+        ('stock.ajustar', 'Realizar ajustes de stock (Admin/Encargado)'),
+        ('reportes.ver', 'Ver reportes de rentabilidad y estadísticas'),
+        ('caja.abrir_cerrar', 'Abrir y cerrar la caja diaria'),
+        ('gastos.gestionar', 'Registrar y eliminar gastos operativos'),
+        ('compras.gestionar', 'Registrar compras a proveedores'),
+    ]
+    for clave, desc in permisos_data:
+        c.execute("INSERT OR IGNORE INTO permisos (clave, descripcion) VALUES (?,?)", (clave, desc))
+
+    # Asignación básica de permisos a Vendedor (ejemplo)
+    vendedor_rol = c.execute("SELECT id FROM roles WHERE nombre='Vendedor'").fetchone()
+    if vendedor_rol:
+        permisos_vendedor = ['pos.acceso', 'stock.ver', 'dashboard.ver']
+        for p_clave in permisos_vendedor:
+            p_id = c.execute("SELECT id FROM permisos WHERE clave=?", (p_clave,)).fetchone()
+            if p_id:
+                c.execute("INSERT OR IGNORE INTO roles_permisos (rol_id, permiso_id) VALUES (?,?)", 
+                          (vendedor_rol['id'], p_id['id']))
 
     # ─── Categorías iniciales de tienda ──────────────────────────────────────
     cats = [
@@ -457,6 +507,9 @@ def _seed_changelog(c):
         ('1.2.0', '2026-04-07', 'Nueva función',
          'Paso 12: Estadísticas Avanzadas',
          'Dashboard con gráficos interactivos, análisis de rentabilidad y top de productos vendidos.'),
+        ('1.3.0', '2026-04-08', 'Nueva función',
+         'Paso 13: Gestión de Usuarios y Permisos',
+         'Implementación de sistema RBAC, control de accesos granulares y administración de usuarios.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -644,6 +697,26 @@ def update_usuario(uid, data):
     updates = ["rol=?", "nombre_completo=?", "activo=?"]
     params = [data.get('rol', 'usuario'), data.get('nombre_completo', ''), int(data.get('activo', 1)), uid]
     q(f"UPDATE usuarios SET {','.join(updates)} WHERE id=?", params, fetchall=False, commit=True)
+
+
+def has_permission(role_name, perm_key):
+    """Verifica si un rol tiene un permiso específico."""
+    # El Administrador tiene acceso a todo por defecto
+    if role_name == 'Administrador':
+        return True
+    
+    res = q("""
+        SELECT 1 FROM roles_permisos rp
+        JOIN roles r ON r.id = rp.rol_id
+        JOIN permisos p ON p.id = rp.permiso_id
+        WHERE r.nombre = ? AND p.clave = ?
+    """, (role_name, perm_key), fetchone=True)
+    return res is not None
+
+
+def get_roles():
+    """Devuelve todos los roles disponibles."""
+    return q("SELECT * FROM roles ORDER BY nombre")
 
 
 # ─── PRODUCTOS ───────────────────────────────────────────────────────────────

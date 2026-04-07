@@ -142,6 +142,21 @@ def admin_required(f):
     return decorated
 
 
+def permission_required(perm_key):
+    """Requiere que el usuario tenga un permiso específico."""
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if 'user' not in session:
+                return redirect(url_for('login'))
+            if not db.has_permission(session['user']['rol'], perm_key):
+                flash(f'⛔ No tenés permiso para acceder a esta función ({perm_key}).', 'danger')
+                return redirect(url_for('dashboard'))
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+
 # ─── INICIALIZACIÓN ──────────────────────────────────────────────────────────
 
 _scheduler_started = False
@@ -475,6 +490,79 @@ def licencia():
                          app_version=APP_VERSION, 
                          licencia=licencia_info,
                          uso=stats_uso)
+
+@app.route('/usuarios')
+@admin_required
+def usuarios():
+    """Lista de usuarios del sistema."""
+    usuarios_list = db.get_usuarios()
+    return render_template('usuarios.html', 
+                         app_version=APP_VERSION, 
+                         usuarios=usuarios_list)
+
+@app.route('/usuarios/nuevo', methods=['GET', 'POST'])
+@admin_required
+def usuario_nuevo():
+    """Crear un nuevo usuario."""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        rol = request.form.get('rol', 'Vendedor')
+        nombre = request.form.get('nombre_completo', '').strip()
+
+        if not username or not password:
+            flash('❌ Usuario y contraseña son requeridos.', 'danger')
+            return redirect(url_for('usuario_nuevo'))
+
+        if db.get_usuario_by_username(username):
+            flash('❌ El nombre de usuario ya existe.', 'danger')
+            return redirect(url_for('usuario_nuevo'))
+
+        db.add_usuario(username, password, rol, nombre)
+        flash(f'✅ Usuario {username} creado exitosamente.', 'success')
+        return redirect(url_for('usuarios'))
+
+    roles = db.get_roles()
+    return render_template('usuario_form.html', 
+                         app_version=APP_VERSION, 
+                         roles=roles, 
+                         usuario=None, 
+                         accion='Crear')
+
+@app.route('/usuarios/<int:uid>/editar', methods=['GET', 'POST'])
+@admin_required
+def usuario_editar(uid):
+    """Editar un usuario existente."""
+    usuario = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
+    if not usuario:
+        flash('❌ Usuario no encontrado.', 'danger')
+        return redirect(url_for('usuarios'))
+
+    if request.method == 'POST':
+        data = {
+            'rol': request.form.get('rol'),
+            'nombre_completo': request.form.get('nombre_completo'),
+            'activo': request.form.get('activo') == '1'
+        }
+        db.update_usuario(uid, data)
+        flash(f'✅ Usuario {usuario["username"]} actualizado.', 'success')
+        return redirect(url_for('usuarios'))
+
+    roles = db.get_roles()
+    return render_template('usuario_form.html', 
+                         app_version=APP_VERSION, 
+                         roles=roles, 
+                         usuario=usuario, 
+                         accion='Editar')
+
+@app.route('/usuarios/<int:uid>/eliminar', methods=['POST'])
+@admin_required
+def usuario_eliminar(uid):
+    """Desactivar un usuario."""
+    db.q("UPDATE usuarios SET activo=0 WHERE id=?", (uid,), commit=True)
+    flash('✅ Usuario desactivado correctamente.', 'success')
+    return redirect(url_for('usuarios'))
+
 
 # ─── CLIENTES (PASO 7) ──────────────────────────────────────────────────────
 
@@ -1416,7 +1504,7 @@ def gasto_eliminar(gid):
 # ─── REPORTES (PASO 12) ──────────────────────────────────────────────────────
 
 @app.route('/reportes')
-@admin_required
+@permission_required('reportes.ver')
 def reportes():
     """Vista de estadísticas y reportes gráficos."""
     mes_actual = datetime.now().strftime('%Y-%m')

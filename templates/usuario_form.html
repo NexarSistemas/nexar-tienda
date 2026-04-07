@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-navy text-white">
+                    <h5 class="mb-0"><i class="fas fa-user-edit me-2"></i>{{ accion }} Usuario</h5>
+                </div>
+                <form method="POST" class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre de Usuario</label>
+                        <input type="text" name="username" class="form-control" value="{{ usuario.username if usuario else '' }}" {% if usuario %}disabled{% endif %} required>
+                    </div>
+                    {% if not usuario %}
+                    <div class="mb-3">
+                        <label class="form-label">Contraseña</label>
+                        <input type="password" name="password" class="form-control" required>
+                    </div>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="form-label">Nombre Completo</label>
+                        <input type="text" name="nombre_completo" class="form-control" value="{{ usuario.nombre_completo if usuario else '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rol / Perfil de Acceso</label>
+                        <select name="rol" class="form-select" required>
+                            {% for r in roles %}
+                            <option value="{{ r.nombre }}" {% if usuario and usuario.rol == r.nombre %}selected{% endif %}>
+                                {{ r.nombre }} - {{ r.descripcion }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% if usuario %}
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="activo" value="1" id="activoSwitch" {% if usuario.activo %}checked{% endif %}>
+                            <label class="form-check-label" for="activoSwitch">Usuario Activo</label>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <div class="mt-4 d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>{{ 'Guardar Cambios' if usuario else 'Crear Usuario' }}
+                        </button>
+                        <a href="{{ url_for('usuarios') }}" class="btn btn-outline-secondary">Cancelar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
