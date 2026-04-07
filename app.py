@@ -152,6 +152,7 @@ def before():
     """Se ejecuta antes de cada request."""
     global _scheduler_started
     db.init_db()
+
     if not _scheduler_started:
         _scheduler_started = True
         iniciar_backup_scheduler()
@@ -1133,6 +1134,75 @@ def api_carrito_vaciar():
     session['carrito'] = []
     session.modified = True
     return jsonify({'ok': True})
+# ─── CAJA (PASO 10) ──────────────────────────────────────────────────────────
+
+@app.route('/caja')
+@login_required
+def caja():
+    """Gestión de caja diaria."""
+    caja_abierta = db.q("SELECT * FROM caja WHERE estado = 1 LIMIT 1", fetchone=True)
+    movimientos = []
+    resumen = {'ventas': 0, 'ingresos': 0, 'egresos': 0, 'total': 0}
+    
+    if caja_abierta:
+        movimientos = db.q("SELECT * FROM caja_movimientos WHERE caja_id = ? ORDER BY created_at DESC", 
+                          (caja_abierta['id'],))
+        for m in movimientos:
+            if m['tipo'] == 'VENTA': resumen['ventas'] += m['monto']
+            elif m['tipo'] == 'INGRESO': resumen['ingresos'] += m['monto']
+            elif m['tipo'] == 'EGRESO': resumen['egresos'] += m['monto']
+        
+        resumen['total'] = caja_abierta['saldo_inicial'] + resumen['ventas'] + resumen['ingresos'] - resumen['egresos']
+
+    historial = db.q("SELECT * FROM caja WHERE estado = 0 ORDER BY fecha_cierre DESC LIMIT 10")
+    
+    return render_template('caja.html', 
+                         app_version=APP_VERSION, 
+                         caja=caja_abierta, 
+                         movimientos=movimientos,
+                         resumen=resumen,
+                         historial=historial)
+
+@app.route('/caja/abrir', methods=['POST'])
+@login_required
+def caja_abrir():
+    """Abre la caja del día."""
+    saldo_inicial = float(request.form.get('saldo_inicial', 0))
+    db.q("INSERT INTO caja (usuario_id, fecha_apertura, saldo_inicial, estado) VALUES (?, ?, ?, 1)",
+         (session['user']['id'], datetime.now().strftime('%Y-%m-%d %H:%M:%S'), saldo_inicial), commit=True)
+    flash('✅ Caja abierta exitosamente.', 'success')
+    return redirect(url_for('caja'))
+
+@app.route('/caja/movimiento', methods=['POST'])
+@login_required
+def caja_movimiento():
+    """Registra un movimiento manual (Ingreso/Egreso)."""
+    caja_id = request.form.get('caja_id')
+    tipo = request.form.get('tipo') # INGRESO o EGRESO
+    monto = float(request.form.get('monto', 0))
+    motivo = request.form.get('motivo', '')
+
+    if not caja_id:
+        flash('❌ No hay una caja abierta.', 'danger')
+        return redirect(url_for('caja'))
+
+    db.q("INSERT INTO caja_movimientos (caja_id, tipo, monto, motivo) VALUES (?, ?, ?, ?)",
+         (caja_id, tipo, monto, motivo), commit=True)
+    flash(f'✅ {tipo} registrado correctamente.', 'success')
+    return redirect(url_for('caja'))
+
+@app.route('/caja/cerrar', methods=['POST'])
+@login_required
+def caja_cerrar():
+    """Cierra la caja actual."""
+    caja_id = request.form.get('caja_id')
+    saldo_real = float(request.form.get('saldo_real', 0))
+    
+    db.q("UPDATE caja SET fecha_cierre = ?, saldo_final_real = ?, estado = 0 WHERE id = ?",
+         (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), saldo_real, caja_id), commit=True)
+    
+    flash('✅ Caja cerrada y liquidada.', 'info')
+    return redirect(url_for('caja'))
 
 
 @app.route('/venta/finalizar', methods=['POST'])
@@ -1153,7 +1223,7 @@ def venta_finalizar():
     temporada_nombre = temporada['nombre'] if temporada else ''
     
     # Usuario actual
-    usuario = db.get_usuario_by_username(session['username'])
+    usuario = db.get_usuario_by_username(session['user']['username'])
     vendedor = usuario['nombre_completo'] or usuario['username']
     
     try:
@@ -1171,6 +1241,16 @@ def venta_finalizar():
         # Decrementar stock
         db.decrementar_stock_venta(venta_id)
         
+        # Registrar en Caja si es Efectivo y hay caja abierta
+        if medio_pago == 'Efectivo':
+            caja_abierta = db.q("SELECT id FROM caja WHERE estado = 1 LIMIT 1", fetchone=True)
+            if caja_abierta:
+                total_venta = sum(item['subtotal'] for item in session['carrito']) - descuento_adicional
+                db.q("""INSERT INTO caja_movimientos (caja_id, tipo, monto, motivo) 
+                        VALUES (?, 'VENTA', ?, ?)""", 
+                     (caja_abierta['id'], total_venta, f"Venta #{venta_id}"), 
+                     commit=True)
+
         # Limpiar carrito
         session['carrito'] = []
         session.modified = True

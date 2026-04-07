@@ -232,6 +232,25 @@ def init_db():
             observaciones TEXT DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS caja (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            fecha_apertura TIMESTAMP,
+            fecha_cierre TIMESTAMP,
+            saldo_inicial REAL,
+            saldo_final_real REAL,
+            estado INTEGER DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS caja_movimientos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            caja_id INTEGER REFERENCES caja(id) ON DELETE CASCADE,
+            tipo TEXT,
+            monto REAL,
+            motivo TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS caja_historial (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             fecha TEXT UNIQUE,
@@ -429,6 +448,9 @@ def _seed_changelog(c):
         ('0.1.1', '2026-03-29', 'Nueva función',
          'Módulos completos y sistema de backups',
          'Se agregaron todas las tablas: Productos, Stock, Ventas, Clientes, Proveedores, Caja, Gastos, Temporadas. Sistema de backups automáticos.'),
+        ('1.0.0', '2026-04-07', 'Lanzamiento Oficial',
+         'Paso 10: Caja y Liquidación Diaria',
+         'Implementación completa de control de caja, movimientos de efectivo, arqueo diario e integración automática con POS.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(

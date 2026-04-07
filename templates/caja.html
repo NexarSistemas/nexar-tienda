@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="text-navy"><i class="fas fa-cash-register me-2"></i>Caja y Liquidación</h2>
+        {% if not caja %}
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAbrirCaja">
+            <i class="fas fa-door-open me-2"></i>Abrir Caja del Día
+        </button>
+        {% else %}
+        <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalCerrarCaja">
+            <i class="fas fa-door-closed me-2"></i>Cerrar Caja
+        </button>
+        {% endif %}
+    </div>
+
+    {% if caja %}
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white shadow-sm">
+                <div class="card-body text-center">
+                    <h6>Saldo Inicial</h6>
+                    <h4>{{ caja.saldo_inicial | fmt_ars }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white shadow-sm">
+                <div class="card-body text-center">
+                    <h6>Ventas (Efectivo)</h6>
+                    <h4>+ {{ resumen.ventas | fmt_ars }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark shadow-sm">
+                <div class="card-body text-center">
+                    <h6>Otros Ingresos/Egresos</h6>
+                    <h4>{{ (resumen.ingresos - resumen.egresos) | fmt_ars }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-dark text-white shadow-sm">
+                <div class="card-body text-center">
+                    <h6>Saldo Esperado</h6>
+                    <h4>{{ resumen.total | fmt_ars }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 text-navy">Movimientos de la Sesión</h5>
+            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalMovimiento">
+                <i class="fas fa-plus me-1"></i> Nuevo Movimiento
+            </button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Hora</th>
+                        <th>Tipo</th>
+                        <th>Motivo</th>
+                        <th class="text-end">Monto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in movimientos %}
+                    <tr>
+                        <td>{{ m.created_at[11:16] }}</td>
+                        <td>
+                            <span class="badge {% if m.tipo == 'VENTA' or m.tipo == 'INGRESO' %}bg-success-subtle text-success{% else %}bg-danger-subtle text-danger{% endif %}">
+                                {{ m.tipo }}
+                            </span>
+                        </td>
+                        <td>{{ m.motivo }}</td>
+                        <td class="text-end fw-bold {% if m.tipo == 'EGRESO' %}text-danger{% endif %}">
+                            {% if m.tipo == 'EGRESO' %}-{% endif %}{{ m.monto | fmt_ars }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center py-4 text-muted">No hay movimientos registrados.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info shadow-sm py-5 text-center">
+        <i class="fas fa-info-circle fa-3x mb-3 text-primary"></i>
+        <h4>No hay una caja abierta actualmente</h4>
+        <p>Debe abrir la caja para poder registrar ventas en efectivo y otros movimientos financieros.</p>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm mt-4">
+        <div class="card-header bg-white">
+            <h5 class="mb-0 text-navy"><i class="fas fa-history me-2"></i>Historial de Cierres Recientes</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Fecha Cierre</th>
+                        <th>Saldo Inicial</th>
+                        <th class="text-end">Saldo Final Real</th>
+                        <th class="text-center">Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in historial %}
+                    <tr>
+                        <td>{{ h.fecha_cierre }}</td>
+                        <td>{{ h.saldo_inicial | fmt_ars }}</td>
+                        <td class="text-end fw-bold">{{ h.saldo_final_real | fmt_ars }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary-subtle text-secondary">CERRADA</span>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center py-4 text-muted">No hay registros de cierres anteriores.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modales de Caja (Abrir, Cerrar, Movimiento) -->
+<div class="modal fade" id="modalAbrirCaja" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('caja_abrir') }}" method="POST" class="modal-content">
+            <div class="modal-header bg-navy text-white">
+                <h5 class="modal-title">Abrir Caja</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label">Saldo Inicial en Efectivo</label>
+                <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" step="0.01" name="saldo_inicial" class="form-control" placeholder="0.00" required autofocus>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-primary w-100">Iniciar Jornada</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="modalMovimiento" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('caja_movimiento') }}" method="POST" class="modal-content">
+            <input type="hidden" name="caja_id" value="{{ caja.id if caja else '' }}">
+            <div class="modal-header bg-navy text-white">
+                <h5 class="modal-title">Registrar Movimiento</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Tipo de Movimiento</label>
+                    <select name="tipo" class="form-select" required>
+                        <option value="INGRESO">Ingreso (Entrada de dinero)</option>
+                        <option value="EGRESO">Egreso (Gasto/Pago)</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Monto</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input type="number" step="0.01" name="monto" class="form-control" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Motivo / Descripción</label>
+                    <input type="text" name="motivo" class="form-control" placeholder="Ej: Pago de flete, carga inicial, etc." required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-primary w-100">Guardar Movimiento</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="modalCerrarCaja" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('caja_cerrar') }}" method="POST" class="modal-content">
+            <input type="hidden" name="caja_id" value="{{ caja.id if caja else '' }}">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Cierre de Caja</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Al cerrar la caja se registrará el saldo final y se dará por finalizada la jornada.</p>
+                <div class="alert alert-secondary">
+                    <strong>Saldo Esperado:</strong> {{ resumen.total | fmt_ars }}
+                </div>
+                <label class="form-label">Saldo Real en Efectivo (Arqueo)</label>
+                <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" step="0.01" name="saldo_real" class="form-control" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-danger w-100">Confirmar Cierre</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

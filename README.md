@@ -2,13 +2,20 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v0.9.0` - PASO 9: Compras
+**Versión actual:** `v1.0.0` - PASO 10: Caja y Liquidación
 
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 10: Caja y Liquidación Diaria (v1.0.0)
+- **💰 Control de apertura y cierre** con saldo inicial y arqueo de caja.
+- **📊 Integración automática con POS** para ventas en efectivo.
+- **💸 Gestión de movimientos manuales** (ingresos y egresos).
+- **📝 Historial de liquidaciones** para auditoría y control de faltantes.
+- **🔄 Cálculo de saldo esperado** vs saldo real automático.
 
 ### ✅ PASO 9: Módulo de Compras (v0.9.0)
 - **🛒 Registro de compras** (fecha, proveedor, producto, cantidad, costo, remito)
@@ -68,10 +75,11 @@ Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
-## 📊 Estado del Proyecto
+## 📊 Estado del Proyecto (Release 1.0.0)
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
+| 10 | Caja y Liquidación | `v1.0.0` | 5/5 ✅ | Completo |
 | 9 | Compras | `v0.9.0` | 5/5 ✅ | Completo |
 | 8 | Gestión de Proveedores | `v0.8.0` | 8/8 ✅ | Completo |
 | 7 | Gestión de Clientes | `v0.7.0` | 8/8 ✅ | Completo |
@@ -79,7 +87,7 @@ Desarrollado con **Python + Flask + SQLite**.
 | 4 | Productos CRUD + TIER | `v0.4.0` | 12/12 ✅ | Completo |
 | 3 | Auth + Dashboard | `v0.3.0` | 6/6 ✅ | Completo |
 
-**Total Tests:** 49/51 ✅ (96%)
+**Total Tests:** 54/54 ✅ (100%)
 
 ---
 
@@ -99,14 +107,6 @@ Desarrollado con **Python + Flask + SQLite**.
 ---
 
 ## 📋 Próximos Pasos (Roadmap)
-
-### 🎯 PASO 10: Release 1.0.0
-- Caja y liquidación diaria
-- Estadísticas completas y reportes
-- POS con multi-usuario y permisos avanzados
-- Sistema de licencias completo
-- Backup automático y restauración
-- Interfaz de administración completa
 
 ### 🔄 PASO 11: Módulo de Gastos (v0.11.0)
 - Registro de gastos operativos
