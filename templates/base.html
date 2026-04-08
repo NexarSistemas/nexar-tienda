@@ -44,6 +44,7 @@
                     <ul class="nav flex-column ms-3">
                         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'punto_venta' %}active{% endif %}" href="{{ url_for('punto_venta') }}">Nueva Venta</a></li>
                         <li class="nav-item"><a class="nav-link" href="#">Historial</a></li>
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'historial' %}active{% endif %}" href="{{ url_for('historial') }}">Historial de Ventas</a></li>
                     </ul>
                 </div>
             </li>
@@ -78,7 +79,7 @@
             </li>
 
             <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle', 'cliente_eliminar'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseClientes">
+                <a class="nav-link {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle', 'cliente_eliminar', 'cliente_agregar_movimiento', 'cliente_pagar'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseClientes">
                     <i class="fas fa-users"></i>
                     <span>Clientes</span>
                     <i class="fas fa-chevron-down"></i>
@@ -143,7 +144,7 @@
             {% if session['user']['rol'] in ['Administrador', 'admin'] %}
             <li class="nav-header">Administración</li>
             <li class="nav-item">
-                <a class="nav-link" href="#">
+                <a class="nav-link {% if request.endpoint == 'config' %}active{% endif %}" href="{{ url_for('config') }}">
                     <i class="fas fa-cog"></i>
                     <span>Configuración</span>
                 </a>

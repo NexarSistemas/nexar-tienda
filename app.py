@@ -571,16 +571,18 @@ def usuario_eliminar(uid):
 @login_required
 def clientes():
     """Lista de clientes con búsqueda."""
-    buscar = request.args.get('q', '').strip()
+    buscar = request.args.get('q', '')
+    solo_deuda = request.args.get('solo_deuda', '0') == '1'
 
-    clientes_list = db.get_clientes(search=buscar)
+    clientes_list = db.get_clientes(search=buscar, with_debt_only=solo_deuda)
 
     return render_template(
         'clientes.html',
         app_version=APP_VERSION,
         usuario=session['user'],
         clientes=clientes_list,
-        buscar=buscar
+        buscar=buscar,
+        solo_deuda=solo_deuda
     )
 
 
@@ -1688,6 +1690,49 @@ def config_categoria_eliminar():
         db.delete_categoria(nombre)
         flash(f'🗑 Categoría "{nombre}" eliminada.', 'warning')
     return redirect(url_for('config'))
+
+# ─── HISTORIAL DE VENTAS (PASO 18) ────────────────────────────────────────
+
+@app.route('/historial')
+@login_required
+@permission_required('reportes.ver') # Asumiendo que ver historial es un permiso de reportes
+def historial():
+    """Lista de todas las ventas con filtros."""
+    search = request.args.get('q', '')
+    fecha_desde = request.args.get('desde', '')
+    fecha_hasta = request.args.get('hasta', '')
+    medio_pago = request.args.get('medio', '')
+
+    ventas = db.get_ventas_historial(
+        search=search,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        medio_pago=medio_pago
+    )
+    total_filtro = sum(v['total'] for v in ventas)
+
+    # Obtener todos los medios de pago únicos para el filtro
+    medios_pago_disponibles = db.q("SELECT DISTINCT medio_pago FROM ventas ORDER BY medio_pago")
+
+    return render_template(
+        'historial.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        ventas=ventas,
+        search=search,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        medio_pago_seleccionado=medio_pago,
+        medios_pago_disponibles=[m['medio_pago'] for m in medios_pago_disponibles],
+        total_filtro=total_filtro
+    )
+
+@app.route('/historial/<int:vid>')
+@login_required
+@permission_required('reportes.ver')
+def historial_detalle(vid):
+    """Detalle de una venta (reimpresión de ticket)."""
+    return redirect(url_for('ticket', vid=vid)) # Reutilizamos la ruta de ticket
 
 @app.route('/api/temporada/<int:tid>/productos', methods=['GET'])
 @login_required
