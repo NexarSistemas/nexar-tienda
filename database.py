@@ -545,6 +545,9 @@ def _seed_changelog(c):
         ('1.8.0', '2026-04-13', 'Nueva función',
          'Paso 18: Historial de Ventas',
          'Listado de todas las ventas con filtros de búsqueda, fecha y medio de pago, y detalle para reimpresión de tickets.'),
+        ('1.8.1', '2026-04-13', 'Mejora',
+         'Clientes: Interfaz y Límite de Crédito',
+         'Mejoras en la interfaz de clientes con tarjetas interactivas y columna de límite de crédito.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -926,32 +929,19 @@ def get_stock_movimientos_all(start_date='', end_date=''):
 
 # ─── CLIENTES ────────────────────────────────────────────────────────────────
 
-def get_clientes(activo_only=True, search='', with_debt_only=False):
-    """Devuelve clientes filtrables, opcionalmente incluyendo su saldo y filtrando por deuda."""
-    sql = """
-        SELECT
-            c.*,
-            COALESCE(SUM(cc.debe), 0) - COALESCE(SUM(cc.haber), 0) AS saldo
-        FROM clientes c
-        LEFT JOIN cc_clientes_mov cc ON c.id = cc.cliente_id
-    """
+def get_clientes(activo_only=True, search=''):
+    """Devuelve clientes filtrables."""
+    sql = "SELECT * FROM clientes"
     conds = []
     params = []
     if activo_only:
-        conds.append("c.activo=1")
+        conds.append("activo=1")
     if search:
-        conds.append("(c.nombre LIKE ? OR c.codigo LIKE ? OR c.dni_cuit LIKE ?)")
+        conds.append("(nombre LIKE ? OR codigo LIKE ? OR dni_cuit LIKE ?)")
         params += [f'%{search}%'] * 3
     if conds:
         sql += " WHERE " + " AND ".join(conds)
-    
-    sql += " GROUP BY c.id" # Group by client ID to aggregate movements
-
-    if with_debt_only:
-        # Filter for clients where saldo > 0 after grouping
-        sql += " HAVING saldo > 0"
-    
-    sql += " ORDER BY c.nombre"
+    sql += " ORDER BY nombre"
     return q(sql, params)
 
 
@@ -1536,35 +1526,6 @@ def get_venta_ticket(vid):
         venta = dict(venta)
         venta['detalle'] = get_venta_detalle(vid)
     return venta
-
-def get_ventas_historial(search='', fecha_desde='', fecha_hasta='', medio_pago=''):
-    """Retorna ventas filtradas por búsqueda, fecha y medio de pago."""
-    params = []
-    condiciones = []
-
-    # Usamos v.id LIKE ? para buscar por ID de venta, y v.cliente_nombre LIKE ? para el nombre
-    if search:
-        condiciones.append("(CAST(v.id AS TEXT) LIKE ? OR v.cliente_nombre LIKE ? OR CAST(v.numero_ticket AS TEXT) LIKE ?)")
-        params += [f'%{search}%', f'%{search}%', f'%{search}%']
-    if fecha_desde:
-        condiciones.append("v.fecha >= ?")
-        params.append(fecha_desde)
-    if fecha_hasta:
-        condiciones.append("v.fecha <= ?")
-        params.append(fecha_hasta)
-    if medio_pago:
-        condiciones.append("v.medio_pago = ?")
-        params.append(medio_pago)
-
-    where = "WHERE " + " AND ".join(condiciones) if condiciones else ""
-
-    return q(f"""
-        SELECT v.*
-        FROM ventas v
-        {where}
-        ORDER BY v.fecha DESC, v.id DESC
-        LIMIT 500
-    """, params)
 
 # ─── REPORTES Y ESTADÍSTICAS (PASO 12) ───────────────────────────────────────
 
