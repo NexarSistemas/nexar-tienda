@@ -4,6 +4,18 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.10.0] - 15 Abril 2026 - Exportación de Catálogo
+
+### ✨ Características Nuevas
+- **Exportación a Excel**: Generación de archivos `.xlsx` con formato profesional, incluyendo códigos, categorías y stock.
+- **Lista de Precios PDF**: Generación de documentos PDF listos para imprimir o enviar a clientes mayoristas.
+
+### 🛠️ Cambios Técnicos
+- **Dependencias**: Incorporación de `openpyxl` para manejo de hojas de cálculo y `reportlab` para generación de documentos PDF.
+- **UI**: Implementación de menú desplegable de exportación en el módulo de productos.
+
+---
+
 ## [1.5.1] - 07 Abril 2026 - Correcciones en CC y Optimización Historial
 
 ### ✨ Características Nuevas

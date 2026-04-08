@@ -548,6 +548,12 @@ def _seed_changelog(c):
         ('1.8.1', '2026-04-13', 'Mejora',
          'Clientes: Interfaz y Límite de Crédito',
          'Mejoras en la interfaz de clientes con tarjetas interactivas y columna de límite de crédito.'),
+        ('1.9.0', '2026-04-14', 'Nueva función',
+         'Paso 19: Estadísticas avanzadas y Análisis',
+         'Implementación de dashboard financiero anual, análisis de rentabilidad por producto/categoría y gráficos interactivos.'),
+        ('1.10.0', '2026-04-15', 'Nueva función',
+         'Paso 20: Exportación de catálogo (Excel y PDF)',
+         'Generación de archivos Excel (.xlsx) y listas de precios en PDF para el catálogo de productos.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -1663,4 +1669,14 @@ def get_rentabilidad_historica():
         JOIN productos p ON vd.producto_id = p.id
         WHERE v.fecha >= date('now', '-6 months')
         GROUP BY mes ORDER BY mes
+    """)
+
+def get_catalogo_export():
+    """Retorna todos los productos activos para exportación."""
+    return q("""
+        SELECT p.codigo_interno as codigo, p.descripcion, p.categoria, p.precio_venta,
+               s.stock_actual, p.activo
+        FROM productos p
+        JOIN stock s ON p.id = s.producto_id
+        ORDER BY p.categoria, p.descripcion
     """)

@@ -9,6 +9,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, f
 from datetime import date, datetime, timedelta
 from functools import wraps
 import json
+from io import BytesIO
 import os
 import sys
 import signal
@@ -1924,6 +1925,104 @@ def analisis():
         fecha_hasta=hasta,
         top_labels=json.dumps([t['descripcion'][:20] for t in top]),
         top_vals=json.dumps([t['total_pesos'] for t in top])
+    )
+
+# ─── EXPORTACIÓN DE PRODUCTOS (PASO 20) ───────────────────────────────────
+
+@app.route('/productos/exportar/excel')
+@admin_required
+def exportar_excel():
+    """Exporta el catálogo de productos a Excel."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    productos = db.get_catalogo_export()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Catálogo'
+
+    # Encabezados
+    headers = ['Código', 'Descripción', 'Categoría', 'Precio Venta', 'Stock', 'Estado']
+    header_fill = PatternFill('solid', fgColor='1E3A5F')
+    header_font = Font(bold=True, color='FFFFFF')
+
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+
+    # Datos
+    for row_num, p in enumerate(productos, 2):
+        ws.cell(row=row_num, column=1, value=p['codigo'] or '')
+        ws.cell(row=row_num, column=2, value=p['descripcion'])
+        ws.cell(row=row_num, column=3, value=p['categoria'])
+        ws.cell(row=row_num, column=4, value=p['precio_venta'])
+        ws.cell(row=row_num, column=5, value=p['stock_actual'])
+        ws.cell(row=row_num, column=6, value='Activo' if p['activo'] else 'Inactivo')
+
+    # Ajuste de columnas
+    ws.column_dimensions['B'].width = 40
+    ws.column_dimensions['C'].width = 25
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f'catalogo_{date.today().isoformat()}.xlsx'
+    )
+
+@app.route('/productos/exportar/pdf')
+@admin_required
+def exportar_pdf():
+    """Exporta una lista de precios en PDF."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet
+
+    productos = db.get_catalogo_export()
+    cfg = db.get_config()
+    buffer = BytesIO()
+
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Título
+    elements.append(Paragraph(cfg.get('nombre_negocio', 'Nexar Tienda'), styles['Title']))
+    elements.append(Paragraph(f"Lista de Precios — {date.today().strftime('%d/%m/%Y')}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+
+    # Tabla de productos
+    data = [['Descripción', 'Categoría', 'Precio']]
+    for p in productos:
+        if p['activo']:
+            data.append([p['descripcion'], p['categoria'], f"${p['precio_venta']:.2f}"])
+
+    tabla = Table(data, colWidths=[280, 150, 80])
+    tabla.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f4f8')]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+    ]))
+    elements.append(tabla)
+    doc.build(elements)
+
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'lista_precios_{date.today().isoformat()}.pdf'
     )
 
 # ─── INÍCIO ────────────────────────────────────────────────────────────────────

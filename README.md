@@ -2,13 +2,17 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.5.1` - Fixes en Cuenta Corriente y Saldo
-**Última actualización:** 14 de abril de 2026 - v1.9.0
+**Versión actual:** `v1.10.0` - Exportación Excel y PDF
+**Última actualización:** 15 de abril de 2026 - v1.10.0
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 20: Exportación de catálogo (v1.10.0)
+- **📤 Excel (.xlsx)**: Generación de planilla completa de inventario con stock y precios.
+- **📄 PDF**: Lista de precios profesional con encabezado del negocio.
 
 ### ✅ PASO 15: Financiación y Cobranzas (v1.5.0)
 - **💳 Intereses en Cuotas**: Aplicación de recargos financieros en ventas a crédito.
