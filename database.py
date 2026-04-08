@@ -539,6 +539,9 @@ def _seed_changelog(c):
         ('1.6.0', '2026-04-11', 'Nueva función',
          'Paso 16: Módulo de Respaldo (UI)',
          'Panel de gestión de copias de seguridad con opciones de descarga, restauración y configuración de frecuencia.'),
+        ('1.7.0', '2026-04-12', 'Nueva función',
+         'Paso 17: Configuración del Sistema',
+         'Panel para personalizar datos del negocio, comportamiento de tickets y gestión de categorías de productos.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -691,6 +694,10 @@ def get_categorias():
 def add_categoria(nombre):
     """Agrega una nueva categoría."""
     q("INSERT OR IGNORE INTO categorias (nombre) VALUES (?)", (nombre,), fetchall=False, commit=True)
+
+def delete_categoria(nombre):
+    """Elimina una categoría por nombre."""
+    q("DELETE FROM categorias WHERE nombre=?", (nombre,), commit=True)
 
 
 # ─── USUARIOS ────────────────────────────────────────────────────────────────

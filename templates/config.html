@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Configuración{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+    <h2 class="mb-4"><i class="fas fa-cog me-2 text-secondary"></i>Configuración del Sistema</h2>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <form method="POST">
+                <!-- Datos del Negocio -->
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Datos del Negocio</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Nombre del Negocio</label>
+                                <input type="text" name="nombre_negocio" class="form-control" value="{{ cfg.nombre_negocio }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">CUIT / DNI</label>
+                                <input type="text" name="cuit" class="form-control" value="{{ cfg.cuit }}">
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label">Dirección</label>
+                                <input type="text" name="direccion" class="form-control" value="{{ cfg.direccion }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Teléfono</label>
+                                <input type="text" name="telefono" class="form-control" value="{{ cfg.telefono }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Email de contacto</label>
+                                <input type="email" name="negocio_email" class="form-control" value="{{ cfg.negocio_email }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuración de Tickets -->
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Personalización de Tickets</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Texto al pie del ticket</label>
+                            <textarea name="ticket_pie" class="form-control" rows="2">{{ cfg.ticket_pie }}</textarea>
+                            <div class="form-text">Ej: "¡Gracias por su compra! No se aceptan cambios sin ticket."</div>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="ticket_mostrar_iva" id="ticket_mostrar_iva" {% if cfg.ticket_mostrar_iva %}checked{% endif %}>
+                            <label class="form-check-label" for="ticket_mostrar_iva">Mostrar IVA desglosado en ticket</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-grid mb-5">
+                    <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>Guardar Configuración General</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Gestión de Categorías -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Categorías de Productos</h5>
+                </div>
+                <div class="card-body">
+                    <form action="{{ url_for('config_categoria') }}" method="POST" class="mb-4">
+                        <div class="input-group">
+                            <input type="text" name="nombre" class="form-control" placeholder="Nueva categoría..." required>
+                            <button class="btn btn-outline-primary" type="submit">Agregar</button>
+                        </div>
+                    </form>
+
+                    <div class="list-group list-group-flush border-top">
+                        {% for cat in categorias %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            {{ cat }}
+                            <form action="{{ url_for('config_categoria_eliminar') }}" method="POST" onsubmit="return confirm('¿Eliminar la categoría «{{ cat }}»? Los productos existentes no se borrarán.')">
+                                <input type="hidden" name="nombre" value="{{ cat }}">
+                                <button type="submit" class="btn btn-sm btn-link text-danger"><i class="fas fa-trash"></i></button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Información del Sistema -->
+            <div class="card bg-light border-0 shadow-sm">
+                <div class="card-body">
+                    <h6><i class="fas fa-info-circle me-2"></i>Sobre el sistema</h6>
+                    <ul class="small mb-0 list-unstyled">
+                        <li><strong>Versión:</strong> v{{ app_version }}</li>
+                        <li><strong>Base de Datos:</strong> SQLite 3</li>
+                        <li class="mt-2 text-muted">Asegúrese de realizar un respaldo antes de cambios críticos.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% endblock %}

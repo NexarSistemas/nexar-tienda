@@ -1646,6 +1646,49 @@ def temporada_eliminar(tid):
         flash(f'❌ Error al eliminar: {str(e)}', 'danger')
     return redirect(url_for('temporadas'))
 
+# ─── CONFIGURACIÓN (PASO 17) ───────────────────────────────────────────────
+
+@app.route('/config', methods=['GET', 'POST'])
+@admin_required
+def config():
+    """Panel de configuración general del sistema."""
+    if request.method == 'POST':
+        data = request.form.to_dict()
+        db.set_config(data)
+        flash('✅ Configuración guardada correctamente.', 'success')
+        return redirect(url_for('config'))
+    cfg = db.get_config()
+    categorias = db.get_categorias()
+    return render_template(
+        'config.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        cfg=cfg,
+        categorias=categorias
+    )
+
+@app.route('/config/categoria', methods=['POST'])
+@admin_required
+def config_categoria():
+    """Agrega una nueva categoría de producto."""
+    nombre = request.form.get('nombre', '').strip()
+    if nombre:
+        db.add_categoria(nombre)
+        flash(f'✅ Categoría "{nombre}" agregada.', 'success')
+    else:
+        flash('❌ El nombre de la categoría no puede estar vacío.', 'danger')
+    return redirect(url_for('config'))
+
+@app.route('/config/categoria/eliminar', methods=['POST'])
+@admin_required
+def config_categoria_eliminar():
+    """Elimina una categoría de producto."""
+    nombre = request.form.get('nombre', '').strip()
+    if nombre:
+        db.delete_categoria(nombre)
+        flash(f'🗑 Categoría "{nombre}" eliminada.', 'warning')
+    return redirect(url_for('config'))
+
 @app.route('/api/temporada/<int:tid>/productos', methods=['GET'])
 @login_required
 def api_temporada_productos(tid):
