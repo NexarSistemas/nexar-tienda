@@ -1574,6 +1574,84 @@ def gasto_eliminar(gid):
         flash(f'❌ Error al eliminar: {str(e)}', 'danger')
     return redirect(url_for('gastos'))
 
+# ─── TEMPORADAS (PASO 15) ──────────────────────────────────────────────────
+
+@app.route('/temporadas')
+@login_required
+def temporadas():
+    """Lista todas las temporadas con su estado de vigencia."""
+    lista = db.get_temporadas()
+    activa = db.get_temporada_actual()
+    proxima = db.get_proxima_temporada()
+    return render_template(
+        'temporadas.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        temporadas=lista,
+        activa=activa,
+        proxima=proxima
+    )
+
+@app.route('/temporadas/nueva', methods=['GET', 'POST'])
+@admin_required
+def temporada_nueva():
+    """Formulario para crear una nueva temporada."""
+    if request.method == 'POST':
+        data = request.form.to_dict()
+        # Handle checkbox for 'activa'
+        data['activa'] = 1 if data.get('activa') == 'on' else 0
+        db.add_temporada(data)
+        flash('✅ Temporada creada correctamente.', 'success')
+        return redirect(url_for('temporadas'))
+    return render_template(
+        'temporada_form.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        accion='Nueva',
+        temporada={}
+    )
+
+@app.route('/temporadas/<int:tid>/editar', methods=['GET', 'POST'])
+@admin_required
+def temporada_editar(tid):
+    """Editar una temporada existente."""
+    temporada = db.get_temporada(tid)
+    if not temporada:
+        flash('❌ Temporada no encontrada.', 'danger')
+        return redirect(url_for('temporadas'))
+    if request.method == 'POST':
+        data = request.form.to_dict()
+        # Handle checkbox for 'activa'
+        data['activa'] = 1 if data.get('activa') == 'on' else 0
+        db.update_temporada(tid, data)
+        flash('✅ Temporada actualizada.', 'success')
+        return redirect(url_for('temporadas'))
+    return render_template(
+        'temporada_form.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        accion='Editar',
+        temporada=temporada
+    )
+
+@app.route('/temporadas/<int:tid>/eliminar', methods=['POST'])
+@admin_required
+def temporada_eliminar(tid):
+    """Elimina una temporada y sus vínculos con productos."""
+    try:
+        db.delete_temporada(tid)
+        flash('🗑 Temporada eliminada.', 'warning')
+    except Exception as e:
+        flash(f'❌ Error al eliminar: {str(e)}', 'danger')
+    return redirect(url_for('temporadas'))
+
+@app.route('/api/temporada/<int:tid>/productos', methods=['GET'])
+@login_required
+def api_temporada_productos(tid):
+    """Retorna productos vinculados a una temporada (para el POS)."""
+    productos = db.get_productos_por_temporada(tid)
+    return jsonify([dict(p) for p in productos])
+
 # ─── REPORTES (PASO 12) ──────────────────────────────────────────────────────
 
 @app.route('/reportes')

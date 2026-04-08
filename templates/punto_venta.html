@@ -17,6 +17,11 @@
                         <button class="btn btn-outline-primary" type="button" id="btn-buscar">
                             <i class="fas fa-search"></i> Buscar
                         </button>
+                        {% if temporada %}
+                        <button class="btn btn-outline-warning" type="button" id="btn-temporada" data-tid="{{ temporada.id }}" title="Ver productos de {{ temporada.nombre }}">
+                            <i class="fas fa-star"></i> {{ temporada.nombre }}
+                        </button>
+                        {% endif %}
                     </div>
                     
                     <div id="resultados" class="row">

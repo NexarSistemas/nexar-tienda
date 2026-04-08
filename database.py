@@ -534,8 +534,8 @@ def _seed_changelog(c):
          'Paso 14: Gestión de Temporadas',
          'CRUD completo de temporadas y vinculación de productos estacionales.'),
         ('1.5.0', '2026-04-10', 'Nueva función',
-         'Paso 15: Financiación y Cobranzas Imputadas',
-         'Implementación de intereses por cuotas y vinculación de tickets en Cuenta Corriente.'),
+         'Paso 15: Temporadas - Rutas y CRUD',
+         'Implementación completa de las rutas para gestión de temporadas, formularios de edición y filtrado dinámico en el POS.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -1369,20 +1369,6 @@ def add_gasto(data):
 
 # ─── TEMPORADAS ──────────────────────────────────────────────────────────────
 
-def get_temporadas(activa_only=False):
-    """Devuelve temporadas."""
-    sql = "SELECT * FROM temporadas"
-    if activa_only:
-        sql += " WHERE activa=1"
-    sql += " ORDER BY fecha_inicio"
-    return q(sql)
-
-
-def get_temporada(tid):
-    """Devuelve una temporada por ID."""
-    return q("SELECT * FROM temporadas WHERE id=?", (tid,), fetchone=True)
-
-
 def get_temporada_actual():
     """Devuelve la temporada actual o None."""
     hoy = date.today().isoformat()
@@ -1392,30 +1378,50 @@ def get_temporada_actual():
         (hoy, hoy), fetchone=True
     )
 
-
-def add_temporada(data):
-    """Agrega una temporada."""
-    q(
-        """INSERT INTO temporadas
-        (nombre,descripcion,fecha_inicio,fecha_fin)
-        VALUES (?,?,?,?)""",
-        (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio', ''), data.get('fecha_fin', '')),
-        fetchall=False, commit=True
+def get_proxima_temporada():
+    """Retorna la próxima temporada programada."""
+    hoy = date.today().isoformat()
+    return q(
+        """SELECT * FROM temporadas 
+        WHERE activa=1 AND fecha_inicio > ? 
+        ORDER BY fecha_inicio LIMIT 1""",
+        (hoy,), fetchone=True
     )
 
+def get_productos_por_temporada(tid):
+    """Retorna productos vinculados a una temporada."""
+    return q("""
+        SELECT p.* FROM productos p
+        JOIN productos_temporadas pt ON p.id = pt.producto_id
+        WHERE pt.temporada_id = ? AND p.activo = 1
+    """, (tid,))
+
+def get_temporadas():
+    """Retorna todas las temporadas ordenadas por fecha de inicio."""
+    return q("SELECT * FROM temporadas ORDER BY fecha_inicio")
+
+def get_temporada(tid):
+    """Retorna una temporada por ID."""
+    return q("SELECT * FROM temporadas WHERE id=?", (tid,), fetchone=True)
+
+def add_temporada(data):
+    """Crea una temporada."""
+    return q("""
+        INSERT INTO temporadas (nombre, descripcion, fecha_inicio, fecha_fin, activa)
+        VALUES (?, ?, ?, ?, ?)
+    """, (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio'), 
+          data.get('fecha_fin'), int(data.get('activa', 1))), commit=True)
 
 def update_temporada(tid, data):
     """Actualiza una temporada."""
-    q(
-        "UPDATE temporadas SET nombre=?, descripcion=?, fecha_inicio=?, fecha_fin=?, activa=? WHERE id=?",
-        (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio', ''), 
-         data.get('fecha_fin', ''), int(data.get('activa', 1)), tid),
-        commit=True
-    )
-
+    q("""UPDATE temporadas SET nombre=?, descripcion=?, fecha_inicio=?, fecha_fin=?, activa=?
+         WHERE id=?""",
+      (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio'), 
+       data.get('fecha_fin'), int(data.get('activa', 1)), tid), commit=True)
 
 def delete_temporada(tid):
-    """Elimina una temporada."""
+    """Elimina temporada y relaciones."""
+    q("DELETE FROM productos_temporadas WHERE temporada_id=?", (tid,), commit=True)
     q("DELETE FROM temporadas WHERE id=?", (tid,), commit=True)
 
 

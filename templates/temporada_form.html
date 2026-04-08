@@ -1,47 +1,45 @@
 {% extends "base.html" %}
+{% block title %}{{ accion }} Temporada{% endblock %}
 {% block content %}
-<div class="container">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card shadow">
-                <div class="card-header bg-navy text-white">
-                    <h5 class="mb-0"><i class="fas fa-calendar-plus me-2"></i>{{ accion }} Temporada</h5>
+<div class="container py-4" style="max-width: 600px;">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">{{ accion }} Temporada</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Nombre de la Temporada</label>
+                    <input type="text" name="nombre" class="form-control" value="{{ temporada.nombre or '' }}" required placeholder="Ej: Navidad 2026">
                 </div>
-                <form method="POST" class="card-body">
-                    <div class="mb-3">
-                        <label class="form-label">Nombre del Evento</label>
-                        <input type="text" name="nombre" class="form-control" value="{{ temporada.nombre if temporada else '' }}" placeholder="Ej: Navidad 2026" required>
+                <div class="mb-3">
+                    <label class="form-label">Descripción</label>
+                    <textarea name="descripcion" class="form-control" rows="2">{{ temporada.descripcion or '' }}</textarea>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Fecha Inicio</label>
+                        <input type="date" name="fecha_inicio" class="form-control" value="{{ temporada.fecha_inicio or '' }}" required>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Descripción</label>
-                        <textarea name="descripcion" class="form-control" rows="2">{{ temporada.descripcion if temporada else '' }}</textarea>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Fecha Fin</label>
+                        <input type="date" name="fecha_fin" class="form-control" value="{{ temporada.fecha_fin or '' }}" required>
                     </div>
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Fecha Inicio</label>
-                            <input type="date" name="fecha_inicio" class="form-control" value="{{ temporada.fecha_inicio if temporada else '' }}" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Fecha Fin</label>
-                            <input type="date" name="fecha_fin" class="form-control" value="{{ temporada.fecha_fin if temporada else '' }}" required>
-                        </div>
-                    </div>
-                    {% if temporada %}
-                    <div class="mb-3">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" name="activa" id="activaSwitch" {% if temporada.activa %}checked{% endif %}>
-                            <label class="form-check-label" for="activaSwitch">Temporada Activa</label>
-                        </div>
-                    </div>
-                    {% endif %}
-                    <div class="mt-4 d-grid gap-2">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-2"></i>{{ 'Guardar Cambios' if temporada else 'Crear Temporada' }}
-                        </button>
-                        <a href="{{ url_for('temporadas') }}" class="btn btn-outline-secondary">Cancelar</a>
-                    </div>
-                </form>
-            </div>
+                </div>
+                <div class="form-check form-switch mb-4">
+                    <input class="form-check-input" type="checkbox" name="activa" id="activa" {% if temporada.activa or accion == 'Nueva' %}checked{% endif %}>
+                    <label class="form-check-label" for="activa">Temporada habilitada</label>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <a href="{{ url_for('temporadas') }}" class="btn btn-outline-secondary">Cancelar</a>
+                    <button type="submit" class="btn btn-primary px-4">Guardar Temporada</button>
+                </div>
+            </form>
+            {% if accion == 'Editar' %}
+            <form method="POST" action="{{ url_for('temporada_eliminar', tid=temporada.id) }}" class="mt-4 pt-4 border-top" onsubmit="return confirm('¿Eliminar esta temporada? No se borrarán los productos, solo la asociación.')">
+                <button class="btn btn-sm btn-link text-danger p-0"><i class="fas fa-trash me-1"></i>Eliminar permanentemente</button>
+            </form>
+            {% endif %}
         </div>
     </div>
 </div>
