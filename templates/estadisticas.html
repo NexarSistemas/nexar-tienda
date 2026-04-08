@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Dashboard Anual{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-chart-line me-2 text-primary"></i>Dashboard Financiero Anual</h2>
+        <form class="d-flex gap-2">
+            <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
+                {% for y in range(2024, 2030) %}
+                <option value="{{ y }}" {% if y == year %}selected{% endif %}>Año {{ y }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white"><strong>Ventas por Mes ($)</strong></div>
+                <div class="card-body">
+                    <canvas id="chartVentasMes" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white"><strong>Categorías más Vendidas</strong></div>
+                <div class="card-body">
+                    <canvas id="chartCategorias" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white"><strong>Rendimiento por Temporada</strong></div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr><th>Temporada</th><th class="text-center">Tickets</th><th class="text-end">Recaudado</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for t in temporadas %}
+                            <tr><td>{{ t.nombre }}</td><td class="text-center">{{ t.cant }}</td><td class="text-end fw-bold">{{ t.total | fmt_ars }}</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white"><strong>Tickets emitidos por mes</strong></div>
+                <div class="card-body">
+                    <canvas id="chartTicketsMes" height="150"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const commonOptions = { responsive: true, maintainAspectRatio: false };
+
+    // Gráfico de Ventas Mensuales
+    new Chart(document.getElementById('chartVentasMes'), {
+        type: 'bar',
+        data: {
+            labels: {{ meses_labels|safe }},
+            datasets: [{
+                label: 'Ventas Anuales {{ year }}',
+                data: {{ ventas_vals|safe }},
+                backgroundColor: '#1e3a5f',
+                borderRadius: 5
+            }]
+        },
+        options: commonOptions
+    });
+
+    // Gráfico de Categorías (Pie)
+    new Chart(document.getElementById('chartCategorias'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ cats_labels|safe }},
+            datasets: [{
+                data: {{ cats_vals|safe }},
+                backgroundColor: ['#1e3a5f', '#3b82f6', '#93c5fd', '#1d4ed8', '#60a5fa']
+            }]
+        },
+        options: commonOptions
+    });
+
+    // Gráfico de Tickets (Line)
+    new Chart(document.getElementById('chartTicketsMes'), {
+        type: 'line',
+        data: {
+            labels: {{ meses_labels|safe }},
+            datasets: [{
+                label: 'Cantidad de Tickets',
+                data: {{ tickets_vals|safe }},
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: commonOptions
+    });
+</script>
+{% endblock %}

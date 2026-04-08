@@ -135,10 +135,18 @@
             </li>
 
             <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'reportes' %}active{% endif %}" href="{{ url_for('reportes') }}">
+                <a class="nav-link {% if request.endpoint in ['reportes', 'estadisticas', 'analisis'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseReportes">
                     <i class="fas fa-chart-pie"></i>
-                    <span>Reportes y Estadísticas</span>
+                    <span>Inteligencia</span>
+                    <i class="fas fa-chevron-down"></i>
                 </a>
+                <div class="collapse {% if request.endpoint in ['reportes', 'estadisticas', 'analisis'] %}show{% endif %}" id="collapseReportes">
+                    <ul class="nav flex-column ms-3">
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'reportes' %}active{% endif %}" href="{{ url_for('reportes') }}">Resumen Mensual</a></li>
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'estadisticas' %}active{% endif %}" href="{{ url_for('estadisticas') }}">Dashboard Anual</a></li>
+                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'analisis' %}active{% endif %}" href="{{ url_for('analisis') }}">Análisis Rentabilidad</a></li>
+                    </ul>
+                </div>
             </li>
 
             {% if session['user']['rol'] in ['Administrador', 'admin'] %}

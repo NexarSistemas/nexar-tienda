@@ -1855,6 +1855,77 @@ def reportes():
         pagos=pagos
     )
 
+# ─── ESTADÍSTICAS AVANZADAS (PASO 19) ─────────────────────────────────────
+
+@app.route('/estadisticas')
+@login_required
+@permission_required('reportes.ver')
+def estadisticas():
+    """Dashboard financiero anual con gráficos."""
+    year = int(request.args.get('year', date.today().year))
+
+    ventas_mes = db.get_ventas_por_mes(year)
+    meses_labels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+    ventas_vals = [ventas_mes.get(m, {}).get('total', 0) for m in range(1, 13)]
+    tickets_vals = [ventas_mes.get(m, {}).get('tickets', 0) for m in range(1, 13)]
+
+    semanas = db.get_ventas_por_semana(8)
+    medios = db.get_ventas_por_medio_pago(year, date.today().month)
+    temporadas = db.get_ventas_por_temporada()
+    cats = db.get_ventas_por_categoria()
+
+    return render_template(
+        'estadisticas.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        year=year,
+        meses_labels=json.dumps(meses_labels),
+        ventas_vals=json.dumps(ventas_vals),
+        tickets_vals=json.dumps(tickets_vals),
+        semanas=semanas,
+        semanas_labels=json.dumps([s['label'] for s in semanas]),
+        semanas_vals=json.dumps([s['total'] for s in semanas]),
+        medios=medios,
+        medios_labels=json.dumps([m['medio_pago'] for m in medios]),
+        medios_vals=json.dumps([m['total'] for m in medios]),
+        temporadas=temporadas,
+        cats=cats,
+        cats_labels=json.dumps([c['categoria'] for c in cats[:8]]),
+        cats_vals=json.dumps([c['total'] for c in cats[:8]]),
+    )
+
+@app.route('/analisis')
+@login_required
+@permission_required('reportes.ver')
+def analisis():
+    """Análisis de rentabilidad por producto y categoría."""
+    desde = request.args.get('desde', (date.today() - timedelta(days=30)).isoformat())
+    hasta = request.args.get('hasta', date.today().isoformat())
+
+    top = db.get_top_productos_analisis(15, desde, hasta)
+    bottom = db.get_bottom_productos(10)
+    temporadas = db.get_ventas_por_temporada()
+    rent_hist = db.get_rentabilidad_historica()
+    gastos_cat = db.q("""
+        SELECT categoria, ROUND(SUM(monto), 2) as total
+        FROM gastos GROUP BY categoria ORDER BY total DESC
+    """)
+
+    return render_template(
+        'analisis.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        top=top,
+        bottom=bottom,
+        temporadas=temporadas,
+        rent_hist=rent_hist,
+        gastos_cat=gastos_cat,
+        fecha_desde=desde,
+        fecha_hasta=hasta,
+        top_labels=json.dumps([t['descripcion'][:20] for t in top]),
+        top_vals=json.dumps([t['total_pesos'] for t in top])
+    )
+
 # ─── INÍCIO ────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':

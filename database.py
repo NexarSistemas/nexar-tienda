@@ -1568,3 +1568,99 @@ def get_top_productos_vendidos(limit=5):
         ORDER BY total_vendido DESC
         LIMIT ?
     """, (limit,))
+
+def get_ventas_por_mes(year):
+    """Retorna total de ventas y cantidad de tickets por mes para un año dado."""
+    rows = q("""
+        SELECT strftime('%m', fecha) as mes,
+               COUNT(*) as tickets,
+               ROUND(SUM(total), 2) as total
+        FROM ventas
+        WHERE strftime('%Y', fecha) = ?
+        GROUP BY mes
+    """, (str(year),))
+    return {int(r['mes']): dict(r) for r in rows}
+
+def get_ventas_por_semana(semanas=8):
+    """Retorna ventas agrupadas por semana para las últimas N semanas."""
+    rows = q(f"""
+        SELECT strftime('%W/%Y', fecha) as label,
+               ROUND(SUM(total), 2) as total,
+               COUNT(*) as tickets
+        FROM ventas
+        WHERE fecha >= date('now', '-{semanas * 7} days')
+        GROUP BY label ORDER BY label
+    """)
+    return [dict(r) for r in rows]
+
+def get_ventas_por_medio_pago(year, mes):
+    """Retorna ventas agrupadas por medio de pago para un año y mes."""
+    return q("""
+        SELECT medio_pago,
+               COUNT(*) as cant,
+               ROUND(SUM(total), 2) as total
+        FROM ventas
+        WHERE strftime('%Y', fecha) = ? AND strftime('%m', fecha) = ?
+        GROUP BY medio_pago
+    """, (str(year), str(mes).zfill(2)))
+
+def get_ventas_por_temporada():
+    """Retorna ventas agrupadas por temporada."""
+    return q("""
+        SELECT temporada as nombre, COUNT(id) as cant, ROUND(SUM(total), 2) as total
+        FROM ventas
+        WHERE temporada != ''
+        GROUP BY temporada ORDER BY total DESC
+    """)
+
+def get_ventas_por_categoria():
+    """Retorna ventas agrupadas por categoría de producto."""
+    return q("""
+        SELECT p.categoria, ROUND(SUM(vd.subtotal), 2) as total
+        FROM ventas_detalle vd
+        JOIN productos p ON vd.producto_id = p.id
+        GROUP BY p.categoria ORDER BY total DESC
+    """)
+
+def get_top_productos_analisis(limit=15, desde='', hasta=''):
+    """Retorna los productos más vendidos en un rango de fechas con rentabilidad."""
+    params = []
+    condicion = ""
+    if desde and hasta:
+        condicion = "WHERE v.fecha BETWEEN ? AND ?"
+        params = [desde, hasta]
+    return q(f"""
+        SELECT p.descripcion, p.categoria,
+               SUM(vd.cantidad) as unidades,
+               ROUND(SUM(vd.subtotal), 2) as total_pesos,
+               ROUND(SUM(vd.subtotal - (vd.cantidad * p.costo)), 2) as utilidad
+        FROM ventas_detalle vd
+        JOIN ventas v ON vd.venta_id = v.id
+        JOIN productos p ON vd.producto_id = p.id
+        {condicion}
+        GROUP BY p.id ORDER BY total_pesos DESC LIMIT ?
+    """, params + [limit])
+
+def get_bottom_productos(limit=10):
+    """Retorna los productos con menor movimiento (activos)."""
+    return q("""
+        SELECT p.descripcion, p.categoria,
+               COALESCE(SUM(vd.cantidad), 0) as unidades
+        FROM productos p
+        LEFT JOIN ventas_detalle vd ON p.id = vd.producto_id
+        WHERE p.activo = 1
+        GROUP BY p.id ORDER BY unidades ASC LIMIT ?
+    """, (limit,))
+
+def get_rentabilidad_historica():
+    """Retorna rentabilidad de los últimos 6 meses."""
+    return q("""
+        SELECT strftime('%Y-%m', v.fecha) as mes,
+               ROUND(SUM(v.total), 2) as ingresos,
+               ROUND(SUM(vd.cantidad * p.costo), 2) as costo
+        FROM ventas v
+        JOIN ventas_detalle vd ON v.id = vd.venta_id
+        JOIN productos p ON vd.producto_id = p.id
+        WHERE v.fecha >= date('now', '-6 months')
+        GROUP BY mes ORDER BY mes
+    """)

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Análisis de Rentabilidad{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-microchip me-2 text-info"></i>Análisis de Rentabilidad</h2>
+        <form class="d-flex gap-2 align-items-end">
+            <div>
+                <label class="small text-muted">Desde</label>
+                <input type="date" name="desde" class="form-control form-control-sm" value="{{ fecha_desde }}">
+            </div>
+            <div>
+                <label class="small text-muted">Hasta</label>
+                <input type="date" name="hasta" class="form-control form-control-sm" value="{{ fecha_hasta }}">
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary">Analizar</button>
+        </form>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <!-- Top Productos -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white d-flex justify-content-between">
+                    <strong>Top 15 Productos por Recaudación</strong>
+                    <span class="badge bg-success">Rentabilidad Incluida</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0 small">
+                            <thead class="table-light">
+                                <tr><th>Producto</th><th>Categoría</th><th class="text-center">Unidades</th><th class="text-end">Total</th><th class="text-end text-success">Utilidad Bruta</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for t in top %}
+                                <tr>
+                                    <td>{{ t.descripcion }}</td><td>{{ t.categoria }}</td><td class="text-center">{{ t.unidades }}</td>
+                                    <td class="text-end fw-bold">{{ t.total_pesos | fmt_ars }}</td>
+                                    <td class="text-end text-success fw-bold">{{ t.utilidad | fmt_ars }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Productos -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-warning h-100">
+                <div class="card-header bg-white"><strong>Productos con Menor Movimiento</strong></div>
+                <div class="card-body p-0">
+                    <ul class="list-group list-group-flush small">
+                        {% for b in bottom %}
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>{{ b.descripcion }}</span>
+                            <span class="badge bg-warning text-dark">{{ b.unidades }} vendidas</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div class="card-footer bg-light xsmall text-muted">Considere ofertas para estos productos.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Histórico de Rentabilidad -->
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white"><strong>Tendencia de Rentabilidad (Ingreso vs Costo)</strong></div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered text-center align-middle">
+                            <thead class="table-light">
+                                <tr><th>Mes</th><th>Ingresos Totales</th><th>Costo Mercadería</th><th class="bg-primary text-white">Utilidad Bruta</th><th>Margen Bruto</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for r in rent_hist %}
+                                <tr>
+                                    <td>{{ r.mes }}</td><td>{{ r.ingresos | fmt_ars }}</td><td>{{ r.costo | fmt_ars }}</td>
+                                    <td class="fw-bold">{{ (r.ingresos - r.costo) | fmt_ars }}</td>
+                                    <td>{{ ((r.ingresos - r.costo) / r.ingresos * 100) | round(1) if r.ingresos > 0 else 0 }}%</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

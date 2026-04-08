@@ -3,7 +3,7 @@
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
 **Versión actual:** `v1.5.1` - Fixes en Cuenta Corriente y Saldo
-
+**Última actualización:** 14 de abril de 2026 - v1.9.0
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
@@ -14,6 +14,13 @@ Desarrollado con **Python + Flask + SQLite**.
 - **💳 Intereses en Cuotas**: Aplicación de recargos financieros en ventas a crédito.
 - **🔗 Trazabilidad de Deuda**: Vinculación de movimientos de CC con tickets de venta.
 - **📅 Planes de Pago**: Generación de cuotas automáticas con vencimientos mensuales.
+
+### ✅ PASO 19: Estadísticas Avanzadas y Análisis (v1.9.0)
+- **📊 Dashboard Anual**: Visualización de la evolución de ventas y tickets a lo largo del año.
+- **📈 Análisis de Rentabilidad**: Reporte detallado de utilidad bruta por producto y tendencia histórica mensual.
+- **🏷️ Métricas por Categoría y Temporada**: Gráficos de distribución de ingresos para identificar los sectores más rentables.
+- **📉 Análisis de Movimiento**: Identificación automática de productos "Bottom" (menos vendidos) para gestión de inventario.
+- **🎨 Gráficos Interactivos**: Implementación con Chart.js para una visualización clara de los datos.
 
 ### ✅ PASO 12: Estadísticas Avanzadas (v1.2.0)
 - **📊 Dashboard Gráfico**: Visualización de ventas de los últimos 7 días con Chart.js.
@@ -98,6 +105,7 @@ Desarrollado con **Python + Flask + SQLite**.
 | 15 | Financiación y Cobranzas | `v1.5.1` | 5/5 ✅ | Completo |
 | 14 | Gestión de Temporadas | `v1.4.0` | 5/5 ✅ | Completo |
 | 13 | Gestión de Usuarios y Permisos | `v1.3.0` | 5/5 ✅ | Completo |
+| 19 | Estadísticas Avanzadas y Análisis | `v1.9.0` | - | Completo |
 | 12 | Estadísticas Avanzadas | `v1.2.0` | 5/5 ✅ | Completo |
 | 11 | Gastos Operativos | `v1.1.0` | 5/5 ✅ | Completo |
 | 10 | Caja y Liquidación | `v1.0.0` | 5/5 ✅ | Completo |
@@ -130,10 +138,10 @@ Desarrollado con **Python + Flask + SQLite**.
 
 ## 📋 Próximos Pasos (Roadmap)
 
-### 🔄 PASO 12: Estadísticas Avanzadas (v0.12.0)
-- Dashboard con gráficos y métricas
-- Reportes de ventas por período
-- Análisis de rentabilidad por producto
+### 🔄 PASO 20: Exportación de catálogo (Excel y PDF) 📤
+- Exportar productos a Excel (.xlsx)
+- Generar lista de precios en PDF
+- Integración con el módulo de productos
 
 ---
 

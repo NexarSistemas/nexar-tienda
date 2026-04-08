@@ -6,6 +6,20 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ## [1.5.1] - 07 Abril 2026 - Correcciones en CC y Optimización Historial
 
+### ✨ Características Nuevas
+- **Dashboard Anual**: Visualización de la evolución de ventas y tickets a lo largo del año.
+- **Análisis de Rentabilidad**: Reporte detallado de utilidad bruta por producto y tendencia histórica mensual.
+- **Métricas por Categoría y Temporada**: Gráficos de distribución de ingresos para identificar los sectores más rentables.
+- **Análisis de Movimiento**: Identificación automática de productos "Bottom" (menos vendidos) para gestión de inventario.
+
+### 🛠️ Cambios Técnicos
+- **database.py**: Nuevas funciones para `get_ventas_por_mes`, `get_ventas_por_semana`, `get_ventas_por_medio_pago`, `get_ventas_por_temporada`, `get_ventas_por_categoria`, `get_top_productos_analisis`, `get_bottom_productos`, `get_rentabilidad_historica`.
+- **app.py**: Nuevas rutas `/estadisticas` y `/analisis` con lógica para preparar datos para Chart.js.
+- **templates**: Nuevos templates `estadisticas.html` y `analisis.html` con gráficos interactivos.
+- **base.html**: Actualización del menú de "Inteligencia" para incluir las nuevas rutas.
+
+---
+
 ### 🛠️ Correcciones y Mejoras
 - **Migraciones Automáticas**: Se añadió lógica en `init_db` para crear columnas faltantes (`venta_id`, `interes_financiacion`) en bases de datos existentes.
 - **Optimización del Historial**: Se modificó la consulta SQL para agrupar artículos por ticket, evitando filas duplicadas en el detalle del cliente.
@@ -26,6 +40,8 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 - **database.py**: Alteración de tablas `ventas` y `cc_clientes_mov` para soportar `venta_id` e `interes_financiacion`.
 - **app.py**: Nueva lógica de cálculo de montos en `venta_finalizar`.
 
+---
+
 ## [1.4.0] - 09 Abril 2026 - Gestión de Temporadas
 
 ### ✨ Características Nuevas
@@ -35,6 +51,8 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 ### 🛠️ Cambios Técnicos
 - **database.py**: Funciones `update_temporada`, `delete_temporada` y esquema de relación Many-to-Many.
 - **app.py**: Rutas de gestión de temporadas protegidas por permisos.
+
+---
 
 ## [1.3.0] - 08 Abril 2026 - Gestión de Usuarios y Permisos
 
@@ -62,6 +80,8 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 - ✅ Prueba de acceso denegado a rutas protegidas sin el permiso adecuado.
 - ✅ Validación de flujo de creación y edición de usuarios con asignación de roles.
 - ✅ Cobertura de desactivación de usuarios (soft delete).
+
+---
 
 ## [1.2.0] - 07 Abril 2026 - Estadísticas Avanzadas
 
