@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Respaldos{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-4"><i class="fas fa-database me-2 text-primary"></i>Gestión de Respaldos</h2>
+
+  <div class="row">
+    <div class="col-md-4">
+      <!-- Acciones rápidas -->
+      <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-white"><strong>Operaciones</strong></div>
+        <div class="card-body">
+          <form method="POST" action="{{ url_for('respaldo_ahora') }}" class="mb-3">
+            <button class="btn btn-primary w-100"><i class="fas fa-save me-1"></i>Respaldar ahora</button>
+          </form>
+          <div class="small text-muted">Último respaldo: <br><strong>{{ ultimo }}</strong></div>
+        </div>
+      </div>
+
+      <!-- Configuración -->
+      <div class="card shadow-sm">
+        <div class="card-header bg-white"><strong>Programación</strong></div>
+        <div class="card-body">
+          <form method="POST" action="{{ url_for('respaldo_config') }}">
+            <div class="mb-3">
+              <label class="form-label small">Intervalo (horas)</label>
+              <input type="number" name="backup_intervalo_h" class="form-control" value="{{ intervalo }}" min="1">
+            </div>
+            <div class="mb-3">
+              <label class="form-label small">Copias a conservar</label>
+              <input type="number" name="backup_keep" class="form-control" value="{{ keep }}" min="1">
+            </div>
+            <button class="btn btn-outline-primary btn-sm w-100">Guardar config.</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-8">
+      <div class="card shadow-sm">
+        <div class="card-header bg-white"><strong>Archivos disponibles</strong></div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Archivo</th><th>Fecha</th><th>Tamaño</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in archivos %}
+              <tr>
+                <td><code class="small">{{ a.nombre }}</code></td>
+                <td>{{ a.fecha }}</td>
+                <td>{{ a.tamanio_kb }} KB</td>
+                <td>
+                  <a href="{{ url_for('respaldo_descargar', nombre=a.nombre) }}" class="btn btn-sm btn-link"><i class="fas fa-download"></i></a>
+                  <form method="POST" action="{{ url_for('respaldo_restaurar', nombre=a.nombre) }}" class="d-inline" onsubmit="return confirm('¿Restaurar sistema a este punto? Se sobrescribirá la base de datos actual.')">
+                    <button class="btn btn-sm btn-link text-warning"><i class="fas fa-undo"></i></button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

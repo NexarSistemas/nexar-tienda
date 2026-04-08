@@ -15,6 +15,7 @@ import signal
 import shutil
 import glob
 import threading
+import re
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
@@ -1651,6 +1652,88 @@ def api_temporada_productos(tid):
     """Retorna productos vinculados a una temporada (para el POS)."""
     productos = db.get_productos_por_temporada(tid)
     return jsonify([dict(p) for p in productos])
+
+# ─── RESPALDO (PASO 16) ────────────────────────────────────────────────────
+
+@app.route('/respaldo')
+@admin_required
+def respaldo():
+    """Panel de gestión de respaldos."""
+    cfg = db.get_config()
+    backup_dir = get_backup_dir()
+    archivos = []
+    if os.path.isdir(backup_dir):
+        patron = os.path.join(backup_dir, 'tienda_*.db')
+        for f in sorted(glob.glob(patron), reverse=True):
+            stat = os.stat(f)
+            archivos.append({
+                'nombre': os.path.basename(f),
+                'tamanio_kb': round(stat.st_size / 1024, 1),
+                'fecha': datetime.fromtimestamp(stat.st_mtime).strftime('%d/%m/%Y %H:%M'),
+            })
+    return render_template(
+        'respaldo.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        archivos=archivos,
+        backup_dir=backup_dir,
+        ultimo=cfg.get('backup_ultimo', '—'),
+        intervalo=cfg.get('backup_intervalo_h', '24'),
+        keep=cfg.get('backup_keep', '10')
+    )
+
+@app.route('/respaldo/ahora', methods=['POST'])
+@admin_required
+def respaldo_ahora():
+    """Genera un respaldo manual inmediato."""
+    ok, msg = hacer_backup(manual=True)
+    if ok:
+        flash(f'✅ Respaldo creado: {os.path.basename(msg)}', 'success')
+    else:
+        flash(f'❌ Error al respaldar: {msg}', 'danger')
+    return redirect(url_for('respaldo'))
+
+@app.route('/respaldo/config', methods=['POST'])
+@admin_required
+def respaldo_config():
+    """Guarda configuración del scheduler de respaldos."""
+    data = {
+        'backup_intervalo_h': request.form.get('backup_intervalo_h', '24'),
+        'backup_keep': request.form.get('backup_keep', '10'),
+    }
+    db.set_config(data)
+    iniciar_backup_scheduler()
+    flash('✅ Configuración de respaldos guardada.', 'success')
+    return redirect(url_for('respaldo'))
+
+@app.route('/respaldo/descargar/<nombre>')
+@admin_required
+def respaldo_descargar(nombre):
+    """Descarga un archivo de respaldo."""
+    if not re.match(r'^tienda_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.db$', nombre):
+        flash('❌ Nombre de archivo inválido.', 'danger')
+        return redirect(url_for('respaldo'))
+    ruta = os.path.join(get_backup_dir(), nombre)
+    if not os.path.exists(ruta):
+        flash('❌ Archivo no encontrado.', 'danger')
+        return redirect(url_for('respaldo'))
+    return send_file(ruta, as_attachment=True, download_name=nombre)
+
+@app.route('/respaldo/restaurar/<nombre>', methods=['POST'])
+@admin_required
+def respaldo_restaurar(nombre):
+    """Restaura la base de datos desde un respaldo."""
+    if not re.match(r'^tienda_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.db$', nombre):
+        flash('❌ Nombre de archivo inválido.', 'danger')
+        return redirect(url_for('respaldo'))
+    ruta = os.path.join(get_backup_dir(), nombre)
+    try:
+        db_path = db.DB_PATH
+        shutil.copy2(ruta, db_path)
+        flash(f'✅ Base de datos restaurada desde «{nombre}».', 'success')
+    except Exception as e:
+        flash(f'❌ Error al restaurar: {str(e)}', 'danger')
+    return redirect(url_for('respaldo'))
 
 # ─── REPORTES (PASO 12) ──────────────────────────────────────────────────────
 

@@ -536,6 +536,9 @@ def _seed_changelog(c):
         ('1.5.0', '2026-04-10', 'Nueva función',
          'Paso 15: Temporadas - Rutas y CRUD',
          'Implementación completa de las rutas para gestión de temporadas, formularios de edición y filtrado dinámico en el POS.'),
+        ('1.6.0', '2026-04-11', 'Nueva función',
+         'Paso 16: Módulo de Respaldo (UI)',
+         'Panel de gestión de copias de seguridad con opciones de descarga, restauración y configuración de frecuencia.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
