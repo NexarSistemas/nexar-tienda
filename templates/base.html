@@ -173,6 +173,23 @@
             </li>
 
             {% endif %}
+
+            <li class="nav-header">Información</li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'ayuda' %}active{% endif %}" href="{{ url_for('ayuda') }}">
+                    <i class="fas fa-question-circle"></i> <span>Ayuda</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'changelog' %}active{% endif %}" href="{{ url_for('changelog') }}">
+                    <i class="fas fa-list-alt"></i> <span>Novedades</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'acerca' %}active{% endif %}" href="{{ url_for('acerca') }}">
+                    <i class="fas fa-info-circle"></i> <span>Acerca de</span>
+                </a>
+            </li>
         </ul>
 
         <div class="sidebar-footer">

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Ayuda y Soporte — Nexar Tienda{% endblock %}
+{% block content %}
+<div class="container py-4">
+    <h2 class="mb-4"><i class="fas fa-question-circle text-primary me-2"></i>Centro de Ayuda</h2>
+
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-shopping-cart me-2"></i>Punto de Venta (POS)</h5>
+                    <p class="text-muted">Para realizar una venta:</p>
+                    <ol class="small">
+                        <li>Buscá los productos por nombre o código en el panel izquierdo.</li>
+                        <li>Hacé clic en el producto para agregarlo al carrito.</li>
+                        <li>Seleccioná el cliente (opcional) y el medio de pago.</li>
+                        <li>Hacé clic en <strong>Finalizar Venta</strong>. Se generará el ticket automáticamente.</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-boxes me-2"></i>Gestión de Stock</h5>
+                    <p class="text-muted">El sistema controla automáticamente el stock al vender o comprar. Podés realizar ajustes manuales desde el módulo de <strong>Stock</strong> haciendo clic en el botón de ajuste de cada producto.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-users me-2"></i>Clientes y Cuentas Corrientes</h5>
+                    <p class="text-muted small">Si realizás una venta en <strong>Cuenta Corriente</strong>, la deuda se cargará automáticamente al perfil del cliente. Podés registrar pagos y ver el saldo pendiente desde el detalle del cliente.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card h-100 shadow-sm border-warning">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-shield-alt me-2 text-warning"></i>Seguridad y Respaldos</h5>
+                    <p class="text-muted small">Es recomendable realizar respaldos periódicos. El sistema los hace automáticamente cada 24 horas (configurable), pero podés forzar uno manual desde el panel de <strong>Administración > Respaldos</strong>.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-5 p-4 bg-light rounded text-center">
+        <p class="mb-0">¿Necesitás soporte técnico adicional? Contactanos a través de nuestro portal de soporte oficial.</p>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Acerca de — Nexar Tienda{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <div class="text-center mb-5">
+        <i class="fas fa-store fa-4x text-primary mb-3"></i>
+        <h1 class="display-4">Nexar Tienda</h1>
+        <p class="lead text-muted">Sistema Integral de Gestión Comercial</p>
+        <span class="badge bg-dark py-2 px-3">Versión {{ app_version }}</span>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-4">
+                    <h5>Sobre el sistema</h5>
+                    <p>Nexar Tienda es una solución robusta diseñada específicamente para la gestión de tiendas de regalos, marroquinería y productos estacionales. Permite el control total del inventario, ventas, clientes y finanzas en un entorno ágil y seguro.</p>
+                    
+                    <hr class="my-4">
+                    
+                    <h5>Tecnologías utilizadas</h5>
+                    <ul class="list-inline mt-3">
+                        <li class="list-inline-item badge bg-light text-dark border p-2"><i class="fab fa-python me-1"></i> Python 3.11</li>
+                        <li class="list-inline-item badge bg-light text-dark border p-2"><i class="fas fa-leaf me-1"></i> Flask 3.0</li>
+                        <li class="list-inline-item badge bg-light text-dark border p-2"><i class="fas fa-database me-1"></i> SQLite 3</li>
+                        <li class="list-inline-item badge bg-light text-dark border p-2"><i class="fab fa-bootstrap me-1"></i> Bootstrap 5.3</li>
+                    </ul>
+
+                    <p class="mt-4 text-center text-muted small">&copy; 2026 Nexar Sistemas. Todos los derechos reservados.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

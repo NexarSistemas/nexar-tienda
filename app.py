@@ -17,6 +17,8 @@ import shutil
 import glob
 import threading
 import re
+import pathlib
+import markdown
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
@@ -2023,6 +2025,42 @@ def exportar_pdf():
         mimetype='application/pdf',
         as_attachment=True,
         download_name=f'lista_precios_{date.today().isoformat()}.pdf'
+    )
+
+# ─── PÁGINAS INFORMATIVAS (PASO 21) ────────────────────────────────────────
+
+@app.route('/acerca')
+@login_required
+def acerca():
+    """Información sobre la versión y el sistema."""
+    return render_template(
+        'acerca.html',
+        app_version=APP_VERSION,
+        usuario=session['user']
+    )
+
+@app.route('/ayuda')
+@login_required
+def ayuda():
+    """Guía de uso básica del sistema."""
+    return render_template(
+        'ayuda.html',
+        app_version=APP_VERSION,
+        usuario=session['user']
+    )
+
+@app.route('/changelog')
+@login_required
+def changelog():
+    """Historial de versiones del sistema."""
+    changelog_path = pathlib.Path(__file__).parent / 'CHANGELOG.md'
+    contenido = changelog_path.read_text(encoding='utf-8') if changelog_path.exists() else 'Changelog no disponible.'
+    contenido_html = markdown.markdown(contenido)
+    return render_template(
+        'changelog.html',
+        app_version=APP_VERSION,
+        usuario=session['user'],
+        contenido_html=contenido_html
     )
 
 # ─── INÍCIO ────────────────────────────────────────────────────────────────────

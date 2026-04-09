@@ -4,6 +4,19 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.11.0] - 16 Abril 2026 - Páginas Informativas
+
+### ✨ Características Nuevas
+- **Ayuda**: Guía rápida de uso para los módulos principales (POS, Stock, Clientes).
+- **Novedades (Changelog)**: Integración dinámica con `CHANGELOG.md` renderizado vía Markdown.
+- **Acerca de**: Ficha técnica del sistema y tecnologías utilizadas.
+
+### 🛠️ Cambios Técnicos
+- **Dependencias**: Adición de la librería `markdown`.
+- **UI**: Nuevos enlaces en el sidebar para acceso inmediato a información.
+
+---
+
 ## [1.10.0] - 15 Abril 2026 - Exportación de Catálogo
 
 ### ✨ Características Nuevas

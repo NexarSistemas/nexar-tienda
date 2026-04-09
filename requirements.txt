@@ -18,3 +18,4 @@ reportlab==4.2.0      # Exportar PDF
 # 🖥️ UI nativa (opcional, para ventana desktop)
 # =========================
 pywebview==4.4
+markdown==3.6

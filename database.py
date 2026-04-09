@@ -554,6 +554,9 @@ def _seed_changelog(c):
         ('1.10.0', '2026-04-15', 'Nueva función',
          'Paso 20: Exportación de catálogo (Excel y PDF)',
          'Generación de archivos Excel (.xlsx) y listas de precios en PDF para el catálogo de productos.'),
+        ('1.11.0', '2026-04-16', 'Nueva función',
+         'Paso 21: Páginas Informativas',
+         'Implementación de secciones de Ayuda, Changelog y Acerca de para mejorar la experiencia del usuario.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
