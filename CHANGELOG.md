@@ -4,6 +4,21 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.14.0] - 20 Abril 2026 - Launcher Universal e Interfaz Nativa
+
+### ✨ Características Nuevas
+- **Launcher Universal**: Implementación de `iniciar.py` como punto de entrada centralizado para simplificar el arranque del sistema.
+- **Ventana Nativa**: Integración con `pywebview` que permite ejecutar la aplicación en una ventana de escritorio independiente, eliminando la dependencia visual del navegador.
+- **Gestión Dinámica de Puertos**: El sistema ahora busca automáticamente un puerto libre (rango 5200-5999) para evitar conflictos con otras aplicaciones.
+- **Autocarga de Entorno**: El launcher verifica el entorno virtual (`venv`) e instala dependencias básicas automáticamente si faltan.
+- **Seguridad de Sesión**: Implementación de invalidación de sesiones al cerrar el launcher para prevenir accesos no autorizados tras el apagado.
+
+### 🛠️ Cambios Técnicos
+- **Infraestructura**: Actualización de `setup.sh` para utilizar el nuevo launcher como proceso principal.
+- **Compatibilidad**: Estructura preparada para el empaquetado con PyInstaller (soporte para rutas `sys._MEIPASS`).
+
+---
+
 ## [1.13.0] - 18 Abril 2026 - Refactorización de Navegación
 
 ### ✨ Características Nuevas
