@@ -2,13 +2,17 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.11.1` - Fix Historial
-**Última actualización:** 16 de abril de 2026 - v1.11.1
+**Versión actual:** `v1.12.0` - Apagado Controlado
+**Última actualización:** 17 de abril de 2026 - v1.12.0
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 22: Apagado Controlado (v1.12.0)
+- **🛑 Cierre Seguro**: Botón para detener el proceso del servidor.
+- **🔒 Sesiones**: Limpieza automática de la sesión al cerrar.
 
 ### ✅ PASO 21: Páginas Informativas (v1.11.0)
 - **ℹ️ Ayuda y Soporte**: Guía de usuario integrada.
@@ -112,6 +116,7 @@ Desarrollado con **Python + Flask + SQLite**.
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
 | 15 | Financiación y Cobranzas | `v1.5.1` | 5/5 ✅ | Completo |
+| 22 | Apagado Controlado | `v1.12.0` | - | Completo |
 | 14 | Gestión de Temporadas | `v1.4.0` | 5/5 ✅ | Completo |
 | 13 | Gestión de Usuarios y Permisos | `v1.3.0` | 5/5 ✅ | Completo |
 | 19 | Estadísticas Avanzadas y Análisis | `v1.9.0` | - | Completo |

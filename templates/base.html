@@ -172,6 +172,14 @@
                 </a>
             </li>
 
+            <li class="nav-item mt-3 px-3">
+                <form method="POST" action="{{ url_for('apagar_sistema') }}"
+                      onsubmit="return confirm('¿Cerrar el sistema? Se detendrá el servidor y se cerrarán todas las sesiones.')">
+                    <button class="btn btn-sm btn-outline-danger w-100">
+                        <i class="fas fa-power-off me-1"></i>Cerrar sistema
+                    </button>
+                </form>
+            </li>
             {% endif %}
 
             <li class="nav-header">Información</li>

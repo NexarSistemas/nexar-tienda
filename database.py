@@ -560,6 +560,9 @@ def _seed_changelog(c):
         ('1.11.1', '2026-04-16', 'Corrección',
          'Fix: Atributo get_ventas_historial',
          'Corrección de error de atributo faltante en el módulo de base de datos para el historial de ventas.'),
+        ('1.12.0', '2026-04-17', 'Nueva función',
+         'Paso 22: Apagado controlado',
+         'Implementación de cierre seguro del servidor Flask desde la interfaz administrativa.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(

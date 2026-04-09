@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.12.0] - 17 Abril 2026 - Apagado Controlado
+
+### ✨ Características Nuevas
+- **Apagado del Sistema**: Nueva funcionalidad para detener el servidor Flask de forma segura desde la interfaz administrativa.
+- **Pantalla de Cierre**: Visualización de confirmación tras el apagado exitoso.
+
+---
+
 ## [1.11.1] - 16 Abril 2026 - Corrección en Historial
 
 ### 🛠️ Correcciones y Mejoras

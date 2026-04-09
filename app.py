@@ -2063,6 +2063,39 @@ def changelog():
         contenido_html=contenido_html
     )
 
+# ─── APAGADO CONTROLADO (PASO 22) ─────────────────────────────────────────
+
+@app.route('/apagar', methods=['POST'])
+@admin_required
+def apagar_sistema():
+    """
+    Apagado controlado:
+    1. Invalida la sesión del usuario actual.
+    2. Detiene el servidor Flask de forma segura enviando SIGTERM.
+    """
+    session.clear()
+
+    def _shutdown():
+        import time
+        time.sleep(1.5)  # Tiempo para renderizar la respuesta en el navegador
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=_shutdown, daemon=True).start()
+    return render_template('apagado.html')
+
+@app.route('/apagar_rapido', methods=['POST'])
+def apagar_rapido():
+    """Apagado desde la pantalla de login (sin requerir sesión activa)."""
+    session.clear()
+
+    def _shutdown():
+        import time
+        time.sleep(1.5)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=_shutdown, daemon=True).start()
+    return render_template('apagado.html')
+
 # ─── INÍCIO ────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
