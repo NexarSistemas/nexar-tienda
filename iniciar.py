@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+"""
+╔══════════════════════════════════════════════════════════════════════╗
+║   NEXAR TIENDA  —  v1.14.0                                           ║
+║   Creado por Nexar Sistemas · Desarrollado con Claude.ai · 2026     ║
+╚══════════════════════════════════════════════════════════════════════╝
+"""
 import os
 import sys
 import subprocess

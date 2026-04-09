@@ -65,5 +65,5 @@ static/js/      → pos.js (punto de venta), utils.js (helpers)
 | Sin licencias | Sin licencias (uso propio) |
 
 ### Estado actual del proyecto
-- v0.1: Estructura de carpetas y archivos base ✅
+- v1.14.0: Launcher universal y ventana nativa implementados ✅
 - Próximo paso: database.py con tablas adaptadas para tienda

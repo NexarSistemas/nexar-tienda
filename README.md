@@ -2,13 +2,18 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.12.0` - Apagado Controlado
-**Última actualización:** 18 de abril de 2026 - v1.13.0
+**Versión actual:** `v1.14.0` - Launcher Universal
+**Última actualización:** 20 de abril de 2026 - v1.14.0
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 24: Launcher Universal e Interfaz Nativa (v1.14.0)
+- **🖥️ Ventana Nativa**: Integración con `pywebview` para ejecutar la app como una aplicación de escritorio independiente.
+- **🔌 Gestión de Puertos**: Selección dinámica de puertos libres para evitar colisiones.
+- **🚀 Autocargador**: Script `iniciar.py` que centraliza la lógica de inicio y preparación del entorno.
 
 ### ✅ PASO 23: Refactorización de Sidebar (v1.13.0)
 - **🎨 Rediseño Visual**: Adopción de la estructura de Nexar Almacén para mayor usabilidad.
