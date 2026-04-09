@@ -1,22 +1,29 @@
-# =========================
-# 🌐 Backend
-# =========================
-Flask==3.0.3
-python-dotenv==1.0.1
+# ==============================================================================
+# 🚀 NEXAR SISTEMAS - REQUERIMIENTOS UNIFICADOS (ABRIL 2026)
+# Proyectos: Tienda, Almacén y Finanzas
+# ==============================================================================
 
-# =========================
-# 🔐 Seguridad de sesiones
-# =========================
-# (Flask ya incluye werkzeug para password hashing)
+# 🌐 Backend Framework
+# Se establece 3.0.3 como base estable, compatible con las 3 verticales.
+Flask>=3.0.3
+python-dotenv>=1.0.1
 
-# =========================
-# 📊 Exportaciones (opcionales, instalar cuando se necesiten)
-# =========================
-openpyxl==3.1.2       # Exportar Excel
-reportlab==4.2.0      # Exportar PDF
+# 🌍 Protocolos y Comunicación
+# Versión actualizada para evitar vulnerabilidades de seguridad (CVEs).
+requests>=2.32.3
 
-# =========================
-# 🖥️ UI nativa (opcional, para ventana desktop)
-# =========================
-pywebview==4.4
-markdown==3.6
+# 🖥️ Interfaz de Usuario (Desktop Webview)
+pywebview>=5.0.0
+
+# 🔐 Seguridad y Cifrado
+# Importante: cryptography >= 42.0.0 resuelve fallos críticos de memoria.
+cryptography>=46.0.6
+
+# 📦 Generación de Ejecutables y Documentación
+pyinstaller>=6.11.1
+markdown>=3.6
+
+# 📊 Reportes y Exportación de Datos
+# (Instalar solo si el módulo de reportes está activo en el código)
+openpyxl>=3.1.5
+reportlab>=4.2.2
