@@ -1,65 +1,22 @@
 @echo off
 SETLOCAL
-title Nexar Tienda - Startup Script
+title Nexar Tienda
 
-echo ======================================================
-echo   - Iniciando Nexar Tienda para Windows -
-echo ======================================================
+cd /d "%~dp0"
 
-:: 1. Verificar Python
+:: Verificar que Python esté instalado
 where python >nul 2>nul
-if errorlevel 1 goto error_python
-
-:: 2. Crear entorno virtual si no existe
-if not exist venv (
-    echo [INFO] Creando entorno virtual...
-    python -m venv venv
+if errorlevel 1 (
+    echo.
+    echo ╔══════════════════════════════════════════════════════╗
+    echo ║  ERROR: Python no está instalado en este equipo     ║
+    echo ╠══════════════════════════════════════════════════════╣
+    echo ║  Descargarlo de: https://www.python.org/downloads/  ║
+    echo ║  Marcar la opción "Add Python to PATH"              ║
+    echo ╚══════════════════════════════════════════════════════╝
+    echo.
+    pause
+    exit /b 1
 )
 
-:: 3. Activar entorno
-echo [INFO] Activando entorno virtual...
-call venv\Scripts\activate
-
-:: 4. Instalar dependencias
-echo [INFO] Instalando dependencias...
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-
-:: 5. Crear .env si no existe
-if not exist .env (
-    echo [INFO] Creando archivo .env...
-    python -c "import secrets; print('SECRET_KEY=' + secrets.token_hex(32))" > .env
-)
-
-:: 6. Inicializar base de datos
-echo [INFO] Inicializando base de datos...
-python -c "import database; database.init_db()"
-if errorlevel 1 goto error_db
-
-:: 7. Ejecutar app
-echo [OK] Iniciando aplicacion...
-python app.py
-if errorlevel 1 goto error_app
-
-goto end
-
-:: =========================
-:error_python
-echo [ERROR] Python no esta instalado o no esta en PATH
-pause
-exit /b 1
-
-:error_db
-echo [ERROR] Fallo la inicializacion de la base de datos
-pause
-exit /b 1
-
-:error_app
-echo [ERROR] La aplicacion se cerro con errores
-pause
-exit /b 1
-
-:end
-echo.
-echo Proceso finalizado.
-pause
+python iniciar.py

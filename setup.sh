@@ -41,4 +41,4 @@ echo "✅ Todo listo. Iniciando Nexar Tienda..."
 echo ""
 
 # 6. Ejecutar Aplicación
-python3 app.py
+python3 iniciar.py

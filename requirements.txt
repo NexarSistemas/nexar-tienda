@@ -7,6 +7,7 @@
 # Se establece 3.0.3 como base estable, compatible con las 3 verticales.
 Flask>=3.0.3
 python-dotenv>=1.0.1
+gunicorn>=20.1.0
 
 # 🌍 Protocolos y Comunicación
 # Versión actualizada para evitar vulnerabilidades de seguridad (CVEs).

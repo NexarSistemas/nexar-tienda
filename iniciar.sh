@@ -1,51 +1,33 @@
 #!/bin/bash
+# ============================================================
+#  Nexar Tienda — Launcher Linux
+#  El usuario hace doble clic en este archivo o lo ejecuta
+#  desde la terminal. Todo lo demás es automático.
+# ============================================================
 
-echo "======================================================"
-echo "  - Iniciando Nexar Tienda para Linux -"
-echo "======================================================"
+# Ir al directorio donde está este script
+cd "$(dirname "$0")"
 
-# 1. Verificar Python
-if ! command -v python3 &> /dev/null
-then
-    echo "[ERROR] Python3 no esta instalado."
-    echo "Instala Python 3.11 o superior."
+# Verificar que Python 3 esté instalado
+if ! command -v python3 &>/dev/null; then
+    echo ""
+    echo "╔══════════════════════════════════════════════════════╗"
+    echo "║  ERROR: Python 3 no está instalado en este equipo   ║"
+    echo "╠══════════════════════════════════════════════════════╣"
+    echo "║  Instalar con:                                       ║"
+    echo "║    sudo apt install python3                          ║"
+    echo "╚══════════════════════════════════════════════════════╝"
+    echo ""
+    # Si corremos en entorno gráfico, mostrar ventana de error
+    if command -v zenity &>/dev/null; then
+        zenity --error \
+            --title="Nexar Tienda" \
+            --text="Python 3 no está instalado.\n\nInstalalo con:\n  sudo apt install python3" \
+            --width=350 2>/dev/null
+    fi
+    read -p "Presioná Enter para cerrar..." dummy
     exit 1
 fi
 
-# 2. Crear entorno virtual si no existe
-if [ ! -d "venv" ]; then
-    echo "[INFO] Creando entorno virtual..."
-    python3 -m venv venv
-fi
-
-# 3. Activar entorno virtual
-echo "[INFO] Activando entorno virtual..."
-source venv/bin/activate
-
-# 4. Instalar dependencias
-echo "[INFO] Instalando dependencias..."
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-
-# 5. Crear .env si no existe
-if [ ! -f ".env" ]; then
-    echo "[INFO] Creando archivo .env seguro..."
-    python -c "import secrets; print('SECRET_KEY=' + secrets.token_hex(32))" > .env
-fi
-
-# 6. Inicializar base de datos
-echo "[INFO] Inicializando base de datos..."
-python -c "import database; database.init_db()"
-
-if [ $? -ne 0 ]; then
-    echo "[ERROR] Fallo la inicializacion de la base de datos."
-    exit 1
-fi
-
-# 7. Ejecutar aplicación
-echo "[OK] Iniciando aplicacion..."
-python app.py
-
-if [ $? -ne 0 ]; then
-    echo "[ERROR] La aplicacion se cerro con errores."
-fi
+# Lanzar el sistema
+python3 iniciar.py
