@@ -3,12 +3,18 @@
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
 **Versión actual:** `v1.12.0` - Apagado Controlado
-**Última actualización:** 17 de abril de 2026 - v1.12.0
+**Última actualización:** 18 de abril de 2026 - v1.13.0
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 23: Refactorización de Sidebar (v1.13.0)
+- **🎨 Rediseño Visual**: Adopción de la estructura de Nexar Almacén para mayor usabilidad.
+- **📂 Organización Plana**: Navegación por grupos temáticos con acceso directo.
+- **📊 Inteligencia de Negocio**: Acceso unificado a Resumen Mensual, Estadísticas y Análisis.
+- **👤 Perfil de Usuario**: Pie de página mejorado con información de sesión y controles de salida.
 
 ### ✅ PASO 22: Apagado Controlado (v1.12.0)
 - **🛑 Cierre Seguro**: Botón para detener el proceso del servidor.
@@ -115,6 +121,7 @@ Desarrollado con **Python + Flask + SQLite**.
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
+| 23 | Refactorización Sidebar | `v1.13.0` | - | Completo |
 | 15 | Financiación y Cobranzas | `v1.5.1` | 5/5 ✅ | Completo |
 | 22 | Apagado Controlado | `v1.12.0` | - | Completo |
 | 14 | Gestión de Temporadas | `v1.4.0` | 5/5 ✅ | Completo |

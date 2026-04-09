@@ -18,14 +18,8 @@
             <span>Nexar Tienda</span>
         </div>
 
-        <div class="sidebar-user">
-            <div class="user-info">
-                <div class="user-name">{{ session['user']['nombre_completo'] }}</div>
-                <div class="user-role">{{ session['user']['rol'] }}</div>
-            </div>
-        </div>
-
         <ul class="nav flex-column sidebar-nav">
+            <li class="nav-header">Principal</li>
             <li class="nav-item">
                 <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
                     <i class="fas fa-tachometer-alt"></i>
@@ -33,156 +27,115 @@
                 </a>
             </li>
 
-            <li class="nav-header">Operaciones</li>
+            <li class="nav-header">Inventario</li>
             <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['punto_venta', 'ticket'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseVentas">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span>Punto de Venta</span>
-                    <i class="fas fa-chevron-down"></i>
+                <a class="nav-link {% if request.endpoint in ['productos', 'producto_nuevo', 'producto_editar'] %}active{% endif %}" href="{{ url_for('productos') }}">
+                    <i class="fas fa-boxes"></i>
+                    <span>Catálogo</span>
                 </a>
-                <div class="collapse {% if request.endpoint in ['punto_venta', 'ticket'] %}show{% endif %}" id="collapseVentas">
-                    <ul class="nav flex-column ms-3">
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'punto_venta' %}active{% endif %}" href="{{ url_for('punto_venta') }}">Nueva Venta</a></li>
-                        <li class="nav-item"><a class="nav-link" href="#">Historial</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'historial' %}active{% endif %}" href="{{ url_for('historial') }}">Historial de Ventas</a></li>
-                    </ul>
-                </div>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint in ['stock', 'stock_ajustar'] %}active{% endif %}" href="{{ url_for('stock') }}">
+                    <i class="fas fa-warehouse"></i>
+                    <span>Stock</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'temporadas' %}active{% endif %}" href="{{ url_for('temporadas') }}">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Temporadas</span>
+                </a>
             </li>
 
+            <li class="nav-header">Ventas</li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'punto_venta' %}active{% endif %}" href="{{ url_for('punto_venta') }}">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span>Punto de Venta</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'historial' %}active{% endif %}" href="{{ url_for('historial') }}">
+                    <i class="fas fa-history"></i>
+                    <span>Historial</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint in ['compras', 'compra_nueva', 'compra_detalle'] %}active{% endif %}" href="{{ url_for('compras') }}">
+                    <i class="fas fa-truck"></i>
+                    <span>Compras</span>
+                </a>
+            </li>
+
+            <li class="nav-header">Finanzas</li>
             <li class="nav-item">
                 <a class="nav-link {% if request.endpoint == 'caja' %}active{% endif %}" href="{{ url_for('caja') }}">
                     <i class="fas fa-cash-register"></i>
                     <span>Caja Diaria</span>
                 </a>
             </li>
-
-            <li class="nav-header">Gestión</li>
             <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['productos', 'producto_nuevo', 'producto_editar', 'producto_eliminar'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseProductos">
-                    <i class="fas fa-boxes"></i>
-                    <span>Productos</span>
-                    <i class="fas fa-chevron-down"></i>
-                </a>
-                <div class="collapse {% if request.endpoint in ['productos', 'producto_nuevo', 'producto_editar', 'producto_eliminar'] %}show{% endif %}" id="collapseProductos">
-                    <ul class="nav flex-column ms-3">
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'productos' %}active{% endif %}" href="{{ url_for('productos') }}">Lista</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'producto_nuevo' %}active{% endif %}" href="{{ url_for('producto_nuevo') }}">Nuevo</a></li>
-                    </ul>
-                </div>
-            </li>
-
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['stock', 'stock_ajustar'] %}active{% endif %}" href="{{ url_for('stock') }}">
-                    <i class="fas fa-chart-line"></i>
-                    <span>Stock</span>
-                </a>
-            </li>
-
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle', 'cliente_eliminar', 'cliente_agregar_movimiento', 'cliente_pagar'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseClientes">
-                    <i class="fas fa-users"></i>
-                    <span>Clientes</span>
-                    <i class="fas fa-chevron-down"></i>
-                </a>
-                <div class="collapse {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle', 'cliente_eliminar'] %}show{% endif %}" id="collapseClientes">
-                    <ul class="nav flex-column ms-3">
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'clientes' %}active{% endif %}" href="{{ url_for('clientes') }}">Lista</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'cliente_nuevo' %}active{% endif %}" href="{{ url_for('cliente_nuevo') }}">Nuevo</a></li>
-                    </ul>
-                </div>
-            </li>
-
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['proveedores', 'proveedor_nuevo', 'proveedor_editar', 'proveedor_detalle', 'proveedor_eliminar'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseProveedores">
-                    <i class="fas fa-truck"></i>
-                    <span>Proveedores</span>
-                    <i class="fas fa-chevron-down"></i>
-                </a>
-                <div class="collapse {% if request.endpoint in ['proveedores', 'proveedor_nuevo', 'proveedor_editar', 'proveedor_detalle', 'proveedor_eliminar'] %}show{% endif %}" id="collapseProveedores">
-                    <ul class="nav flex-column ms-3">
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'proveedores' %}active{% endif %}" href="{{ url_for('proveedores') }}">Lista</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'proveedor_nuevo' %}active{% endif %}" href="{{ url_for('proveedor_nuevo') }}">Nuevo</a></li>
-                    </ul>
-                </div>
-            </li>
-
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['compras', 'compra_nueva', 'compra_detalle'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseCompras">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span>Compras</span>
-                    <i class="fas fa-chevron-down"></i>
-                </a>
-                <div class="collapse {% if request.endpoint in ['compras', 'compra_nueva', 'compra_detalle'] %}show{% endif %}" id="collapseCompras">
-                    <ul class="nav flex-column ms-3">
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'compras' %}active{% endif %}" href="{{ url_for('compras') }}">Lista</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'compra_nueva' %}active{% endif %}" href="{{ url_for('compra_nueva') }}">Nuevo</a></li>
-                    </ul>
-                </div>
-            </li>
-
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['gastos', 'gasto_nuevo'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseGastos">
+                <a class="nav-link {% if request.endpoint == 'gastos' %}active{% endif %}" href="{{ url_for('gastos') }}">
                     <i class="fas fa-file-invoice-dollar"></i>
                     <span>Gastos</span>
-                    <i class="fas fa-chevron-down"></i>
                 </a>
-                <div class="collapse {% if request.endpoint in ['gastos', 'gasto_nuevo'] %}show{% endif %}" id="collapseGastos">
-                    <ul class="nav flex-column ms-3">
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'gastos' %}active{% endif %}" href="{{ url_for('gastos') }}">Lista de Gastos</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'gasto_nuevo' %}active{% endif %}" href="{{ url_for('gasto_nuevo') }}">Registrar Gasto</a></li>
-                    </ul>
-                </div>
             </li>
 
+            <li class="nav-header">Cuentas Corrientes</li>
             <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['reportes', 'estadisticas', 'analisis'] %}active{% endif %}" href="#" data-bs-toggle="collapse" data-bs-target="#collapseReportes">
-                    <i class="fas fa-chart-pie"></i>
-                    <span>Inteligencia</span>
-                    <i class="fas fa-chevron-down"></i>
+                <a class="nav-link {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle'] %}active{% endif %}" href="{{ url_for('clientes') }}">
+                    <i class="fas fa-users"></i>
+                    <span>Clientes</span>
                 </a>
-                <div class="collapse {% if request.endpoint in ['reportes', 'estadisticas', 'analisis'] %}show{% endif %}" id="collapseReportes">
-                    <ul class="nav flex-column ms-3">
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'reportes' %}active{% endif %}" href="{{ url_for('reportes') }}">Resumen Mensual</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'estadisticas' %}active{% endif %}" href="{{ url_for('estadisticas') }}">Dashboard Anual</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'analisis' %}active{% endif %}" href="{{ url_for('analisis') }}">Análisis Rentabilidad</a></li>
-                    </ul>
-                </div>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint in ['proveedores', 'proveedor_nuevo', 'proveedor_editar', 'proveedor_detalle'] %}active{% endif %}" href="{{ url_for('proveedores') }}">
+                    <i class="fas fa-industry"></i>
+                    <span>Proveedores</span>
+                </a>
             </li>
 
-            {% if session['user']['rol'] in ['Administrador', 'admin'] %}
-            <li class="nav-header">Administración</li>
+            <li class="nav-header">Informes</li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'reportes' %}active{% endif %}" href="{{ url_for('reportes') }}">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Resumen Mensual</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'estadisticas' %}active{% endif %}" href="{{ url_for('estadisticas') }}">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Estadísticas</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'analisis' %}active{% endif %}" href="{{ url_for('analisis') }}">
+                    <i class="fas fa-search-dollar"></i>
+                    <span>Análisis</span>
+                </a>
+            </li>
+
+            <li class="nav-header">Sistema</li>
             <li class="nav-item">
                 <a class="nav-link {% if request.endpoint == 'config' %}active{% endif %}" href="{{ url_for('config') }}">
                     <i class="fas fa-cog"></i>
                     <span>Configuración</span>
                 </a>
             </li>
-
+            {% if session['user']['rol'] in ['Administrador', 'admin'] %}
             <li class="nav-item">
                 <a class="nav-link {% if request.endpoint == 'usuarios' %}active{% endif %}" href="{{ url_for('usuarios') }}">
                     <i class="fas fa-users-cog"></i>
                     <span>Usuarios</span>
                 </a>
             </li>
-
             <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('respaldo') }}">
-                    <i class="fas fa-database me-2"></i>
+                <a class="nav-link {% if request.endpoint == 'respaldo' %}active{% endif %}" href="{{ url_for('respaldo') }}">
+                    <i class="fas fa-database"></i>
                     <span>Respaldos</span>
                 </a>
             </li>
-
-            <li class="nav-item mt-3 px-3">
-                <form method="POST" action="{{ url_for('apagar_sistema') }}"
-                      onsubmit="return confirm('¿Cerrar el sistema? Se detendrá el servidor y se cerrarán todas las sesiones.')">
-                    <button class="btn btn-sm btn-outline-danger w-100">
-                        <i class="fas fa-power-off me-1"></i>Cerrar sistema
-                    </button>
-                </form>
-            </li>
             {% endif %}
-
-            <li class="nav-header">Información</li>
             <li class="nav-item">
                 <a class="nav-link {% if request.endpoint == 'ayuda' %}active{% endif %}" href="{{ url_for('ayuda') }}">
                     <i class="fas fa-question-circle"></i> <span>Ayuda</span>
@@ -201,9 +154,25 @@
         </ul>
 
         <div class="sidebar-footer">
-            <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm w-100">
-                <i class="fas fa-sign-out-alt"></i> Salir
-            </a>
+            <div class="d-flex align-items-center justify-content-between mb-2 px-3">
+                <div class="user-info">
+                    <div style="color:#fff; font-size:.85rem; font-weight:600;">
+                        <i class="fas fa-user-circle me-1"></i>{{ session['user']['nombre_completo'] or session['user']['username'] }}
+                    </div>
+                    <div style="color:#94a3b8; font-size:.72rem;">{{ session['user']['rol'] }}</div>
+                </div>
+                <a href="{{ url_for('logout') }}" style="color:#ef9a9a; text-decoration: none; font-size: .85rem;" title="Cerrar sesión">
+                    <i class="fas fa-sign-out-alt"></i> Salir
+                </a>
+            </div>
+            {% if session['user']['rol'] in ['Administrador', 'admin'] %}
+            <form method="POST" action="{{ url_for('apagar_sistema') }}" 
+                  onsubmit="return confirm('¿Cerrar el sistema? Se cerrarán todas las sesiones activas.')" class="px-3">
+                <button class="btn btn-sm btn-outline-danger w-100" style="font-size: .7rem;">
+                    <i class="fas fa-power-off me-1"></i>Cerrar sistema
+                </button>
+            </form>
+            {% endif %}
         </div>
     </nav>
 

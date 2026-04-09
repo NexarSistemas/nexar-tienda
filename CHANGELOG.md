@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.13.0] - 18 Abril 2026 - Refactorización de Navegación
+
+### ✨ Características Nuevas
+- **UI/UX**: Rediseño completo del sidebar basado en la estructura de Nexar Almacén.
+- **Navegación**: Implementación de lista plana con encabezados de sección (`nav-header`) eliminando submenús colapsables.
+- **Inteligencia**: Reintegración del acceso a "Resumen Mensual" dentro del módulo de Informes.
+- **Sidebar Footer**: Nuevo pie de página con perfil de usuario, botón de cierre de sesión explícito ("Salir") y botón de apagado del sistema para administradores.
+- **Estética**: Unificación de íconos y márgenes para consistencia con la suite Nexar.
+
+---
+
 ## [1.12.1] - 18 Abril 2026 - Automatización y Seguridad
 
 ### ✨ Características Nuevas
