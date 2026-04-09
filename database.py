@@ -563,6 +563,9 @@ def _seed_changelog(c):
         ('1.12.0', '2026-04-17', 'Nueva función',
          'Paso 22: Apagado controlado',
          'Implementación de cierre seguro del servidor Flask desde la interfaz administrativa.'),
+        ('1.12.1', '2026-04-18', 'Mejora',
+         'Automatización y Seguridad',
+         'Adición de scripts de configuración y aplicación del estándar de seguridad para SECRET_KEY.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(

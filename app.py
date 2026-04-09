@@ -6,6 +6,7 @@ Paso 3: Login, logout, dashboard básico + sistema de backups automáticos
 """
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, send_file
+from dotenv import load_dotenv
 from datetime import date, datetime, timedelta
 from functools import wraps
 import json
@@ -35,7 +36,13 @@ APP_VERSION = _read_version()
 
 # ─── FLASK SETUP ──────────────────────────────────────────────────────────────
 app = Flask(__name__)
-app.secret_key = 'nexar-tienda-dev-key-cambiar-en-produccion'
+
+load_dotenv()
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY no definida. Configurar variable de entorno o archivo .env")
+
+app.config["SECRET_KEY"] = SECRET_KEY
 app.jinja_env.add_extension('jinja2.ext.loopcontrols')
 
 

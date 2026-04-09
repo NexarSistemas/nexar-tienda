@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.12.1] - 18 Abril 2026 - Automatización y Seguridad
+
+### ✨ Características Nuevas
+- **Infraestructura**: Adición de `setup.sh` y `Makefile` para automatizar la instalación de dependencias y el despliegue del entorno.
+- **Seguridad**: Implementación obligatoria del estándar `NEXAR_SECRET_KEY_STANDARD` mediante `python-dotenv`.
+
+---
+
 ## [1.12.0] - 17 Abril 2026 - Apagado Controlado
 
 ### ✨ Características Nuevas
