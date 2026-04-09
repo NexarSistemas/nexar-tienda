@@ -557,6 +557,9 @@ def _seed_changelog(c):
         ('1.11.0', '2026-04-16', 'Nueva función',
          'Paso 21: Páginas Informativas',
          'Implementación de secciones de Ayuda, Changelog y Acerca de para mejorar la experiencia del usuario.'),
+        ('1.11.1', '2026-04-16', 'Corrección',
+         'Fix: Atributo get_ventas_historial',
+         'Corrección de error de atributo faltante en el módulo de base de datos para el historial de ventas.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -1187,6 +1190,36 @@ def get_ventas(search='', fecha_desde='', fecha_hasta='', limit=200):
     sql += " GROUP BY v.id ORDER BY v.fecha DESC, v.id DESC LIMIT ?"
     params.append(limit)
     return q(sql, params)
+
+
+def get_ventas_historial(search='', fecha_desde='', fecha_hasta='', medio_pago=''):
+    """Retorna ventas filtradas por búsqueda, fecha y medio de pago (Paso 18)."""
+    params = []
+    condiciones = []
+
+    if search:
+        # Buscamos por nombre de cliente, número de ticket o ID interno
+        condiciones.append("(v.cliente_nombre LIKE ? OR CAST(v.numero_ticket AS TEXT) LIKE ? OR CAST(v.id AS TEXT) LIKE ?)")
+        params += [f'%{search}%', f'%{search}%', f'%{search}%']
+    if fecha_desde:
+        condiciones.append("v.fecha >= ?")
+        params.append(fecha_desde)
+    if fecha_hasta:
+        condiciones.append("v.fecha <= ?")
+        params.append(fecha_hasta)
+    if medio_pago:
+        condiciones.append("v.medio_pago = ?")
+        params.append(medio_pago)
+
+    where = "WHERE " + " AND ".join(condiciones) if condiciones else ""
+
+    return q(f"""
+        SELECT v.*
+        FROM ventas v
+        {where}
+        ORDER BY v.fecha DESC, v.id DESC
+        LIMIT 500
+    """, params)
 
 
 def get_venta_detalle(vid):

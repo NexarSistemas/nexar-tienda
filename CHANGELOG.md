@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.11.1] - 16 Abril 2026 - Corrección en Historial
+
+### 🛠️ Correcciones y Mejoras
+- **database.py**: Se restauró la función `get_ventas_historial` que causaba un `AttributeError` al intentar consultar el historial de ventas.
+- **Sincronización**: Actualización de versión en todos los archivos del core para mantener la integridad del versionado.
+
+---
+
 ## [1.11.0] - 16 Abril 2026 - Páginas Informativas
 
 ### ✨ Características Nuevas

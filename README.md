@@ -2,8 +2,8 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.11.0` - Páginas Informativas
-**Última actualización:** 16 de abril de 2026 - v1.11.0
+**Versión actual:** `v1.11.1` - Fix Historial
+**Última actualización:** 16 de abril de 2026 - v1.11.1
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
