@@ -13,7 +13,6 @@ datas = [
     (os.path.join(PROJ, 'templates'),    'templates'),
     (os.path.join(PROJ, 'static'),       'static'),
     (os.path.join(PROJ, 'VERSION'),      '.'),
-    (os.path.join(PROJ, 'version'),      '.'),
     (os.path.join(PROJ, 'CHANGELOG.md'), '.'),
 ]
 
