@@ -4,6 +4,25 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.15.1] - 21 Abril 2026 - Mejora en Apagado
+
+### 🛠️ Correcciones y Mejoras
+- **Auto-Cierre**: Se agregó un script en la pantalla de apagado para intentar cerrar automáticamente la ventana del navegador o la aplicación nativa tras el cierre del servidor.
+
+---
+
+## [1.15.0] - 21 Abril 2026 - UX de Apagado (SweetAlert2)
+
+### ✨ Características Nuevas
+- **SweetAlert2 Integration**: Implementación de diálogos de confirmación estilizados para el cierre y apagado del sistema, mejorando la coherencia visual.
+- **Apagado desde Login**: Se agregó la funcionalidad de apagar el servidor directamente desde la pantalla de login para facilitar el mantenimiento.
+
+### 🛠️ Cambios Técnicos
+- **Interfaz**: Migración de `confirm()` nativo a promesas de SweetAlert2 en `base.html` y `login.html`.
+- **Seguridad**: Refuerzo de la invalidación de sesiones al gatillar el apagado.
+
+---
+
 ## [1.14.0] - 20 Abril 2026 - Launcher Universal e Interfaz Nativa
 
 ### ✨ Características Nuevas

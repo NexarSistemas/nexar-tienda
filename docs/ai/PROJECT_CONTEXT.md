@@ -65,5 +65,5 @@ static/js/      → pos.js (punto de venta), utils.js (helpers)
 | Sin licencias | Sin licencias (uso propio) |
 
 ### Estado actual del proyecto
-- v1.14.0: Launcher universal y ventana nativa implementados ✅
+- v1.15.1: Mejora de auto-cierre de ventana en apagado ✅
 - Próximo paso: database.py con tablas adaptadas para tienda

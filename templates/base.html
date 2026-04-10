@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     {% block extra_css %}{% endblock %}
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 <body>
     {% if 'user' in session %}
@@ -166,9 +167,8 @@
                 </a>
             </div>
             {% if session['user']['rol'] in ['Administrador', 'admin'] %}
-            <form method="POST" action="{{ url_for('apagar_sistema') }}" 
-                  onsubmit="return confirm('¿Cerrar el sistema? Se cerrarán todas las sesiones activas.')" class="px-3">
-                <button class="btn btn-sm btn-outline-danger w-100" style="font-size: .7rem;">
+            <form id="form-apagar" method="POST" action="{{ url_for('apagar_sistema') }}" class="px-3">
+                <button type="button" onclick="confirmarApagado()" class="btn btn-sm btn-outline-danger w-100" style="font-size: .7rem;">
                     <i class="fas fa-power-off me-1"></i>Cerrar sistema
                 </button>
             </form>
@@ -233,6 +233,25 @@
         }
         updateTime();
         setInterval(updateTime, 1000);
+
+        function confirmarApagado() {
+            Swal.fire({
+                title: '¿Cerrar el sistema?',
+                text: 'Se cerrará la conexión con el servidor y todas las sesiones activas.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#c62828',
+                cancelButtonColor: '#1e3a5f',
+                confirmButtonText: 'Sí, cerrar ahora',
+                cancelButtonText: 'Cancelar',
+                background: '#1a2a3f',
+                color: '#ffffff'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('form-apagar').submit();
+                }
+            });
+        }
     </script>
     {% block extra_js %}{% endblock %}
 </body>

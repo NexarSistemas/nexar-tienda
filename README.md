@@ -2,13 +2,18 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.14.0` - Launcher Universal
-**Última actualización:** 20 de abril de 2026 - v1.14.0
+**Versión actual:** `v1.15.1` - UX de Apagado (Auto-cierre)
+**Última actualización:** 21 de abril de 2026 - v1.15.1
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 25: UX de Apagado con SweetAlert2 (v1.15.0)
+- **🔔 Notificaciones Elegantes**: Reemplazo de diálogos nativos `confirm()` por modales estéticos de SweetAlert2.
+- **🛑 Apagado desde Login**: Implementación de botón de apagado rápido en la pantalla de acceso.
+- **🎨 Consistencia Visual**: Adaptación de la paleta de colores institucional a los diálogos de confirmación.
 
 ### ✅ PASO 24: Launcher Universal e Interfaz Nativa (v1.14.0)
 - **🖥️ Ventana Nativa**: Integración con `pywebview` para ejecutar la app como una aplicación de escritorio independiente.
