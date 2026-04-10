@@ -34,3 +34,5 @@ Thumbs.db
 # otros
 nexar-almacen-source/
 .env
+dist/
+nexar_tienda/
