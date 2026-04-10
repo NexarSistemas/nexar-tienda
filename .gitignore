@@ -36,3 +36,5 @@ nexar-almacen-source/
 .env
 dist/
 nexar_tienda/
+*.deb
+build_deb/
