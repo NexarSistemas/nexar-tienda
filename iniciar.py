@@ -30,6 +30,10 @@ def es_ejecutable():
     return getattr(sys, 'frozen', False)
 
 
+def omitir_venv():
+    return os.environ.get("NEXAR_SKIP_VENV", "").lower() in {"1", "true", "yes"}
+
+
 # ==============================
 # 🔹 Reiniciar dentro del venv
 # ==============================
@@ -53,11 +57,12 @@ def reiniciar_en_venv():
         stderr=subprocess.DEVNULL
     )
 
-    subprocess.check_call(
-        [python_venv, "-m", "pip", "install", "-r", "requirements.txt"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    if os.path.exists("requirements.txt"):
+        subprocess.check_call(
+            [python_venv, "-m", "pip", "install", "-r", "requirements.txt"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
 
     # 🔴 relanzar SOLO en desarrollo
     subprocess.check_call([python_venv, __file__])
@@ -114,7 +119,7 @@ if __name__ == "__main__":
     safe_print("🚀 Iniciando Nexar Tienda...")
 
     # ✅ SOLO en desarrollo usamos venv
-    if not es_ejecutable():
+    if not es_ejecutable() and not omitir_venv():
         if not en_virtualenv():
             reiniciar_en_venv()
 

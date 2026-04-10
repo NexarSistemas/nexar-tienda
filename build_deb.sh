@@ -16,12 +16,13 @@ mkdir -p "${BUILD_DIR}/usr/local/bin"
 mkdir -p "${BUILD_DIR}/DEBIAN"
 
 # Copiar archivos core
-cp -r templates static app.py database.py iniciar.py VERSION version CHANGELOG.md "${BUILD_DIR}/opt/nexar-tienda/"
+cp -r templates static app.py database.py iniciar.py VERSION CHANGELOG.md requirements.txt "${BUILD_DIR}/opt/nexar-tienda/"
 
 # Crear lanzador
 cat > "${BUILD_DIR}/usr/local/bin/nexartienda" << EOF
 #!/bin/bash
 cd /opt/nexar-tienda
+export NEXAR_SKIP_VENV=1
 python3 iniciar.py
 EOF
 chmod +x "${BUILD_DIR}/usr/local/bin/nexartienda"
@@ -32,14 +33,20 @@ Package: ${PACKAGE}
 Version: ${VERSION}
 Architecture: all
 Maintainer: Nexar Sistemas
-Depends: python3, python3-flask
+Depends: python3, python3-pip
 Description: Sistema integral de gestión para tiendas.
 EOF
 
 # Post-inst para dependencias pip
 cat > "${BUILD_DIR}/DEBIAN/postinst" << EOF
 #!/bin/bash
-python3 -m pip install openpyxl reportlab pywebview python-dotenv --break-system-packages
+set -e
+
+if [ -f /opt/nexar-tienda/requirements.txt ]; then
+  python3 -m pip install --break-system-packages -r /opt/nexar-tienda/requirements.txt
+else
+  python3 -m pip install Flask python-dotenv openpyxl reportlab pywebview --break-system-packages
+fi
 EOF
 chmod +x "${BUILD_DIR}/DEBIAN/postinst"
 
