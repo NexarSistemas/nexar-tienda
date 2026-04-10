@@ -183,6 +183,16 @@ def before():
         _scheduler_started = True
         iniciar_backup_scheduler()
 
+    # 1. Verificar invalidación global de sesiones (Estándar Nexar Almacén)
+    cfg = db.get_config()
+    last_invalidation = cfg.get('sessions_invalidated_at')
+    if last_invalidation and 'user' in session:
+        login_time = session.get('login_time')
+        if not login_time or login_time < last_invalidation:
+            session.clear()
+            flash('⚠️ La sesión ha sido cerrada por un apagado del sistema.', 'warning')
+            return redirect(url_for('login'))
+
     # Rutas públicas (sin login requerido)
     public_routes = {'/login', '/static', '/favicon.ico'}
     if request.path in public_routes or request.path.startswith('/static'):
@@ -232,6 +242,7 @@ def login():
             'nombre_completo': usuario['nombre_completo'],
             'rol': usuario['rol']
         }
+        session['login_time'] = datetime.now().isoformat()
 
         flash(f"✅ ¡Hola, {usuario['nombre_completo']}!", 'success')
 
@@ -2080,6 +2091,11 @@ def apagar_sistema():
     1. Invalida la sesión del usuario actual.
     2. Detiene el servidor Flask de forma segura enviando SIGTERM.
     """
+    try:
+        # Invalidación global para que ninguna sesión previa sea válida al reiniciar
+        db.set_config({'sessions_invalidated_at': datetime.now().isoformat()})
+    except Exception:
+        pass
     session.clear()
 
     def _shutdown():
@@ -2093,6 +2109,10 @@ def apagar_sistema():
 @app.route('/apagar_rapido', methods=['POST'])
 def apagar_rapido():
     """Apagado desde la pantalla de login (sin requerir sesión activa)."""
+    try:
+        db.set_config({'sessions_invalidated_at': datetime.now().isoformat()})
+    except Exception:
+        pass
     session.clear()
 
     def _shutdown():

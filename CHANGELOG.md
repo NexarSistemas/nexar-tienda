@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.15.2] - 22 Abril 2026 - Sincronización de Apagado Controlado
+
+### 🛠️ Correcciones y Mejoras
+- **Paridad con Almacén**: Se implementó el chequeo de `sessions_invalidated_at` en `before_request` para invalidar sesiones huérfanas tras un reinicio.
+- **Cierre Automático**: Refinamiento del script de auto-cierre en `apagado.html` para asegurar la finalización de la ventana nativa.
+
+---
+
 ## [1.15.1] - 21 Abril 2026 - Mejora en Apagado
 
 ### 🛠️ Correcciones y Mejoras

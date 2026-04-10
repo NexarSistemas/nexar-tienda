@@ -15,11 +15,12 @@
         <i class="fas fa-power-off fa-4x mb-4"></i>
         <h1>Sistema cerrado</h1>
         <p class="lead">Nexar Tienda se ha detenido correctamente.</p>
-        <p class="text-muted">Ya podés cerrar esta pestaña del navegador.</p>
+        <p class="text-muted" id="status-msg">La ventana se cerrará automáticamente...</p>
     </div>
 
     <script>
-        // Intentar cerrar la ventana o pestaña automáticamente tras 2 segundos
+        // Comportamiento replicado de Nexar Almacén:
+        // Intentar cerrar la ventana nativa o pestaña tras 2 segundos
         setTimeout(function() {
             window.close();
         }, 2000);
