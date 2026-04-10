@@ -65,7 +65,11 @@ def get_backup_dir():
     custom = cfg.get('backup_dir', '').strip()
     if custom and os.path.isabs(custom):
         return custom
-    base = os.path.dirname(os.path.abspath(__file__))
+    # Misma lógica que DB_PATH: directorio del .exe en frozen, o del script en dev
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base, 'respaldo')
 
 

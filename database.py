@@ -11,6 +11,7 @@ Basado en Nexar Almacén, adaptado para tienda de regalos:
 
 import sqlite3
 import os
+import sys
 import hashlib
 from datetime import datetime, date, timedelta
 
@@ -41,7 +42,19 @@ TIER_LIMITS = {
 }
 
 # ─── RUTA DE LA BASE DE DATOS ────────────────────────────────────────────────
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tienda.db')
+
+def _get_app_dir():
+    """
+    Retorna el directorio base para datos persistentes.
+    - En modo congelado (PyInstaller .exe): usa la carpeta del ejecutable.
+      Ej: C:\\Users\\usuario\\AppData\\Roaming\\Nexar Tienda\\
+    - En desarrollo normal: usa la carpeta de este archivo.
+    """
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+DB_PATH = os.path.join(_get_app_dir(), 'tienda.db')
 
 
 # ─── CONEXIÓN ─────────────────────────────────────────────────────────────────

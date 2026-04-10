@@ -34,7 +34,7 @@ def es_ejecutable():
 # 🔹 Reiniciar dentro del venv
 # ==============================
 def reiniciar_en_venv():
-    safe_printprint("🔁 Reiniciando dentro del entorno virtual...")
+    safe_print("🔁 Reiniciando dentro del entorno virtual...")
 
     if os.name == "nt":  # Windows
         python_venv = os.path.join(VENV_DIR, "Scripts", "python.exe")
