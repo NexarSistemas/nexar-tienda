@@ -16,12 +16,13 @@ mkdir -p "${BUILD_DIR}/usr/local/bin"
 mkdir -p "${BUILD_DIR}/DEBIAN"
 
 # Copiar archivos core
-cp -r templates static app.py database.py iniciar.py VERSION version CHANGELOG.md "${BUILD_DIR}/opt/nexar-tienda/"
+cp -r templates static app.py database.py iniciar.py VERSION CHANGELOG.md requirements.txt "${BUILD_DIR}/opt/nexar-tienda/"
 
 # Crear lanzador
 cat > "${BUILD_DIR}/usr/local/bin/nexartienda" << EOF
 #!/bin/bash
 cd /opt/nexar-tienda
+export NEXAR_SKIP_VENV=1
 python3 iniciar.py
 EOF
 chmod +x "${BUILD_DIR}/usr/local/bin/nexartienda"
