@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.15.3] - 22 Abril 2026 - Corrección de Flujo de Apagado
+
+### 🛠️ Correcciones y Mejoras
+- **Acceso Público**: Se añadieron las rutas de apagado a la lista de excepciones de autenticación en `before_request`, permitiendo que el apagado desde el login funcione correctamente.
+- **Estructura HTML**: Se corrigió el anidamiento inválido de etiquetas en `login.html` que causaba errores en la ejecución de scripts.
+
+---
+
 ## [1.15.2] - 22 Abril 2026 - Sincronización de Apagado Controlado
 
 ### 🛠️ Correcciones y Mejoras

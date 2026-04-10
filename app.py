@@ -194,7 +194,7 @@ def before():
             return redirect(url_for('login'))
 
     # Rutas públicas (sin login requerido)
-    public_routes = {'/login', '/static', '/favicon.ico'}
+    public_routes = {'/login', '/static', '/favicon.ico', '/apagar', '/apagar_rapido'}
     if request.path in public_routes or request.path.startswith('/static'):
         return
 
