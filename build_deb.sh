@@ -13,6 +13,8 @@ echo "Generando paquete .deb v${VERSION}..."
 rm -rf build_deb
 mkdir -p "${BUILD_DIR}/opt/nexar-tienda"
 mkdir -p "${BUILD_DIR}/usr/local/bin"
+mkdir -p "${BUILD_DIR}/usr/share/applications"
+mkdir -p "${BUILD_DIR}/usr/share/pixmaps"
 mkdir -p "${BUILD_DIR}/DEBIAN"
 
 # Copiar archivos core
@@ -26,6 +28,21 @@ export NEXAR_SKIP_VENV=1
 python3 iniciar.py
 EOF
 chmod +x "${BUILD_DIR}/usr/local/bin/nexartienda"
+
+# Icono y lanzador de escritorio
+cp "static/icons/nexar_tienda.PNG" "${BUILD_DIR}/usr/share/pixmaps/nexar_tienda.png"
+cat > "${BUILD_DIR}/usr/share/applications/nexar-tienda.desktop" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Nexar Tienda
+Comment=Sistema integral de gestión para tiendas
+Exec=/usr/local/bin/nexartienda
+Icon=/usr/share/pixmaps/nexar_tienda.png
+Terminal=false
+Categories=Office;
+StartupNotify=true
+EOF
 
 # Control file
 cat > "${BUILD_DIR}/DEBIAN/control" << EOF
