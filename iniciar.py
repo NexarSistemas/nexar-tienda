@@ -28,7 +28,11 @@ def en_virtualenv():
 def reiniciar_en_venv():
     print("🔁 Reiniciando dentro del entorno virtual...")
 
-    python_venv = os.path.join(VENV_DIR, "bin", "python")
+    # Detectar ejecutable según el sistema operativo
+    if os.name == "nt":  # Windows
+        python_venv = os.path.join(VENV_DIR, "Scripts", "python.exe")
+    else:                # Linux/macOS
+        python_venv = os.path.join(VENV_DIR, "bin", "python")
 
     if not os.path.exists(python_venv):
         print("📦 Creando entorno virtual...")
@@ -36,8 +40,20 @@ def reiniciar_en_venv():
 
     # instalar dependencias
     print("📦 Instalando dependencias...")
-    subprocess.check_call([python_venv, "-m", "pip", "install", "--upgrade", "pip"])
-    subprocess.check_call([python_venv, "-m", "pip", "install", "-r", "requirements.txt"])
+#    subprocess.check_call([python_venv, "-m", "pip", "install", "--upgrade", "pip"])
+#    subprocess.check_call([python_venv, "-m", "pip", "install", "-r", "requirements.txt"])
+
+    subprocess.check_call(
+        [python_venv, "-m", "pip", "install", "--upgrade", "pip"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+
+    subprocess.check_call(
+        [python_venv, "-m", "pip", "install", "-r", "requirements.txt"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
 
     # relanzar script dentro del venv
     subprocess.check_call([python_venv, __file__])

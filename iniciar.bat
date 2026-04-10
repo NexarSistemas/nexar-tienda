@@ -1,22 +1,39 @@
 @echo off
 SETLOCAL
-title Nexar Tienda
+TITLE Nexar Tienda - Sistema de Gestion
 
-cd /d "%~dp0"
+:: Asegurar que estamos en el directorio del proyecto
+CD /D "%~dp0"
 
-:: Verificar que Python esté instalado
-where python >nul 2>nul
-if errorlevel 1 (
+echo ======================================================
+echo   🚀 Iniciando Nexar Tienda para Windows
+echo ======================================================
+echo.
+
+:: 1. Verificar si Python está instalado
+echo 🔍 Verificando instalacion de Python...
+WHERE python >nul 2>nul
+IF %ERRORLEVEL% NEQ 0 (
     echo.
     echo ╔══════════════════════════════════════════════════════╗
-    echo ║  ERROR: Python no está instalado en este equipo     ║
+    echo ║  ERROR: Python no esta instalado en este equipo      ║
     echo ╠══════════════════════════════════════════════════════╣
     echo ║  Descargarlo de: https://www.python.org/downloads/  ║
-    echo ║  Marcar la opción "Add Python to PATH"              ║
+    echo ║  Marcar la opcion "Add Python to PATH"              ║
     echo ╚══════════════════════════════════════════════════════╝
     echo.
-    pause
-    exit /b 1
+    PAUSE
+    EXIT /B 1
 )
 
+:: 2. Ejecutar el lanzador principal
+:: iniciar.py gestionara el entorno virtual y las dependencias automaticamente
+echo 📦 Cargando lanzador inteligente...
 python iniciar.py
+
+:: 3. Capturar errores si el script falla al iniciar
+IF %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ❌ Ocurrio un error al intentar iniciar el sistema (Codigo: %ERRORLEVEL%)
+    PAUSE
+)
