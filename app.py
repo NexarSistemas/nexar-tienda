@@ -168,6 +168,47 @@ def permission_required(perm_key):
     return decorator
 
 
+# ─── CONTEXT PROCESSORS (PASO 26) ────────────────────────────────────────────
+
+@app.context_processor
+def inject_global_data():
+    """Inyecta estado de licencia y utilidades en todos los templates."""
+    def get_licencia_status():
+        try:
+            info = db.get_license_info()
+            tier = info.get('tier', 'DEMO')
+            es_demo = (tier == 'DEMO')
+            dias = 0
+            vencido = False
+            aviso_proximo = False
+            if es_demo and info.get('activated_at'):
+                activado = datetime.fromisoformat(info['activated_at'])
+                dias_usados = (datetime.now() - activado).days
+                dias = max(0, 30 - dias_usados)
+                vencido = (dias == 0)
+                aviso_proximo = (0 < dias <= 7)
+            return {
+                'es_demo': es_demo,
+                'dias_restantes': dias,
+                'vencido': vencido,
+                'aviso_proximo': aviso_proximo,
+                'tier': tier
+            }
+        except Exception:
+            return {'es_demo': False}
+
+    def get_config_valor(clave, default=''):
+        try:
+            return db.get_config().get(clave, default)
+        except Exception:
+            return default
+
+    return {
+        'get_licencia_status': get_licencia_status,
+        'get_config_valor': get_config_valor
+    }
+
+
 # ─── INICIALIZACIÓN ──────────────────────────────────────────────────────────
 
 _scheduler_started = False

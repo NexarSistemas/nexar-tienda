@@ -2,13 +2,23 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.15.1` - UX de Apagado (Auto-cierre)
-**Última actualización:** 21 de abril de 2026 - v1.15.1
+**Versión actual:** `v1.17.0` - Infraestructura de Build (Win/Lin)
+**Última actualización:** 23 de abril de 2026 - v1.17.0
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 27: Infraestructura de Build (v1.17.0)
+- **📦 Empaquetado Windows**: Configuración de `PyInstaller` (.spec) para generar un único ejecutable.
+- **🛠️ Instalador Windows**: Script de `Inno Setup` (.iss) para crear el asistente de instalación.
+- **🐧 Paquete Linux**: Script `build_deb.sh` para generar instaladores Debian/Ubuntu.
+
+### ✅ PASO 26: Banner de Licencia y Mejoras de Usabilidad (v1.16.0)
+- **🚩 Indicador de Estado**: Banner dinámico para licencias DEMO con cuenta regresiva de días.
+- **🏢 Identidad Dinámica**: Visualización del nombre del negocio en el topbar desde la configuración.
+- **⚡ Auto-Dismiss**: Las notificaciones flash desaparecen automáticamente tras 4 segundos.
 
 ### ✅ PASO 25: UX de Apagado con SweetAlert2 (v1.15.0)
 - **🔔 Notificaciones Elegantes**: Reemplazo de diálogos nativos `confirm()` por modales estéticos de SweetAlert2.
