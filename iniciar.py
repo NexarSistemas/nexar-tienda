@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""
-╔══════════════════════════════════════════════════════════════════════╗
-║   NEXAR TIENDA  —  v1.15.3                                           ║
-║   Creado por Nexar Sistemas · Desarrollado con Claude.ai · 2026     ║
-╚══════════════════════════════════════════════════════════════════════╝
-"""
 import os
 import sys
 import subprocess
 import threading
 import time
 import socket
+
+# ✅ Agregar acá
+def safe_print(text):
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(text.encode("ascii", "ignore").decode())
 
 VENV_DIR = "venv"
 
@@ -23,25 +24,28 @@ def en_virtualenv():
 
 
 # ==============================
+# 🔹 Detectar si es ejecutable (.exe)
+# ==============================
+def es_ejecutable():
+    return getattr(sys, 'frozen', False)
+
+
+# ==============================
 # 🔹 Reiniciar dentro del venv
 # ==============================
 def reiniciar_en_venv():
-    print("🔁 Reiniciando dentro del entorno virtual...")
+    safe_printprint("🔁 Reiniciando dentro del entorno virtual...")
 
-    # Detectar ejecutable según el sistema operativo
     if os.name == "nt":  # Windows
         python_venv = os.path.join(VENV_DIR, "Scripts", "python.exe")
-    else:                # Linux/macOS
+    else:
         python_venv = os.path.join(VENV_DIR, "bin", "python")
 
     if not os.path.exists(python_venv):
-        print("📦 Creando entorno virtual...")
+        safe_print("📦 Creando entorno virtual...")
         subprocess.check_call([sys.executable, "-m", "venv", VENV_DIR])
 
-    # instalar dependencias
-    print("📦 Instalando dependencias...")
-#    subprocess.check_call([python_venv, "-m", "pip", "install", "--upgrade", "pip"])
-#    subprocess.check_call([python_venv, "-m", "pip", "install", "-r", "requirements.txt"])
+    safe_print("📦 Instalando dependencias...")
 
     subprocess.check_call(
         [python_venv, "-m", "pip", "install", "--upgrade", "pip"],
@@ -55,7 +59,7 @@ def reiniciar_en_venv():
         stderr=subprocess.DEVNULL
     )
 
-    # relanzar script dentro del venv
+    # 🔴 relanzar SOLO en desarrollo
     subprocess.check_call([python_venv, __file__])
     sys.exit()
 
@@ -107,21 +111,21 @@ def esperar_servidor(url, timeout=10):
 # 🚀 MAIN
 # ==============================
 if __name__ == "__main__":
-    print("🚀 Iniciando Nexar Tienda...")
+    safe_print("🚀 Iniciando Nexar Tienda...")
 
-    # 🔹 asegurar entorno virtual
-    if not en_virtualenv():
-        reiniciar_en_venv()
+    # ✅ SOLO en desarrollo usamos venv
+    if not es_ejecutable():
+        if not en_virtualenv():
+            reiniciar_en_venv()
 
-    # 🔹 recién ahora importamos webview (ya dentro del venv)
+    # 🔹 recién ahora importamos webview
     import webview
 
     port = obtener_puerto_libre()
     url = f"http://127.0.0.1:{port}"
 
-    print(f"🌐 Servidor en: {url}")
+    safe_print(f"🌐 Servidor en: {url}")
 
-    # 🔹 iniciar Flask en thread
     flask_thread = threading.Thread(
         target=iniciar_flask,
         args=(port,),
@@ -129,14 +133,12 @@ if __name__ == "__main__":
     )
     flask_thread.start()
 
-    # 🔹 esperar backend
     if not esperar_servidor(url):
-        print("❌ No se pudo iniciar el servidor")
+        safe_print("❌ No se pudo iniciar el servidor")
         sys.exit(1)
 
-    print("✅ Servidor listo")
+    safe_print("✅ Servidor listo")
 
-    # 🔹 abrir ventana nativa
     webview.create_window(
         "Nexar Tienda",
         url,
