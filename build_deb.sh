@@ -57,13 +57,25 @@ EOF
 # Post-inst para dependencias pip
 cat > "${BUILD_DIR}/DEBIAN/postinst" << EOF
 #!/bin/bash
-set -e
+set +e
 
 if [ -f /opt/nexar-tienda/requirements.txt ]; then
-  python3 -m pip install --break-system-packages -r /opt/nexar-tienda/requirements.txt
+  python3 -m pip install \
+    --break-system-packages \
+    --disable-pip-version-check \
+    --no-input \
+    -q \
+    -r /opt/nexar-tienda/requirements.txt >/dev/null 2>&1
 else
-  python3 -m pip install Flask python-dotenv openpyxl reportlab pywebview --break-system-packages
+  python3 -m pip install \
+    --break-system-packages \
+    --disable-pip-version-check \
+    --no-input \
+    -q \
+    Flask python-dotenv openpyxl reportlab pywebview >/dev/null 2>&1
 fi
+
+exit 0
 EOF
 chmod +x "${BUILD_DIR}/DEBIAN/postinst"
 
