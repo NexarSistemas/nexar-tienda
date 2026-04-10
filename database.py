@@ -947,19 +947,42 @@ def get_stock_movimientos_all(start_date='', end_date=''):
 
 # ─── CLIENTES ────────────────────────────────────────────────────────────────
 
-def get_clientes(activo_only=True, search=''):
-    """Devuelve clientes filtrables."""
-    sql = "SELECT * FROM clientes"
+def get_clientes(search='', with_debt_only=False, activo_only=True):
+    """Devuelve clientes filtrables con soporte para búsqueda y deuda."""
+    # 1. Base de la consulta: Incluimos un subquery para calcular el saldo al vuelo
+    sql = """
+        SELECT *, 
+        (SELECT COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0) 
+         FROM cc_clientes_mov WHERE cliente_id = clientes.id) as saldo 
+        FROM clientes
+    """
     conds = []
     params = []
+
+    # 2. Filtro de Activos
     if activo_only:
-        conds.append("activo=1")
+        conds.append("activo = 1")
+
+    # 3. Filtro de Búsqueda
     if search:
         conds.append("(nombre LIKE ? OR codigo LIKE ? OR dni_cuit LIKE ?)")
         params += [f'%{search}%'] * 3
+
+    # 4. Filtro de Deuda (Solo si el saldo > 0)
+    if with_debt_only:
+        # Usamos comillas triples para que Python permita varias líneas
+        query_saldo = """
+            (SELECT COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0) 
+             FROM cc_clientes_mov WHERE cliente_id = clientes.id)
+        """
+        conds.append(f"{query_saldo} > 0")
+
+    # 5. Construcción final
     if conds:
         sql += " WHERE " + " AND ".join(conds)
+    
     sql += " ORDER BY nombre"
+    
     return q(sql, params)
 
 
