@@ -13,18 +13,36 @@ echo "Generando paquete .deb v${VERSION}..."
 rm -rf build_deb
 mkdir -p "${BUILD_DIR}/opt/nexar-tienda"
 mkdir -p "${BUILD_DIR}/usr/local/bin"
+mkdir -p "${BUILD_DIR}/usr/share/applications"
+mkdir -p "${BUILD_DIR}/usr/share/pixmaps"
 mkdir -p "${BUILD_DIR}/DEBIAN"
 
 # Copiar archivos core
-cp -r templates static app.py database.py iniciar.py VERSION version CHANGELOG.md "${BUILD_DIR}/opt/nexar-tienda/"
+cp -r templates static app.py database.py iniciar.py VERSION CHANGELOG.md requirements.txt "${BUILD_DIR}/opt/nexar-tienda/"
 
 # Crear lanzador
 cat > "${BUILD_DIR}/usr/local/bin/nexartienda" << EOF
 #!/bin/bash
 cd /opt/nexar-tienda
+export NEXAR_SKIP_VENV=1
 python3 iniciar.py
 EOF
 chmod +x "${BUILD_DIR}/usr/local/bin/nexartienda"
+
+# Icono y lanzador de escritorio
+cp "static/icons/nexar_tienda.PNG" "${BUILD_DIR}/usr/share/pixmaps/nexar_tienda.png"
+cat > "${BUILD_DIR}/usr/share/applications/nexar-tienda.desktop" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Nexar Tienda
+Comment=Sistema integral de gestión para tiendas
+Exec=/usr/local/bin/nexartienda
+Icon=/usr/share/pixmaps/nexar_tienda.png
+Terminal=false
+Categories=Office;
+StartupNotify=true
+EOF
 
 # Control file
 cat > "${BUILD_DIR}/DEBIAN/control" << EOF
@@ -32,14 +50,32 @@ Package: ${PACKAGE}
 Version: ${VERSION}
 Architecture: all
 Maintainer: Nexar Sistemas
-Depends: python3, python3-flask
+Depends: python3, python3-pip
 Description: Sistema integral de gestión para tiendas.
 EOF
 
 # Post-inst para dependencias pip
 cat > "${BUILD_DIR}/DEBIAN/postinst" << EOF
 #!/bin/bash
-python3 -m pip install openpyxl reportlab pywebview python-dotenv --break-system-packages
+set +e
+
+if [ -f /opt/nexar-tienda/requirements.txt ]; then
+  python3 -m pip install \
+    --break-system-packages \
+    --disable-pip-version-check \
+    --no-input \
+    -q \
+    -r /opt/nexar-tienda/requirements.txt >/dev/null 2>&1
+else
+  python3 -m pip install \
+    --break-system-packages \
+    --disable-pip-version-check \
+    --no-input \
+    -q \
+    Flask python-dotenv openpyxl reportlab pywebview >/dev/null 2>&1
+fi
+
+exit 0
 EOF
 chmod +x "${BUILD_DIR}/DEBIAN/postinst"
 
