@@ -537,6 +537,7 @@ def api_productos():
 # ─── LICENCIAS ──────────────────────────────────────────────────────────────
 
 @app.route('/licencia', methods=['GET', 'POST'])
+@app.route('/licencias', methods=['GET', 'POST'])
 @admin_required
 def licencia():
     """Gestión de licencias basada en token (MVP)."""
@@ -560,7 +561,7 @@ def licencia():
             })
             flash('✅ Solicitud de licencia generada. Envíala al emisor para obtener tu token.', 'success')
             return render_template(
-                'licencia.html',
+                'licencias.html',
                 app_version=APP_VERSION,
                 license_info=db.get_license_info(),
                 tier_limits=db.TIER_LIMITS,
@@ -593,7 +594,7 @@ def licencia():
 
     license_info = db.get_license_info()
     return render_template(
-        'licencia.html',
+        'licencias.html',
         app_version=APP_VERSION,
         license_info=license_info,
         tier_limits=db.TIER_LIMITS,
