@@ -429,6 +429,17 @@ def init_db():
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO config VALUES (?,?)", (k, v))
 
+    # ─── DEMO por defecto (MVP licencias) ───────────────────────────────────
+    lic_tier = c.execute("SELECT valor FROM config WHERE clave='license_tier'").fetchone()
+    lic_activated = c.execute("SELECT valor FROM config WHERE clave='license_activated_at'").fetchone()
+    if (not lic_tier or not lic_tier['valor']):
+        c.execute("INSERT OR REPLACE INTO config VALUES ('license_tier','DEMO')")
+    if (not lic_activated or not lic_activated['valor']):
+        c.execute(
+            "INSERT OR REPLACE INTO config VALUES ('license_activated_at',?)",
+            (datetime.now().isoformat(),)
+        )
+
     # ─── Generar machine_id ──────────────────────────────────────────────────
     mid = c.execute("SELECT valor FROM config WHERE clave='machine_id'").fetchone()
     if not mid:

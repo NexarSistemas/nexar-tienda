@@ -123,6 +123,12 @@
                     <span>Configuración</span>
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'licencia' %}active{% endif %}" href="{{ url_for('licencia') }}">
+                    <i class="fas fa-key"></i>
+                    <span>Licencias</span>
+                </a>
+            </li>
             {% if session['user']['rol'] in ['Administrador', 'admin'] %}
             <li class="nav-item">
                 <a class="nav-link {% if request.endpoint == 'usuarios' %}active{% endif %}" href="{{ url_for('usuarios') }}">
