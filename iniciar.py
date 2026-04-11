@@ -36,6 +36,24 @@ def omitir_venv():
     return os.environ.get("NEXAR_SKIP_VENV", "").lower() in {"1", "true", "yes"}
 
 
+def preparar_entorno_linux_frozen():
+    """Evita colisiones de schemas GSettings en binarios PyInstaller."""
+    if not (sys.platform.startswith("linux") and es_ejecutable()):
+        return
+
+    os.environ.pop("GSETTINGS_SCHEMA_DIR", None)
+    xdg_dirs = os.environ.get("XDG_DATA_DIRS", "")
+    base_dirs = ["/usr/local/share", "/usr/share"]
+    current_dirs = [d for d in xdg_dirs.split(":") if d]
+
+    merged = []
+    for directory in base_dirs + current_dirs:
+        if directory not in merged:
+            merged.append(directory)
+
+    os.environ["XDG_DATA_DIRS"] = ":".join(merged)
+
+
 # ==============================
 # 🔹 Reiniciar dentro del venv
 # ==============================
@@ -124,6 +142,8 @@ if __name__ == "__main__":
     if not es_ejecutable() and not omitir_venv():
         if not en_virtualenv():
             reiniciar_en_venv()
+
+    preparar_entorno_linux_frozen()
 
     # 🔹 recién ahora importamos webview
     import webview

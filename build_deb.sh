@@ -35,6 +35,12 @@ cp -r templates static VERSION CHANGELOG.md "${BUILD_DIR}/opt/nexar-tienda/"
 cat > "${BUILD_DIR}/usr/local/bin/nexartienda" << EOF
 #!/bin/bash
 cd /opt/nexar-tienda
+unset GSETTINGS_SCHEMA_DIR
+if [ -n "\${XDG_DATA_DIRS:-}" ]; then
+  export XDG_DATA_DIRS="/usr/local/share:/usr/share:\${XDG_DATA_DIRS}"
+else
+  export XDG_DATA_DIRS="/usr/local/share:/usr/share"
+fi
 exec ./NexarTienda
 EOF
 
