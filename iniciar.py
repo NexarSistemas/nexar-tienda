@@ -14,6 +14,8 @@ def safe_print(text):
         print(text.encode("ascii", "ignore").decode())
 
 VENV_DIR = "venv"
+APP_TITLE = "Nexar Tienda"
+APP_HOST = "127.0.0.1"
 
 
 # ==============================
@@ -87,7 +89,7 @@ def iniciar_flask(port):
     from app import app
 
     app.run(
-        host="127.0.0.1",
+        host=APP_HOST,
         port=port,
         debug=False,
         use_reloader=False
@@ -127,7 +129,7 @@ if __name__ == "__main__":
     import webview
 
     port = obtener_puerto_libre()
-    url = f"http://127.0.0.1:{port}"
+    url = f"http://{APP_HOST}:{port}"
 
     safe_print(f"🌐 Servidor en: {url}")
 
@@ -145,7 +147,7 @@ if __name__ == "__main__":
     safe_print("✅ Servidor listo")
 
     webview.create_window(
-        "Nexar Tienda",
+        APP_TITLE,
         url,
         width=1200,
         height=800
