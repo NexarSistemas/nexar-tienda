@@ -41,6 +41,7 @@ build_deb/
 # Directorios de código fuente externo o compilados locales
 nexar_tienda/
 nexar_tienda_linux/
+nexar_tienda_windows/
 
 ### --- IDE / EDITORES --- ###
 # Configuración de VS Code
