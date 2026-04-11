@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Nexar Tienda{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@6.4.0/css/all.min.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     {% block extra_css %}{% endblock %}
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -15,144 +15,81 @@
     <!-- ─── SIDEBAR ─── -->
     <nav class="sidebar">
         <div class="sidebar-brand">
-            <i class="fas fa-store"></i>
-            <span>Nexar Tienda</span>
+            <h5><i class="fas fa-store me-2" style="color:var(--accent)"></i>Nexar Tienda</h5>
+            <small>v{{ app_version }}</small>
         </div>
 
-        <ul class="nav flex-column sidebar-nav">
-            <li class="nav-header">Principal</li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
-                    <i class="fas fa-tachometer-alt"></i>
-                    <span>Dashboard</span>
-                </a>
-            </li>
+        <div class="sidebar-nav">
+            <div class="nav-label">Principal</div>
+            <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
+                <i class="fas fa-tachometer-alt"></i> Dashboard
+            </a>
 
-            <li class="nav-header">Inventario</li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['productos', 'producto_nuevo', 'producto_editar'] %}active{% endif %}" href="{{ url_for('productos') }}">
-                    <i class="fas fa-boxes"></i>
-                    <span>Catálogo</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['stock', 'stock_ajustar'] %}active{% endif %}" href="{{ url_for('stock') }}">
-                    <i class="fas fa-warehouse"></i>
-                    <span>Stock</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'temporadas' %}active{% endif %}" href="{{ url_for('temporadas') }}">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Temporadas</span>
-                </a>
-            </li>
+            <div class="nav-label">Inventario</div>
+            <a class="nav-link {% if request.endpoint in ['productos', 'producto_nuevo', 'producto_editar'] %}active{% endif %}" href="{{ url_for('productos') }}">
+                <i class="fas fa-boxes"></i> Catálogo
+            </a>
+            <a class="nav-link {% if request.endpoint in ['stock', 'stock_ajustar'] %}active{% endif %}" href="{{ url_for('stock') }}">
+                <i class="fas fa-warehouse"></i> Stock
+            </a>
+            <a class="nav-link {% if request.endpoint == 'temporadas' %}active{% endif %}" href="{{ url_for('temporadas') }}">
+                <i class="fas fa-calendar-alt"></i> Temporadas
+            </a>
 
-            <li class="nav-header">Ventas</li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'punto_venta' %}active{% endif %}" href="{{ url_for('punto_venta') }}">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span>Punto de Venta</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'historial' %}active{% endif %}" href="{{ url_for('historial') }}">
-                    <i class="fas fa-history"></i>
-                    <span>Historial</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['compras', 'compra_nueva', 'compra_detalle'] %}active{% endif %}" href="{{ url_for('compras') }}">
-                    <i class="fas fa-truck"></i>
-                    <span>Compras</span>
-                </a>
-            </li>
+            <div class="nav-label">Ventas</div>
+            <a class="nav-link {% if request.endpoint == 'punto_venta' %}active{% endif %}" href="{{ url_for('punto_venta') }}">
+                <i class="fas fa-shopping-cart"></i> Punto de Venta
+            </a>
+            <a class="nav-link {% if request.endpoint == 'historial' %}active{% endif %}" href="{{ url_for('historial') }}">
+                <i class="fas fa-history"></i> Historial
+            </a>
+            <a class="nav-link {% if request.endpoint in ['compras', 'compra_nueva', 'compra_detalle'] %}active{% endif %}" href="{{ url_for('compras') }}">
+                <i class="fas fa-truck"></i> Compras
+            </a>
 
-            <li class="nav-header">Finanzas</li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'caja' %}active{% endif %}" href="{{ url_for('caja') }}">
-                    <i class="fas fa-cash-register"></i>
-                    <span>Caja Diaria</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'gastos' %}active{% endif %}" href="{{ url_for('gastos') }}">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                    <span>Gastos</span>
-                </a>
-            </li>
+            <div class="nav-label">Finanzas</div>
+            <a class="nav-link {% if request.endpoint == 'caja' %}active{% endif %}" href="{{ url_for('caja') }}">
+                <i class="fas fa-cash-register"></i> Caja Diaria
+            </a>
+            <a class="nav-link {% if request.endpoint == 'gastos' %}active{% endif %}" href="{{ url_for('gastos') }}">
+                <i class="fas fa-file-invoice-dollar"></i> Gastos
+            </a>
 
-            <li class="nav-header">Cuentas Corrientes</li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle'] %}active{% endif %}" href="{{ url_for('clientes') }}">
-                    <i class="fas fa-users"></i>
-                    <span>Clientes</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint in ['proveedores', 'proveedor_nuevo', 'proveedor_editar', 'proveedor_detalle'] %}active{% endif %}" href="{{ url_for('proveedores') }}">
-                    <i class="fas fa-industry"></i>
-                    <span>Proveedores</span>
-                </a>
-            </li>
+            <div class="nav-label">Cuentas Corrientes</div>
+            <a class="nav-link {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle'] %}active{% endif %}" href="{{ url_for('clientes') }}">
+                <i class="fas fa-users"></i> Clientes
+            </a>
+            <a class="nav-link {% if request.endpoint in ['proveedores', 'proveedor_nuevo', 'proveedor_editar', 'proveedor_detalle'] %}active{% endif %}" href="{{ url_for('proveedores') }}">
+                <i class="fas fa-industry"></i> Proveedores
+            </a>
 
-            <li class="nav-header">Informes</li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'reportes' %}active{% endif %}" href="{{ url_for('reportes') }}">
-                    <i class="fas fa-chart-pie"></i>
-                    <span>Resumen Mensual</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'estadisticas' %}active{% endif %}" href="{{ url_for('estadisticas') }}">
-                    <i class="fas fa-chart-bar"></i>
-                    <span>Estadísticas</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'analisis' %}active{% endif %}" href="{{ url_for('analisis') }}">
-                    <i class="fas fa-search-dollar"></i>
-                    <span>Análisis</span>
-                </a>
-            </li>
+            <div class="nav-label">Informes</div>
+            <a class="nav-link {% if request.endpoint == 'reportes' %}active{% endif %}" href="{{ url_for('reportes') }}">
+                <i class="fas fa-chart-pie"></i> Resumen Mensual
+            </a>
+            <a class="nav-link {% if request.endpoint == 'estadisticas' %}active{% endif %}" href="{{ url_for('estadisticas') }}">
+                <i class="fas fa-chart-bar"></i> Estadísticas
+            </a>
 
-            <li class="nav-header">Sistema</li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'config' %}active{% endif %}" href="{{ url_for('config') }}">
-                    <i class="fas fa-cog"></i>
-                    <span>Configuración</span>
-                </a>
-            </li>
+            <div class="nav-label">Sistema</div>
+            <a class="nav-link {% if request.endpoint == 'config' %}active{% endif %}" href="{{ url_for('config') }}">
+                <i class="fas fa-cog"></i> Configuración
+            </a>
             {% if session['user']['rol'] in ['Administrador', 'admin'] %}
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'usuarios' %}active{% endif %}" href="{{ url_for('usuarios') }}">
-                    <i class="fas fa-users-cog"></i>
-                    <span>Usuarios</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'respaldo' %}active{% endif %}" href="{{ url_for('respaldo') }}">
-                    <i class="fas fa-database"></i>
-                    <span>Respaldos</span>
-                </a>
-            </li>
+            <a class="nav-link {% if request.endpoint == 'usuarios' %}active{% endif %}" href="{{ url_for('usuarios') }}">
+                <i class="fas fa-users-cog"></i> Usuarios
+            </a>
+            <a class="nav-link {% if request.endpoint == 'respaldo' %}active{% endif %}" href="{{ url_for('respaldo') }}">
+                <i class="fas fa-database"></i> Respaldos
+            </a>
             {% endif %}
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'ayuda' %}active{% endif %}" href="{{ url_for('ayuda') }}">
-                    <i class="fas fa-question-circle"></i> <span>Ayuda</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'changelog' %}active{% endif %}" href="{{ url_for('changelog') }}">
-                    <i class="fas fa-list-alt"></i> <span>Novedades</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'acerca' %}active{% endif %}" href="{{ url_for('acerca') }}">
-                    <i class="fas fa-info-circle"></i> <span>Acerca de</span>
-                </a>
-            </li>
-        </ul>
+            <a class="nav-link {% if request.endpoint == 'ayuda' %}active{% endif %}" href="{{ url_for('ayuda') }}">
+                <i class="fas fa-question-circle"></i> Ayuda
+            </a>
+            <a class="nav-link {% if request.endpoint == 'changelog' %}active{% endif %}" href="{{ url_for('changelog') }}">
+                <i class="fas fa-list-alt"></i> Novedades
+            </a>
+        </div>
 
         <div class="sidebar-footer">
             <div class="d-flex align-items-center justify-content-between mb-2 px-3">
@@ -163,7 +100,7 @@
                     <div style="color:#94a3b8; font-size:.72rem;">{{ session['user']['rol'] }}</div>
                 </div>
                 <a href="{{ url_for('logout') }}" style="color:#ef9a9a; text-decoration: none; font-size: .85rem;" title="Cerrar sesión">
-                    <i class="fas fa-sign-out-alt"></i> Salir
+                    <i class="fas fa-sign-out-alt"></i>
                 </a>
             </div>
             {% if session['user']['rol'] in ['Administrador', 'admin'] %}

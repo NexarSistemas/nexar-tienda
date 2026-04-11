@@ -4,6 +4,26 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.18.0] - 23 Abril 2026 - Unificación Estética Suite Nexar
+
+### ✨ Características Nuevas
+- **UI/UX Refactoring**: Rediseño visual completo basado en la estructura minimalista de Nexar Almacén.
+- **Sidebar "Fine"**: Implementación de barra lateral de 230px con navegación plana y etiquetas de sección.
+- **Tipografía Premium**: Adopción global de la fuente Inter con suavizado de renderizado.
+- **Login Profesional**: Rediseño de la página de acceso con integración total en `main.css`.
+
+### 🛠️ Cambios Técnicos
+- **app.py**: Mejora en la robustez de lectura del archivo de versión.
+- **CSS**: Migración de bloques sólidos a transparencias y refinamiento de bordes.
+
+---
+
+## [1.17.0] - 23 Abril 2026 - Infraestructura de Build
+- **Build System**: Configuración de PyInstaller (.spec) e Inno Setup (.iss) para distribución.
+
+## [1.16.0] - 22 Abril 2026 - Mejoras de Usabilidad
+- **UX**: Banner dinámico para licencias DEMO y auto-dismiss en mensajes flash.
+
 ## [1.15.3] - 22 Abril 2026 - Corrección de Flujo de Apagado
 
 ### 🛠️ Correcciones y Mejoras
