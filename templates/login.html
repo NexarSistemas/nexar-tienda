@@ -1,89 +1,95 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Iniciar Sesión — Nexar Tienda</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body class="login-body-wrapper">
+<div class="login-card">
+  <div class="login-header">
+    <span class="store-icon">🛍️</span>
+    <h3>Nexar Tienda</h3>
+    <p>Sistema de Gestión Comercial</p>
+  </div>
 
-{% block title %}Iniciar Sesión — Nexar Tienda{% endblock %}
-
-{% block login_content %}
-    <div class="login-container">
-        <div class="login-box">
-            <!-- ─── LOGO ─── -->
-            <div class="login-header">
-                <i class="fas fa-store"></i>
-                <h1>Nexar Tienda</h1>
-                <p class="text-muted">v{{ app_version }}</p>
-            </div>
-
-            <!-- ─── ALERTS ─── -->
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                    <div class="alert alert-{{ 'success' if 'éxito' in message or '✅' in message else 'danger' if '❌' in message else 'warning' if '⚠' in message else 'info' }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-
-            <!-- ─── FORM ─── -->
-            <form method="POST" class="login-form">
-                <div class="mb-3">
-                    <label for="username" class="form-label">Usuario</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-user"></i></span>
-                        <input type="text" class="form-control" id="username" name="username" placeholder="Ingresá tu usuario" required autofocus>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label for="password" class="form-label">Contraseña</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                        <input type="password" class="form-control" id="password" name="password" placeholder="Ingresá tu contraseña" required>
-                    </div>
-                </div>
-
-                <button type="submit" class="btn btn-primary btn-login w-100">
-                    <i class="fas fa-sign-in-alt"></i> Iniciar Sesión
-                </button>
-            </form>
-
-            <!-- ─── DEMO INFO ─── -->
-            <div class="login-footer">
-                <p class="text-center text-muted small">
-                    <strong>Demo:</strong> admin / admin123<br>
-                    <strong>Usuario:</strong> vendedor / vendedor123
-                </p>
-                <div class="text-center mt-3 pt-3 border-top">
-                    <form id="form-apagar-login" method="POST" action="{{ url_for('apagar_rapido') }}">
-                        <button type="button" onclick="confirmarApagadoLogin()" class="btn btn-link btn-sm text-decoration-none text-muted" style="font-size: .75rem;">
-                            <i class="fas fa-power-off me-1"></i>Apagar sistema
-                        </button>
-                    </form>
-                </div>
-            </div>
+  <div class="login-content-body">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ 'success' if 'éxito' in msg or '✅' in msg else 'danger' if '❌' in msg else 'warning' if '⚠' in msg else 'info' }} border-0 shadow-sm" style="border-radius: 8px; font-size: .9rem;">
+          {{ msg }}
         </div>
+      {% endfor %}
+    {% endwith %}
+
+    <div class="mb-4" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; font-size: .82rem; color: #1e3a5f;">
+      <i class="fas fa-info-circle me-1"></i>
+      <strong>Acceso inicial:</strong> admin / admin123 &nbsp;·&nbsp; vendedor / vendedor123
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script>
-        function confirmarApagadoLogin() {
-            Swal.fire({
-                title: '¿Apagar el sistema?',
-                text: 'El servidor dejará de responder inmediatamente.',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#c62828',
-                cancelButtonColor: '#6c757d',
-                confirmButtonText: 'Sí, apagar ahora',
-                cancelButtonText: 'Cancelar',
-                background: '#ffffff',
-                color: '#333333'
-            }).then((result) => {
-                if (result.isConfirmed) document.getElementById('form-apagar-login').submit();
-            });
+    <form method="POST">
+      <div class="mb-3">
+        <label class="form-label fw-bold small"><i class="fas fa-user me-1"></i>Usuario</label>
+        <div class="input-icon-wrapper">
+          <i class="fas fa-user"></i>
+          <input type="text" name="username" class="form-control" placeholder="Ingresá tu usuario"
+            autofocus autocomplete="username" required>
+        </div>
+      </div>
+      <div class="mb-4">
+        <label class="form-label fw-bold small"><i class="fas fa-lock me-1"></i>Contraseña</label>
+        <div class="input-icon-wrapper">
+          <i class="fas fa-lock"></i>
+          <input type="password" name="password" class="form-control" placeholder="••••••••"
+            autocomplete="current-password" required>
+        </div>
+      </div>
+      <button type="submit" class="btn-login-nexar">
+        <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión
+      </button>
+    </form>
+  </div>
+
+  <div class="text-center p-3 border-top" style="color: #999; font-size: .78rem;">
+    <form id="form-apagar-login" method="POST" action="{{ url_for('apagar_rapido') }}" style="margin-bottom:10px">
+      <button type="button" onclick="confirmarApagadoLogin()"
+              style="background:none;border:1px solid #ddd;border-radius:6px;
+                     padding:5px 16px;font-size:.8rem;color:#999;cursor:pointer;
+                     transition:all .2s"
+              onmouseover="this.style.background='#fff0f0';this.style.color='#c62828';this.style.borderColor='#c62828'"
+              onmouseout="this.style.background='none';this.style.color='#999';this.style.borderColor='#ddd'">
+        <i class="fas fa-power-off me-1"></i>Apagar sistema
+      </button>
+    </form>
+    Nexar Tienda · v{{ app_version }}<br>
+    Creado por <strong>Nexar Sistemas</strong> · 2026
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+function confirmarApagadoLogin() {
+    Swal.fire({
+        title: '¿Apagar el sistema?',
+        text: "El servidor dejará de responder inmediatamente.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#c62828',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, apagar ahora',
+        cancelButtonText: 'Cancelar',
+        background: '#ffffff',
+        color: '#333'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            document.getElementById('form-apagar-login').submit();
         }
-    </script>
+    })
+}
+</script>
 </body>
 </html>
-{% endblock %}
