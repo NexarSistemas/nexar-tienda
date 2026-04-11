@@ -14,6 +14,8 @@ def safe_print(text):
         print(text.encode("ascii", "ignore").decode())
 
 VENV_DIR = "venv"
+APP_TITLE = "Nexar Tienda"
+APP_HOST = "127.0.0.1"
 
 
 # ==============================
@@ -28,6 +30,28 @@ def en_virtualenv():
 # ==============================
 def es_ejecutable():
     return getattr(sys, 'frozen', False)
+
+
+def omitir_venv():
+    return os.environ.get("NEXAR_SKIP_VENV", "").lower() in {"1", "true", "yes"}
+
+
+def preparar_entorno_linux_frozen():
+    """Evita colisiones de schemas GSettings en binarios PyInstaller."""
+    if not (sys.platform.startswith("linux") and es_ejecutable()):
+        return
+
+    os.environ.pop("GSETTINGS_SCHEMA_DIR", None)
+    xdg_dirs = os.environ.get("XDG_DATA_DIRS", "")
+    base_dirs = ["/usr/local/share", "/usr/share"]
+    current_dirs = [d for d in xdg_dirs.split(":") if d]
+
+    merged = []
+    for directory in base_dirs + current_dirs:
+        if directory not in merged:
+            merged.append(directory)
+
+    os.environ["XDG_DATA_DIRS"] = ":".join(merged)
 
 
 # ==============================
@@ -53,11 +77,12 @@ def reiniciar_en_venv():
         stderr=subprocess.DEVNULL
     )
 
-    subprocess.check_call(
-        [python_venv, "-m", "pip", "install", "-r", "requirements.txt"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    if os.path.exists("requirements.txt"):
+        subprocess.check_call(
+            [python_venv, "-m", "pip", "install", "-r", "requirements.txt"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
 
     # 🔴 relanzar SOLO en desarrollo
     subprocess.check_call([python_venv, __file__])
@@ -82,7 +107,7 @@ def iniciar_flask(port):
     from app import app
 
     app.run(
-        host="127.0.0.1",
+        host=APP_HOST,
         port=port,
         debug=False,
         use_reloader=False
@@ -114,15 +139,17 @@ if __name__ == "__main__":
     safe_print("🚀 Iniciando Nexar Tienda...")
 
     # ✅ SOLO en desarrollo usamos venv
-    if not es_ejecutable():
+    if not es_ejecutable() and not omitir_venv():
         if not en_virtualenv():
             reiniciar_en_venv()
+
+    preparar_entorno_linux_frozen()
 
     # 🔹 recién ahora importamos webview
     import webview
 
     port = obtener_puerto_libre()
-    url = f"http://127.0.0.1:{port}"
+    url = f"http://{APP_HOST}:{port}"
 
     safe_print(f"🌐 Servidor en: {url}")
 
@@ -140,7 +167,7 @@ if __name__ == "__main__":
     safe_print("✅ Servidor listo")
 
     webview.create_window(
-        "Nexar Tienda",
+        APP_TITLE,
         url,
         width=1200,
         height=800
