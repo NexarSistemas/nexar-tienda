@@ -1,40 +1,65 @@
-# Base de datos (no subir al repositorio)
-*.db
-*.db-wal
-*.db-shm
-
-# Respaldos
-respaldo/
-*.zip
-
-# Entorno virtual de Python
-venv/
-.venv/
-env/
-
-# Cache de Python
+### --- PYTHON --- ###
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 
-# Variables de entorno
+# Entornos virtuales
+venv/
+.venv/
+env/
+ENV/
+bin/
+lib64/
+
+### --- WEB FRAMEWORKS (Flask/Django) --- ###
+# Archivos de variables de entorno (¡CRÍTICO: No subir secretos!)
 .env
 .env.local
+.env.sample
+instance/
+.webassets-cache
 
-# VS Code
+### --- BASES DE DATOS --- ###
+# Archivos de SQLite y archivos temporales de escritura
+*.db
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+### --- DISTRIBUCIÓN Y COMPILACIÓN --- ###
+# Archivos generados al empaquetar la app
+dist/
+build/
+*.egg-info/
+*.deb
+build_deb/
+
+### --- ESPECÍFICOS DEL PROYECTO --- ###
+# Directorios de código fuente externo o compilados locales
+nexar_tienda/
+nexar_tienda_linux/
+
+### --- IDE / EDITORES --- ###
+# Configuración de VS Code
 .vscode/
+# Si usas PyCharm
+.idea/
 
-# Sistema operativo
+### --- SISTEMA OPERATIVO / LOGS --- ###
+# Logs del sistema y de la aplicación
+*.log
+npm-debug.log*
+
+# Archivos basura de macOS y Windows
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
-
-# otros
-nexar-almacen-source/
-.env
-dist/
-nexar_tienda/
-*.deb
-build_deb/
+### --- RESPALDOS Y ARCHIVOS GRANDES --- ###
+# Copias de seguridad y archivos comprimidos
+*.zip
+*.tar.gz
+*.rar
+respaldo/
