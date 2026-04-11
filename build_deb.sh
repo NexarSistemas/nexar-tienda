@@ -44,6 +44,21 @@ Categories=Office;
 StartupNotify=true
 EOF
 
+# Icono y lanzador de escritorio
+cp "static/icons/nexar_tienda.PNG" "${BUILD_DIR}/usr/share/pixmaps/nexar_tienda.png"
+cat > "${BUILD_DIR}/usr/share/applications/nexar-tienda.desktop" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Nexar Tienda
+Comment=Sistema integral de gestión para tiendas
+Exec=/usr/local/bin/nexartienda
+Icon=/usr/share/pixmaps/nexar_tienda.png
+Terminal=false
+Categories=Office;
+StartupNotify=true
+EOF
+
 # Control file
 cat > "${BUILD_DIR}/DEBIAN/control" << EOF
 Package: ${PACKAGE}
