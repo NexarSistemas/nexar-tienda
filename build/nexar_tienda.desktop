@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Nexar Tienda
+Comment=Sistema integral de gestión para tiendas
+Exec=/usr/local/bin/nexartienda
+Path=/opt/nexar-tienda
+Icon=nexar_tienda
+Terminal=false
+Categories=Office;
+StartupNotify=true
+StartupWMClass=NexarTienda
