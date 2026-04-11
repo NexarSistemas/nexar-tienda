@@ -1,92 +1,207 @@
 {% extends "base.html" %}
 
-{% block title %}Licencias — Nexar Tienda{% endblock %}
+{% block title %}Gestionar Licencia — Nexar Tienda{% endblock %}
 
 {% block content %}
-<div class="row mb-3">
-    <div class="col-12">
-        <h2><i class="fas fa-key"></i> Licencias (MVP)</h2>
-        <p class="text-muted mb-0">Flujo: solicitud de datos → emisión externa (licencias_fh) → activación por token.</p>
+<div class="licencia-container">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2>
+                <i class="fas fa-key"></i>
+                Gestión de Licencia
+            </h2>
+            <p class="text-muted mb-0">Diseño alineado a Nexar Almacén: estado, límites y acciones de activación.</p>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- INFORMACIÓN ACTUAL -->
+        <div class="col-lg-6">
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle"></i>
+                        Estado Actual
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Plan actual</strong></label>
+                        <div class="alert mb-0" style="background-color: {% if license_info['tier'] == 'DEMO' %}#fef3c7{% elif license_info['tier'] == 'BASICA' %}#dbeafe{% else %}#dcfce7{% endif %}; border-left: 4px solid {% if license_info['tier'] == 'DEMO' %}#f59e0b{% elif license_info['tier'] == 'BASICA' %}#3b82f6{% else %}#22c55e{% endif %};">
+                            <strong>{{ tier_limits[license_info['tier']]['descripcion'] }}</strong>
+                            <div class="small mt-2">
+                                {% if license_info['tier'] == 'DEMO' %}
+                                    <i class="fas fa-hourglass-half"></i> Período de prueba
+                                {% elif license_info['tier'] == 'BASICA' %}
+                                    <i class="fas fa-check"></i> Licencia Básica activa
+                                {% else %}
+                                    <i class="fas fa-crown"></i> Licencia Profesional activa
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label"><small>Titular</small></label>
+                            <div class="small">{{ license_info['owner_name'] or '-' }}</div>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label"><small>Email</small></label>
+                            <div class="small">{{ license_info['owner_email'] or '-' }}</div>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label"><small>Activada</small></label>
+                            <div class="small">{{ license_info['activated_at'][:10] if license_info['activated_at'] else '-' }}</div>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label"><small>Vencimiento</small></label>
+                            <div class="small">
+                                {% if license_info['expires_at'] %}
+                                    {{ license_info['expires_at'][:10] }}
+                                {% else %}
+                                    <span class="text-success">No vence</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-0">
+                        <label class="form-label"><small>License ID / clave</small></label>
+                        <input type="text" class="form-control form-control-sm" value="{{ license_info['key'] or '(sin clave)' }}" disabled>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LÍMITES -->
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar"></i>
+                        Límites de Licencia
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% set limits = license_info['limits'] %}
+                    {% for key, label, count in [
+                        ('productos','Productos',productos_count),
+                        ('clientes','Clientes',clientes_count),
+                        ('proveedores','Proveedores',proveedores_count)
+                    ] %}
+                    {% set limit = limits.get(key) %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label mb-0"><strong>{{ label }}</strong></label>
+                            <span class="badge {% if limit and count >= limit %}bg-danger{% elif limit and count > limit * 0.8 %}bg-warning{% else %}bg-success{% endif %}">
+                                {{ count }}{% if limit %} / {{ limit }}{% else %} (ilimitado){% endif %}
+                            </span>
+                        </div>
+                        {% if limit %}
+                        <div class="progress" style="height: 18px;">
+                            <div class="progress-bar {% if count >= limit %}bg-danger{% elif count > limit * 0.8 %}bg-warning{% else %}bg-success{% endif %}"
+                                style="width: {{ (count / limit * 100)|min(100) }}%">
+                                {{ ((count / limit * 100)|min(100))|int }}%
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- ACCIONES -->
+        <div class="col-lg-6">
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-paper-plane"></i> 1) Solicitar Licencia</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="action" value="request">
+                        <div class="mb-2">
+                            <label class="form-label">Nombre</label>
+                            <input class="form-control" name="nombre" value="{{ license_info['owner_name'] or '' }}" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Email</label>
+                            <input class="form-control" name="email" type="email" value="{{ license_info['owner_email'] or '' }}" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Negocio</label>
+                            <input class="form-control" name="negocio" value="{{ get_config_valor('nombre_negocio', '') }}">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Equipo</label>
+                            <input class="form-control" name="equipo" placeholder="PC-CAJA-01">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Plan solicitado</label>
+                            <select class="form-select" name="plan_solicitado">
+                                <option value="BASICA">BASICA</option>
+                                <option value="PRO">PRO</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-file-export"></i> Generar solicitud
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            {% if request_payload %}
+            <div class="card mb-3">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-code"></i> Payload para licencias_fh</h6>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" id="copyPayloadBtn">
+                        <i class="fas fa-copy"></i> Copiar
+                    </button>
+                </div>
+                <div class="card-body">
+                    <textarea id="payloadOutput" class="form-control small" rows="8" readonly>{{ request_payload | tojson(indent=2) }}</textarea>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-check-circle"></i> 2) Activar Token</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="action" value="activate">
+                        <div class="mb-3">
+                            <label class="form-label">Token de licencia</label>
+                            <textarea class="form-control" name="token" rows="6" placeholder="Pegá aquí el token emitido por licencias_fh" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-unlock"></i> Validar y activar
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+{% endblock %}
 
-<div class="row g-3">
-    <div class="col-lg-6">
-        <div class="card">
-            <div class="card-header"><strong>1) Solicitar licencia</strong></div>
-            <div class="card-body">
-                <form method="POST">
-                    <input type="hidden" name="action" value="request">
-                    <div class="mb-2">
-                        <label class="form-label">Nombre</label>
-                        <input class="form-control" name="nombre" value="{{ license_info.owner_name or '' }}" required>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Email</label>
-                        <input class="form-control" name="email" type="email" value="{{ license_info.owner_email or '' }}" required>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Negocio</label>
-                        <input class="form-control" name="negocio" value="{{ get_config_valor('nombre_negocio', '') }}">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Equipo</label>
-                        <input class="form-control" name="equipo" placeholder="PC CAJA-01">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Plan solicitado</label>
-                        <select class="form-select" name="plan_solicitado">
-                            <option value="BASICA">Básica</option>
-                            <option value="PRO">Pro</option>
-                        </select>
-                    </div>
-                    <button class="btn btn-primary w-100" type="submit">
-                        <i class="fas fa-paper-plane"></i> Generar solicitud
-                    </button>
-                </form>
-            </div>
-        </div>
-
-        {% if request_payload %}
-        <div class="card mt-3">
-            <div class="card-header"><strong>Payload para enviar a licencias_fh</strong></div>
-            <div class="card-body">
-                <pre class="small mb-0">{{ request_payload | tojson(indent=2) }}</pre>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="col-lg-6">
-        <div class="card">
-            <div class="card-header"><strong>2) Activar token</strong></div>
-            <div class="card-body">
-                <form method="POST">
-                    <input type="hidden" name="action" value="activate">
-                    <div class="mb-3">
-                        <label class="form-label">Token de licencia</label>
-                        <textarea class="form-control" name="token" rows="5" placeholder="pegá aquí el token completo" required></textarea>
-                    </div>
-                    <button class="btn btn-success w-100" type="submit">
-                        <i class="fas fa-check-circle"></i> Validar y activar
-                    </button>
-                </form>
-            </div>
-        </div>
-
-        <div class="card mt-3">
-            <div class="card-header"><strong>Estado actual</strong></div>
-            <div class="card-body small">
-                <p class="mb-1"><strong>Plan:</strong> {{ license_info.tier }}</p>
-                <p class="mb-1"><strong>Titular:</strong> {{ license_info.owner_name or '-' }}</p>
-                <p class="mb-1"><strong>Email:</strong> {{ license_info.owner_email or '-' }}</p>
-                <p class="mb-1"><strong>Activada:</strong> {{ license_info.activated_at[:19] if license_info.activated_at else '-' }}</p>
-                <p class="mb-1"><strong>Vence:</strong> {{ license_info.expires_at or 'No vence' }}</p>
-                <p class="mb-1"><strong>Productos:</strong> {{ productos_count }} / {{ license_info.limits.get('productos') or '∞' }}</p>
-                <p class="mb-1"><strong>Clientes:</strong> {{ clientes_count }} / {{ license_info.limits.get('clientes') or '∞' }}</p>
-                <p class="mb-0"><strong>Proveedores:</strong> {{ proveedores_count }} / {{ license_info.limits.get('proveedores') or '∞' }}</p>
-            </div>
-        </div>
-    </div>
-</div>
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const copyBtn = document.getElementById('copyPayloadBtn');
+    if (!copyBtn) return;
+    copyBtn.addEventListener('click', async function () {
+        const txt = document.getElementById('payloadOutput');
+        if (!txt) return;
+        try {
+            await navigator.clipboard.writeText(txt.value);
+            copyBtn.innerHTML = '<i class="fas fa-check"></i> Copiado';
+        } catch (e) {
+            txt.select();
+            document.execCommand('copy');
+            copyBtn.innerHTML = '<i class="fas fa-check"></i> Copiado';
+        }
+    });
+});
+</script>
 {% endblock %}
