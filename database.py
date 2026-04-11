@@ -13,6 +13,7 @@ import sqlite3
 import os
 import sys
 import hashlib
+import json
 from datetime import datetime, date, timedelta
 
 # ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
@@ -418,6 +419,12 @@ def init_db():
         ('license_expires_at', ''),         # Fecha de expiracion (vacio = no vence)
         ('license_last_check', ''),         # Ultimo chequeo exitoso
         ('license_max_machines', '1'),      # Maquinas permitidas
+        ('license_token', ''),              # Token completo
+        ('license_owner_name', ''),         # Nombre titular
+        ('license_owner_email', ''),        # Email titular
+        ('license_plan', 'DEMO'),           # Plan del token
+        ('license_machine_hash', ''),       # Hash de vinculo por equipo
+        ('license_features_json', '{}'),    # Features extra serializadas
     ]
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO config VALUES (?,?)", (k, v))
@@ -614,6 +621,12 @@ def get_license_info() -> dict:
         'type': cfg.get('license_type', 'MONO'),
         'tier': cfg.get('license_tier', 'DEMO'),
         'key': cfg.get('license_key', ''),
+        'token': cfg.get('license_token', ''),
+        'owner_name': cfg.get('license_owner_name', ''),
+        'owner_email': cfg.get('license_owner_email', ''),
+        'plan': cfg.get('license_plan', cfg.get('license_tier', 'DEMO')),
+        'machine_hash': cfg.get('license_machine_hash', ''),
+        'features_json': cfg.get('license_features_json', '{}'),
         'activated_at': cfg.get('license_activated_at', ''),
         'expires_at': cfg.get('license_expires_at', ''),
         'last_check': cfg.get('license_last_check', ''),
@@ -628,7 +641,32 @@ def activate_license(tier: str, key: str = '', expires_at: str = ''):
         tier = 'DEMO'
     set_config({
         'license_tier': tier,
+        'license_plan': tier,
         'license_key': key,
+        'license_activated_at': datetime.now().isoformat(),
+        'license_expires_at': expires_at,
+        'license_last_check': datetime.now().isoformat(),
+    })
+
+
+def activate_license_token(payload: dict, token: str):
+    """Activa licencia usando payload validado de token."""
+    tier = (payload.get('plan') or payload.get('tier') or 'DEMO').upper()
+    if tier not in TIER_LIMITS:
+        tier = 'DEMO'
+
+    features = payload.get('features') or {}
+    expires_at = payload.get('exp') or ''
+
+    set_config({
+        'license_tier': tier,
+        'license_plan': tier,
+        'license_key': payload.get('license_id', ''),
+        'license_token': token,
+        'license_owner_name': payload.get('nombre', ''),
+        'license_owner_email': payload.get('email', ''),
+        'license_machine_hash': payload.get('machine_hash', ''),
+        'license_features_json': json.dumps(features, ensure_ascii=False),
         'license_activated_at': datetime.now().isoformat(),
         'license_expires_at': expires_at,
         'license_last_check': datetime.now().isoformat(),

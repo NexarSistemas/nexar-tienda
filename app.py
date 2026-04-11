@@ -23,6 +23,11 @@ import markdown
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
+from services.licensing import (
+    build_license_request,
+    decode_and_verify_token,
+    validate_license_payload,
+)
 
 # ─── VERSIÓN ─────────────────────────────────────────────────────────────────
 def _read_version():
@@ -534,29 +539,124 @@ def api_productos():
 @app.route('/licencia', methods=['GET', 'POST'])
 @admin_required
 def licencia():
-    """Gestión de licencias y tiers del sistema."""
+    """Gestión de licencias basada en token (MVP)."""
     if request.method == 'POST':
-        tier = request.form.get('tier', 'DEMO')
-        key = request.form.get('key', '')
-        vencimiento = request.form.get('vencimiento', '')
-        
-        db.activate_license(tier, key, vencimiento)
-        flash(f'✅ Licencia {tier} activada correctamente.', 'success')
+        action = request.form.get('action', '').strip()
+
+        if action == 'request':
+            payload = build_license_request(
+                {
+                    "nombre": request.form.get('nombre', ''),
+                    "email": request.form.get('email', ''),
+                    "negocio": request.form.get('negocio', ''),
+                    "equipo": request.form.get('equipo', ''),
+                    "plan_solicitado": request.form.get('plan_solicitado', 'BASICA'),
+                },
+                machine_id=db.get_config().get('machine_id', ''),
+            )
+            db.set_config({
+                'license_owner_name': payload.get('nombre', ''),
+                'license_owner_email': payload.get('email', ''),
+            })
+            flash('✅ Solicitud de licencia generada. Envíala al emisor para obtener tu token.', 'success')
+            return render_template(
+                'licencia.html',
+                app_version=APP_VERSION,
+                license_info=db.get_license_info(),
+                tier_limits=db.TIER_LIMITS,
+                request_payload=payload,
+                productos_count=db.q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchone=True)[0],
+                clientes_count=db.q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchone=True)[0],
+                proveedores_count=db.q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchone=True)[0],
+            )
+
+        if action == 'activate':
+            token = request.form.get('token', '').strip()
+            secret = os.getenv("LICENSE_TOKEN_SECRET", app.config["SECRET_KEY"])
+            payload, err = decode_and_verify_token(token, secret)
+            if err:
+                flash(f'❌ Token inválido: {err}', 'danger')
+                return redirect(url_for('licencia'))
+
+            negocio = db.get_config().get('nombre_negocio', '')
+            ok, msg = validate_license_payload(payload, db.get_config().get('machine_id', ''), negocio)
+            if not ok:
+                flash(f'❌ No se pudo activar licencia: {msg}', 'danger')
+                return redirect(url_for('licencia'))
+
+            db.activate_license_token(payload, token)
+            flash(f"✅ Licencia {payload.get('plan', 'DEMO')} activada correctamente.", 'success')
+            return redirect(url_for('licencia'))
+
+        flash('⚠️ Acción de licencia no reconocida.', 'warning')
         return redirect(url_for('licencia'))
 
-    licencia_info = db.get_license_info()
-    
-    # Obtener uso actual para las barras de progreso en el template
-    stats_uso = {
-        'productos': db.q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchone=True)[0],
-        'clientes': db.q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchone=True)[0],
-        'proveedores': db.q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchone=True)[0]
-    }
-    
-    return render_template('licencia.html', 
-                         app_version=APP_VERSION, 
-                         licencia=licencia_info,
-                         uso=stats_uso)
+    license_info = db.get_license_info()
+    return render_template(
+        'licencia.html',
+        app_version=APP_VERSION,
+        license_info=license_info,
+        tier_limits=db.TIER_LIMITS,
+        request_payload=None,
+        productos_count=db.q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchone=True)[0],
+        clientes_count=db.q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchone=True)[0],
+        proveedores_count=db.q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchone=True)[0],
+    )
+
+
+@app.route('/api/licencias/solicitud', methods=['POST'])
+@admin_required
+def api_licencia_solicitud():
+    """Genera payload de solicitud para enviar a licencias_fh."""
+    data = request.get_json(silent=True) or {}
+    payload = build_license_request(data, db.get_config().get('machine_id', ''))
+    return jsonify({'ok': True, 'request': payload})
+
+
+@app.route('/api/licencias/validar', methods=['POST'])
+@admin_required
+def api_licencia_validar():
+    """Valida token sin persistir (pre-check)."""
+    data = request.get_json(silent=True) or {}
+    token = data.get('token', '').strip()
+    secret = os.getenv("LICENSE_TOKEN_SECRET", app.config["SECRET_KEY"])
+    payload, err = decode_and_verify_token(token, secret)
+    if err:
+        return jsonify({'ok': False, 'error': err}), 400
+
+    negocio = db.get_config().get('nombre_negocio', '')
+    ok, msg = validate_license_payload(payload, db.get_config().get('machine_id', ''), negocio)
+    if not ok:
+        return jsonify({'ok': False, 'error': msg}), 400
+
+    return jsonify({'ok': True, 'payload': payload})
+
+
+@app.route('/api/licencias/activar', methods=['POST'])
+@admin_required
+def api_licencia_activar():
+    """Valida + persiste token de licencia."""
+    data = request.get_json(silent=True) or {}
+    token = data.get('token', '').strip()
+    secret = os.getenv("LICENSE_TOKEN_SECRET", app.config["SECRET_KEY"])
+    payload, err = decode_and_verify_token(token, secret)
+    if err:
+        return jsonify({'ok': False, 'error': err}), 400
+
+    negocio = db.get_config().get('nombre_negocio', '')
+    ok, msg = validate_license_payload(payload, db.get_config().get('machine_id', ''), negocio)
+    if not ok:
+        return jsonify({'ok': False, 'error': msg}), 400
+
+    db.activate_license_token(payload, token)
+    return jsonify({'ok': True, 'tier': payload.get('plan', 'DEMO')})
+
+
+@app.route('/api/licencias/estado', methods=['GET'])
+@admin_required
+def api_licencia_estado():
+    """Estado actual de la licencia local."""
+    return jsonify({'ok': True, 'license': db.get_license_info()})
 
 @app.route('/usuarios')
 @admin_required
