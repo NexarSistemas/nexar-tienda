@@ -1,9 +1,6 @@
 #!/bin/bash
-# ============================================================
-# build_deb.sh — Genera el paquete .deb para Nexar Tienda
-# ============================================================
-
 set -e
+
 VERSION=$(cat VERSION)
 PACKAGE="nexar-tienda"
 BUILD_DIR="build_deb/nexar-tienda_${VERSION}"
@@ -19,7 +16,11 @@ if [ ! -f "${APP_BIN}" ]; then
 fi
 
 rm -rf build_deb
+
+# Estructura
 mkdir -p "${BUILD_DIR}/opt/nexar-tienda"
+mkdir -p "${BUILD_DIR}/usr/share/applications"
+mkdir -p "${BUILD_DIR}/usr/share/pixmaps"
 mkdir -p "${BUILD_DIR}/usr/local/bin"
 mkdir -p "${BUILD_DIR}/usr/share/applications"
 mkdir -p "${BUILD_DIR}/usr/share/pixmaps"
@@ -36,6 +37,7 @@ cat > "${BUILD_DIR}/usr/local/bin/nexartienda" << EOF
 cd /opt/nexar-tienda
 exec ./NexarTienda
 EOF
+
 chmod +x "${BUILD_DIR}/usr/local/bin/nexartienda"
 
 # Icono y lanzador de escritorio
@@ -46,7 +48,7 @@ cp "build/nexar_tienda.desktop" "${BUILD_DIR}/usr/share/applications/nexar-tiend
 cat > "${BUILD_DIR}/DEBIAN/control" << EOF
 Package: ${PACKAGE}
 Version: ${VERSION}
-Architecture: all
+Architecture: amd64
 Maintainer: Nexar Sistemas
 Depends: libgtk-3-0, libwebkit2gtk-4.1-0
 Description: Sistema integral de gestión para tiendas.
