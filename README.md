@@ -2,13 +2,19 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.17.0` - Infraestructura de Build (Win/Lin)
-**Última actualización:** 23 de abril de 2026 - v1.17.0
+**Versión actual:** `v1.18.0` - Unificación Estética Suite Nexar
+**Última actualización:** 23 de abril de 2026 - v1.18.0
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 28: Unificación Estética (v1.18.0)
+- **🎨 Rediseño Visual**: Paridad total con la estética "fina" de Nexar Almacén.
+- **📂 Sidebar Refinado**: Estructura de navegación plana de 230px para mayor agilidad.
+- **🔒 Login Suite**: Nueva interfaz de acceso unificada y profesional.
+- **🖋️ Tipografía Inter**: Implementación del stack de fuentes premium.
 
 ### ✅ PASO 27: Infraestructura de Build (v1.17.0)
 - **📦 Empaquetado Windows**: Configuración de `PyInstaller` (.spec) para generar un único ejecutable.

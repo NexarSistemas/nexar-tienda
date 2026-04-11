@@ -27,7 +27,7 @@ import database as db
 # ─── VERSIÓN ─────────────────────────────────────────────────────────────────
 def _read_version():
     try:
-        v = open(os.path.join(os.path.dirname(__file__), 'VERSION')).read().strip()
+        v = open(os.path.join(os.path.dirname(__file__), 'VERSION')).readline().strip()
         return v if v else "0.1.0"
     except Exception:
         return "0.1.0"
