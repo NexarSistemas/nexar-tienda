@@ -3,7 +3,7 @@ Nexar Tienda — database.py
 Conexión, tablas y consultas SQLite.
 
 Basado en Nexar Almacén, adaptado para tienda de regalos:
-  - Sin sistema de licencias ni OpenFoodFacts
+  - Sistema de licencias RSA + Token Base64 (mismo esquema que Almacén)
   - Categorías propias de tienda (bijouterie, mates, regalos, etc.)
   - Módulo de temporadas (Día de la Madre, Navidad, etc.)
   - Sistema de backups automáticos desde el inicio
@@ -13,6 +13,7 @@ import sqlite3
 import os
 import sys
 import hashlib
+import json
 from datetime import datetime, date, timedelta
 
 # ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
@@ -410,17 +411,36 @@ def init_db():
         ('backup_keep', '10'),
         ('backup_dir', ''),
         ('backup_ultimo', ''),
-        # ─── SISTEMA DE LICENCIAS ─────────────────────────────────────────────
-        ('license_type', 'MONO'),           # MONO / MULTI
-        ('license_tier', 'DEMO'),           # DEMO / BASICA / PRO
+        # ─── SISTEMA DE LICENCIAS RSA ─────────────────────────────────────────
+        ('demo_mode', '1'),                 # 1=demo, 0=licencia activa
+        ('demo_install_date', ''),          # Fecha de primer arranque (demo)
+        ('demo_dias', '30'),                # Dias de prueba gratuita
+        ('license_type', 'MONO'),           # Tipo de licencia (TDA_BASICA / TDA_PRO)
+        ('license_tier', 'DEMO'),           # Tier: DEMO / BASICA / PRO
         ('license_key', ''),                # Clave de licencia (vacio en DEMO)
         ('license_activated_at', ''),       # Fecha de activacion
         ('license_expires_at', ''),         # Fecha de expiracion (vacio = no vence)
-        ('license_last_check', ''),         # Ultimo chequeo exitoso
-        ('license_max_machines', '1'),      # Maquinas permitidas
+        ('license_last_check', ''),         # Ultimo chequeo exitoso contra Drive
+        ('license_max_machines', '1'),      # Maquinas permitidas (siempre 1 en Tienda)
+        ('license_drive_index_id', ''),     # ID del index_tienda.json en Google Drive
+        ('license_owner_name', ''),         # Nombre titular
+        ('license_owner_email', ''),        # Email titular
+        ('license_plan', 'DEMO'),           # Plan del token
     ]
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO config VALUES (?,?)", (k, v))
+
+    # ─── DEMO por defecto (sistema RSA) ──────────────────────────────────────
+    lic_tier = c.execute("SELECT valor FROM config WHERE clave='license_tier'").fetchone()
+    if not lic_tier or not lic_tier['valor']:
+        c.execute("INSERT OR REPLACE INTO config VALUES ('license_tier','DEMO')")
+
+    demo_date = c.execute("SELECT valor FROM config WHERE clave='demo_install_date'").fetchone()
+    if not demo_date or not demo_date['valor']:
+        c.execute(
+            "INSERT OR REPLACE INTO config VALUES ('demo_install_date',?)",
+            (datetime.now().date().isoformat(),)
+        )
 
     # ─── Generar machine_id ──────────────────────────────────────────────────
     mid = c.execute("SELECT valor FROM config WHERE clave='machine_id'").fetchone()
@@ -605,34 +625,283 @@ def set_config(data: dict):
     conn.close()
 
 
-# ─── LICENCIAS ──────────────────────────────────────────────────────────────
+# ─── LICENCIAS RSA ───────────────────────────────────────────────────────────
+#
+# Verificacion RSA usando SOLO stdlib Python (base64, hashlib).
+# Sin cryptography, sin rsa, sin pyasn1.
+# Funciona en cualquier exe PyInstaller sin instalar nada extra.
+#
+# El token Base64 generado por licensias_fh contiene:
+#   { hardware_id, license_key, product:"tienda", tier, type,
+#     expires_at, max_machines, public_signature }
+
+import base64 as _base64
+import hashlib as _hashlib_rsa
+
+
+def _get_tienda_pubkey_pem() -> bytes:
+    """Obtiene la clave publica desde env o archivo local."""
+    key_str = (os.getenv("PUBLIC_KEY") or "").strip()
+    if not key_str:
+        possible = [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), 'keys', 'public_key.asc'),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public_key.asc'),
+        ]
+        for p in possible:
+            if os.path.isfile(p):
+                with open(p, 'r', encoding='utf-8') as f:
+                    key_str = f.read().strip()
+                break
+    if not key_str:
+        raise RuntimeError(
+            '❌ Clave publica no encontrada. '
+            'Define PUBLIC_KEY o coloca keys/public_key.asc.'
+        )
+    return key_str.encode('utf-8')
+
+
+# SHA256 DigestInfo header (RFC 3447 / PKCS1v15)
+_TDA_SHA256_HEADER = bytes([
+    0x30,0x31,0x30,0x0d,0x06,0x09,0x60,0x86,0x48,0x01,
+    0x65,0x03,0x04,0x02,0x01,0x05,0x00,0x04,0x20
+])
+
+
+def _parse_asn1_len(data, pos):
+    b = data[pos]; pos += 1
+    if b < 0x80:
+        return b, pos
+    n = b & 0x7f
+    return int.from_bytes(data[pos:pos+n], 'big'), pos + n
+
+
+def _parse_asn1_int(data, pos):
+    assert data[pos] == 0x02; pos += 1
+    length, pos = _parse_asn1_len(data, pos)
+    return int.from_bytes(data[pos:pos+length], 'big'), pos + length
+
+
+def _load_tda_pubkey():
+    """Extrae (n, e) de la clave publica PEM usando solo stdlib."""
+    pem   = _get_tienda_pubkey_pem()
+    lines = pem.strip().split(b'\n')
+    der   = _base64.b64decode(b''.join(l for l in lines if not l.startswith(b'-----')))
+    pos = 0
+    assert der[pos] == 0x30; pos += 1
+    _, pos = _parse_asn1_len(der, pos)
+    assert der[pos] == 0x30; pos += 1
+    alg_len, pos = _parse_asn1_len(der, pos)
+    pos += alg_len
+    assert der[pos] == 0x03; pos += 1
+    _, pos = _parse_asn1_len(der, pos)
+    pos += 1
+    assert der[pos] == 0x30; pos += 1
+    _, pos = _parse_asn1_len(der, pos)
+    n, pos = _parse_asn1_int(der, pos)
+    e, _   = _parse_asn1_int(der, pos)
+    return n, e
+
+
+def _tda_rsa_verify(message: bytes, signature: bytes) -> bool:
+    """Verifica firma PKCS1v15 SHA256 usando solo aritmetica entera."""
+    try:
+        n, e = _load_tda_pubkey()
+        k = (n.bit_length() + 7) // 8
+        if len(signature) != k:
+            return False
+        m = pow(int.from_bytes(signature, 'big'), e, n).to_bytes(k, 'big')
+        if m[0] != 0x00 or m[1] != 0x01:
+            return False
+        sep = m.find(b'\x00', 2)
+        if sep < 0 or any(b != 0xFF for b in m[2:sep]):
+            return False
+        return m[sep+1:] == _TDA_SHA256_HEADER + _hashlib_rsa.sha256(message).digest()
+    except Exception:
+        return False
+
+
+def get_machine_id() -> str:
+    """Devuelve el machine_id unico de esta instalacion."""
+    r = q("SELECT valor FROM config WHERE clave='machine_id'", fetchone=True)
+    return r['valor'] if r else 'UNKNOWN'
+
+
+def is_demo_mode() -> bool:
+    """True si la app esta en modo demo."""
+    cfg = get_config()
+    return cfg.get('demo_mode', '1') == '1'
+
+
+def get_demo_status() -> dict:
+    """Devuelve el estado del periodo de prueba."""
+    cfg  = get_config()
+    demo = cfg.get('demo_mode', '1') == '1'
+    if not demo:
+        return {
+            'demo': False, 'dias_restantes': 0, 'vencido': False,
+            'aviso_proximo': False, 'install_date': '', 'dias_usados': 0,
+            'ventas_bloqueado': False, 'productos_bloqueado': False,
+        }
+
+    dias_demo   = int(cfg.get('demo_dias', '30'))
+    install_str = cfg.get('demo_install_date', '')
+    try:
+        install_dt = date.fromisoformat(install_str)
+    except Exception:
+        install_dt = date.today()
+        set_config({'demo_install_date': install_dt.isoformat()})
+
+    dias_usados    = (date.today() - install_dt).days
+    dias_restantes = max(0, dias_demo - dias_usados)
+    vencido        = dias_restantes == 0
+    aviso_proximo  = not vencido and dias_restantes <= 7
+
+    return {
+        'demo':                demo,
+        'install_date':        install_str,
+        'dias_usados':         dias_usados,
+        'dias_restantes':      dias_restantes,
+        'dias_demo':           dias_demo,
+        'vencido':             vencido,
+        'aviso_proximo':       aviso_proximo,
+        'ventas_bloqueado':    vencido,
+        'productos_bloqueado': vencido,
+        'ventas_pct':          min(100, int(dias_usados / dias_demo * 100)),
+    }
+
 
 def get_license_info() -> dict:
     """Devuelve informacion completa de la licencia actual."""
     cfg = get_config()
     return {
-        'type': cfg.get('license_type', 'MONO'),
-        'tier': cfg.get('license_tier', 'DEMO'),
-        'key': cfg.get('license_key', ''),
+        'type':        cfg.get('license_type', 'TDA_BASICA'),
+        'tier':        cfg.get('license_tier', 'DEMO'),
+        'key':         cfg.get('license_key', ''),
+        'owner_name':  cfg.get('license_owner_name', ''),
+        'owner_email': cfg.get('license_owner_email', ''),
+        'plan':        cfg.get('license_plan', cfg.get('license_tier', 'DEMO')),
         'activated_at': cfg.get('license_activated_at', ''),
-        'expires_at': cfg.get('license_expires_at', ''),
-        'last_check': cfg.get('license_last_check', ''),
+        'expires_at':  cfg.get('license_expires_at', ''),
+        'last_check':  cfg.get('license_last_check', ''),
         'max_machines': int(cfg.get('license_max_machines', '1')),
-        'limits': TIER_LIMITS.get(cfg.get('license_tier', 'DEMO'), {})
+        'drive_index_id': cfg.get('license_drive_index_id', ''),
+        'limits':      TIER_LIMITS.get(cfg.get('license_tier', 'DEMO'), {}),
+        'demo_mode':   cfg.get('demo_mode', '1'),
     }
 
 
+def validar_licencia_rsa(token_b64: str) -> tuple:
+    """
+    Valida un token Base64 generado por licensias_fh para Nexar Tienda.
+
+    Retorna: (ok: bool, mensaje: str, data: dict | None)
+
+    El token debe tener:
+      product = "tienda"
+      hardware_id = machine_id de esta PC
+      public_signature = firma RSA hex del payload publico
+    """
+    try:
+        import json as _json
+        try:
+            data = _json.loads(_base64.b64decode(token_b64.strip()).decode())
+        except Exception:
+            return False, "El token no es valido. Verifica que lo hayas copiado completo.", None
+
+        if data.get("product") != "tienda":
+            return False, "Este token no es una licencia de Nexar Tienda.", None
+
+        sig_hex = data.get("public_signature", "")
+        if not sig_hex:
+            return False, "El token no contiene firma digital.", None
+
+        try:
+            signature = bytes.fromhex(sig_hex)
+        except ValueError:
+            return False, "La firma digital del token esta corrupta.", None
+
+        # Reconstruir payload exactamente igual que el generador
+        payload_dict = {
+            "expires_at":  data.get("expires_at"),
+            "hardware_id": data["hardware_id"],
+            "license_key": data["license_key"],
+            "max_machines": data["max_machines"],
+            "product":     "tienda",
+            "tier":        data.get("tier", "BASICA"),
+            "type":        data["type"],
+        }
+
+        payload_bytes = _json.dumps(payload_dict, sort_keys=True).encode()
+        if not _tda_rsa_verify(payload_bytes, signature):
+            return (
+                False,
+                "La firma digital es invalida. "
+                "El token fue alterado o no corresponde a este sistema.",
+                None
+            )
+
+        machine_id = get_machine_id()
+        if machine_id != data.get("hardware_id"):
+            mid_fmt = f"{machine_id[:4]}-{machine_id[4:8]}-{machine_id[8:12]}-{machine_id[12:]}"
+            return (
+                False,
+                f"Esta licencia no esta autorizada para esta computadora.\n"
+                f"Tu ID es: {mid_fmt}\nContacta al desarrollador.",
+                None
+            )
+
+        return True, "OK", data
+
+    except Exception as ex:
+        return False, f"Error al validar la licencia: {ex}", None
+
+
+def activar_licencia(token_b64: str) -> tuple:
+    """
+    Valida el token RSA y, si es correcto, activa la licencia en la DB.
+    Retorna: (ok: bool, mensaje: str)
+    """
+    ok, msg, data = validar_licencia_rsa(token_b64)
+    if not ok:
+        return False, msg
+
+    tier       = data.get("tier", "BASICA")
+    expires_at = data.get("expires_at") or ""
+    set_config({
+        'demo_mode':              '0',
+        'license_type':           data.get('type', 'TDA_BASICA'),
+        'license_tier':           tier,
+        'license_plan':           tier,
+        'license_max_machines':   str(data.get('max_machines', 1)),
+        'license_key':            data.get('license_key', ''),
+        'license_activated_at':   datetime.now().isoformat(),
+        'license_expires_at':     expires_at,
+        'license_last_check':     datetime.now().date().isoformat(),
+    })
+    return True, "Licencia activada correctamente."
+
+
 def activate_license(tier: str, key: str = '', expires_at: str = ''):
-    """Activa una nueva licencia."""
+    """Activa una licencia directamente por tier (uso interno/admin)."""
     if tier not in TIER_LIMITS:
         tier = 'DEMO'
+    demo_val = '0' if tier != 'DEMO' else '1'
     set_config({
-        'license_tier': tier,
-        'license_key': key,
+        'demo_mode':            demo_val,
+        'license_tier':         tier,
+        'license_plan':         tier,
+        'license_key':          key,
         'license_activated_at': datetime.now().isoformat(),
-        'license_expires_at': expires_at,
-        'license_last_check': datetime.now().isoformat(),
+        'license_expires_at':   expires_at,
+        'license_last_check':   datetime.now().date().isoformat(),
     })
+
+
+def activate_license_token(payload: dict, token: str):
+    """Activa licencia usando token RSA Base64 (wrapper para compatibilidad)."""
+    # Si viene el token_b64 directamente, usar el flujo RSA
+    ok, msg = activar_licencia(token)
+    return ok, msg
 
 
 def check_license_limits(limit_key: str, current_count: int = None) -> dict:

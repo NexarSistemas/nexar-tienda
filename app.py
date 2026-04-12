@@ -23,11 +23,12 @@ import markdown
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
+from services.license_verifier import verificar_licencia_online
 
 # ─── VERSIÓN ─────────────────────────────────────────────────────────────────
 def _read_version():
     try:
-        v = open(os.path.join(os.path.dirname(__file__), 'VERSION')).readline().strip()
+        v = open(os.path.join(os.path.dirname(__file__), 'VERSION')).read().strip()
         return v if v else "0.1.0"
     except Exception:
         return "0.1.0"
@@ -172,34 +173,27 @@ def permission_required(perm_key):
     return decorator
 
 
-# ─── CONTEXT PROCESSORS (PASO 26) ────────────────────────────────────────────
+# ─── CONTEXT PROCESSORS ───────────────────────────────────────────────────────
 
 @app.context_processor
 def inject_global_data():
     """Inyecta estado de licencia y utilidades en todos los templates."""
     def get_licencia_status():
         try:
-            info = db.get_license_info()
-            tier = info.get('tier', 'DEMO')
-            es_demo = (tier == 'DEMO')
-            dias = 0
-            vencido = False
-            aviso_proximo = False
-            if es_demo and info.get('activated_at'):
-                activado = datetime.fromisoformat(info['activated_at'])
-                dias_usados = (datetime.now() - activado).days
-                dias = max(0, 30 - dias_usados)
-                vencido = (dias == 0)
-                aviso_proximo = (0 < dias <= 7)
+            demo_status = db.get_demo_status()
+            info        = db.get_license_info()
+            tier        = info.get('tier', 'DEMO')
+            es_demo     = demo_status['demo']
             return {
-                'es_demo': es_demo,
-                'dias_restantes': dias,
-                'vencido': vencido,
-                'aviso_proximo': aviso_proximo,
-                'tier': tier
+                'es_demo':       es_demo,
+                'dias_restantes': demo_status.get('dias_restantes', 0),
+                'vencido':        demo_status.get('vencido', False),
+                'aviso_proximo':  demo_status.get('aviso_proximo', False),
+                'tier':           tier,
             }
         except Exception:
-            return {'es_demo': False}
+            return {'es_demo': True, 'dias_restantes': 0,
+                    'vencido': False, 'aviso_proximo': False, 'tier': 'DEMO'}
 
     def get_config_valor(clave, default=''):
         try:
@@ -209,7 +203,7 @@ def inject_global_data():
 
     return {
         'get_licencia_status': get_licencia_status,
-        'get_config_valor': get_config_valor
+        'get_config_valor':    get_config_valor,
     }
 
 
@@ -532,31 +526,138 @@ def api_productos():
 # ─── LICENCIAS ──────────────────────────────────────────────────────────────
 
 @app.route('/licencia', methods=['GET', 'POST'])
+@app.route('/licencias', methods=['GET', 'POST'])
 @admin_required
 def licencia():
-    """Gestión de licencias y tiers del sistema."""
+    """Gestión de licencias — sistema RSA + Token Base64 (igual que Nexar Almacén)."""
     if request.method == 'POST':
-        tier = request.form.get('tier', 'DEMO')
-        key = request.form.get('key', '')
-        vencimiento = request.form.get('vencimiento', '')
-        
-        db.activate_license(tier, key, vencimiento)
-        flash(f'✅ Licencia {tier} activada correctamente.', 'success')
+        action = request.form.get('action', '').strip()
+
+        # ── Activar token RSA ──────────────────────────────────────────────────
+        if action == 'activate':
+            token_b64 = request.form.get('token', '').strip()
+            if not token_b64:
+                flash('❌ Pegá el token antes de activar.', 'danger')
+                return redirect(url_for('licencia'))
+
+            ok, msg = db.activar_licencia(token_b64)
+            if not ok:
+                flash(f'❌ {msg}', 'danger')
+                return redirect(url_for('licencia'))
+
+            # Guardar el Drive Index ID si se incluyó en el formulario
+            index_id = request.form.get('drive_index_id', '').strip()
+            if index_id:
+                db.set_config({'license_drive_index_id': index_id})
+
+            lic_info = db.get_license_info()
+            flash(
+                f"✅ Licencia {lic_info['tier']} activada correctamente. "
+                f"Clave: {lic_info['key']}",
+                'success'
+            )
+            return redirect(url_for('licencia'))
+
+        # ── Guardar Drive Index ID manualmente ─────────────────────────────────
+        if action == 'set_index_id':
+            index_id = request.form.get('drive_index_id', '').strip()
+            if index_id:
+                db.set_config({'license_drive_index_id': index_id})
+                flash('✅ ID de índice Drive guardado.', 'success')
+            else:
+                flash('⚠️ El ID de índice no puede estar vacío.', 'warning')
+            return redirect(url_for('licencia'))
+
+        # ── Verificar online manualmente ───────────────────────────────────────
+        if action == 'verify_online':
+            resultado = verificar_licencia_online(db)
+            if resultado['ok']:
+                flash(f"✅ {resultado['mensaje']}", 'success')
+            else:
+                flash(f"❌ {resultado['mensaje']}", 'danger')
+            return redirect(url_for('licencia'))
+
+        flash('⚠️ Acción de licencia no reconocida.', 'warning')
         return redirect(url_for('licencia'))
 
-    licencia_info = db.get_license_info()
-    
-    # Obtener uso actual para las barras de progreso en el template
-    stats_uso = {
-        'productos': db.q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchone=True)[0],
-        'clientes': db.q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchone=True)[0],
-        'proveedores': db.q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchone=True)[0]
-    }
-    
-    return render_template('licencia.html', 
-                         app_version=APP_VERSION, 
-                         licencia=licencia_info,
-                         uso=stats_uso)
+    # ── GET: mostrar pantalla de licencia ──────────────────────────────────────
+    demo_status  = db.get_demo_status()
+    license_info = db.get_license_info()
+    machine_id   = db.get_machine_id()
+
+    # Calcular uso actual para mostrar progreso en plan Básico
+    tier_limits = {}
+    if license_info.get('tier') == 'BASICA':
+        r_prod = db.q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchone=True)
+        r_cli  = db.q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchone=True)
+        r_prov = db.q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchone=True)
+        tier_limits = {
+            'productos_actual':   r_prod[0] if r_prod else 0,
+            'clientes_actual':    r_cli[0]  if r_cli  else 0,
+            'proveedores_actual': r_prov[0] if r_prov else 0,
+        }
+
+    return render_template(
+        'licencias.html',
+        app_version=APP_VERSION,
+        demo_status=demo_status,
+        license_info=license_info,
+        machine_id=machine_id,
+        tier_limits=tier_limits,
+        tier_limits_cfg=db.TIER_LIMITS,
+        productos_count=db.q("SELECT COUNT(*) FROM productos WHERE activo=1", fetchone=True)[0],
+        clientes_count=db.q("SELECT COUNT(*) FROM clientes WHERE activo=1", fetchone=True)[0],
+        proveedores_count=db.q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchone=True)[0],
+    )
+
+
+@app.route('/api/licencias/activar', methods=['POST'])
+@admin_required
+def api_licencia_activar():
+    """Valida + persiste token RSA Base64."""
+    data      = request.get_json(silent=True) or {}
+    token_b64 = data.get('token', '').strip()
+    if not token_b64:
+        return jsonify({'ok': False, 'error': 'Token vacío.'}), 400
+
+    ok, msg = db.activar_licencia(token_b64)
+    if not ok:
+        return jsonify({'ok': False, 'error': msg}), 400
+
+    lic = db.get_license_info()
+    return jsonify({'ok': True, 'tier': lic['tier'], 'key': lic['key']})
+
+
+@app.route('/api/licencias/validar', methods=['POST'])
+@admin_required
+def api_licencia_validar():
+    """Valida token RSA sin persistir (pre-check)."""
+    data      = request.get_json(silent=True) or {}
+    token_b64 = data.get('token', '').strip()
+    if not token_b64:
+        return jsonify({'ok': False, 'error': 'Token vacío.'}), 400
+
+    ok, msg, token_data = db.validar_licencia_rsa(token_b64)
+    if not ok:
+        return jsonify({'ok': False, 'error': msg}), 400
+
+    return jsonify({'ok': True, 'tier': token_data.get('tier'), 'type': token_data.get('type')})
+
+
+@app.route('/api/licencias/verificar_online', methods=['POST'])
+@admin_required
+def api_licencia_verificar_online():
+    """Verifica la licencia contra Google Drive."""
+    resultado = verificar_licencia_online(db)
+    status = 200 if resultado['ok'] else 400
+    return jsonify(resultado), status
+
+
+@app.route('/api/licencias/estado', methods=['GET'])
+@admin_required
+def api_licencia_estado():
+    """Estado actual de la licencia local."""
+    return jsonify({'ok': True, 'license': db.get_license_info()})
 
 @app.route('/usuarios')
 @admin_required
