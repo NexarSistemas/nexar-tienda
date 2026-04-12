@@ -5,13 +5,17 @@ import subprocess
 import threading
 import time
 import socket
+import webbrowser
 
-# ✅ Agregar acá
+# ==============================
+# 🔹 Safe print (evita errores Unicode)
+# ==============================
 def safe_print(text):
     try:
         print(text)
     except UnicodeEncodeError:
         print(text.encode("ascii", "ignore").decode())
+
 
 VENV_DIR = "venv"
 APP_TITLE = "Nexar Tienda"
@@ -19,15 +23,12 @@ APP_HOST = "127.0.0.1"
 
 
 # ==============================
-# 🔹 Detectar si estamos en venv
+# 🔹 Detectar entorno
 # ==============================
 def en_virtualenv():
     return sys.prefix != sys.base_prefix
 
 
-# ==============================
-# 🔹 Detectar si es ejecutable (.exe)
-# ==============================
 def es_ejecutable():
     return getattr(sys, 'frozen', False)
 
@@ -60,31 +61,43 @@ def preparar_entorno_linux_frozen():
 def reiniciar_en_venv():
     safe_print("🔁 Reiniciando dentro del entorno virtual...")
 
-    if os.name == "nt":  # Windows
+    if os.name == "nt":
         python_venv = os.path.join(VENV_DIR, "Scripts", "python.exe")
     else:
         python_venv = os.path.join(VENV_DIR, "bin", "python")
 
+    # ✅ Crear venv con acceso a paquetes del sistema (CLAVE para GTK)
     if not os.path.exists(python_venv):
         safe_print("📦 Creando entorno virtual...")
-        subprocess.check_call([sys.executable, "-m", "venv", VENV_DIR])
+        subprocess.check_call([
+            sys.executable,
+            "-m",
+            "venv",
+            "--system-site-packages",
+            VENV_DIR
+        ])
 
     safe_print("📦 Instalando dependencias...")
 
-    subprocess.check_call(
-        [python_venv, "-m", "pip", "install", "--upgrade", "pip"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
-
-    if os.path.exists("requirements.txt"):
+    try:
         subprocess.check_call(
-            [python_venv, "-m", "pip", "install", "-r", "requirements.txt"],
+            [python_venv, "-m", "pip", "install", "--upgrade", "pip"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
 
-    # 🔴 relanzar SOLO en desarrollo
+        if os.path.exists("requirements.txt"):
+            subprocess.check_call(
+                [python_venv, "-m", "pip", "install", "-r", "requirements.txt"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+
+    except subprocess.CalledProcessError:
+        safe_print("⚠️ Error instalando dependencias")
+        safe_print("👉 Intentá manualmente: venv/bin/pip install -r requirements.txt")
+
+    # 🔁 Relanzar dentro del venv
     subprocess.check_call([python_venv, __file__])
     sys.exit()
 
@@ -138,15 +151,10 @@ def esperar_servidor(url, timeout=10):
 if __name__ == "__main__":
     safe_print("🚀 Iniciando Nexar Tienda...")
 
-    # ✅ SOLO en desarrollo usamos venv
+    # ✅ Manejo de venv
     if not es_ejecutable() and not omitir_venv():
         if not en_virtualenv():
             reiniciar_en_venv()
-
-    preparar_entorno_linux_frozen()
-
-    # 🔹 recién ahora importamos webview
-    import webview
 
     port = obtener_puerto_libre()
     url = f"http://{APP_HOST}:{port}"
@@ -166,11 +174,28 @@ if __name__ == "__main__":
 
     safe_print("✅ Servidor listo")
 
-    webview.create_window(
-        APP_TITLE,
-        url,
-        width=1200,
-        height=800
-    )
+    # ==============================
+    # 🔹 Intentar abrir ventana nativa
+    # ==============================
+    try:
+        import webview
 
-    webview.start()
+        webview.create_window(
+            APP_TITLE,
+            url,
+            width=1200,
+            height=800
+        )
+
+        webview.start()
+
+    except Exception as e:
+        safe_print("⚠️ No se pudo abrir ventana nativa")
+        safe_print(str(e))
+        safe_print("🌐 Abriendo en navegador...")
+
+        webbrowser.open(url)
+
+        # Mantener vivo el proceso
+        while True:
+            time.sleep(1)
