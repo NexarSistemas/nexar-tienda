@@ -649,7 +649,7 @@ def _get_tienda_pubkey_pem() -> bytes:
     """
     key_str = (os.getenv("PUBLIC_KEY") or "").strip()
     if not key_str:
-        base = os.path.dirname(os.path.abspath(__file__))
+        base = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
         possible = [
             os.path.join(base, 'keys', 'public_key.pem'),
             os.path.join(base, 'keys', 'public_key.asc'),

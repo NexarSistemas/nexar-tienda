@@ -29,7 +29,7 @@ mkdir -p "${BUILD_DIR}/DEBIAN"
 # Copiar binario nativo y recursos
 cp "${APP_BIN}" "${BUILD_DIR}/opt/nexar-tienda/NexarTienda"
 chmod +x "${BUILD_DIR}/opt/nexar-tienda/NexarTienda"
-cp -r templates static VERSION CHANGELOG.md "${BUILD_DIR}/opt/nexar-tienda/"
+cp -r templates static VERSION CHANGELOG.md keys "${BUILD_DIR}/opt/nexar-tienda/"
 
 # Wrapper CLI
 cat > "${BUILD_DIR}/usr/local/bin/nexartienda" << EOF
