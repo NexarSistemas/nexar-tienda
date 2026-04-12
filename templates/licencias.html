@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Gestionar Licencia — Nexar Tienda{% endblock %}
+
+{% block content %}
+<div class="licencia-container">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="fas fa-key"></i> Gestión de Licencia</h2>
+            <p class="text-muted mb-0">Sistema RSA + Token Base64 — igual que Nexar Almacén.</p>
+        </div>
+    </div>
+
+    <div class="row g-3">
+
+        <!-- ── COLUMNA IZQUIERDA: Estado ── -->
+        <div class="col-lg-6">
+
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-info-circle"></i> Estado Actual</h5>
+                </div>
+                <div class="card-body">
+                    {% set tier = license_info['tier'] %}
+                    <div class="alert mb-3 {% if tier == 'DEMO' %}alert-warning{% elif tier == 'BASICA' %}alert-primary{% else %}alert-success{% endif %}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <strong>
+                                {% if tier == 'DEMO' %}<i class="fas fa-hourglass-half"></i> Período de prueba (DEMO)
+                                {% elif tier == 'BASICA' %}<i class="fas fa-check"></i> Licencia Básica activa
+                                {% else %}<i class="fas fa-crown"></i> Licencia Profesional activa{% endif %}
+                            </strong>
+                            <span class="badge bg-secondary">{{ tier }}</span>
+                        </div>
+                        {% if demo_status['demo'] %}
+                        <div class="mt-2 small">
+                            {% if demo_status['vencido'] %}
+                                <span class="text-danger"><strong>⚠ Período de prueba vencido.</strong> Activá tu licencia para continuar.</span>
+                            {% else %}
+                                Quedan <strong>{{ demo_status['dias_restantes'] }}</strong> días de prueba
+                                ({{ demo_status['dias_usados'] }} usados de {{ demo_status['dias_demo'] }}).
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label"><small>Tipo de licencia</small></label>
+                            <div class="small fw-semibold">{{ license_info['type'] or '—' }}</div>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label"><small>Titular</small></label>
+                            <div class="small">{{ license_info['owner_name'] or '—' }}</div>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label"><small>Activada</small></label>
+                            <div class="small">{{ license_info['activated_at'][:10] if license_info['activated_at'] else '—' }}</div>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label"><small>Vencimiento</small></label>
+                            <div class="small">
+                                {% if license_info['expires_at'] %}{{ license_info['expires_at'][:10] }}
+                                {% else %}<span class="text-success">No vence</span>{% endif %}
+                            </div>
+                        </div>
+                        {% if license_info['last_check'] %}
+                        <div class="col-12 mb-2">
+                            <label class="form-label"><small>Último chequeo Drive</small></label>
+                            <div class="small text-muted">{{ license_info['last_check'][:10] }}</div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label"><small>Clave de licencia</small></label>
+                        <input type="text" class="form-control form-control-sm font-monospace"
+                               value="{{ license_info['key'] or '(sin clave — modo DEMO)' }}" readonly>
+                    </div>
+
+                    <div class="mb-0">
+                        <label class="form-label"><small>Hardware ID de esta PC</small></label>
+                        <input type="text" class="form-control form-control-sm font-monospace"
+                               value="{{ machine_id }}" readonly id="hwid">
+                        <div class="form-text">Enviá este ID al desarrollador para obtener tu token.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Límites -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-chart-bar"></i> Límites de Licencia</h5>
+                </div>
+                <div class="card-body">
+                    {% set limits = license_info['limits'] %}
+                    {% for key, label, count in [
+                        ('productos','Productos',productos_count),
+                        ('clientes','Clientes',clientes_count),
+                        ('proveedores','Proveedores',proveedores_count)
+                    ] %}
+                    {% set limit = limits.get(key) %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label mb-0"><strong>{{ label }}</strong></label>
+                            <span class="badge {% if limit and count >= limit %}bg-danger{% elif limit and count > limit * 0.8 %}bg-warning{% else %}bg-success{% endif %}">
+                                {{ count }}{% if limit %} / {{ limit }}{% else %} (ilimitado){% endif %}
+                            </span>
+                        </div>
+                        {% if limit %}
+                        <div class="progress" style="height:14px;">
+                            <div class="progress-bar {% if count >= limit %}bg-danger{% elif count > limit * 0.8 %}bg-warning{% else %}bg-success{% endif %}"
+                                 style="width:{{ [count / limit * 100, 100]|min }}%">
+                                {{ ([count / limit * 100, 100]|min)|int }}%
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Verificación Drive (solo si licencia activa) -->
+            {% if not demo_status['demo'] %}
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fab fa-google-drive"></i> Verificación Online (Drive)</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" class="mb-3">
+                        <input type="hidden" name="action" value="set_index_id">
+                        <label class="form-label"><small>ID del índice en Google Drive</small></label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control font-monospace" name="drive_index_id"
+                                   value="{{ license_info['drive_index_id'] }}"
+                                   placeholder="ID del archivo index_tienda.json">
+                            <button class="btn btn-outline-secondary" type="submit">Guardar</button>
+                        </div>
+                        <div class="form-text">El desarrollador te da este ID junto con el token.</div>
+                    </form>
+                    <form method="POST">
+                        <input type="hidden" name="action" value="verify_online">
+                        <button class="btn btn-outline-primary btn-sm w-100" type="submit">
+                            <i class="fas fa-cloud"></i> Verificar ahora contra Drive
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+
+        <!-- ── COLUMNA DERECHA: Activación ── -->
+        <div class="col-lg-6">
+
+            <div class="card mb-3 border-info">
+                <div class="card-header" style="background:#e8f4f8;">
+                    <h5 class="mb-0"><i class="fas fa-question-circle text-info"></i> ¿Cómo activar?</h5>
+                </div>
+                <div class="card-body small">
+                    <ol class="mb-0 ps-3">
+                        <li class="mb-1">Copiá tu <strong>Hardware ID</strong> (clic en el campo para copiar).</li>
+                        <li class="mb-1">Enviáselo al desarrollador por WhatsApp.</li>
+                        <li class="mb-1">El desarrollador genera un <strong>Token Base64</strong> en licensias_fh (producto: Nexar Tienda).</li>
+                        <li class="mb-1">Pegá el token abajo y hacé clic en <em>Validar y Activar</em>.</li>
+                        <li>Guardá también el <strong>ID de Drive</strong> para la verificación online.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-unlock"></i> Activar Token de Licencia</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="action" value="activate">
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Token Base64
+                                <span class="text-muted small">(generado por licensias_fh — Nexar Tienda)</span>
+                            </label>
+                            <textarea class="form-control font-monospace" name="token" rows="7"
+                                      placeholder="Pegá aquí el token Base64..." required
+                                      style="font-size:0.75rem;"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                ID del índice Drive
+                                <span class="text-muted small">(opcional)</span>
+                            </label>
+                            <input type="text" class="form-control form-control-sm font-monospace"
+                                   name="drive_index_id"
+                                   value="{{ license_info['drive_index_id'] }}"
+                                   placeholder="ID del archivo index_tienda.json en Drive">
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-check-circle"></i> Validar y Activar Licencia
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const hwid = document.getElementById('hwid');
+    if (hwid) {
+        hwid.title = 'Clic para copiar';
+        hwid.style.cursor = 'pointer';
+        hwid.addEventListener('click', function () {
+            this.select();
+            navigator.clipboard?.writeText(this.value)
+                .then(() => {
+                    this.style.background = '#d4edda';
+                    setTimeout(() => { this.style.background = ''; }, 1200);
+                })
+                .catch(() => { document.execCommand('copy'); });
+        });
+    }
+});
+</script>
+{% endblock %}

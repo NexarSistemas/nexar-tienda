@@ -640,12 +640,21 @@ import hashlib as _hashlib_rsa
 
 
 def _get_tienda_pubkey_pem() -> bytes:
-    """Obtiene la clave publica desde env o archivo local."""
+    """
+    Obtiene la clave publica RSA desde:
+      1. Variable de entorno PUBLIC_KEY
+      2. keys/public_key.pem  (copiado desde licensias_fh/keys/)
+      3. keys/public_key.asc  (nombre alternativo)
+      4. public_key.pem / public_key.asc en la raiz del proyecto
+    """
     key_str = (os.getenv("PUBLIC_KEY") or "").strip()
     if not key_str:
+        base = os.path.dirname(os.path.abspath(__file__))
         possible = [
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), 'keys', 'public_key.asc'),
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public_key.asc'),
+            os.path.join(base, 'keys', 'public_key.pem'),
+            os.path.join(base, 'keys', 'public_key.asc'),
+            os.path.join(base, 'public_key.pem'),
+            os.path.join(base, 'public_key.asc'),
         ]
         for p in possible:
             if os.path.isfile(p):
@@ -654,8 +663,8 @@ def _get_tienda_pubkey_pem() -> bytes:
                 break
     if not key_str:
         raise RuntimeError(
-            '❌ Clave publica no encontrada. '
-            'Define PUBLIC_KEY o coloca keys/public_key.asc.'
+            "Clave publica no encontrada. "
+            "Copia licensias_fh/keys/public_key.pem a nexar-tienda/keys/public_key.pem"
         )
     return key_str.encode('utf-8')
 

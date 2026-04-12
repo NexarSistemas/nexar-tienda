@@ -64,3 +64,9 @@ Thumbs.db
 *.tar.gz
 *.rar
 respaldo/
+
+### --- llaves SSH y archivos sensibles --- ###
+*.pem
+*.key
+*.crt
+key/
