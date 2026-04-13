@@ -46,6 +46,9 @@
           <input type="password" name="password" class="form-control" placeholder="••••••••"
             autocomplete="current-password" required>
         </div>
+        <div class="text-end mt-1">
+          <a href="{{ url_for('recuperar_password') }}" class="text-decoration-none small text-muted">¿Olvidaste tu contraseña?</a>
+        </div>
       </div>
       <button type="submit" class="btn-login-nexar">
         <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión

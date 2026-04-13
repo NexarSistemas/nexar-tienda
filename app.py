@@ -16,6 +16,7 @@ import sys
 import signal
 import shutil
 import glob
+import hashlib
 import threading
 import re
 import pathlib
@@ -209,6 +210,9 @@ def inject_global_data():
 
 # ─── INICIALIZACIÓN ──────────────────────────────────────────────────────────
 
+# Inicializar la base de datos al cargar el módulo para asegurar que las tablas existan
+db.init_db()
+
 _scheduler_started = False
 
 
@@ -216,11 +220,15 @@ _scheduler_started = False
 def before():
     """Se ejecuta antes de cada request."""
     global _scheduler_started
-    db.init_db()
 
     if not _scheduler_started:
         _scheduler_started = True
         iniciar_backup_scheduler()
+
+    # Verificamos si el sistema tiene usuarios. Si no, forzamos creación del primer Admin.
+    usuarios_count = db.q("SELECT COUNT(*) FROM usuarios", fetchone=True)[0]
+    if usuarios_count == 0 and request.endpoint not in ['registro_inicial', 'static']:
+        return redirect(url_for('registro_inicial'))
 
     # 1. Verificar invalidación global de sesiones (Estándar Nexar Almacén)
     cfg = db.get_config()
@@ -233,7 +241,7 @@ def before():
             return redirect(url_for('login'))
 
     # Rutas públicas (sin login requerido)
-    public_routes = {'/login', '/static', '/favicon.ico', '/apagar', '/apagar_rapido'}
+    public_routes = {'/login', '/static', '/favicon.ico', '/apagar', '/apagar_rapido', '/registro_inicial', '/recuperar_password'}
     if request.path in public_routes or request.path.startswith('/static'):
         return
 
@@ -252,6 +260,118 @@ def index(path):
     if 'user' in session:
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
+
+@app.route('/registro_inicial', methods=['GET', 'POST'])
+def registro_inicial():
+    """Pantalla de configuración inicial para crear el primer administrador."""
+    # Si ya hay usuarios, esta ruta ya no es accesible
+    if db.q("SELECT COUNT(*) FROM usuarios", fetchone=True)[0] > 0:
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        nombre = request.form.get('nombre_completo', '').strip()
+        question = request.form.get('security_question', '').strip()
+        answer = request.form.get('security_answer', '').strip()
+
+        # Validación de contraseña fuerte
+        # Requisitos: 6-12 caracteres, 1 mayúscula, 1 minúscula, 1 número, 1 especial
+        patron = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#._-])[A-Za-z\d@$!%*?&#._-]{6,12}$"
+        
+        if not re.match(patron, password):
+            flash('❌ La contraseña debe tener entre 6 y 12 caracteres, incluir una mayúscula, una minúscula, un número y un carácter especial.', 'danger')
+            return render_template('registro_inicial.html', app_version=APP_VERSION, username=username, nombre=nombre)
+
+        if not username or not nombre or not question or not answer:
+            flash('❌ Todos los campos son obligatorios.', 'danger')
+            return render_template('registro_inicial.html', app_version=APP_VERSION)
+
+        try:
+            db.add_usuario(username, password, 'Administrador', nombre, question, answer)
+            flash('✅ ¡Bienvenido! Administrador creado con éxito. Ya podés iniciar sesión.', 'success')
+            return redirect(url_for('login'))
+        except Exception as e:
+            flash(f'❌ Error al configurar el sistema: {str(e)}', 'danger')
+
+    return render_template('registro_inicial.html', app_version=APP_VERSION)
+
+@app.route('/recuperar_password', methods=['GET', 'POST'])
+def recuperar_password():
+    """Proceso de recuperación de contraseña por pregunta de seguridad."""
+    if request.method == 'POST':
+        step = request.form.get('step')
+        username = request.form.get('username', '').strip()
+
+        if step == '1':
+            user = db.get_usuario_by_username(username)
+            if user and user['security_question']:
+                return render_template('recuperar_password.html', step=2, user=user, app_version=APP_VERSION)
+            flash('❌ Usuario no encontrado o sin configuración de recuperación.', 'danger')
+
+        elif step == '2':
+            user = db.get_usuario_by_username(username)
+            answer = request.form.get('security_answer', '').strip().lower()
+            ans_hash = hashlib.sha256(answer.encode()).hexdigest()
+            if user and user['security_answer_hash'] == ans_hash:
+                return render_template('recuperar_password.html', step=3, username=username, app_version=APP_VERSION)
+            flash('❌ Respuesta incorrecta.', 'danger')
+            return render_template('recuperar_password.html', step=2, user=user, app_version=APP_VERSION)
+
+        elif step == '3':
+            password = request.form.get('password', '')
+            patron = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#._-])[A-Za-z\d@$!%*?&#._-]{6,12}$"
+            if not re.match(patron, password):
+                flash('❌ La nueva contraseña no cumple los requisitos de seguridad.', 'danger')
+                return render_template('recuperar_password.html', step=3, username=username, app_version=APP_VERSION)
+            
+            user = db.get_usuario_by_username(username)
+            if user:
+                db.q("UPDATE usuarios SET password_hash=? WHERE id=?", 
+                     (hashlib.sha256(password.encode()).hexdigest(), user['id']), commit=True)
+                flash('✅ Contraseña restablecida con éxito. Ya podés entrar.', 'success')
+                return redirect(url_for('login'))
+
+    return render_template('recuperar_password.html', step=1, app_version=APP_VERSION)
+
+@app.route('/perfil', methods=['GET', 'POST'])
+@login_required
+def perfil():
+    """Permite al usuario cambiar sus datos, contraseña y pregunta de seguridad."""
+    user_id = session['user']['id']
+    usuario = db.q("SELECT * FROM usuarios WHERE id=?", (user_id,), fetchone=True)
+
+    if request.method == 'POST':
+        nombre = request.form.get('nombre_completo', '').strip()
+        password = request.form.get('password', '')
+        question = request.form.get('security_question', '').strip()
+        answer = request.form.get('security_answer', '').strip()
+
+        data = {'nombre_completo': nombre}
+        
+        if password:
+            patron = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#._-])[A-Za-z\d@$!%*?&#._-]{6,12}$"
+            if not re.match(patron, password):
+                flash('❌ La nueva contraseña es débil.', 'danger')
+                return render_template('perfil.html', usuario=usuario)
+            data['password'] = password
+
+        if question:
+            data['security_question'] = question
+        if answer:
+            data['security_answer'] = answer
+
+        try:
+            db.update_perfil(user_id, data)
+            # Actualizar sesión si cambió el nombre
+            session['user']['nombre_completo'] = nombre
+            session.modified = True
+            flash('✅ Perfil actualizado correctamente.', 'success')
+            return redirect(url_for('perfil'))
+        except Exception as e:
+            flash(f'❌ Error al actualizar perfil: {str(e)}', 'danger')
+
+    return render_template('perfil.html', usuario=usuario)
 
 
 @app.route('/login', methods=['GET', 'POST'])

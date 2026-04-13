@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Configuración Inicial{% endblock %}
+
+{% block login_content %}
+<div class="login-body-wrapper" style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;">
+    <div class="login-card" style="width: 100%; max-width: 500px;">
+        <div class="login-header">
+            <span class="store-icon">🛡️</span>
+            <h3>Configuración Inicial</h3>
+            <p>Creá tu cuenta de Administrador</p>
+        </div>
+
+        <div class="login-content-body">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                  </div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label fw-bold small"><i class="fas fa-id-card me-1"></i>Nombre Completo</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-signature"></i>
+                        <input type="text" name="nombre_completo" class="form-control" value="{{ nombre or '' }}" required placeholder="Ej: Juan Pérez">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small"><i class="fas fa-user me-1"></i>Nombre de Usuario</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-user"></i>
+                        <input type="text" name="username" class="form-control" value="{{ username or '' }}" required placeholder="Ej: admin">
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold small"><i class="fas fa-lock me-1"></i>Contraseña Segura</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" name="password" id="password" class="form-control" required placeholder="******" style="padding-right: 45px;">
+                        <button type="button" onclick="togglePassword()" 
+                                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); 
+                                       background: none; border: none; color: #94a3b8; z-index: 10;">
+                            <i class="fas fa-eye" id="toggleIcon"></i>
+                        </button>
+                    </div>
+                    <div class="form-text mt-2">
+                        <ul class="small list-unstyled">
+                            <li id="len"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i> Entre 6 y 12 caracteres</li>
+                            <li id="upper"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i> Al menos una mayúscula</li>
+                            <li id="special"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i> Al menos un carácter especial (@$!%*?&#)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small"><i class="fas fa-question-circle me-1"></i>Pregunta de Seguridad</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-question"></i>
+                        <input type="text" name="security_question" class="form-control" required placeholder="Ej: ¿Nombre de mi primera mascota?">
+                    </div>
+                    <div class="form-text">Usala para recuperar tu clave si la perdés.</div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold small"><i class="fas fa-key me-1"></i>Respuesta de Seguridad</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-key"></i>
+                        <input type="text" name="security_answer" class="form-control" required placeholder="Tu respuesta secreta">
+                    </div>
+                    <div class="form-text text-danger small"><i class="fas fa-exclamation-triangle"></i> No la olvides, es la única forma de restaurar acceso.</div>
+                </div>
+
+                <button type="submit" class="btn-login-nexar">
+                    <i class="fas fa-rocket me-2"></i>Finalizar Configuración
+                </button>
+            </form>
+        </div>
+
+        <div class="text-center p-3 border-top" style="color: #999; font-size: .78rem;">
+            Nexar Tienda · v{{ app_version }}<br>
+            Configuración del sistema
+        </div>
+    </div>
+</div>
+
+<script>
+function togglePassword() {
+    const pass = document.getElementById('password');
+    const icon = document.getElementById('toggleIcon');
+    if (pass.type === 'password') {
+        pass.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+        pass.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
+}
+</script>
+{% endblock %}

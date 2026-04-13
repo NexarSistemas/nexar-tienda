@@ -75,6 +75,9 @@
             </a>
 
             <div class="nav-label">Sistema</div>
+            <a class="nav-link {% if request.endpoint == 'perfil' %}active{% endif %}" href="{{ url_for('perfil') }}">
+                <i class="fas fa-user-circle"></i> Mi Perfil
+            </a>
             <a class="nav-link {% if request.endpoint == 'config' %}active{% endif %}" href="{{ url_for('config') }}">
                 <i class="fas fa-cog"></i> Configuración
             </a>

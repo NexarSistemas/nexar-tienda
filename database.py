@@ -394,6 +394,13 @@ def init_db():
     if 'interes_financiacion' not in columnas_v:
         c.execute("ALTER TABLE ventas ADD COLUMN interes_financiacion REAL DEFAULT 0")
 
+    # Verificar y agregar columnas de recuperación en usuarios
+    columnas_u = [r['name'] for r in c.execute("PRAGMA table_info(usuarios)").fetchall()]
+    if 'security_question' not in columnas_u:
+        c.execute("ALTER TABLE usuarios ADD COLUMN security_question TEXT")
+    if 'security_answer_hash' not in columnas_u:
+        c.execute("ALTER TABLE usuarios ADD COLUMN security_answer_hash TEXT")
+
     # ─── Configuración por defecto ────────────────────────────────────────────
     defaults = [
         ('nombre_negocio', 'Mi Tienda'),
@@ -448,20 +455,6 @@ def init_db():
         import uuid
         machine_id = str(uuid.uuid4()).replace('-', '').upper()[:16]
         c.execute("INSERT INTO config VALUES ('machine_id',?)", (machine_id,))
-
-    # ─── Usuarios por defecto ─────────────────────────────────────────────────
-    def _hash(pw):
-        return hashlib.sha256(pw.encode()).hexdigest()
-
-    default_users = [
-        ('admin', _hash('admin123'), 'Administrador', 'Administrador'),
-        ('vendedor', _hash('vendedor123'), 'Vendedor', 'Vendedor'),
-    ]
-    for uname, phash, rol, nombre in default_users:
-        c.execute(
-            "INSERT OR IGNORE INTO usuarios (username,password_hash,rol,nombre_completo) VALUES (?,?,?,?)",
-            (uname, phash, rol, nombre)
-        )
 
     # ─── Roles y Permisos Iniciales (Paso 13) ────────────────────────────────
     roles_data = [
@@ -1032,13 +1025,16 @@ def get_usuarios():
     return q("SELECT id,username,rol,nombre_completo,activo FROM usuarios ORDER BY nombre_completo")
 
 
-def add_usuario(username, password, rol, nombre_completo):
+def add_usuario(username, password, rol, nombre_completo, security_question=None, security_answer=None):
     """Agrega un nuevo usuario."""
     password_hash = hashlib.sha256(password.encode()).hexdigest()
+    ans_hash = None
+    if security_answer:
+        ans_hash = hashlib.sha256(security_answer.strip().lower().encode()).hexdigest()
     q(
-        """INSERT INTO usuarios (username,password_hash,rol,nombre_completo)
-        VALUES (?,?,?,?)""",
-        (username, password_hash, rol, nombre_completo),
+        """INSERT INTO usuarios (username,password_hash,rol,nombre_completo, security_question, security_answer_hash)
+        VALUES (?,?,?,?,?,?)""",
+        (username, password_hash, rol, nombre_completo, security_question, ans_hash),
         fetchall=False, commit=True
     )
 
@@ -1048,6 +1044,27 @@ def update_usuario(uid, data):
     updates = ["rol=?", "nombre_completo=?", "activo=?"]
     params = [data.get('rol', 'usuario'), data.get('nombre_completo', ''), int(data.get('activo', 1)), uid]
     q(f"UPDATE usuarios SET {','.join(updates)} WHERE id=?", params, fetchall=False, commit=True)
+
+
+def update_perfil(uid, data):
+    """Actualiza datos del perfil del propio usuario."""
+    sets = ["nombre_completo=?"]
+    params = [data.get('nombre_completo', '')]
+    
+    if data.get('password'):
+        sets.append("password_hash=?")
+        params.append(hashlib.sha256(data['password'].encode()).hexdigest())
+        
+    if data.get('security_question'):
+        sets.append("security_question=?")
+        params.append(data['security_question'])
+        
+    if data.get('security_answer'):
+        sets.append("security_answer_hash=?")
+        params.append(hashlib.sha256(data['security_answer'].strip().lower().encode()).hexdigest())
+        
+    params.append(uid)
+    q(f"UPDATE usuarios SET {','.join(sets)} WHERE id=?", params, commit=True)
 
 
 def has_permission(role_name, perm_key):
