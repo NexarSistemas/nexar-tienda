@@ -1,65 +1,206 @@
 #!/bin/bash
+# ============================================================
+# build_deb.sh — Genera el paquete .deb para Nexar Tienda
+#
+# Uso desde la raíz del proyecto:
+#   bash build_deb.sh
+#
+# Requiere:
+#   - dist/NexarTienda    (binario compilado por PyInstaller)
+#   - dpkg-deb, fakeroot
+# ============================================================
+
 set -e
 
-VERSION=$(cat VERSION)
+# ── Leer versión desde el archivo VERSION ───────────────────
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VERSION=$(cat "${SCRIPT_DIR}/VERSION")
+
 PACKAGE="nexar-tienda"
-BUILD_DIR="build_deb/nexar-tienda_${VERSION}"
-APP_BIN="dist/NexarTienda"
+ARCH="amd64"
+MAINTAINER="Nexar Sistemas <nexarsistemas@outlook.com.ar>"
+DESCRIPTION="Nexar Tienda — v${VERSION}"
 
-echo "Generando paquete .deb v${VERSION}..."
+BUILD_DIR="${SCRIPT_DIR}/build_deb"
+PKG_DIR="${BUILD_DIR}/${PACKAGE}_${VERSION}"
+INSTALL_DIR="${PKG_DIR}/opt/nexar-tienda"
+DEBIAN_DIR="${PKG_DIR}/DEBIAN"
+APP_BIN="${SCRIPT_DIR}/dist/NexarTienda"
 
+echo "════════════════════════════════════════════════════"
+echo "  Nexar Tienda — Builder .deb v${VERSION}"
+echo "════════════════════════════════════════════════════"
+
+# ── Verificar que el binario exista ─────────────────────────
 if [ ! -f "${APP_BIN}" ]; then
-  echo "❌ No se encontró ${APP_BIN}."
-  echo "Compilá primero la app nativa con PyInstaller:"
-  echo "  pyinstaller build/nexar_tienda_linux.spec"
+  echo "❌ No se encontró ${APP_BIN}"
+  echo "   Compilá primero con PyInstaller:"
+  echo "   pyinstaller build/nexar_tienda_linux.spec --distpath dist --noconfirm"
   exit 1
 fi
 
-rm -rf build_deb
+# ── Limpiar build anterior ───────────────────────────────────
+rm -rf "${BUILD_DIR}"
 
-# Estructura
-mkdir -p "${BUILD_DIR}/opt/nexar-tienda"
-mkdir -p "${BUILD_DIR}/usr/share/applications"
-mkdir -p "${BUILD_DIR}/usr/share/pixmaps"
-mkdir -p "${BUILD_DIR}/usr/local/bin"
-mkdir -p "${BUILD_DIR}/usr/share/applications"
-mkdir -p "${BUILD_DIR}/usr/share/pixmaps"
-mkdir -p "${BUILD_DIR}/DEBIAN"
+# ── Crear estructura de directorios ─────────────────────────
+mkdir -p "${INSTALL_DIR}"
+mkdir -p "${DEBIAN_DIR}"
+mkdir -p "${PKG_DIR}/usr/local/bin"
+mkdir -p "${PKG_DIR}/usr/share/applications"
+mkdir -p "${PKG_DIR}/usr/share/pixmaps"
 
-# Copiar binario nativo y recursos
-cp "${APP_BIN}" "${BUILD_DIR}/opt/nexar-tienda/NexarTienda"
-chmod +x "${BUILD_DIR}/opt/nexar-tienda/NexarTienda"
-cp -r templates static VERSION CHANGELOG.md keys "${BUILD_DIR}/opt/nexar-tienda/"
+echo "→ Copiando binario y recursos..."
 
-# Wrapper CLI
-cat > "${BUILD_DIR}/usr/local/bin/nexartienda" << EOF
+# Binario compilado (OneFile — único ejecutable)
+cp "${APP_BIN}" "${INSTALL_DIR}/NexarTienda"
+chmod +x "${INSTALL_DIR}/NexarTienda"
+
+# Recursos del proyecto
+cp -r "${SCRIPT_DIR}/templates"    "${INSTALL_DIR}/"
+cp -r "${SCRIPT_DIR}/static"       "${INSTALL_DIR}/"
+cp    "${SCRIPT_DIR}/VERSION"      "${INSTALL_DIR}/"
+cp    "${SCRIPT_DIR}/CHANGELOG.md" "${INSTALL_DIR}/"
+
+# README y LICENSE opcionales
+[ -f "${SCRIPT_DIR}/README.md" ] && cp "${SCRIPT_DIR}/README.md" "${INSTALL_DIR}/"
+[ -f "${SCRIPT_DIR}/LICENSE"   ] && cp "${SCRIPT_DIR}/LICENSE"   "${INSTALL_DIR}/"
+
+# Limpieza de archivos innecesarios
+find "${INSTALL_DIR}" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+find "${INSTALL_DIR}" -name "*.pyc"       -delete 2>/dev/null || true
+find "${INSTALL_DIR}" -name "*.db"        -delete 2>/dev/null || true
+
+echo "→ Configurando ícono y entrada de menú..."
+
+# Ícono (soporta .PNG y .png — Linux es case-sensitive)
+if [ -f "${SCRIPT_DIR}/static/icons/nexar_tienda.PNG" ]; then
+  cp "${SCRIPT_DIR}/static/icons/nexar_tienda.PNG" \
+     "${PKG_DIR}/usr/share/pixmaps/nexar_tienda.png"
+elif [ -f "${SCRIPT_DIR}/static/icons/nexar_tienda.png" ]; then
+  cp "${SCRIPT_DIR}/static/icons/nexar_tienda.png" \
+     "${PKG_DIR}/usr/share/pixmaps/nexar_tienda.png"
+else
+  echo "⚠️  No se encontró ícono en static/icons/ — el paquete se generará sin ícono"
+fi
+
+# Archivo .desktop (entrada de menú)
+if [ -f "${SCRIPT_DIR}/build/nexar_tienda.desktop" ]; then
+  cp "${SCRIPT_DIR}/build/nexar_tienda.desktop" \
+     "${PKG_DIR}/usr/share/applications/nexar-tienda.desktop"
+else
+  # Generar uno básico si no existe
+  cat > "${PKG_DIR}/usr/share/applications/nexar-tienda.desktop" << DESKTOP_EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Nexar Tienda
+Comment=Sistema integral de gestión para tiendas
+Exec=/usr/local/bin/nexartienda
+Path=/opt/nexar-tienda
+Icon=nexar_tienda
+Terminal=false
+Categories=Office;
+StartupNotify=true
+StartupWMClass=NexarTienda
+DESKTOP_EOF
+fi
+
+echo "→ Creando script de lanzamiento..."
+
+# Wrapper CLI: resuelve problemas de GTK/GSettings en binarios PyInstaller
+cat > "${PKG_DIR}/usr/local/bin/nexartienda" << 'WRAPPER_EOF'
 #!/bin/bash
-cd /opt/nexar-tienda
+# Lanzador de Nexar Tienda
+# Limpia variables de entorno que pueden causar conflictos con GTK
 unset GSETTINGS_SCHEMA_DIR
-if [ -n "\${XDG_DATA_DIRS:-}" ]; then
-  export XDG_DATA_DIRS="/usr/local/share:/usr/share:\${XDG_DATA_DIRS}"
+
+if [ -n "${XDG_DATA_DIRS:-}" ]; then
+  export XDG_DATA_DIRS="/usr/local/share:/usr/share:${XDG_DATA_DIRS}"
 else
   export XDG_DATA_DIRS="/usr/local/share:/usr/share"
 fi
-exec ./NexarTienda
-EOF
 
-chmod +x "${BUILD_DIR}/usr/local/bin/nexartienda"
+cd /opt/nexar-tienda
+exec ./NexarTienda "$@"
+WRAPPER_EOF
 
-# Icono y lanzador de escritorio
-cp "static/icons/nexar_tienda.PNG" "${BUILD_DIR}/usr/share/pixmaps/nexar_tienda.png"
-cp "build/nexar_tienda.desktop" "${BUILD_DIR}/usr/share/applications/nexar-tienda.desktop"
+chmod +x "${PKG_DIR}/usr/local/bin/nexartienda"
 
-# Control file
-cat > "${BUILD_DIR}/DEBIAN/control" << EOF
+echo "→ Calculando tamaño instalado..."
+INSTALLED_SIZE=$(du -sk "${INSTALL_DIR}" | cut -f1)
+
+echo "→ Generando metadata del paquete..."
+
+cat > "${DEBIAN_DIR}/control" << CONTROL_EOF
 Package: ${PACKAGE}
 Version: ${VERSION}
-Architecture: amd64
-Maintainer: Nexar Sistemas
+Architecture: ${ARCH}
+Maintainer: ${MAINTAINER}
+Installed-Size: ${INSTALLED_SIZE}
 Depends: libgtk-3-0, libwebkit2gtk-4.1-0
-Description: Sistema integral de gestión para tiendas.
-EOF
+Recommends: fonts-liberation
+Section: misc
+Priority: optional
+Homepage: https://wa.me/5492645858874
+Description: ${DESCRIPTION}
+ Sistema integral de gestión para tiendas y comercios.
+ Incluye gestión de ventas, inventario, caja y reportes.
+CONTROL_EOF
 
-dpkg-deb --build "${BUILD_DIR}"
-mv build_deb/*.deb .
-echo "¡Hecho! Paquete generado en el directorio raíz."
+# ── Scripts de instalación ───────────────────────────────────
+
+cat > "${DEBIAN_DIR}/postinst" << 'POSTINST_EOF'
+#!/bin/bash
+set -e
+
+chmod +x /usr/local/bin/nexartienda
+chmod +x /opt/nexar-tienda/NexarTienda
+chmod -R a+rX /opt/nexar-tienda
+
+# Actualizar caché de íconos y menús
+update-desktop-database /usr/share/applications 2>/dev/null || true
+gtk-update-icon-cache /usr/share/pixmaps 2>/dev/null || true
+
+echo ""
+echo "════════════════════════════════════════════"
+echo " Nexar Tienda instalado correctamente ✅"
+echo "════════════════════════════════════════════"
+echo " Ejecutar: nexartienda"
+echo "  O buscar 'Nexar Tienda' en el menú de apps"
+echo "════════════════════════════════════════════"
+
+exit 0
+POSTINST_EOF
+chmod +x "${DEBIAN_DIR}/postinst"
+
+cat > "${DEBIAN_DIR}/prerm" << 'PRERM_EOF'
+#!/bin/bash
+set -e
+echo "Desinstalando Nexar Tienda..."
+exit 0
+PRERM_EOF
+chmod +x "${DEBIAN_DIR}/prerm"
+
+cat > "${DEBIAN_DIR}/postrm" << 'POSTRM_EOF'
+#!/bin/bash
+set -e
+update-desktop-database /usr/share/applications 2>/dev/null || true
+exit 0
+POSTRM_EOF
+chmod +x "${DEBIAN_DIR}/postrm"
+
+echo "→ Construyendo paquete .deb..."
+
+DEB_FILE="${BUILD_DIR}/${PACKAGE}_${VERSION}_${ARCH}.deb"
+dpkg-deb --build --root-owner-group "${PKG_DIR}" "${DEB_FILE}"
+
+# Mover al directorio raíz del proyecto
+mv "${DEB_FILE}" "${SCRIPT_DIR}/"
+FINAL_DEB="${SCRIPT_DIR}/${PACKAGE}_${VERSION}_${ARCH}.deb"
+
+echo ""
+echo "════════════════════════════════════════════"
+echo " ✅ Paquete generado:"
+echo "    $(basename "${FINAL_DEB}")"
+echo "    $(du -sh "${FINAL_DEB}" | cut -f1)"
+echo "════════════════════════════════════════════"
