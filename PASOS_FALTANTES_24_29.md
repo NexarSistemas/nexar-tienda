@@ -1627,6 +1627,6 @@ de entrada del `.exe`).
 
 ---
 
-*Documento generado el 09/04/2026 — Nexar Tienda v1.13.0*
+*Documento generado el 13/04/2026 — Nexar Tienda v1.20.0*
 *Referencia: Nexar Almacén como base estructural*
 *Continuación de PASOS_FALTANTES.md (Pasos 15–23)*

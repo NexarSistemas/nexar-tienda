@@ -4,7 +4,7 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
-## [1.20.0] - 26 Abril 2026 - Seguridad y Autogestión de Acceso
+## [1.20.0] - 13 Abril 2026 - Seguridad y Autogestión de Acceso
 
 ### ✨ Características Nuevas
 - **Configuración Inicial Obligatoria**: Implementación de flujo de despliegue para el primer Administrador, eliminando credenciales por defecto.

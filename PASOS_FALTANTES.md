@@ -1298,5 +1298,5 @@ Los primeros cuatro pasos son los que **más valor aportan al negocio** y tienen
 
 ---
 
-*Documento generado el 08/04/2026 — Nexar Tienda v1.4.0*  
+*Documento generado el 13/04/2026 — Nexar Tienda v1.20.0*  
 *Referencia: Nexar Almacén como base estructural*
