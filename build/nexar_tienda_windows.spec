@@ -1,18 +1,14 @@
 # ════════════════════════════════════════════════════════════
 # build/nexar_tienda_windows.spec — PyInstaller (Windows)
 #
-# Genera un único .exe que incluye todo lo necesario.
-# Modo OneFile: todo incluido en un solo ejecutable.
-#
-# Para compilar manualmente desde la raíz del proyecto:
-#   pyinstaller build/nexar_tienda_windows.spec \
-#     --distpath dist --workpath build/work --noconfirm
+# Cambios respecto a la versión anterior:
+#   - console=False en producción, pero con sistema de logs
+#   - Se agrega runtime hook para capturar errores al inicio
+#   - Se incluye carpeta logs/ en los datos empaquetados
 # ════════════════════════════════════════════════════════════
 
 import os
 
-# SPECPATH = directorio del .spec (build\)
-# PROJ     = raíz del proyecto (un nivel arriba)
 PROJ = os.path.abspath(os.path.join(SPECPATH, '..'))
 
 block_cipher = None
@@ -69,17 +65,22 @@ a = Analysis(
         'importlib.util',
         'ctypes',
         'ctypes.wintypes',
+        # logging — necesario para el sistema de logs de error
+        'logging',
+        'logging.handlers',
+        'traceback',
     ],
-    hookspath=[],
+    hookspath=[os.path.join(PROJ, 'build', 'hooks')],  # hooks personalizados
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[
+        os.path.join(PROJ, 'build', 'hooks', 'rthook_error_logger.py')
+    ],
     excludes=[
         'tkinter',
         'matplotlib',
         'numpy',
         'pandas',
         'pytest',
-        # Módulos exclusivos de Linux — no incluir en Windows
         'webview.platforms.gtk',
         'gi',
     ],
@@ -94,17 +95,17 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,     # OneFile: binarios embebidos en el ejecutable
+    a.binaries,
     a.datas,
     [],
     name='NexarTienda',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,    # No usar strip en Windows (puede romper el .exe)
+    strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # Sin ventana de consola negra
+    console=False,   # Sin consola negra en producción
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

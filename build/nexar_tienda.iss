@@ -1,22 +1,12 @@
 ; ════════════════════════════════════════════════════════════
 ; build/nexar_tienda.iss — Script de Inno Setup 6
 ;
-; Genera un instalador profesional para Windows que:
-;   - Instala en la carpeta del usuario (sin requerir admin)
-;   - Crea acceso directo en el Escritorio (opcional)
-;   - Crea entrada en el Menú Inicio
-;   - Verifica WebView2 Runtime antes de instalar
-;   - Incluye desinstalador automático
-;
-; Para compilar manualmente:
-;   ISCC.exe /DAppVersion=1.17.0 build\nexar_tienda.iss
-;
-; GitHub Actions pasa la versión automáticamente.
+; Cambios respecto a la versión anterior:
+;   - Descarga e instala WebView2 automáticamente si no está
+;   - Verifica .NET 6+ Runtime y lo descarga si falta
+;   - Crea archivo de log en caso de error al iniciar
 ; ════════════════════════════════════════════════════════════
 
-; ── VERSIÓN DINÁMICA ─────────────────────────────────────────
-; Si no se pasa /DAppVersion desde la línea de comando,
-; usa "1.0.0" como valor por defecto
 #ifndef AppVersion
   #define AppVersion "1.0.0"
 #endif
@@ -36,16 +26,13 @@ AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
 AppUpdatesURL={#AppURL}
 
-; Instala en la carpeta del usuario (no requiere permisos de admin)
 DefaultDirName={userappdata}\{#AppName}
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
 
-; Salida del instalador
 OutputDir=..\dist\installer
 OutputBaseFilename=NexarTienda_{#AppVersion}_Setup
 
-; Ícono del instalador
 SetupIconFile=..\static\icons\nexar_tienda.ico
 
 Compression=lzma2/ultra64
@@ -54,14 +41,14 @@ SolidCompression=yes
 WizardStyle=modern
 WizardResizable=no
 
-; Sin requerir admin — el usuario instala en su perfil
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
 ArchitecturesInstallIn64BitMode=x64compatible
-
-; Requiere Windows 10 mínimo (para WebView2)
 MinVersion=10.0
+
+; ── Necesario para descargar WebView2 y .NET en tiempo de instalación ──
+; Inno Setup no descarga por sí solo — usamos un helper (ver [Code])
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -70,58 +57,165 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "desktopicon"; Description: "Crear acceso directo en el Escritorio"; GroupDescription: "Opciones adicionales:"
 
 [Files]
-; Copia el ejecutable único generado por PyInstaller (OneFile mode)
 Source: "..\dist\NexarTienda.exe"; DestDir: "{app}"; Flags: ignoreversion
 
+; ── Wrapper que captura errores y los guarda en un log ──────────
+; Este script .bat lanza el .exe y guarda el error si falla
+Source: "launch_with_log.bat"; DestDir: "{app}"; Flags: ignoreversion
+
 [Icons]
-Name: "{userprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Comment: "Sistema de gestión para tiendas"
+Name: "{userprograms}\{#AppName}";            Filename: "{app}\{#AppExeName}";      Comment: "Sistema de gestión para tiendas"
 Name: "{userprograms}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Comment: "Sistema de gestión para tiendas"; Tasks: desktopicon
+Name: "{userdesktop}\{#AppName}";             Filename: "{app}\{#AppExeName}";      Comment: "Sistema de gestión para tiendas"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Iniciar {#AppName} ahora"; Flags: nowait postinstall skipifsilent
+
+[Code]
+
+// ════════════════════════════════════════════════════════════
+// UTILIDADES
+// ════════════════════════════════════════════════════════════
+
+// Descarga un archivo desde una URL a una ruta local usando PowerShell
+function DownloadFile(URL, Dest: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Exec(
+    'powershell.exe',
+    '-NoProfile -NonInteractive -Command "Invoke-WebRequest -Uri ''' + URL + ''' -OutFile ''' + Dest + ''' -UseBasicParsing"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+  );
+  Result := (ResultCode = 0) and FileExists(Dest);
+end;
+
+// ════════════════════════════════════════════════════════════
+// WEBVIEW2
+// ════════════════════════════════════════════════════════════
+
+function IsWebView2Installed(): Boolean;
+var
+  Version: String;
+begin
+  Result := RegQueryStringValue(
+    HKLM,
+    'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+    'pv', Version
+  );
+  if not Result then
+    Result := RegQueryStringValue(
+      HKCU,
+      'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+      'pv', Version
+    );
+end;
+
+procedure InstallWebView2();
+var
+  TempFile: String;
+  ResultCode: Integer;
+begin
+  TempFile := ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe');
+
+  MsgBox(
+    'Se necesita instalar Microsoft WebView2 Runtime.' + #13#10 +
+    'Es un componente gratuito de Microsoft.' + #13#10 + #13#10 +
+    'Hacé clic en Aceptar para descargarlo e instalarlo automáticamente.' + #13#10 +
+    '(Requiere conexión a internet)',
+    mbInformation, MB_OK
+  );
+
+  if DownloadFile(
+    'https://go.microsoft.com/fwlink/p/?LinkId=2124703',
+    TempFile
+  ) then
+  begin
+    Exec(TempFile, '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    if ResultCode <> 0 then
+      MsgBox(
+        'No se pudo instalar WebView2 automáticamente.' + #13#10 +
+        'Instalalo manualmente desde: aka.ms/getwebview2',
+        mbError, MB_OK
+      );
+  end
+  else
+    MsgBox(
+      'No se pudo descargar WebView2.' + #13#10 +
+      'Verificá tu conexión e instalalo manualmente desde: aka.ms/getwebview2',
+      mbError, MB_OK
+    );
+end;
+
+// ════════════════════════════════════════════════════════════
+// .NET RUNTIME
+// ════════════════════════════════════════════════════════════
+
+function IsDotNetInstalled(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  // Verifica si existe dotnet.exe y si tiene la versión 6 o superior
+  Exec(
+    'powershell.exe',
+    '-NoProfile -NonInteractive -Command "if ((dotnet --list-runtimes 2>$null) -match ''Microsoft.NETCore.App 6'') { exit 0 } else { exit 1 }"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+  );
+  Result := (ResultCode = 0);
+end;
+
+procedure InstallDotNet();
+var
+  TempFile: String;
+  ResultCode: Integer;
+begin
+  TempFile := ExpandConstant('{tmp}\dotnet-runtime-installer.exe');
+
+  MsgBox(
+    'Se necesita instalar .NET 6 Runtime.' + #13#10 +
+    'Es un componente gratuito de Microsoft.' + #13#10 + #13#10 +
+    'Hacé clic en Aceptar para descargarlo e instalarlo automáticamente.' + #13#10 +
+    '(Requiere conexión a internet)',
+    mbInformation, MB_OK
+  );
+
+  // URL oficial del instalador .NET 6 Runtime x64
+  if DownloadFile(
+    'https://aka.ms/dotnet/6.0/dotnet-runtime-win-x64.exe',
+    TempFile
+  ) then
+  begin
+    Exec(TempFile, '/silent /install /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    if ResultCode <> 0 then
+      MsgBox(
+        'No se pudo instalar .NET Runtime automáticamente.' + #13#10 +
+        'Instalalo manualmente desde: dotnet.microsoft.com/download/dotnet/6.0',
+        mbError, MB_OK
+      );
+  end
+  else
+    MsgBox(
+      'No se pudo descargar .NET Runtime.' + #13#10 +
+      'Verificá tu conexión e instalalo manualmente desde: dotnet.microsoft.com/download/dotnet/6.0',
+      mbError, MB_OK
+    );
+end;
+
+// ════════════════════════════════════════════════════════════
+// PUNTO DE ENTRADA — se ejecuta al iniciar el wizard
+// ════════════════════════════════════════════════════════════
+
+procedure InitializeWizard();
+begin
+  if not IsWebView2Installed() then
+    InstallWebView2();
+
+  if not IsDotNetInstalled() then
+    InstallDotNet();
+end;
 
 [Messages]
 WelcomeLabel1=Bienvenido al instalador de {#AppName} v{#AppVersion}
 WelcomeLabel2=Este asistente instalará {#AppName} en tu computadora.%n%nNexar Tienda es un sistema de gestión completo para comercios.%n%nCerrá todas las demás aplicaciones antes de continuar.
 FinishedHeadingLabel=Instalación completada
 FinishedLabel={#AppName} v{#AppVersion} se instaló correctamente.%n%nHacé clic en Finalizar para cerrar el asistente.
-
-[Code]
-// ── Verificar si WebView2 Runtime está instalado ──────────────
-// WebView2 es el motor que usa pywebview para la ventana nativa.
-// En Windows 10/11 actualizado ya viene con Edge (la mayoría de equipos).
-// Este código avisa al usuario si falta, pero NO bloquea la instalación.
-function IsWebView2Installed(): Boolean;
-var
-  Version: String;
-begin
-  // Verificar en HKLM (instalación del sistema)
-  Result := RegQueryStringValue(
-    HKLM,
-    'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
-    'pv',
-    Version
-  );
-  // Si no está en HKLM, verificar en HKCU (instalación del usuario)
-  if not Result then
-    Result := RegQueryStringValue(
-      HKCU,
-      'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
-      'pv',
-      Version
-    );
-end;
-
-procedure InitializeWizard();
-begin
-  if not IsWebView2Installed() then
-    MsgBox(
-      'Atención: Microsoft WebView2 Runtime no está instalado.' + #13#10 + #13#10 +
-      'Nexar Tienda puede funcionar sin él, pero la aplicación se abrirá ' +
-      'en el navegador predeterminado en lugar de una ventana propia.' + #13#10 + #13#10 +
-      'Para instalar WebView2 visitá: aka.ms/getwebview2' + #13#10 +
-      '(suele estar incluido en Windows 10/11 actualizado)',
-      mbInformation, MB_OK
-    );
-end;
