@@ -32,7 +32,6 @@ instance/
 ### --- DISTRIBUCIÓN Y COMPILACIÓN --- ###
 # Archivos generados al empaquetar la app
 dist/
-build/
 *.egg-info/
 *.deb
 build_deb/
