@@ -21,6 +21,7 @@ import threading
 import re
 import pathlib
 import markdown
+import secrets
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
@@ -39,7 +40,65 @@ APP_VERSION = _read_version()
 # ─── FLASK SETUP ──────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
-load_dotenv()
+def _runtime_dirs_for_env():
+    dirs = []
+
+    # Directorio donde vive el ejecutable (modo PyInstaller)
+    if getattr(sys, 'frozen', False):
+        dirs.append(os.path.dirname(sys.executable))
+
+    # Directorio del código fuente (modo desarrollo)
+    dirs.append(os.path.dirname(os.path.abspath(__file__)))
+
+    # CWD actual como último fallback
+    dirs.append(os.getcwd())
+
+    unique_dirs = []
+    for d in dirs:
+        if d and d not in unique_dirs:
+            unique_dirs.append(d)
+    return unique_dirs
+
+
+def _ensure_secret_key_for_frozen():
+    """Garantiza SECRET_KEY en instalaciones Windows/Linux empaquetadas."""
+    if os.getenv("SECRET_KEY", "").strip():
+        return
+
+    if not getattr(sys, 'frozen', False):
+        return
+
+    appdata_base = os.environ.get('APPDATA') or os.path.expanduser('~')
+    secret_dir = os.path.join(appdata_base, 'Nexar Tienda')
+    secret_file = os.path.join(secret_dir, '.secret_key')
+
+    try:
+        if os.path.exists(secret_file):
+            saved = open(secret_file, 'r', encoding='utf-8').read().strip()
+            if saved:
+                os.environ['SECRET_KEY'] = saved
+                return
+
+        os.makedirs(secret_dir, exist_ok=True)
+        generated = secrets.token_urlsafe(64)
+        with open(secret_file, 'w', encoding='utf-8') as fh:
+            fh.write(generated)
+        os.environ['SECRET_KEY'] = generated
+    except Exception:
+        # Si falla la persistencia, dejamos que el chequeo final lance error claro.
+        pass
+
+
+for _base in _runtime_dirs_for_env():
+    env_path = os.path.join(_base, '.env')
+    if os.path.exists(env_path):
+        load_dotenv(dotenv_path=env_path, override=False)
+
+# Fallback estándar para desarrollo
+load_dotenv(override=False)
+
+_ensure_secret_key_for_frozen()
+
 SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
 if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY no definida. Configurar variable de entorno o archivo .env")

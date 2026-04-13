@@ -64,12 +64,12 @@ Source: "..\dist\NexarTienda.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "launch_with_log.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{userprograms}\{#AppName}";            Filename: "{app}\{#AppExeName}";      Comment: "Sistema de gestión para tiendas"
+Name: "{userprograms}\{#AppName}";            Filename: "{app}\launch_with_log.bat";  WorkingDir: "{app}"; Comment: "Sistema de gestión para tiendas"
 Name: "{userprograms}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\{#AppName}";             Filename: "{app}\{#AppExeName}";      Comment: "Sistema de gestión para tiendas"; Tasks: desktopicon
+Name: "{userdesktop}\{#AppName}";             Filename: "{app}\launch_with_log.bat";  WorkingDir: "{app}"; Comment: "Sistema de gestión para tiendas"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "Iniciar {#AppName} ahora"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\launch_with_log.bat"; WorkingDir: "{app}"; Description: "Iniciar {#AppName} ahora"; Flags: nowait postinstall skipifsilent
 
 [Code]
 
