@@ -144,6 +144,35 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.9.0] - 14 Abril 2026 - Inteligencia de Negocio y Análisis
+### ✨ Características Nuevas
+- **Dashboard Anual**: Visualización de la evolución de ventas y tickets a lo largo del año.
+- **Análisis de Rentabilidad**: Reporte detallado de utilidad bruta por producto y tendencia histórica mensual.
+- **Métricas por Categoría**: Gráficos de distribución de ingresos para identificar los sectores más rentables.
+
+---
+
+## [1.8.0] - 13 Abril 2026 - Historial de Ventas
+### ✨ Características Nuevas
+- **Listado Centralizado**: Nueva vista en `/historial` para consultar todas las transacciones realizadas.
+- **Filtros Avanzados**: Búsqueda por número de ticket, cliente, rango de fechas y medio de pago.
+
+---
+
+## [1.7.0] - 12 Abril 2026 - Configuración del Sistema
+### ✨ Características Nuevas
+- **Identidad del Negocio**: Panel para editar nombre, CUIT, dirección y contacto del comercio.
+- **Gestión de Categorías**: Interfaz para administración dinámica de categorías de productos.
+
+---
+
+## [1.6.0] - 11 Abril 2026 - Gestión de Respaldos
+### ✨ Características Nuevas
+- **Panel de Respaldos**: Interfaz administrativa para la gestión de copias de seguridad.
+- **Mantenimiento**: Funciones de descarga, restauración y eliminación de bases de datos.
+
+---
+
 ## [1.5.1] - 07 Abril 2026 - Correcciones en CC y Optimización Historial
 
 ### ✨ Características Nuevas

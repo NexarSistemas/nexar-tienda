@@ -162,11 +162,16 @@ Desarrollado con **Python + Flask + SQLite**.
 | 25 | UX de Apagado | `v1.15.0` | - | Completo |
 | 24 | Launcher Universal | `v1.14.0` | - | Completo |
 | 23 | Refactorización Sidebar | `v1.13.0` | - | Completo |
-| 15 | Financiación y Cobranzas | `v1.5.1` | 5/5 ✅ | Completo |
 | 22 | Apagado Controlado | `v1.12.0` | - | Completo |
+| 21 | Páginas Informativas | `v1.11.0` | - | Completo |
+| 20 | Exportación Catálogo | `v1.10.0` | - | Completo |
+| 19 | Inteligencia de Negocio | `v1.9.0` | - | Completo |
+| 18 | Historial de Ventas | `v1.8.0` | - | Completo |
+| 17 | Configuración Sistema | `v1.7.0` | - | Completo |
+| 16 | Gestión de Respaldos | `v1.6.0` | - | Completo |
+| 15 | Financiación y Cobranzas | `v1.5.1` | 5/5 ✅ | Completo |
 | 14 | Gestión de Temporadas | `v1.4.0` | 5/5 ✅ | Completo |
 | 13 | Gestión de Usuarios y Permisos | `v1.3.0` | 5/5 ✅ | Completo |
-| 19 | Estadísticas Avanzadas y Análisis | `v1.9.0` | - | Completo |
 | 12 | Estadísticas Avanzadas | `v1.2.0` | 5/5 ✅ | Completo |
 | 11 | Gastos Operativos | `v1.1.0` | 5/5 ✅ | Completo |
 | 10 | Caja y Liquidación | `v1.0.0` | 5/5 ✅ | Completo |
