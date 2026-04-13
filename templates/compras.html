@@ -1,19 +1,16 @@
 {% extends "base.html" %}
 
 {% block title %}Compras - Nexar Tienda{% endblock %}
+{% block page_title %}<i class="fas fa-shopping-cart me-2"></i>Gestión de Compras{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('compra_nueva') }}" class="btn btn-sm btn-primary">
+    <i class="fas fa-plus me-2"></i>Nueva Compra
+</a>
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-12 d-flex justify-content-between align-items-center">
-            <div>
-                <h1 class="h3 mb-0"><i class="fas fa-shopping-cart text-primary me-2"></i>Gestión de Compras</h1>
-                <p class="text-muted mb-0">Registrar y administrar las compras de inventario</p>
-            </div>
-            <a href="{{ url_for('compra_nueva') }}" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Nueva Compra</a>
-        </div>
-    </div>
-
     <div class="row mb-4">
         <div class="col-12">
             <div class="card">

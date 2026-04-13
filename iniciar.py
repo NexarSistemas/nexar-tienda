@@ -184,10 +184,15 @@ if __name__ == "__main__":
             APP_TITLE,
             url,
             width=1200,
-            height=800
+            height=800,
+            maximized=True,
+            confirm_close=True
         )
 
-        webview.start()
+        localization = {
+            'global.quitConfirmation': '¿Está seguro de que desea cerrar el sistema?'
+        }
+        webview.start(localization=localization)
 
     except Exception as e:
         safe_print("⚠️ No se pudo abrir ventana nativa")

@@ -1,19 +1,21 @@
 {% extends "base.html" %}
+{% block title %}Caja — Nexar Tienda{% endblock %}
+{% block page_title %}<i class="fas fa-cash-register me-2"></i>Caja y Liquidación{% endblock %}
+
+{% block topbar_actions %}
+    {% if not caja %}
+    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalAbrirCaja">
+        <i class="fas fa-door-open me-2"></i>Abrir Caja del Día
+    </button>
+    {% else %}
+    <button class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#modalCerrarCaja">
+        <i class="fas fa-door-closed me-2"></i>Cerrar Caja
+    </button>
+    {% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="text-navy"><i class="fas fa-cash-register me-2"></i>Caja y Liquidación</h2>
-        {% if not caja %}
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAbrirCaja">
-            <i class="fas fa-door-open me-2"></i>Abrir Caja del Día
-        </button>
-        {% else %}
-        <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalCerrarCaja">
-            <i class="fas fa-door-closed me-2"></i>Cerrar Caja
-        </button>
-        {% endif %}
-    </div>
-
     {% if caja %}
     <div class="row mb-4">
         <div class="col-md-3">

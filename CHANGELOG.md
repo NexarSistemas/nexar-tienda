@@ -4,6 +4,16 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.19.0] - 25 Abril 2026 - Refinamiento UX y Unificación de Topbar
+
+### ✨ Características Nuevas
+- **Consistencia de Interfaz**: Implementación de Topbar unificado en todos los módulos (Stock, Gastos, Clientes, Proveedores, etc.).
+- **Licenciamiento Visible**: Integración del estado de la licencia (Demo/Plan) directamente en el Topbar principal.
+- **Banners Descartables**: Los banners de bienvenida y notificaciones ahora pueden ser cerrados por el usuario.
+- **Ventana Optimizada**: La aplicación nativa ahora se inicia maximizada con mensaje de confirmación de cierre en español.
+
+---
+
 ## [1.18.0] - 23 Abril 2026 - Unificación Estética Suite Nexar
 
 ### ✨ Características Nuevas

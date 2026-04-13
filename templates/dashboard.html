@@ -1,62 +1,23 @@
 {% extends "base.html" %}
-
 {% block title %}Dashboard — Nexar Tienda{% endblock %}
+{% block page_title %}<i class="fas fa-tachometer-alt me-2"></i>Dashboard{% endblock %}
 
 {% block content %}
-<div class="dashboard">
-    <h2 class="mb-4">
-        <i class="fas fa-tachometer-alt"></i>
-        Dashboard
-    </h2>
 
     <!-- ─── BIENVENIDA ─── -->
-    <div class="row mb-4">
+    <div class="row mb-3">
         <div class="col-12">
-            <div class="alert alert-info">
+            <div class="alert alert-info alert-dismissible fade show" role="alert">
                 <i class="fas fa-info-circle"></i>
                 <strong>¡Bienvenido, {{ session['user']['nombre_completo'] }}!</strong>
                 {% if stats.temporada != 'Ninguna' %}
                     Actual: {{ stats.temporada }}
                 {% endif %}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         </div>
     </div>
-
-    <!-- ─── BANNER DE LICENCIA ─── -->
-    {% if license_info %}
-    <div class="row mb-4">
-        <div class="col-12">
-            {% if license_info['tier'] == 'DEMO' %}
-            <div class="alert alert-warning">
-                <i class="fas fa-hourglass-half"></i>
-                <strong>Modo DEMO - Periodo de Prueba</strong>
-                <small class="d-block mt-1">Estás usando Nexar Tienda en periodo de prueba. Esta versión incluye todas las funciones sin limites.</small>
-                {% if session['user']['rol'] == 'admin' %}
-                <a href="{{ url_for('licencia') }}" class="alert-link"><strong>Activar licencia →</strong></a>
-                {% endif %}
-            </div>
-            {% elif license_info['tier'] == 'BASICA' %}
-            <div class="alert alert-info">
-                <i class="fas fa-check-circle"></i>
-                <strong>Licencia BASICA Activa</strong>
-                {% if license_info['limits'].get('productos') %}
-                <small class="d-block mt-1">Productos: {{ stats.total_productos }}/{{ license_info['limits']['productos'] }}</small>
-                {% endif %}
-                {% if session['user']['rol'] == 'admin' %}
-                <a href="{{ url_for('licencia') }}" class="alert-link"><strong>Gestionar licencia →</strong></a>
-                {% endif %}
-            </div>
-            {% elif license_info['tier'] == 'PRO' %}
-            <div class="alert alert-success">
-                <i class="fas fa-crown"></i>
-                <strong>Licencia PRO - Acceso Completo</strong>
-                <small class="d-block mt-1">Todas las funciones sin limites.</small>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    {% endif %}
-
+<div class="dashboard">
     <!-- ─── KPIs ─── -->
     <div class="row mb-4">
         <div class="col-md-3">

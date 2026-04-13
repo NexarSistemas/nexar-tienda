@@ -37,11 +37,11 @@
 
 body {
     background-color: var(--silver-light);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     color: var(--text-main);
-    font-size: 14px; /* Tamaño base de Almacén */
-    line-height: 1.6;
-    letter-spacing: -0.01em;
+    font-size: .92rem; /* Tamaño base de Almacén */
+    /* line-height: 1.6; */
+    /* letter-spacing: -0.01em; */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -138,7 +138,7 @@ body {
 /* LAYOUT CON SIDEBAR */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
-.sidebar {
+ .sidebar {
     position: fixed;
     left: 0;
     top: 0;
@@ -198,6 +198,16 @@ body {
     list-style: none;
 }
 
+.nav-label{
+    color:#94a3b8;
+    font-size:.68rem;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.1em;
+    padding:12px 16px 3px;
+    flex-shrink:0;
+}
+
 .nav-header {
     padding: 0 16px;
     margin-top: 1.2rem;          /* Menor separación entre grupos */
@@ -221,7 +231,7 @@ body {
     gap: 10px;
     border-left: 2px solid transparent; /* Línea de selección más delicada */
     transition: all 0.2s ease;
-    font-size: 13px; /* Tamaño específico del menú Almacén */
+    font-size: .86rem; /* Tamaño específico del menú Almacén */
     white-space: nowrap;
     text-decoration: none;
     position: relative;
@@ -261,9 +271,10 @@ body {
 }
 
 .sidebar-footer {
-    padding: 15px 20px;
+    padding: 10px 14px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     margin-top: auto;
+    flex-shrink: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
@@ -282,6 +293,7 @@ body {
     background-color: rgba(255, 255, 255, 0.8);
     backdrop-filter: blur(8px);  /* Toque moderno y fino */
     border-bottom: 1px solid rgba(0,0,0,0.05);
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
     height: var(--navbar-height);
     display: flex;
     align-items: center;
