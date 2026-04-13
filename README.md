@@ -2,13 +2,21 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.18.0` - Unificación Estética Suite Nexar
-**Última actualización:** 23 de abril de 2026 - v1.18.0
+**Versión actual:** `v1.19.0` - Refinamiento UX y Unificación de Topbar
+**Última actualización:** 25 de abril de 2026 - v1.19.0
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 29: Refinamiento UX y Unificación de Topbar (v1.19.0)
+- **🎨 Consistencia de Interfaz**: Implementación de Topbar unificado en todos los módulos, eliminando títulos redundantes.
+- **🚩 Licenciamiento Visible**: Integración del estado de la licencia (Demo/Plan) directamente en el Topbar principal.
+- **❌ Banners Descartables**: Opción para cerrar banners de bienvenida y notificaciones flash manualmente.
+- **🖥️ Ventana Optimizada**: La aplicación nativa ahora se inicia maximizada con confirmación de cierre en español.
+
+---
 
 ### ✅ PASO 28: Unificación Estética (v1.18.0)
 - **🎨 Rediseño Visual**: Paridad total con la estética "fina" de Nexar Almacén.
@@ -143,10 +151,16 @@ Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
-## 📊 Estado del Proyecto (Release 1.0.0)
+## 📊 Estado del Proyecto (v1.19.0)
 
 | Paso | Módulo | Versión | Tests | Estado |
 |------|--------|---------|-------|--------|
+| 29 | Refinamiento UX y Topbar | `v1.19.0` | - | Completo |
+| 28 | Unificación Estética | `v1.18.0` | - | Completo |
+| 27 | Infraestructura de Build | `v1.17.0` | - | Completo |
+| 26 | Mejoras de Usabilidad | `v1.16.0` | - | Completo |
+| 25 | UX de Apagado | `v1.15.0` | - | Completo |
+| 24 | Launcher Universal | `v1.14.0` | - | Completo |
 | 23 | Refactorización Sidebar | `v1.13.0` | - | Completo |
 | 15 | Financiación y Cobranzas | `v1.5.1` | 5/5 ✅ | Completo |
 | 22 | Apagado Controlado | `v1.12.0` | - | Completo |
@@ -164,7 +178,7 @@ Desarrollado con **Python + Flask + SQLite**.
 | 4 | Productos CRUD + TIER | `v0.4.0` | 12/12 ✅ | Completo |
 | 3 | Auth + Dashboard | `v0.3.0` | 6/6 ✅ | Completo |
 
-**Total Tests:** 69/69 ✅ (100%)
+**Total Tests:** 72/72 ✅ (100%)
 
 ---
 
@@ -184,11 +198,6 @@ Desarrollado con **Python + Flask + SQLite**.
 ---
 
 ## 📋 Próximos Pasos (Roadmap)
-
-### 🔄 PASO 20: Exportación de catálogo (Excel y PDF) 📤
-- Exportar productos a Excel (.xlsx)
-- Generar lista de precios en PDF
-- Integración con el módulo de productos
 
 ---
 
@@ -252,7 +261,7 @@ Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) par
 
 **Nexar Sistemas** - [GitHub](https://github.com/NexarSistemas)
 
-**Última actualización:** 10 de abril de 2026 - v1.5.0
+**Última actualización:** 25 de abril de 2026 - v1.19.0
 │   ├── base.html
 │   ├── login.html
 │   ├── dashboard.html
