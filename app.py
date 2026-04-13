@@ -2395,8 +2395,7 @@ if __name__ == '__main__':
     print(f"╔═══════════════════════════════════════════════╗")
     print(f"║        Nexar Tienda v{APP_VERSION}                    ║")
     print(f"║   🌐 http://localhost:5000                   ║")
-    print(f"║   👤 usuario: admin / contraseña: admin123   ║")
-    print(f"║   👤 usuario: vendedor / contraseña: vendedor123 ║")
+    print(f"║    Configuración inicial requerida al iniciar  ║")
     print(f"╚═══════════════════════════════════════════════╝")
 
     app.run(debug=True, host='0.0.0.0', port=5000)

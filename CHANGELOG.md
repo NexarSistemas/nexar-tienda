@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.20.0] - 26 Abril 2026 - Seguridad y Autogestión de Acceso
+
+### ✨ Características Nuevas
+- **Configuración Inicial Obligatoria**: Implementación de flujo de despliegue para el primer Administrador, eliminando credenciales por defecto.
+- **Validación de Contraseñas Fuertes**: Motor de validación Regex para asegurar claves robustas (6-12 caracteres, mayúsculas, minúsculas, números y símbolos).
+- **Recuperación de Cuenta (Pregunta Secreta)**: Sistema de restauración de contraseña mediante desafío de seguridad personalizable.
+- **Panel de Perfil de Usuario**: Interfaz para que cada empleado gestione sus propios datos y configuración de seguridad.
+- **Unificación Estética**: Sincronización total del diseño de Login, Registro y Recuperación con la suite Nexar.
+
+---
+
 ## [1.19.0] - 25 Abril 2026 - Refinamiento UX y Unificación de Topbar
 
 ### ✨ Características Nuevas

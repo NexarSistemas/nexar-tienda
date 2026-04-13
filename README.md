@@ -2,13 +2,19 @@
 
 Sistema integral de gestión para tiendas de regalos, marroquinería, bijouterie y comercios de temporada.
 
-**Versión actual:** `v1.19.0` - Refinamiento UX y Unificación de Topbar
-**Última actualización:** 25 de abril de 2026 - v1.19.0
+**Versión actual:** `v1.20.0` - Seguridad y Autogestión
+**Última actualización:** 26 de abril de 2026 - v1.20.0
 Desarrollado con **Python + Flask + SQLite**.
 
 ---
 
 ## 🚀 Características Implementadas
+
+### ✅ PASO 30: Seguridad y Autogestión (v1.20.0)
+- **🔐 Configuración Inicial**: Flujo automatizado para el despliegue del primer administrador en bases de datos nuevas.
+- **🛡️ Contraseñas Fuertes**: Validación estricta para garantizar la robustez de las credenciales de acceso.
+- **🔑 Recuperación de Cuenta**: Sistema de "Pregunta y Respuesta" secreta para restauración de acceso sin intervención técnica.
+- **👤 Mi Perfil**: Espacio dedicado para la gestión personal de identidad y seguridad del usuario.
 
 ### ✅ PASO 29: Refinamiento UX y Unificación de Topbar (v1.19.0)
 - **🎨 Consistencia de Interfaz**: Implementación de Topbar unificado en todos los módulos, eliminando títulos redundantes.
