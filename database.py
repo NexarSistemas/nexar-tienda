@@ -42,6 +42,16 @@ TIER_LIMITS = {
     },
 }
 
+DEFAULT_GASTO_CATEGORIAS = [
+    {'nombre': 'Servicios (Luz/Agua/Internet)', 'tipo': 'Necesario'},
+    {'nombre': 'Alquiler', 'tipo': 'Necesario'},
+    {'nombre': 'Sueldos', 'tipo': 'Necesario'},
+    {'nombre': 'Limpieza', 'tipo': 'Necesario'},
+    {'nombre': 'Impuestos', 'tipo': 'Necesario'},
+    {'nombre': 'Mantenimiento', 'tipo': 'Necesario'},
+    {'nombre': 'Otros', 'tipo': 'Prescindible'},
+]
+
 # ─── RUTA DE LA BASE DE DATOS ────────────────────────────────────────────────
 
 def _get_app_dir():
@@ -418,6 +428,7 @@ def init_db():
         ('backup_keep', '10'),
         ('backup_dir', ''),
         ('backup_ultimo', ''),
+        ('gastos_categorias', json.dumps(DEFAULT_GASTO_CATEGORIAS, ensure_ascii=False)),
         # ─── SISTEMA DE LICENCIAS RSA ─────────────────────────────────────────
         ('demo_mode', '1'),                 # 1=demo, 0=licencia activa
         ('demo_install_date', ''),          # Fecha de primer arranque (demo)
@@ -1006,6 +1017,97 @@ def add_categoria(nombre):
 def delete_categoria(nombre):
     """Elimina una categoría por nombre."""
     q("DELETE FROM categorias WHERE nombre=?", (nombre,), commit=True)
+
+def get_gasto_categorias():
+    """Devuelve lista configurable de categorías de gastos con su tipo."""
+    cfg = get_config()
+    raw = cfg.get('gastos_categorias', '')
+    try:
+        categorias = json.loads(raw) if raw else []
+    except Exception:
+        categorias = []
+    if not categorias:
+        categorias = DEFAULT_GASTO_CATEGORIAS[:]
+
+    # Normalizar: soporta formato antiguo (lista de strings) y nuevo (lista de dicts)
+    normalizadas = []
+    keys = set()
+    for cat in categorias:
+        if isinstance(cat, dict):
+            nombre = str(cat.get('nombre', '')).strip()
+            tipo = normalizar_tipo_gasto(cat.get('tipo'))
+        else:
+            nombre = str(cat).strip()
+            tipo = 'Necesario'
+        if not nombre:
+            continue
+        key = nombre.lower()
+        if key in keys:
+            continue
+        keys.add(key)
+        normalizadas.append({'nombre': nombre, 'tipo': tipo})
+    return normalizadas
+
+def set_gasto_categorias(categorias):
+    """Guarda la configuración completa de categorías de gastos."""
+    limpias = []
+    keys = set()
+    for cat in categorias:
+        if isinstance(cat, dict):
+            nombre = str(cat.get('nombre', '')).strip()
+            tipo = normalizar_tipo_gasto(cat.get('tipo'))
+        else:
+            nombre = str(cat).strip()
+            tipo = 'Necesario'
+        if not nombre:
+            continue
+        key = nombre.lower()
+        if key in keys:
+            continue
+        keys.add(key)
+        limpias.append({'nombre': nombre, 'tipo': tipo})
+    if not limpias:
+        limpias = DEFAULT_GASTO_CATEGORIAS[:]
+    set_config({'gastos_categorias': json.dumps(limpias, ensure_ascii=False)})
+
+def normalizar_tipo_gasto(tipo):
+    """Normaliza tipo de gasto a Necesario/Prescindible."""
+    txt = str(tipo or '').strip().lower()
+    return 'Prescindible' if 'prescind' in txt else 'Necesario'
+
+def get_tipo_gasto_categoria(nombre_categoria):
+    """Obtiene el tipo asociado a una categoría de gasto."""
+    nombre = (nombre_categoria or '').strip().lower()
+    for cat in get_gasto_categorias():
+        if cat['nombre'].strip().lower() == nombre:
+            return cat['tipo']
+    return 'Necesario'
+
+def add_gasto_categoria(nombre, tipo='Necesario'):
+    """Agrega una categoría de gastos al listado configurable."""
+    categorias = get_gasto_categorias()
+    if nombre.strip().lower() not in [c['nombre'].lower() for c in categorias]:
+        categorias.append({'nombre': nombre.strip(), 'tipo': normalizar_tipo_gasto(tipo)})
+        set_gasto_categorias(categorias)
+
+def delete_gasto_categoria(nombre):
+    """Elimina una categoría de gastos del listado configurable."""
+    categorias = [c for c in get_gasto_categorias() if c['nombre'].lower() != nombre.strip().lower()]
+    set_gasto_categorias(categorias)
+
+def update_gasto_categoria(nombre_actual, nuevo_nombre, tipo='Necesario'):
+    """Renombra una categoría de gastos y actualiza registros relacionados."""
+    actual = nombre_actual.strip()
+    nuevo = nuevo_nombre.strip()
+    tipo_normalizado = normalizar_tipo_gasto(tipo)
+    categorias = get_gasto_categorias()
+    categorias = [
+        {'nombre': nuevo, 'tipo': tipo_normalizado} if c['nombre'].lower() == actual.lower() else c
+        for c in categorias
+    ]
+    set_gasto_categorias(categorias)
+    q("UPDATE gastos SET categoria=? WHERE LOWER(categoria)=LOWER(?)", (nuevo, actual), commit=True)
+    q("UPDATE gastos SET necesario=? WHERE LOWER(categoria)=LOWER(?)", (tipo_normalizado, nuevo), commit=True)
 
 
 # ─── USUARIOS ────────────────────────────────────────────────────────────────
@@ -1750,14 +1852,18 @@ def get_gastos(search='', fecha_desde='', fecha_hasta='', limit=200):
 
 def add_gasto(data):
     """Agrega un gasto."""
+    categoria = data.get('categoria', '')
+    necesario = normalizar_tipo_gasto(data.get('necesario'))
+    if 'necesario' not in data:
+        necesario = get_tipo_gasto_categoria(categoria)
     q(
         """INSERT INTO gastos
         (fecha,tipo,categoria,descripcion,monto,iva_incluido,medio_pago,proveedor,necesario,comprobante,observaciones)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('tipo', 'Gasto'),
-         data.get('categoria', ''), data.get('descripcion', ''), float(data.get('monto', 0)),
+         categoria, data.get('descripcion', ''), float(data.get('monto', 0)),
          int(data.get('iva_incluido', 1)), data.get('medio_pago', 'Efectivo'), data.get('proveedor', ''),
-         data.get('necesario', 'SI (necesario)'), data.get('comprobante', ''), data.get('observaciones', '')),
+         necesario, data.get('comprobante', ''), data.get('observaciones', '')),
         fetchall=False, commit=True
     )
 

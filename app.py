@@ -1878,10 +1878,13 @@ def gasto_nuevo():
             data = request.form.to_dict()
             monto = float(data.get('monto', 0))
             medio_pago = data.get('medio_pago', 'Efectivo')
+            categoria = data.get('categoria', '')
             
             if monto <= 0:
                 flash('❌ El monto del gasto debe ser mayor a cero.', 'danger')
                 return redirect(url_for('gasto_nuevo'))
+
+            data['necesario'] = db.get_tipo_gasto_categoria(categoria)
 
             # Registrar el gasto en la tabla de gastos
             db.add_gasto(data)
@@ -1909,7 +1912,8 @@ def gasto_nuevo():
         app_version=APP_VERSION,
         usuario=session['user'],
         hoy=datetime.now().strftime('%Y-%m-%d'),
-        accion='Registrar'
+        accion='Registrar',
+        categorias_gastos=db.get_gasto_categorias()
     )
 
 @app.route('/gastos/<int:gid>/eliminar', methods=['POST'])
@@ -2007,12 +2011,14 @@ def config():
         return redirect(url_for('config'))
     cfg = db.get_config()
     categorias = db.get_categorias()
+    categorias_gastos = db.get_gasto_categorias()
     return render_template(
         'config.html',
         app_version=APP_VERSION,
         usuario=session['user'],
         cfg=cfg,
-        categorias=categorias
+        categorias=categorias,
+        categorias_gastos=categorias_gastos
     )
 
 @app.route('/config/categoria', methods=['POST'])
@@ -2035,6 +2041,43 @@ def config_categoria_eliminar():
     if nombre:
         db.delete_categoria(nombre)
         flash(f'🗑 Categoría "{nombre}" eliminada.', 'warning')
+    return redirect(url_for('config'))
+
+@app.route('/config/gastos/categoria', methods=['POST'])
+@admin_required
+def config_gasto_categoria():
+    """Agrega una nueva categoría para gastos."""
+    nombre = request.form.get('nombre', '').strip()
+    tipo = request.form.get('tipo', 'Necesario').strip()
+    if nombre:
+        db.add_gasto_categoria(nombre, tipo)
+        flash(f'✅ Categoría de gasto "{nombre}" agregada.', 'success')
+    else:
+        flash('❌ El nombre de la categoría de gasto no puede estar vacío.', 'danger')
+    return redirect(url_for('config'))
+
+@app.route('/config/gastos/categoria/editar', methods=['POST'])
+@admin_required
+def config_gasto_categoria_editar():
+    """Renombra una categoría de gastos existente."""
+    nombre_actual = request.form.get('nombre_actual', '').strip()
+    nuevo_nombre = request.form.get('nuevo_nombre', '').strip()
+    tipo = request.form.get('tipo', 'Necesario').strip()
+    if not nombre_actual or not nuevo_nombre:
+        flash('❌ Debe indicar la categoría actual y el nuevo nombre.', 'danger')
+        return redirect(url_for('config'))
+    db.update_gasto_categoria(nombre_actual, nuevo_nombre, tipo)
+    flash(f'✅ Categoría de gasto "{nombre_actual}" actualizada a "{nuevo_nombre}".', 'success')
+    return redirect(url_for('config'))
+
+@app.route('/config/gastos/categoria/eliminar', methods=['POST'])
+@admin_required
+def config_gasto_categoria_eliminar():
+    """Elimina una categoría de gastos del listado configurable."""
+    nombre = request.form.get('nombre', '').strip()
+    if nombre:
+        db.delete_gasto_categoria(nombre)
+        flash(f'🗑 Categoría de gasto "{nombre}" eliminada.', 'warning')
     return redirect(url_for('config'))
 
 # ─── HISTORIAL DE VENTAS (PASO 18) ────────────────────────────────────────
@@ -2192,13 +2235,38 @@ def reportes():
         FROM ventas WHERE fecha LIKE ? GROUP BY medio_pago
     """, (f"{mes_actual}%",))
 
+    gastos_esencialidad = db.q("""
+        SELECT
+            SUM(CASE WHEN LOWER(necesario) LIKE '%prescind%' THEN monto ELSE 0 END) AS prescindibles,
+            SUM(CASE WHEN LOWER(necesario) LIKE '%neces%' OR LOWER(necesario) LIKE 'si%' THEN monto ELSE 0 END) AS necesarios
+        FROM gastos
+        WHERE fecha LIKE ?
+    """, (f"{mes_actual}%",), fetchone=True)
+    total_necesarios = float(gastos_esencialidad['necesarios'] or 0)
+    total_prescindibles = float(gastos_esencialidad['prescindibles'] or 0)
+    total_clasificado = total_necesarios + total_prescindibles
+    pct_prescindibles = round((total_prescindibles / total_clasificado) * 100, 1) if total_clasificado else 0.0
+
+    if total_clasificado == 0:
+        recomendacion_gastos = "Aún no hay gastos clasificados este mes. Registrá gastos para obtener recomendaciones."
+    elif pct_prescindibles >= 40:
+        recomendacion_gastos = "El peso de gastos prescindibles es alto. Priorizá recortar los rubros con menor impacto operativo."
+    elif pct_prescindibles >= 25:
+        recomendacion_gastos = "Tenés un nivel moderado de gastos prescindibles. Revisá suscripciones o compras no críticas."
+    else:
+        recomendacion_gastos = "La estructura de gastos está controlada. Mantené foco en eficiencia de gastos necesarios."
+
     return render_template(
         'reportes.html',
         app_version=APP_VERSION,
         rentabilidad=rentabilidad,
         top_productos=top_productos,
         ventas_7_dias=ventas_7_dias,
-        pagos=pagos
+        pagos=pagos,
+        gastos_necesarios=total_necesarios,
+        gastos_prescindibles=total_prescindibles,
+        pct_prescindibles=pct_prescindibles,
+        recomendacion_gastos=recomendacion_gastos
     )
 
 # ─── ESTADÍSTICAS AVANZADAS (PASO 19) ─────────────────────────────────────
