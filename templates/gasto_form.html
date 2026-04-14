@@ -17,7 +17,7 @@
                             <label class="form-label">Categoría</label>
                             <select name="categoria" class="form-select" required>
                                 {% for cat in categorias_gastos %}
-                                <option value="{{ cat }}">{{ cat }}</option>
+                                <option value="{{ cat.nombre }}">{{ cat.nombre }} ({{ cat.tipo }})</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -43,13 +43,6 @@
                         <div class="col-12">
                             <label class="form-label">Proveedor / Beneficiario</label>
                             <input type="text" name="proveedor" class="form-control">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Tipo de gasto</label>
-                            <select name="necesario" class="form-select">
-                                <option value="Necesario">Necesario</option>
-                                <option value="Prescindible">Prescindible</option>
-                            </select>
                         </div>
                         <div class="col-12">
                             <label class="form-label">Observaciones</label>

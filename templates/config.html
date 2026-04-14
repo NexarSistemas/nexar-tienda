@@ -96,8 +96,12 @@
                 </div>
                 <div class="card-body">
                     <form action="{{ url_for('config_gasto_categoria') }}" method="POST" class="mb-4">
-                        <div class="input-group">
+                        <div class="input-group mb-2">
                             <input type="text" name="nombre" class="form-control" placeholder="Nueva categoría de gasto..." required>
+                            <select name="tipo" class="form-select" style="max-width: 160px;">
+                                <option value="Necesario">Necesario</option>
+                                <option value="Prescindible">Prescindible</option>
+                            </select>
                             <button class="btn btn-outline-primary" type="submit">Agregar</button>
                         </div>
                     </form>
@@ -106,15 +110,24 @@
                         {% for cat in categorias_gastos %}
                         <div class="list-group-item px-0">
                             <div class="d-flex justify-content-between align-items-center mb-2">
-                                <span>{{ cat }}</span>
-                                <form action="{{ url_for('config_gasto_categoria_eliminar') }}" method="POST" onsubmit="return confirm('¿Eliminar la categoría de gasto «{{ cat }}»?')">
-                                    <input type="hidden" name="nombre" value="{{ cat }}">
+                                <span>
+                                    {{ cat.nombre }}
+                                    <span class="badge {% if cat.tipo == 'Prescindible' %}bg-warning-subtle text-warning{% else %}bg-success-subtle text-success{% endif %}">
+                                        {{ cat.tipo }}
+                                    </span>
+                                </span>
+                                <form action="{{ url_for('config_gasto_categoria_eliminar') }}" method="POST" onsubmit="return confirm('¿Eliminar la categoría de gasto «{{ cat.nombre }}»?')">
+                                    <input type="hidden" name="nombre" value="{{ cat.nombre }}">
                                     <button type="submit" class="btn btn-sm btn-link text-danger"><i class="fas fa-trash"></i></button>
                                 </form>
                             </div>
                             <form action="{{ url_for('config_gasto_categoria_editar') }}" method="POST" class="d-flex gap-2">
-                                <input type="hidden" name="nombre_actual" value="{{ cat }}">
-                                <input type="text" name="nuevo_nombre" class="form-control form-control-sm" value="{{ cat }}" required>
+                                <input type="hidden" name="nombre_actual" value="{{ cat.nombre }}">
+                                <input type="text" name="nuevo_nombre" class="form-control form-control-sm" value="{{ cat.nombre }}" required>
+                                <select name="tipo" class="form-select form-select-sm" style="max-width: 140px;">
+                                    <option value="Necesario" {% if cat.tipo == 'Necesario' %}selected{% endif %}>Necesario</option>
+                                    <option value="Prescindible" {% if cat.tipo == 'Prescindible' %}selected{% endif %}>Prescindible</option>
+                                </select>
                                 <button class="btn btn-sm btn-outline-secondary" type="submit">Modificar</button>
                             </form>
                         </div>

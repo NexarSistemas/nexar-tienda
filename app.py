@@ -1878,10 +1878,13 @@ def gasto_nuevo():
             data = request.form.to_dict()
             monto = float(data.get('monto', 0))
             medio_pago = data.get('medio_pago', 'Efectivo')
+            categoria = data.get('categoria', '')
             
             if monto <= 0:
                 flash('❌ El monto del gasto debe ser mayor a cero.', 'danger')
                 return redirect(url_for('gasto_nuevo'))
+
+            data['necesario'] = db.get_tipo_gasto_categoria(categoria)
 
             # Registrar el gasto en la tabla de gastos
             db.add_gasto(data)
@@ -2045,8 +2048,9 @@ def config_categoria_eliminar():
 def config_gasto_categoria():
     """Agrega una nueva categoría para gastos."""
     nombre = request.form.get('nombre', '').strip()
+    tipo = request.form.get('tipo', 'Necesario').strip()
     if nombre:
-        db.add_gasto_categoria(nombre)
+        db.add_gasto_categoria(nombre, tipo)
         flash(f'✅ Categoría de gasto "{nombre}" agregada.', 'success')
     else:
         flash('❌ El nombre de la categoría de gasto no puede estar vacío.', 'danger')
@@ -2058,10 +2062,11 @@ def config_gasto_categoria_editar():
     """Renombra una categoría de gastos existente."""
     nombre_actual = request.form.get('nombre_actual', '').strip()
     nuevo_nombre = request.form.get('nuevo_nombre', '').strip()
+    tipo = request.form.get('tipo', 'Necesario').strip()
     if not nombre_actual or not nuevo_nombre:
         flash('❌ Debe indicar la categoría actual y el nuevo nombre.', 'danger')
         return redirect(url_for('config'))
-    db.update_gasto_categoria(nombre_actual, nuevo_nombre)
+    db.update_gasto_categoria(nombre_actual, nuevo_nombre, tipo)
     flash(f'✅ Categoría de gasto "{nombre_actual}" actualizada a "{nuevo_nombre}".', 'success')
     return redirect(url_for('config'))
 
