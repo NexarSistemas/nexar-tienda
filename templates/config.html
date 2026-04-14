@@ -90,6 +90,39 @@
                 </div>
             </div>
 
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Categorías de Gastos</h5>
+                </div>
+                <div class="card-body">
+                    <form action="{{ url_for('config_gasto_categoria') }}" method="POST" class="mb-4">
+                        <div class="input-group">
+                            <input type="text" name="nombre" class="form-control" placeholder="Nueva categoría de gasto..." required>
+                            <button class="btn btn-outline-primary" type="submit">Agregar</button>
+                        </div>
+                    </form>
+
+                    <div class="list-group list-group-flush border-top">
+                        {% for cat in categorias_gastos %}
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span>{{ cat }}</span>
+                                <form action="{{ url_for('config_gasto_categoria_eliminar') }}" method="POST" onsubmit="return confirm('¿Eliminar la categoría de gasto «{{ cat }}»?')">
+                                    <input type="hidden" name="nombre" value="{{ cat }}">
+                                    <button type="submit" class="btn btn-sm btn-link text-danger"><i class="fas fa-trash"></i></button>
+                                </form>
+                            </div>
+                            <form action="{{ url_for('config_gasto_categoria_editar') }}" method="POST" class="d-flex gap-2">
+                                <input type="hidden" name="nombre_actual" value="{{ cat }}">
+                                <input type="text" name="nuevo_nombre" class="form-control form-control-sm" value="{{ cat }}" required>
+                                <button class="btn btn-sm btn-outline-secondary" type="submit">Modificar</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
             <!-- Información del Sistema -->
             <div class="card bg-light border-0 shadow-sm">
                 <div class="card-body">

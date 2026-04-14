@@ -84,6 +84,27 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white"><h5 class="mb-0">Análisis de Gastos: Necesarios vs Prescindibles</h5></div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Gastos necesarios</span>
+                        <strong class="text-danger">{{ gastos_necesarios | fmt_ars }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Gastos prescindibles</span>
+                        <strong class="text-warning">{{ gastos_prescindibles | fmt_ars }}</strong>
+                    </div>
+                    <div class="progress mb-3" role="progressbar" aria-label="Proporción de gastos prescindibles" aria-valuenow="{{ pct_prescindibles }}" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar bg-warning" style="width: {{ pct_prescindibles }}%">{{ pct_prescindibles }}%</div>
+                    </div>
+                    <div class="alert alert-info mb-0">
+                        <strong>Recomendación:</strong> {{ recomendacion_gastos }}
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}

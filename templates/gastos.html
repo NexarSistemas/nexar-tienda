@@ -48,6 +48,7 @@
                         <th>Fecha</th>
                         <th>Categoría</th>
                         <th>Descripción</th>
+                        <th>Tipo</th>
                         <th>Medio Pago</th>
                         <th class="text-end">Monto</th>
                         <th class="text-center">Acciones</th>
@@ -62,6 +63,11 @@
                             <strong>{{ g.descripcion }}</strong><br>
                             <small class="text-muted">{{ g.proveedor }}</small>
                         </td>
+                        <td>
+                            <span class="badge {% if g.necesario == 'Prescindible' %}bg-warning-subtle text-warning{% else %}bg-success-subtle text-success{% endif %}">
+                                {{ g.necesario or 'Necesario' }}
+                            </span>
+                        </td>
                         <td>{{ g.medio_pago }}</td>
                         <td class="text-end fw-bold text-danger">{{ g.monto | fmt_ars }}</td>
                         <td class="text-center">
@@ -74,7 +80,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="text-center py-5 text-muted">
+                        <td colspan="7" class="text-center py-5 text-muted">
                             <i class="fas fa-search fa-3x mb-3"></i>
                             <p>No se encontraron gastos registrados.</p>
                         </td>
