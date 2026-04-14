@@ -1,97 +1,109 @@
-# 🛍️ Nexar Tienda
+# 🎁 Nexar Tienda v1.21.0
 
-**Nexar Tienda** es un sistema integral de gestión diseñado específicamente para tiendas de regalos, accesorios y comercios minoristas. Basado en la arquitectura robusta de *Nexar Almacén*, esta versión ha sido optimizada para ofrecer una experiencia de usuario fluida, seguridad avanzada y herramientas de inteligencia de negocios.
+Sistema Integral de Gestión Comercial diseñado para tiendas de regalos, bijouterie, marroquinería y productos estacionales. Optimizado para un funcionamiento fluido, seguro y con una interfaz estética de alto nivel.
 
-> **Versión Actual:** v1.20.0 (Seguridad y Autogestión)  
-> **Estado:** Productivo / Estable
-
----
-
-## 🚀 Características Principales
-
-### 🛒 Punto de Venta (POS)
-*   Búsqueda inteligente de productos por código, nombre o categoría.
-*   Gestión de múltiples medios de pago (Efectivo, Débito, Crédito, Transferencia).
-*   Generación de tickets de venta profesionales.
-*   Validación de stock en tiempo real.
-
-### 📦 Inventario y Proveedores
-*   Control de stock con alertas de niveles críticos y bajos.
-*   Gestión de proveedores y cuentas corrientes (Debe/Haber).
-*   Módulo de compras para ingreso automatizado de mercadería.
-*   Categorización dinámica de productos.
-
-### 📊 Inteligencia y Finanzas
-*   **Caja Diaria:** Apertura, movimientos de caja y arqueo de cierre.
-*   **Estadísticas:** Dashboards anuales y mensuales con gráficos interactivos (Chart.js).
-*   **Análisis:** Reportes de rentabilidad por producto y temporada.
-*   **Exportación:** Generación de catálogos en Excel y listas de precios en PDF.
-
-### 🔒 Seguridad y Administración
-*   **RBAC:** Control de acceso basado en roles (Administrador, Encargado, Vendedor).
-*   **Seguridad:** Validación de contraseñas fuertes y recuperación mediante desafío secreto.
-*   **Backups:** Sistema de respaldo automático y manual de la base de datos.
-*   **Modo App:** Ejecución como ventana nativa independiente mediante `pywebview`.
+**Desarrollado por Nexar Sistemas — © 2026**
 
 ---
 
-## 🛠️ Stack Tecnológico
+## 📦 Estructura del Proyecto
 
-*   **Lenguaje:** Python 3.11+
-*   **Framework Web:** Flask 3.0
-*   **Base de Datos:** SQLite (Motor ligero y portable)
-*   **Frontend:** Bootstrap 5.3, Font Awesome 6.4, Chart.js
-*   **Ventana Nativa:** PyWebView
+```
+nexar-tienda/
+├── app.py                → Lógica principal y rutas Flask
+├── database.py           → Motor de base de datos SQLite y consultas SQL
+├── iniciar.py            → Launcher universal con ventana nativa
+├── tienda.db             → Base de datos (generada al iniciar)
+├── VERSION               → Control de versión actual
+├── CHANGELOG.md          → Historial detallado de cambios
+├── static/               → Recursos estáticos (CSS, JS, Imágenes)
+│   ├── css/main.css      → Estilos "Fine" (Azul marino & Plata)
+│   └── js/pos.js         → Lógica del Punto de Venta
+├── templates/            → Plantillas Jinja2 (UI/UX)
+└── respaldo/             → Copias de seguridad automáticas
+```
 
 ---
 
-## 💻 Instalación y Uso
+##  Instalación y Arranque
 
-### Requisitos Previos
-Asegúrate de tener Python 3.11 o superior instalado. El sistema gestionará sus propias dependencias al iniciar.
+### Requisitos
+- **Python 3.11** o superior.
+- Dependencias: `flask`, `pywebview`, `openpyxl`, `reportlab`, `markdown`, `python-dotenv`.
 
-### Arranque Rápido
+### Inicio Rápido
+Para iniciar la aplicación como una herramienta de escritorio:
 
-**En Windows:**
-Ejecuta el archivo `iniciar.bat` o directamente mediante la consola:
 ```bash
 python iniciar.py
 ```
 
-**En Linux:**
-Otorga permisos de ejecución e inicia:
-```bash
-chmod +x iniciar.sh
-./iniciar.sh
-```
-
-El sistema buscará automáticamente un puerto libre (rango 5200-5999) e intentará abrir la aplicación en una ventana independiente. Si no es posible, se abrirá en tu navegador predeterminado en `http://127.0.0.1:<puerto>`.
+El launcher buscará automáticamente un puerto libre (rango 5200-5999) e iniciará la aplicación en una **ventana nativa** independiente, maximizada y optimizada para el uso diario.
 
 ---
 
-## ⚙️ Configuración Inicial
-Al iniciar el sistema por primera vez (o tras un reset), se te pedirá configurar:
-1.  **Credenciales de Administrador:** Nombre de usuario y contraseña segura.
-2.  **Seguridad:** Pregunta y respuesta secreta para recuperación.
-3.  **Datos del Negocio:** Nombre, CUIT/DNI y dirección para los tickets.
+## ✨ Módulos Principales
+
+### 🛒 Punto de Venta (POS)
+- Carrito de compras persistente basado en sesiones.
+- Búsqueda inteligente por nombre, código o categoría.
+- Gestión de múltiples medios de pago.
+- Integración directa con Cuenta Corriente de clientes.
+
+### 📦 Control de Inventario
+- Estados de stock dinámicos (Sin Stock, Crítico, Bajo, Normal, Exceso).
+- Historial de movimientos y ajustes auditados.
+- Soporte para productos de temporada y destacados.
+
+### 💰 Finanzas y Gastos
+- Gestión de categorías de gastos dinámicas.
+- Clasificación de esencialidad: **Gastos Necesarios vs. Prescindibles**.
+- Análisis de salud financiera con recomendaciones automáticas.
+- Control de caja diaria con apertura, arqueo y liquidación.
+
+### 👥 Clientes y Proveedores
+- Gestión de Cuentas Corrientes (Debe/Haber).
+- Límites de crédito personalizables por cliente.
+- Historial de compras y estadísticas de lealtad.
 
 ---
 
-## 🏗️ Estructura del Proyecto
+## 🔐 Seguridad y Licenciamiento
 
-*   `/app.py`: Servidor principal y rutas.
-*   `/database.py`: Capa de persistencia y lógica SQL.
-*   `/iniciar.py`: Launcher inteligente y gestión de entorno.
-*   `/services/`: Lógica de negocio adicional (Licencias, Seguridad).
-*   `/static/`: Recursos CSS, JS e imágenes.
-*   `/templates/`: Vistas HTML (Jinja2).
-*   `/build/`: Scripts para generación de ejecutables (.exe, .deb).
+- **Acceso RBAC**: Control de acceso basado en roles (Administrador, Encargado, Vendedor).
+- **Seguridad de Cuentas**: Validación de contraseñas fuertes y recuperación mediante pregunta secreta.
+- **Licencia RSA**: Sistema de activación offline mediante tokens Base64 firmados digitalmente (RSA-2048), vinculados al Hardware ID del equipo.
+- **Tiers de Licencia**:
+    - **DEMO**: 30 días de prueba con funcionalidad completa.
+    - **BÁSICA**: Pago único, límites de catálogo estándar.
+    - **PRO**: Suscripción mensual, recursos ilimitados y funciones BI avanzadas.
+
+---
+
+## 💾 Backups y Exportación
+
+- **Respaldos Automáticos**: Programables cada N horas, manteniendo un historial rotativo en la carpeta `/respaldo`.
+- **Excel**: Exportación completa del catálogo para control de stock externo.
+- **PDF**: Generación de listas de precios profesionales listas para imprimir o enviar.
 
 ---
 
-## 📄 Licencia
+## 🛠 Tecnologías
 
-Este software es propiedad de **Nexar Sistemas**. El uso no autorizado o la distribución de este código está prohibido bajo los términos de la licencia comercial de la suite Nexar.
+- **Backend**: Python 3.11 + Flask 3.0.
+- **Frontend**: Bootstrap 5.3, Inter Font, Font Awesome 6.
+- **Base de Datos**: SQLite 3 con integridad referencial.
+- **Desktop Wrapper**: pywebview para una experiencia de usuario nativa.
 
 ---
-*Desarrollado con por Nexar Sistemas — &copy; 2026*
+
+## 📞 Soporte y Contacto
+
+¿Necesitás ayuda o una licencia Pro?
+- **WhatsApp**: +54 9 264 585-8874
+- **Email**: nexarsistemas@outlook.com.ar
+
+---
+*Desarrollado con ❤️ para el comercio argentino.*
+
+**Nexar Sistemas — Soluciones de Software de Alta Calidad.**
