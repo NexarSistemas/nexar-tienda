@@ -1,4 +1,4 @@
-# 🎁 Nexar Tienda v1.21.0
+# 🎁 Nexar Tienda v1.21.1
 
 Sistema Integral de Gestión Comercial diseñado para tiendas de regalos, bijouterie, marroquinería y productos estacionales. Optimizado para un funcionamiento fluido, seguro y con una interfaz estética de alto nivel.
 
@@ -59,6 +59,7 @@ El launcher buscará automáticamente un puerto libre (rango 5200-5999) e inicia
 - Gestión de categorías de gastos dinámicas.
 - Clasificación de esencialidad: **Gastos Necesarios vs. Prescindibles**.
 - Análisis de salud financiera con recomendaciones automáticas.
+- **Historial Interactivo**: Registro de cambios con sistema de acordeón y filtrado de lanzamientos.
 - Control de caja diaria con apertura, arqueo y liquidación.
 
 ### 👥 Clientes y Proveedores
