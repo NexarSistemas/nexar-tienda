@@ -3,13 +3,79 @@
 {% block page_title %}<i class="fas fa-list-alt me-2"></i>Registro de Cambios{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-4 p-md-5">
-            <div class="changelog-content">
-                {{ contenido_html|safe }}
+<div class="container py-3">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-4">
+                    <div class="text-center mb-4">
+                        <i class="fas fa-history fa-2x text-primary mb-2"></i>
+                        <h4 class="fw-bold text-navy">Historial de Evolución</h4>
+                        <p class="text-muted small">Novedades y mejoras continuas en Nexar Tienda</p>
+                        <hr class="opacity-25">
+                    </div>
+                    <div class="accordion changelog-accordion" id="changelogAccordion">
+                        <div id="raw-markdown-content" class="d-none">
+                            {{ contenido_html|safe }}
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const rawContent = document.getElementById('raw-markdown-content');
+    const accordion = document.getElementById('changelogAccordion');
+    const elements = Array.from(rawContent.children);
+    
+    let currentItem = null;
+    let itemCount = 0;
+    const MAX_RELEASES = 5;
+
+    elements.forEach((el) => {
+        if (el.tagName === 'H2') {
+            const versionText = el.textContent.replace('Changelog - Nexar Tienda', '').trim();
+            if (!versionText) return;
+
+            // Si ya alcanzamos el límite de lanzamientos, dejamos de capturar
+            if (itemCount >= MAX_RELEASES) {
+                currentItem = null;
+                return;
+            }
+
+            itemCount++;
+            const itemId = `version-${itemCount}`;
+            const isFirst = itemCount === 1;
+
+            const itemMarkup = `
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button ${isFirst ? '' : 'collapsed'}" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#collapse-${itemId}">
+                            ${versionText}
+                        </button>
+                    </h2>
+                    <div id="collapse-${itemId}" class="accordion-collapse collapse ${isFirst ? 'show' : ''}" 
+                         data-bs-parent="#changelogAccordion">
+                        <div class="accordion-body changelog-refined"></div>
+                    </div>
+                </div>`;
+            
+            accordion.insertAdjacentHTML('beforeend', itemMarkup);
+            currentItem = accordion.lastElementChild.querySelector('.accordion-body');
+        } else if (currentItem && el.tagName !== 'HR') {
+            // Clonamos el elemento para moverlo al cuerpo del acordeón
+            currentItem.appendChild(el.cloneNode(true));
+        }
+    });
+
+    // Limpiar el contenido crudo
+    rawContent.remove();
+});
+</script>
 {% endblock %}

@@ -1,3 +1,76 @@
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* CHANGELOG REFINADO (ESTILO ACORDEÓN) */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+.changelog-accordion .accordion-item {
+    border: 1px solid var(--border-color);
+    margin-bottom: 0.75rem;
+    border-radius: 12px !important;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.changelog-accordion .accordion-button {
+    background-color: var(--white);
+    color: var(--sidebar-bg);
+    font-weight: 700;
+    font-size: 1.05rem;
+    padding: 1.25rem;
+}
+
+.changelog-accordion .accordion-button:not(.collapsed) {
+    background: linear-gradient(135deg, var(--sidebar-hover), var(--sidebar-bg));
+    color: var(--white);
+    box-shadow: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.changelog-accordion .accordion-button::after {
+    filter: brightness(0.5); /* Ajusta el icono para que combine con el azul */
+}
+
+.changelog-accordion .accordion-button:not(.collapsed)::after {
+    filter: brightness(0) invert(1); /* Flecha blanca cuando está expandido */
+}
+
+.changelog-refined {
+    font-family: 'Inter', sans-serif;
+    color: var(--text-main);
+}
+
+/* Estilos para el contenido Markdown dentro del acordeón */
+.changelog-refined h3 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-top: 1.2rem;
+    margin-bottom: 0.75rem;
+    font-weight: 700;
+}
+
+.changelog-refined ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.changelog-refined ul li {
+    position: relative;
+    padding-left: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.92rem;
+    transition: var(--transition);
+    border-radius: 6px;
+}
+
+.changelog-refined ul li::before {
+    content: "•";
+    color: var(--accent);
+    font-weight: bold;
+    position: absolute;
+    left: 0.5rem;
+}
 /**
  * Nexar Tienda — main.css
  * Paleta de colores: Azul marino + Plateado
@@ -595,4 +668,65 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* CHANGELOG REFINADO (ESTILO ACORDEÓN) */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+.changelog-accordion .accordion-item {
+    border: 1px solid var(--border-color);
+    margin-bottom: 0.75rem;
+    border-radius: 12px !important;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.changelog-accordion .accordion-button {
+    background-color: var(--white);
+    color: var(--sidebar-bg);
+    font-weight: 700;
+    font-size: 1.05rem;
+    padding: 1.25rem;
+}
+
+.changelog-accordion .accordion-button:not(.collapsed) {
+    background: linear-gradient(135deg, var(--sidebar-hover), var(--sidebar-bg));
+    color: var(--white);
+    box-shadow: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.changelog-accordion .accordion-button:not(.collapsed)::after {
+    filter: brightness(0) invert(1);
+}
+
+.changelog-refined {
+    font-family: 'Inter', sans-serif;
+    color: var(--text-main);
+}
+
+.changelog-refined h3 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-top: 1.2rem;
+    margin-bottom: 0.75rem;
+    font-weight: 700;
+}
+
+.changelog-refined ul li {
+    position: relative;
+    padding-left: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.92rem;
+    transition: var(--transition);
+    border-radius: 6px;
+}
+
+.changelog-refined ul li:hover {
+    background-color: var(--silver-light);
+    padding-left: 1.7rem;
+    color: var(--sidebar-bg);
+}
 }

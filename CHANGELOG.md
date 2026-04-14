@@ -4,13 +4,20 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
-## [1.21.0] - 14 Abril 2026 - Gestión de Gastos y Análisis Financiero
+## [1.21.1] - 14 Abril 2026 - Refinamiento Estético y Cronología
 
 ### ✨ Características Nuevas
-- **Categorías de Gastos Dinámicas**: Implementación de interfaz en Configuración para agregar, editar y eliminar categorías de gastos operativos.
-- **Clasificación de Necesidad**: Ahora cada categoría de gasto puede marcarse como "Necesario" o "Prescindible", siguiendo el estándar de Nexar Finanzas.
-- **Análisis de Salud Financiera**: Nuevo módulo en Reportes que visualiza la proporción de gastos según su esencialidad.
-- **Recomendaciones de Optimización**: Sistema de sugerencias automáticas basado en el porcentaje de gastos prescindibles para mejorar la rentabilidad del comercio.
+- **Changelog Interactivo**: Rediseño total de la página de novedades con un sistema de acordeón dinámico.
+- **Estilo "Fine" Nexar**: Implementación de degradados azul marino y efectos hover plateados en los ítems del historial.
+- **Optimización de Lectura**: El historial ahora muestra solo los últimos 5 lanzamientos por defecto para mayor agilidad.
+
+### 🛠️ Cambios Técnicos
+- **Corrección Cronológica**: Ajuste de fechas históricas en el archivo de cambios para eliminar inconsistencias de fechas futuras.
+- **UI Unificada**: Integración del changelog dentro de una tarjeta centralizada, siguiendo el patrón de Ayuda y Acerca de.
+
+---
+
+## [1.21.0] - 14 Abril 2026 - Gestión de Gastos y Análisis Financiero
 
 ### 🛠️ Cambios Técnicos
 - **Base de Datos**: Migración de la estructura de categorías de gastos para soportar el flag de esencialidad.
