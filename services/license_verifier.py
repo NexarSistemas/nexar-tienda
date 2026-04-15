@@ -24,6 +24,7 @@ El ID del index se configura en la DB como 'license_drive_index_id'.
 
 import urllib.request
 import urllib.error
+import re
 import json
 import ssl
 import hashlib
@@ -32,7 +33,8 @@ from datetime import date, datetime
 
 # ── Configuracion ─────────────────────────────────────────────────────────────
 
-_DRIVE_DOWNLOAD = "https://drive.google.com/uc?export=download&id={file_id}"
+# docs.google.com suele ser mas estable para descargas programaticas que drive.google.com
+_DRIVE_DOWNLOAD = "https://docs.google.com/uc?export=download&id={file_id}"
 
 DIAS_GRACIA = 7
 TIMEOUT = 8
@@ -54,12 +56,51 @@ def _ssl_ctx():
 
 def _descargar_json(file_id: str) -> dict | None:
     """Descarga y parsea un JSON desde Google Drive por file_id."""
+    file_id = file_id.strip()
     url = _DRIVE_DOWNLOAD.format(file_id=file_id)
     try:
-        req  = urllib.request.Request(url, headers={"User-Agent": "nexartienda/1.0"})
+        # Usar un User-Agent de navegador real para evitar bloqueos por peticiones frecuentes
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        req  = urllib.request.Request(url, headers=headers)
         resp = urllib.request.urlopen(req, timeout=TIMEOUT, context=_ssl_ctx())
-        return json.loads(resp.read().decode())
-    except Exception:
+        raw_data = resp.read().decode('utf-8').strip()
+
+        if not raw_data:
+            print(f"[LICENSE-DEBUG] Drive devolvió una respuesta vacía para ID: {file_id}")
+            return None
+
+        if raw_data.startswith("<!DOCTYPE") or "<html" in raw_data.lower():
+            # Caso A: Drive pide confirmación de descarga (virus scan warning)
+            if "confirm=" in raw_data:
+                match = re.search(r'confirm=([0-9A-Za-z_]+)', raw_data)
+                if match:
+                    confirm_token = match.group(1)
+                    print(f"[LICENSE-DEBUG] Reintentando con token de confirmación...")
+                    confirm_url = url + "&confirm=" + confirm_token
+                    req_confirm = urllib.request.Request(confirm_url, headers=headers)
+                    resp_confirm = urllib.request.urlopen(req_confirm, timeout=TIMEOUT, context=_ssl_ctx())
+                    return json.loads(resp_confirm.read().decode('utf-8'))
+
+            # Caso B: Página de error, Login o Bloqueo
+            snippet = raw_data[:200].replace('\n', ' ')
+            if "Service Login" in raw_data or "accounts.google.com" in raw_data:
+                # Intentar extraer el titulo de la pagina para mas info
+                title_match = re.search(r'<title>(.*?)</title>', raw_data, re.IGNORECASE)
+                title = title_match.group(1) if title_match else "Sin titulo"
+                if "Workspace" in raw_data or "Domain" in raw_data:
+                    print(f"[LICENSE-DEBUG] ERROR: El archivo está restringido a tu ORGANIZACIÓN. Cámbialo a 'Cualquier persona con el enlace' (Acceso General).")
+                else:
+                    print(f"[LICENSE-DEBUG] ERROR: El archivo es PRIVADO. Google solicita inicio de sesión.")
+            else:
+                print(f"[LICENSE-DEBUG] Drive devolvió HTML inesperado. Snippet: {snippet}...")
+            
+            return None
+
+        return json.loads(raw_data)
+    except Exception as e:
+        print(f"[LICENSE-DEBUG] Error de conexión con Drive (ID: {file_id}): {str(e)}")
         return None
 
 
