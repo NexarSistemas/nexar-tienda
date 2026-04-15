@@ -67,6 +67,21 @@ jobs:
             python-dotenv \
             markdown
 
+      - name: Escribir clave pública RSA
+        env:
+          PUBLIC_KEY: ${{ secrets.PUBLIC_KEY }}
+        run: |
+          if [ -z "$PUBLIC_KEY" ]; then
+            echo "❌ ERROR: El secret PUBLIC_KEY no está configurado en el repositorio."
+            echo "   Ir a: Settings → Secrets and variables → Actions → New repository secret"
+            echo "   Nombre: PUBLIC_KEY"
+            echo "   Valor: contenido de keys/public_key.pem (incluir las líneas -----BEGIN/END-----)"
+            exit 1
+          fi
+          mkdir -p keys
+          echo "$PUBLIC_KEY" > keys/public_key.pem
+          echo "✅ keys/public_key.pem escrito ($(wc -c < keys/public_key.pem) bytes)"
+
       - name: Build Linux con PyInstaller
         run: |
           pyinstaller build/nexar_tienda_linux.spec \
@@ -129,6 +144,23 @@ jobs:
 
       - name: Instalar Inno Setup
         run: choco install innosetup -y
+
+      - name: Escribir clave pública RSA
+        shell: pwsh
+        env:
+          PUBLIC_KEY: ${{ secrets.PUBLIC_KEY }}
+        run: |
+          if (-not $env:PUBLIC_KEY) {
+            Write-Error "❌ ERROR: El secret PUBLIC_KEY no está configurado en el repositorio."
+            Write-Host "   Ir a: Settings → Secrets and variables → Actions → New repository secret"
+            Write-Host "   Nombre: PUBLIC_KEY"
+            Write-Host "   Valor: contenido de keys/public_key.pem"
+            exit 1
+          }
+          New-Item -ItemType Directory -Force -Path keys | Out-Null
+          $env:PUBLIC_KEY | Set-Content -Path keys\public_key.pem -Encoding UTF8
+          $size = (Get-Item keys\public_key.pem).Length
+          Write-Host "✅ keys/public_key.pem escrito ($size bytes)"
 
       - name: Build Windows con PyInstaller
         run: |

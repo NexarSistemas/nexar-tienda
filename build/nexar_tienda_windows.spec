@@ -18,9 +18,14 @@ datas = [
     (os.path.join(PROJ, 'static'),       'static'),
     (os.path.join(PROJ, 'VERSION'),      '.'),
     (os.path.join(PROJ, 'CHANGELOG.md'), '.'),
-    # Clave pública RSA para verificación de licencias
-    (os.path.join(PROJ, 'keys'),         'keys'),
 ]
+
+# Incluir clave pública RSA sólo si existe la carpeta keys/
+# En CI se escribe desde el secret PUBLIC_KEY antes de correr pyinstaller.
+# Si no existe, la app busca la clave vía variable de entorno PUBLIC_KEY.
+_keys_dir = os.path.join(PROJ, 'keys')
+if os.path.isdir(_keys_dir):
+    datas.append((_keys_dir, 'keys'))
 
 a = Analysis(
     [os.path.join(PROJ, 'iniciar.py')],
