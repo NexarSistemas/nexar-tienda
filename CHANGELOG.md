@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.22.0] - 15 Abril 2026 - Gestión Inteligente de Suscripción PRO
+
+### ✨ Características Nuevas
+- **Degradación Elegante**: Al vencer la licencia PRO, el sistema ahora revierte automáticamente al plan BÁSICA (en lugar de DEMO) si el usuario ya tenía una activación básica previa, garantizando el acceso continuo a los datos.
+- **Alertas Preventivas**: Implementación de banderas de notificación para el Plan PRO: aviso preventivo 5 días antes y aviso crítico 24 horas antes del vencimiento.
+
+### 🛠️ Cambios Técnicos
+- **services/license_verifier.py**: Refactorización de la función `_revocar` para consultar el estado de `basica_activada`.
+- **database.py**: Mejora en `get_license_info` para calcular dinámicamente `pro_days` y disparar las alertas de expiración.
+
+---
 ## [1.21.1] - 14 Abril 2026 - Refinamiento Estético y Cronología
 
 ### ✨ Características Nuevas

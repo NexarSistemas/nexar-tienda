@@ -1,4 +1,4 @@
-# 🎁 Nexar Tienda v1.21.1
+# 🎁 Nexar Tienda v1.22.0
 
 Sistema Integral de Gestión Comercial diseñado para tiendas de regalos, bijouterie, marroquinería y productos estacionales. Optimizado para un funcionamiento fluido, seguro y con una interfaz estética de alto nivel.
 
@@ -77,7 +77,7 @@ El launcher buscará automáticamente un puerto libre (rango 5200-5999) e inicia
 - **Tiers de Licencia**:
     - **DEMO**: 30 días de prueba con funcionalidad completa.
     - **BÁSICA**: Pago único, límites de catálogo estándar.
-    - **PRO**: Suscripción mensual, recursos ilimitados y funciones BI avanzadas.
+    - **PRO**: Suscripción mensual, recursos ilimitados y funciones BI avanzadas. Al vencer, el sistema degrada automáticamente a BÁSICA sin pérdida de datos.
 
 ---
 

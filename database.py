@@ -603,6 +603,9 @@ def _seed_changelog(c):
         ('1.12.1', '2026-04-18', 'Mejora',
          'Automatización y Seguridad',
          'Adición de scripts de configuración y aplicación del estándar de seguridad para SECRET_KEY.'),
+        ('1.22.0', '2026-04-15', 'Nueva función',
+         'Gestión Inteligente de Suscripción PRO',
+         'Implementación de degradación automática a BÁSICA al vencer PRO y sistema de alertas preventivas (5 días y 1 día antes).'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
