@@ -116,16 +116,16 @@
             {% if not demo_status['demo'] %}
             <div class="card mb-3">
                 <div class="card-header bg-light">
-                    <h5 class="mb-0"><i class="fab fa-google-drive"></i> Verificación Online (Drive)</h5>
+                    <h5 class="mb-0"><i class="fab fa-google-drive"></i> Verificación Online</h5>
                 </div>
                 <div class="card-body">
                     <form method="POST" class="mb-3">
                         <input type="hidden" name="action" value="set_index_id">
-                        <label class="form-label"><small>ID del índice en Google Drive</small></label>
+                        <label class="form-label"><small>ID del índice</small></label>
                         <div class="input-group input-group-sm">
                             <input type="text" class="form-control font-monospace" name="drive_index_id"
                                    value="{{ license_info['drive_index_id'] }}"
-                                   placeholder="ID del archivo index_tienda.json">
+                                   placeholder="ID del archivo">
                             <button class="btn btn-outline-secondary" type="submit">Guardar</button>
                         </div>
                         <div class="form-text">El desarrollador te da este ID junto con el token.</div>
@@ -133,7 +133,7 @@
                     <form method="POST">
                         <input type="hidden" name="action" value="verify_online">
                         <button class="btn btn-outline-primary btn-sm w-100" type="submit">
-                            <i class="fas fa-cloud"></i> Verificar ahora contra Drive
+                            <i class="fas fa-cloud"></i> Verificar ahora
                         </button>
                     </form>
                 </div>
@@ -178,13 +178,13 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">
-                                ID del índice Drive
+                                ID del índice
                                 <span class="text-muted small">(opcional)</span>
                             </label>
                             <input type="text" class="form-control form-control-sm font-monospace"
                                    name="drive_index_id"
                                    value="{{ license_info['drive_index_id'] }}"
-                                   placeholder="ID del archivo index_tienda.json en Drive">
+                                   placeholder="ID del archivo para verificación online">
                         </div>
                         <button type="submit" class="btn btn-success w-100">
                             <i class="fas fa-check-circle"></i> Validar y Activar Licencia
