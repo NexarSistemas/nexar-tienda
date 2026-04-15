@@ -603,9 +603,10 @@ def _seed_changelog(c):
         ('1.12.1', '2026-04-18', 'Mejora',
          'Automatización y Seguridad',
          'Adición de scripts de configuración y aplicación del estándar de seguridad para SECRET_KEY.'),
-        ('1.22.0', '2026-04-15', 'Nueva función',
-         'Gestión Inteligente de Suscripción PRO',
+        ('1.22.0', '2026-04-15', 'Nueva función', 'Gestión Inteligente de Suscripción PRO',
          'Implementación de degradación automática a BÁSICA al vencer PRO y sistema de alertas preventivas (5 días y 1 día antes).'),
+        ('1.23.0', '2026-04-15', 'Nueva función', 'Anti-Reinstalación de Demo',
+         'Implementación de un mecanismo que persiste la fecha de inicio del período de prueba en un archivo externo (`telemetry.bin`), evitando que el contador de la demo se reinicie al reinstalar la aplicación o eliminar la base de datos.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(

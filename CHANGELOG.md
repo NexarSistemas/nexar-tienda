@@ -4,6 +4,15 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.23.0] - 15 Abril 2026 - Anti-Reinstalación de Demo
+
+### ✨ Características Nuevas
+- **Anti-Reinstalación de Demo**: Implementación de un mecanismo que persiste la fecha de inicio del período de prueba en un archivo externo (`telemetry.bin`), evitando que el contador de la demo se reinicie al reinstalar la aplicación o eliminar la base de datos.
+
+### 🛠️ Cambios Técnicos
+- **database.py**: Se agregaron funciones `_get_telemetry_dir`, `_get_telemetry_path`, `_read_telemetry_data`, `_write_telemetry_data`. La función `init_db` fue modificada para leer y escribir la fecha de instalación de la demo y el `machine_id` en `telemetry.bin`, priorizando la fecha más antigua encontrada.
+
+---
 ## [1.22.0] - 15 Abril 2026 - Gestión Inteligente de Suscripción PRO
 
 ### ✨ Características Nuevas
