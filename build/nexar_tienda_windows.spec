@@ -18,6 +18,8 @@ datas = [
     (os.path.join(PROJ, 'static'),       'static'),
     (os.path.join(PROJ, 'VERSION'),      '.'),
     (os.path.join(PROJ, 'CHANGELOG.md'), '.'),
+    # Clave pública RSA para verificación de licencias
+    (os.path.join(PROJ, 'keys'),         'keys'),
 ]
 
 a = Analysis(

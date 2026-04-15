@@ -716,9 +716,17 @@ def _load_tda_pubkey():
 
 
 def _tda_rsa_verify(message: bytes, signature: bytes) -> bool:
-    """Verifica firma PKCS1v15 SHA256 usando solo aritmetica entera."""
+    """
+    Verifica firma PKCS1v15 SHA256 usando solo aritmetica entera.
+
+    Propaga RuntimeError si la clave publica no se encuentra,
+    para que validar_licencia_rsa pueda dar un mensaje claro al usuario.
+    """
+    # Carga de clave: si falla (archivo no encontrado), se propaga el error.
+    # Esto permite distinguir "clave ausente" de "firma invalida".
+    n, e = _load_tda_pubkey()
+
     try:
-        n, e = _load_tda_pubkey()
         k = (n.bit_length() + 7) // 8
         if len(signature) != k:
             return False
@@ -833,24 +841,55 @@ def validar_licencia_rsa(token_b64: str) -> tuple:
         except ValueError:
             return False, "La firma digital del token esta corrupta.", None
 
-        # Reconstruir payload exactamente igual que el generador
+        # Reconstruir payload exactamente igual que el generador.
+        # expires_at: si es None o vacío, excluirlo del payload (algunos
+        # generadores omiten el campo en lugar de incluir null).
+        expires_val = data.get("expires_at") or None
         payload_dict = {
-            "expires_at":  data.get("expires_at"),
-            "hardware_id": data["hardware_id"],
-            "license_key": data["license_key"],
+            "hardware_id":  data["hardware_id"],
+            "license_key":  data["license_key"],
             "max_machines": data["max_machines"],
-            "product":     "tienda",
-            "tier":        data.get("tier", "BASICA"),
-            "type":        data["type"],
+            "product":      "tienda",
+            "tier":         data.get("tier", "BASICA"),
+            "type":         data["type"],
         }
+        if expires_val is not None:
+            payload_dict["expires_at"] = expires_val
 
-        payload_bytes = _json.dumps(payload_dict, sort_keys=True).encode()
-        if not _tda_rsa_verify(payload_bytes, signature):
+        # Intentar los dos formatos de serialización JSON más comunes.
+        # Los generadores suelen usar separadores compactos (',', ':'),
+        # pero el json.dumps por defecto usa (', ', ': ') con espacios.
+        # Si el formato no coincide, el hash SHA256 difiere y la firma falla.
+        _SEPARATORS_CANDIDATES = [
+            (',', ':'),    # compacto — el más común en generadores RSA
+            (', ', ': '),  # estándar Python (json.dumps por defecto)
+        ]
+
+        verificado = False
+        try:
+            for sep_pair in _SEPARATORS_CANDIDATES:
+                payload_bytes = _json.dumps(
+                    payload_dict, sort_keys=True, separators=sep_pair
+                ).encode()
+                if _tda_rsa_verify(payload_bytes, signature):
+                    verificado = True
+                    break
+        except RuntimeError as key_err:
+            # La clave publica no se encontro en ninguna ubicacion esperada.
+            return (
+                False,
+                f"Clave publica RSA no encontrada: {key_err}\n"
+                "Asegurate de que el archivo 'keys/public_key.pem' este "
+                "en la carpeta de la aplicacion.",
+                None,
+            )
+
+        if not verificado:
             return (
                 False,
                 "La firma digital es invalida. "
                 "El token fue alterado o no corresponde a este sistema.",
-                None
+                None,
             )
 
         machine_id = get_machine_id()

@@ -59,6 +59,11 @@ Name: "desktopicon"; Description: "Crear acceso directo en el Escritorio"; Group
 [Files]
 Source: "..\dist\NexarTienda.exe"; DestDir: "{app}"; Flags: ignoreversion
 
+; ── Clave pública RSA para verificación de licencias ────────────────
+; Sin este archivo, la activación de licencias fallará con
+; "La firma digital es inválida".
+Source: "..\keys\public_key.pem"; DestDir: "{app}\keys"; Flags: ignoreversion
+
 ; ── Wrapper que captura errores y los guarda en un log ──────────
 ; Este script .bat lanza el .exe y guarda el error si falla
 Source: "launch_with_log.bat"; DestDir: "{app}"; Flags: ignoreversion
