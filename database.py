@@ -719,11 +719,12 @@ def _tda_rsa_verify(message: bytes, signature: bytes) -> bool:
     """
     Verifica firma PKCS1v15 SHA256 usando solo aritmetica entera.
 
-    Propaga RuntimeError si la clave publica no se encuentra,
-    para que validar_licencia_rsa pueda dar un mensaje claro al usuario.
+    Propaga RuntimeError si la clave publica no se encuentra, para que
+    validar_licencia_rsa pueda mostrar un mensaje claro en lugar de
+    "firma invalida" cuando el problema real es la clave ausente.
     """
-    # Carga de clave: si falla (archivo no encontrado), se propaga el error.
-    # Esto permite distinguir "clave ausente" de "firma invalida".
+    # _load_tda_pubkey() lanza RuntimeError si no encuentra el archivo.
+    # Lo dejamos propagar — no lo atrapamos aqui.
     n, e = _load_tda_pubkey()
 
     try:
@@ -841,46 +842,37 @@ def validar_licencia_rsa(token_b64: str) -> tuple:
         except ValueError:
             return False, "La firma digital del token esta corrupta.", None
 
-        # Reconstruir payload exactamente igual que el generador.
-        # expires_at: si es None o vacío, excluirlo del payload (algunos
-        # generadores omiten el campo en lugar de incluir null).
-        expires_val = data.get("expires_at") or None
+        # ── Reconstruir payload exactamente igual que el generador ─────────
+        #
+        # CRÍTICO: estos campos, su orden (sort_keys=True) y los separadores
+        # JSON deben coincidir byte a byte con lo que firma create_tienda_license()
+        # en license_manager.py.
+        #
+        # Reglas del generador:
+        #   - Usa json.dumps con separadores por defecto: (', ', ': ')
+        #   - SIEMPRE incluye expires_at aunque sea None → "expires_at": null
+        #     (BASICA tiene None; PRO tiene "YYYY-MM-DD")
+        #
         payload_dict = {
-            "hardware_id":  data["hardware_id"],
-            "license_key":  data["license_key"],
+            "expires_at":  data.get("expires_at"),   # None → null (BASICA) | "YYYY-MM-DD" (PRO)
+            "hardware_id": data["hardware_id"],
+            "license_key": data["license_key"],
             "max_machines": data["max_machines"],
-            "product":      "tienda",
-            "tier":         data.get("tier", "BASICA"),
-            "type":         data["type"],
+            "product":     "tienda",
+            "tier":        data.get("tier", "BASICA"),
+            "type":        data["type"],
         }
-        if expires_val is not None:
-            payload_dict["expires_at"] = expires_val
 
-        # Intentar los dos formatos de serialización JSON más comunes.
-        # Los generadores suelen usar separadores compactos (',', ':'),
-        # pero el json.dumps por defecto usa (', ', ': ') con espacios.
-        # Si el formato no coincide, el hash SHA256 difiere y la firma falla.
-        _SEPARATORS_CANDIDATES = [
-            (',', ':'),    # compacto — el más común en generadores RSA
-            (', ', ': '),  # estándar Python (json.dumps por defecto)
-        ]
-
-        verificado = False
         try:
-            for sep_pair in _SEPARATORS_CANDIDATES:
-                payload_bytes = _json.dumps(
-                    payload_dict, sort_keys=True, separators=sep_pair
-                ).encode()
-                if _tda_rsa_verify(payload_bytes, signature):
-                    verificado = True
-                    break
+            payload_bytes = _json.dumps(payload_dict, sort_keys=True).encode()
+            verificado = _tda_rsa_verify(payload_bytes, signature)
         except RuntimeError as key_err:
-            # La clave publica no se encontro en ninguna ubicacion esperada.
+            # La clave pública no se encontró en ninguna ubicación esperada.
             return (
                 False,
-                f"Clave publica RSA no encontrada: {key_err}\n"
-                "Asegurate de que el archivo 'keys/public_key.pem' este "
-                "en la carpeta de la aplicacion.",
+                f"Clave publica RSA no encontrada.\n"
+                f"Detalle: {key_err}\n"
+                "Asegurate de que 'keys/public_key.pem' este en la carpeta de la aplicacion.",
                 None,
             )
 
@@ -911,15 +903,32 @@ def validar_licencia_rsa(token_b64: str) -> tuple:
 def activar_licencia(token_b64: str) -> tuple:
     """
     Valida el token RSA y, si es correcto, activa la licencia en la DB.
+
+    Regla de negocio:
+      - TDA_BASICA: activa directamente y marca 'basica_activada' = '1'.
+      - TDA_PRO: solo se puede activar si antes se activó BASICA.
+        Si BASICA nunca fue activada, devuelve error explicativo.
+
     Retorna: (ok: bool, mensaje: str)
     """
     ok, msg, data = validar_licencia_rsa(token_b64)
     if not ok:
         return False, msg
 
-    tier       = data.get("tier", "BASICA")
+    tier = data.get("tier", "BASICA")
+
+    # ── Regla: PRO requiere BASICA previa ────────────────────────────────────
+    if tier == "PRO":
+        cfg = get_config()
+        if cfg.get("basica_activada", "0") != "1":
+            return (
+                False,
+                "Para activar la licencia PRO primero debés activar la licencia BÁSICA.\n"
+                "Contactá al desarrollador para obtener tu token BÁSICA.",
+            )
+
     expires_at = data.get("expires_at") or ""
-    set_config({
+    updates = {
         'demo_mode':              '0',
         'license_type':           data.get('type', 'TDA_BASICA'),
         'license_tier':           tier,
@@ -929,7 +938,13 @@ def activar_licencia(token_b64: str) -> tuple:
         'license_activated_at':   datetime.now().isoformat(),
         'license_expires_at':     expires_at,
         'license_last_check':     datetime.now().date().isoformat(),
-    })
+    }
+
+    # ── Marcar BASICA como activada (necesario para poder activar PRO luego) ─
+    if tier == "BASICA":
+        updates['basica_activada'] = '1'
+
+    set_config(updates)
     return True, "Licencia activada correctamente."
 
 
