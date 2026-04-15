@@ -255,10 +255,20 @@ def _evaluar_gracia(db_module, cfg: dict, motivo: str) -> dict:
 
 
 def _revocar(db_module):
-    """Vuelve a modo demo sin borrar datos del negocio."""
-    db_module.set_config({
-        'demo_mode':            '1',
-        'license_tier':         'DEMO',
-        'license_plan':         'DEMO',
-        'license_last_check':   '',
-    })
+    """Vuelve a modo basica (si estaba activada) o demo sin borrar datos."""
+    cfg = db_module.get_config()
+    # Si la licencia basica fue activada previamente, volvemos a BASICA en lugar de DEMO
+    if cfg.get('basica_activada', '0') == '1':
+        db_module.set_config({
+            'demo_mode':            '0',
+            'license_tier':         'BASICA',
+            'license_plan':         'BASICA',
+            'license_last_check':   '',
+        })
+    else:
+        db_module.set_config({
+            'demo_mode':            '1',
+            'license_tier':         'DEMO',
+            'license_plan':         'DEMO',
+            'license_last_check':   '',
+        })

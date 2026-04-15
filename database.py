@@ -795,20 +795,41 @@ def get_demo_status() -> dict:
 def get_license_info() -> dict:
     """Devuelve informacion completa de la licencia actual."""
     cfg = get_config()
+    tier = cfg.get('license_tier', 'DEMO')
+    expires_at_str = cfg.get('license_expires_at', '')
+    
+    # ── Calcular días restantes y alertas para el Plan PRO ──────────────────
+    pro_days = None
+    if tier == 'PRO' and expires_at_str:
+        try:
+            expires_date = date.fromisoformat(expires_at_str)
+            pro_days = (expires_date - date.today()).days
+            
+            # Si ya venció hoy, forzar degradación efectiva a BASICA si corresponde
+            if pro_days < 0 and cfg.get('basica_activada', '0') == '1':
+                tier = 'BASICA'
+        except Exception:
+            pass
+
     return {
         'type':        cfg.get('license_type', 'TDA_BASICA'),
-        'tier':        cfg.get('license_tier', 'DEMO'),
+        'tier':        tier,
         'key':         cfg.get('license_key', ''),
         'owner_name':  cfg.get('license_owner_name', ''),
         'owner_email': cfg.get('license_owner_email', ''),
-        'plan':        cfg.get('license_plan', cfg.get('license_tier', 'DEMO')),
+        'plan':        cfg.get('license_plan', tier),
         'activated_at': cfg.get('license_activated_at', ''),
-        'expires_at':  cfg.get('license_expires_at', ''),
+        'expires_at':  expires_at_str,
         'last_check':  cfg.get('license_last_check', ''),
         'max_machines': int(cfg.get('license_max_machines', '1')),
         'drive_index_id': cfg.get('license_drive_index_id', ''),
-        'limits':      TIER_LIMITS.get(cfg.get('license_tier', 'DEMO'), {}),
+        'limits':      TIER_LIMITS.get(tier, {}),
         'demo_mode':   cfg.get('demo_mode', '1'),
+        # Campos de notificación de vencimiento
+        'pro_days':    pro_days,
+        'pro_vencido': pro_days is not None and pro_days < 0,
+        'pro_expires_soon':     pro_days == 5,
+        'pro_expires_tomorrow': pro_days == 1,
     }
 
 
