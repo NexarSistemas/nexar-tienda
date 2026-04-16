@@ -30,15 +30,16 @@ def verificar_licencia_online(db_module) -> dict:
         return {'ok': True, 'modo': 'demo', 'dias_gracia': 0,
                 'mensaje': 'Modo demo activo'}
 
-    licencia = {
-        "license_key": cfg.get('license_key', ''),
-        "public_signature": cfg.get('license_signature', ''),
-    }
+    import json
+    lic_json = cfg.get('license_data_full', '{}')
+    try:
+        licencia = json.loads(lic_json)
+    except:
+        licencia = {"license_key": cfg.get('license_key', ''), "public_signature": cfg.get('license_signature', '')}
 
-    # Obtener clave pública (podemos usar una variable de entorno o leer de archivo)
-    # Para este ejemplo, asumimos que se pasa la clave PEM
-    from .license_verifier import _get_pub_key_pem # Reutilizamos tu cargador original si es necesario
-    ok = validar_licencia(licencia, _get_pub_key_pem().decode(), "tienda", debug=True)
+    # Usar variable de entorno para la clave pública
+    public_key = os.getenv("PUBLIC_KEY", "")
+    ok = validar_licencia(licencia, public_key, "tienda", debug=True)
 
     if not ok:
         _revocar(db_module)
