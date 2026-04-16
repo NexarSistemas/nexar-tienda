@@ -27,6 +27,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
 from services.license_verifier import verificar_licencia_online
 
+from license_check import check_license
+
+check_license()
+
+print("Iniciando Nexar Tienda...")
+
 # ─── VERSIÓN ─────────────────────────────────────────────────────────────────
 def _read_version():
     try:
