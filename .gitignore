@@ -68,3 +68,7 @@ respaldo/
 *.pem
 *.key
 *.crt
+
+### --- cache y archivos temporales --- ###
+*.cache.json
+*_cache.json
