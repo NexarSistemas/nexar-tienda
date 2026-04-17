@@ -1,4 +1,8 @@
 from nexar_licencias import validar_licencia
+from config.settings import settings
+from license_manager import cargar_licencia
+from activar_licencia import activar
+
 
 PUBLIC_KEY = """
 -----BEGIN PUBLIC KEY-----
@@ -12,22 +16,34 @@ bQIDAQAB
 -----END PUBLIC KEY-----
 """
 
-def check_license():
-    licencia = {
-        "license_key": "ABC123",
-        "producto": "nexar-tienda",
-        "signature": "7e966d55fca6a4faf2d35fdb6f491451b0ecb900b8402bd3f3af684b308543f48ac9fb079b8976e6d497c2cfa418e84fc231f891d052da0806429f9da7a51bb9f8f65f56a03c23fe3d2d552530d700b2a66738e6cd376f4c18b08c9111cedaa327bce43889c5f6a37fc9ce964aa553891d91bbf8077ec94b95bfab4a9be5ea0137be7341afefc6b150c01eeff25338dcc689b81268b8325d64a0bdc12aab466638eef97b024cb3a4992dc82f32a904f55d52756c023926fb90627357f3902b6a69852bba0ebdd13137fe4b1d4f299ca2076331671f77745e7db65c7be75d315205e3c8c76d22fe6d5ee1e4188f1712bab17eee5df7b118858d6ddfeb312bbee7"
-    }
+def verificar_inicio_app():
+    licencia = cargar_licencia()
+
+    from activar_licencia import activar
+
+def verificar_inicio_app():
+    licencia = cargar_licencia()
+
+    if not licencia:
+        print("⚠️ No hay licencia. Activando...")
+
+        activar()  # 👈 pide licencia al usuario
+
+        licencia = cargar_licencia()
+
+        if not licencia:
+            print("❌ No se pudo activar la licencia")
+            exit()
 
     ok = validar_licencia(
         licencia,
         PUBLIC_KEY,
-        "nexar-tienda",
-        debug=True
+        settings.LICENSE_PRODUCT,
+        debug=settings.DEBUG
     )
 
     if not ok:
-        print("❌ LICENCIA INVALIDA")
+        print("❌ Licencia inválida o revocada")
         exit()
 
-    print("✔ LICENCIA OK")
+    print("✔ Licencia válida")

@@ -27,9 +27,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
 from services.license_verifier import verificar_licencia_online
 
-from license_check import check_license
+from config.settings import settings
 
-check_license()
+print(settings.APP_NAME)
+print(settings.SUPABASE_URL)
+from license_check import verificar_inicio_app
+
+verificar_inicio_app()
 
 print("Iniciando Nexar Tienda...")
 
