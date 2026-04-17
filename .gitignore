@@ -70,3 +70,4 @@ respaldo/
 *.crt
 *.cache.json
 *_cache.jsonlicense_cache.json
+license_cache.json
