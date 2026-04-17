@@ -68,3 +68,5 @@ respaldo/
 *.pem
 *.key
 *.crt
+*.cache.json
+*_cache.json
