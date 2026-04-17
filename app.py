@@ -23,9 +23,13 @@ import pathlib
 import markdown
 import secrets
 
+from services.license_storage import guardar_licencia, cargar_licencia
+from nexar_licencias import validar_licencia
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
 from services.license_verifier import verificar_licencia_online
+from services.license_storage import cargar_licencia
 
 from config.settings import settings
 
@@ -46,6 +50,28 @@ def _read_version():
         return "0.1.0"
 
 APP_VERSION = _read_version()
+
+# ─── LICENCIA ─────────────────────────────────────────────────────────────────
+
+@app.before_request
+def check_license():
+    if request.path.startswith("/activar"):
+        return
+
+    licencia = cargar_licencia()
+
+    if not licencia:
+        return redirect("/activar")
+
+    ok = validar_licencia(
+        licencia,
+        PUBLIC_KEY,
+        "nexar-tienda",
+        debug=False
+    )
+
+    if not ok:
+        return redirect("/activar")
 
 # ─── FLASK SETUP ──────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -2536,3 +2562,31 @@ if __name__ == '__main__':
     print(f"╚═══════════════════════════════════════════════╝")
 
     app.run(debug=False, host='0.0.0.0', port=5000)
+
+
+# ─── ACTIVAR ────────────────────────────────────────────────────────────────────
+
+@app.route("/activar", methods=["GET"])
+def activar_form():
+    return render_template("activar.html")
+
+@app.route("/activar", methods=["POST"])
+def activar():
+    license_key = request.form.get("license_key")
+
+    licencia = {
+        "license_key": license_key
+    }
+
+    ok = validar_licencia(
+        licencia,
+        PUBLIC_KEY,
+        "nexar-tienda",
+        debug=True
+    )
+
+    if ok:
+        guardar_licencia(license_key)
+        return redirect("/")
+    else:
+        return render_template("activar.html", error="Licencia inválida")
