@@ -27,7 +27,7 @@ class Settings:
     # =========================
     # LICENCIAS
     # =========================
-    LICENSE_PRODUCT = os.getenv("LICENSE_PRODUCT", "nexar-app")
+    LICENSE_PRODUCT = os.getenv("LICENSE_PRODUCT", "nexar-tienda")
 
     # =========================
     # CACHE
