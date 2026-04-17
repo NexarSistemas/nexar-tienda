@@ -69,4 +69,4 @@ respaldo/
 *.key
 *.crt
 *.cache.json
-*_cache.json
+*_cache.jsonlicense_cache.json
