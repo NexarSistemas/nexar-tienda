@@ -36,12 +36,19 @@ def create_app() -> Flask:
             return config.get(key, default)
 
         def get_licencia_status() -> dict[str, Any]:
-            has_license = bool(cargar_licencia())
+            info = db.get_license_info()
+            demo = db.get_demo_status()
+            has_license = bool(cargar_licencia()) and info.get("tier") != "DEMO"
+            license_expired = info.get("tier") == "DEMO" or (
+                info.get("tier") == "MENSUAL_FULL" and bool(info.get("full_vencido"))
+            )
             return {
                 "es_demo": not has_license,
-                "vencido": False,
-                "tier": "ACTIVA" if has_license else "DEMO",
-                "dias_restantes": 0 if has_license else 30,
+                "vencido": demo.get("vencido", False) if not has_license else license_expired,
+                "tier": info.get("tier", "DEMO") if has_license else "DEMO",
+                "dias_restantes": 0 if has_license else demo.get("dias_restantes", 0),
+                "support": info.get("support", False),
+                "updates": info.get("updates", False),
             }
 
         return {
@@ -105,10 +112,15 @@ def create_app() -> Flask:
 
         licencia = cargar_licencia()
         if not licencia:
+            demo_status = db.get_demo_status()
+            if not demo_status.get("vencido"):
+                return None
             return redirect("/licencia")
 
         ok, _ = validate_saved_license(debug=True)
         if not ok:
+            if db.get_license_info().get("tier") == "BASICA":
+                return None
             return redirect("/licencia")
 
         return None

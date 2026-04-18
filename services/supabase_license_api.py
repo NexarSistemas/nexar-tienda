@@ -11,6 +11,31 @@ from typing import Any
 import requests
 
 PRODUCTO_DEFAULT = os.getenv("LICENSE_PRODUCT", "nexar-tienda")
+PLAN_CONFIG = {
+    "DEMO": {
+        "duration_days": 30,
+        "support": False,
+        "updates": False,
+        "limits": {"productos": None, "clientes": None, "proveedores": None},
+    },
+    "BASICA": {
+        "duration_days": None,
+        "support": False,
+        "updates": False,
+        "limits": {"productos": 200, "clientes": 100, "proveedores": 50},
+    },
+    "MENSUAL_FULL": {
+        "duration_days": 30,
+        "support": True,
+        "updates": True,
+        "limits": {"productos": None, "clientes": None, "proveedores": None},
+    },
+}
+
+
+def normalize_plan(plan: str = "") -> str:
+    raw = (plan or "BASICA").strip().upper().replace("-", "_").replace(" ", "_")
+    return {"PRO": "MENSUAL_FULL", "FULL": "MENSUAL_FULL", "BASIC": "BASICA"}.get(raw, raw if raw in PLAN_CONFIG else "BASICA")
 
 
 def _clean_base_url(url: str) -> str:
@@ -81,19 +106,30 @@ def generate_activation_id(user_hint: str = "") -> tuple[str, dict[str, str]]:
     return activation_id, details
 
 
-def create_license(usuario: str = "", producto: str = PRODUCTO_DEFAULT, dias: int = 365) -> tuple[bool, str, dict[str, Any] | None]:
+def create_license(usuario: str = "", producto: str = PRODUCTO_DEFAULT, dias: int = None, plan: str = "BASICA") -> tuple[bool, str, dict[str, Any] | None]:
     if not is_configured():
         return False, "Falta configurar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY/ANON_KEY.", None
+
+    plan = normalize_plan(plan)
+    cfg = PLAN_CONFIG[plan]
+    expira = ""
+    if cfg["duration_days"] is not None:
+        expira = (date.today() + timedelta(days=max(1, int(dias or cfg["duration_days"])))).isoformat()
 
     payload = {
         "license_key": f"NXR-{secrets.token_hex(4).upper()}",
         "producto": producto,
         "usuario": usuario or "Cliente",
+        "plan": plan,
+        "tier": plan,
         "activa": True,
-        "expira": (date.today() + timedelta(days=max(1, dias))).isoformat(),
+        "expira": expira or None,
         "hwid": "",
         "hwids": [],
         "max_devices": 1,
+        "support": cfg["support"],
+        "updates": cfg["updates"],
+        "limits": cfg["limits"],
     }
 
     resp = requests.post(_table_url(), headers=_headers(), json=payload, timeout=12)

@@ -7,10 +7,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 LICENSE_FILE = BASE_DIR / "license.json"
 
 
-def guardar_licencia(license_key):
-    data = {
-        "license_key": license_key
-    }
+def guardar_licencia(license_key, license_data=None):
+    data = dict(license_data or {})
+    data["license_key"] = license_key
 
     try:
         with open(LICENSE_FILE, "w", encoding="utf-8") as f:

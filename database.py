@@ -25,6 +25,8 @@ TIER_LIMITS = {
         "clientes": None,
         "proveedores": None,
         "dias_prueba": 30,
+        "support": False,
+        "updates": False,
         "descripcion": "Periodo de prueba (30 dias)"
     },
     "BASICA": {
@@ -32,16 +34,35 @@ TIER_LIMITS = {
         "clientes": 100,        # max 100 clientes
         "proveedores": 50,      # max 50 proveedores
         "dias_prueba": None,
-        "descripcion": "Licencia Basica"
+        "support": False,
+        "updates": False,
+        "descripcion": "Licencia Basica permanente"
     },
-    "PRO": {
+    "MENSUAL_FULL": {
         "productos": None,      # ilimitado
         "clientes": None,
         "proveedores": None,
         "dias_prueba": None,
-        "descripcion": "Licencia Profesional"
+        "support": True,
+        "updates": True,
+        "descripcion": "Mensual Full (actualizaciones y soporte)"
     },
 }
+TIER_LIMITS["PRO"] = TIER_LIMITS["MENSUAL_FULL"]
+
+
+def normalize_license_plan(plan: str = None) -> str:
+    raw = (plan or "BASICA").strip().upper().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "BASIC": "BASICA",
+        "BASICO": "BASICA",
+        "TDA_BASICA": "BASICA",
+        "FULL": "MENSUAL_FULL",
+        "MENSUAL": "MENSUAL_FULL",
+        "PRO": "MENSUAL_FULL",
+        "TDA_PRO": "MENSUAL_FULL",
+    }
+    return aliases.get(raw, raw if raw in TIER_LIMITS else "BASICA")
 
 DEFAULT_GASTO_CATEGORIAS = [
     {'nombre': 'Servicios (Luz/Agua/Internet)', 'tipo': 'Necesario'},
@@ -445,6 +466,8 @@ def init_db():
         ('license_owner_name', ''),         # Nombre titular
         ('license_owner_email', ''),        # Email titular
         ('license_plan', 'DEMO'),           # Plan del token
+        ('license_support', '0'),           # 1 = incluye soporte
+        ('license_updates', '0'),           # 1 = incluye actualizaciones
     ]
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO config VALUES (?,?)", (k, v))
@@ -800,21 +823,22 @@ def get_demo_status() -> dict:
 def get_license_info() -> dict:
     """Devuelve informacion completa de la licencia actual."""
     cfg = get_config()
-    tier = cfg.get('license_tier', 'DEMO')
+    tier = normalize_license_plan(cfg.get('license_tier', 'DEMO'))
     expires_at_str = cfg.get('license_expires_at', '')
     
-    # ── Calcular días restantes y alertas para el Plan PRO ──────────────────
-    pro_days = None
-    if tier == 'PRO' and expires_at_str:
+    # ── Calcular días restantes y alertas para el Plan Mensual Full ──────────
+    full_days = None
+    if tier == 'MENSUAL_FULL' and expires_at_str:
         try:
             expires_date = date.fromisoformat(expires_at_str)
-            pro_days = (expires_date - date.today()).days
+            full_days = (expires_date - date.today()).days
             
-            # Si ya venció hoy, forzar degradación efectiva a BASICA si corresponde
-            if pro_days < 0 and cfg.get('basica_activada', '0') == '1':
-                tier = 'BASICA'
+            if full_days < 0:
+                tier = 'BASICA' if cfg.get('basica_activada', '0') == '1' else 'DEMO'
         except Exception:
             pass
+
+    limits = TIER_LIMITS.get(tier, TIER_LIMITS["DEMO"])
 
     return {
         'type':        cfg.get('license_type', 'TDA_BASICA'),
@@ -822,20 +846,54 @@ def get_license_info() -> dict:
         'key':         cfg.get('license_key', ''),
         'owner_name':  cfg.get('license_owner_name', ''),
         'owner_email': cfg.get('license_owner_email', ''),
-        'plan':        cfg.get('license_plan', tier),
+        'plan':        normalize_license_plan(cfg.get('license_plan', tier)),
         'activated_at': cfg.get('license_activated_at', ''),
         'expires_at':  expires_at_str,
         'last_check':  cfg.get('license_last_check', ''),
         'max_machines': int(cfg.get('license_max_machines', '1')),
         'drive_index_id': cfg.get('license_drive_index_id', ''),
-        'limits':      TIER_LIMITS.get(tier, {}),
+        'limits':      limits,
         'demo_mode':   cfg.get('demo_mode', '1'),
+        'support':     cfg.get('license_support', '0') == '1' or bool(limits.get('support')),
+        'updates':     cfg.get('license_updates', '0') == '1' or bool(limits.get('updates')),
         # Campos de notificación de vencimiento
-        'pro_days':    pro_days,
-        'pro_vencido': pro_days is not None and pro_days < 0,
-        'pro_expires_soon':     pro_days == 5,
-        'pro_expires_tomorrow': pro_days == 1,
+        'pro_days':    full_days,
+        'pro_vencido': full_days is not None and full_days < 0,
+        'pro_expires_soon':     full_days == 5,
+        'pro_expires_tomorrow': full_days == 1,
+        'full_days': full_days,
+        'full_vencido': full_days is not None and full_days < 0,
     }
+
+
+def sync_license_from_remote(license_data: dict):
+    """Sincroniza una licencia Supabase/SDK al estado local de la app."""
+    if not license_data:
+        return
+
+    plan = normalize_license_plan(
+        license_data.get('plan') or license_data.get('tier') or license_data.get('license_plan')
+    )
+    expira = license_data.get('expira') or license_data.get('expires_at') or ''
+    if plan == 'BASICA':
+        expira = ''
+
+    updates = {
+        'demo_mode': '0' if plan != 'DEMO' else '1',
+        'license_type': license_data.get('type', plan),
+        'license_tier': plan,
+        'license_plan': plan,
+        'license_key': license_data.get('license_key', ''),
+        'license_activated_at': datetime.now().isoformat(),
+        'license_expires_at': expira,
+        'license_last_check': datetime.now().date().isoformat(),
+        'license_max_machines': str(license_data.get('max_devices') or license_data.get('max_machines') or 1),
+        'license_support': '1' if license_data.get('support') or TIER_LIMITS[plan].get('support') else '0',
+        'license_updates': '1' if license_data.get('updates') or TIER_LIMITS[plan].get('updates') else '0',
+    }
+    if plan == 'BASICA':
+        updates['basica_activada'] = '1'
+    set_config(updates)
 
 
 def validar_licencia_rsa(token_b64: str) -> tuple:
@@ -941,15 +999,15 @@ def activar_licencia(token_b64: str) -> tuple:
     if not ok:
         return False, msg
 
-    tier = data.get("tier", "BASICA")
+    tier = normalize_license_plan(data.get("tier", "BASICA"))
 
-    # ── Regla: PRO requiere BASICA previa ────────────────────────────────────
-    if tier == "PRO":
+    # ── Regla: Mensual Full requiere BASICA previa en el flujo legacy RSA ────
+    if tier == "MENSUAL_FULL":
         cfg = get_config()
         if cfg.get("basica_activada", "0") != "1":
             return (
                 False,
-                "Para activar la licencia PRO primero debés activar la licencia BÁSICA.\n"
+                "Para activar la licencia Mensual Full primero debés activar la licencia BÁSICA.\n"
                 "Contactá al desarrollador para obtener tu token BÁSICA.",
             )
 
@@ -976,8 +1034,7 @@ def activar_licencia(token_b64: str) -> tuple:
 
 def activate_license(tier: str, key: str = '', expires_at: str = ''):
     """Activa una licencia directamente por tier (uso interno/admin)."""
-    if tier not in TIER_LIMITS:
-        tier = 'DEMO'
+    tier = normalize_license_plan(tier)
     demo_val = '0' if tier != 'DEMO' else '1'
     set_config({
         'demo_mode':            demo_val,
@@ -987,6 +1044,8 @@ def activate_license(tier: str, key: str = '', expires_at: str = ''):
         'license_activated_at': datetime.now().isoformat(),
         'license_expires_at':   expires_at,
         'license_last_check':   datetime.now().date().isoformat(),
+        'license_support':      '1' if TIER_LIMITS[tier].get('support') else '0',
+        'license_updates':      '1' if TIER_LIMITS[tier].get('updates') else '0',
     })
 
 

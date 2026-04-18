@@ -70,10 +70,18 @@
       <div class="card-body">
         <form method="POST" action="{{ url_for('licencia_generar_desarrollador') }}" class="row g-2">
           <div class="col-md-6">
-            <label class="form-label">Días</label>
-            <input name="dias" type="number" class="form-control" value="365" min="1" max="3650">
+            <label class="form-label">Plan</label>
+            <select name="plan" class="form-select">
+              <option value="DEMO">Demo 30 días</option>
+              <option value="BASICA" selected>Básica permanente</option>
+              <option value="MENSUAL_FULL">Mensual full</option>
+            </select>
           </div>
           <div class="col-md-6">
+            <label class="form-label">Días</label>
+            <input name="dias" type="number" class="form-control" value="30" min="1" max="3650">
+          </div>
+          <div class="col-12">
             <label class="form-label">Usuario cliente</label>
             <input name="usuario" class="form-control" placeholder="Nombre cliente">
           </div>

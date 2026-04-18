@@ -30,6 +30,14 @@ def import_validar_licencia():
         return None
 
 
+def import_validar_licencia_detalle():
+    try:
+        module = _import_module("nexar_licencias")
+        return getattr(module, "validar_licencia_detalle", None)
+    except Exception:
+        return None
+
+
 def get_license_product() -> str:
     return os.getenv("LICENSE_PRODUCT", "nexar-tienda").strip() or "nexar-tienda"
 
@@ -59,26 +67,59 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
     if not license_key:
         return False, "Ingresá una licencia válida."
 
+    validar_detalle = import_validar_licencia_detalle()
     validar_licencia = import_validar_licencia()
-    if validar_licencia is None:
+    if validar_detalle is None and validar_licencia is None:
         return False, "No se pudo cargar el SDK nexar_licencias."
 
     try:
-        ok = bool(
-            validar_licencia(
+        if validar_detalle is not None:
+            result = validar_detalle(
                 {"license_key": license_key},
                 load_public_key(),
                 get_license_product(),
                 debug=debug,
             )
-        )
+            ok = bool(result.get("ok"))
+            license_data = result.get("license") or {}
+        else:
+            ok = bool(validar_licencia(
+                {"license_key": license_key},
+                load_public_key(),
+                get_license_product(),
+                debug=debug,
+            ))
+            license_data = {"license_key": license_key}
     except Exception as ex:
         return False, f"Error validando licencia: {ex}"
 
     if not ok:
         return False, "La licencia es inválida, expiró o fue revocada."
 
+    try:
+        import database as db
+
+        db.sync_license_from_remote(license_data)
+    except Exception:
+        pass
+
     return True, "Licencia validada correctamente."
+
+
+def get_license_details(license_key: str, debug: bool = False) -> dict:
+    validar_detalle = import_validar_licencia_detalle()
+    if validar_detalle is None:
+        return {}
+    try:
+        result = validar_detalle(
+            {"license_key": license_key},
+            load_public_key(),
+            get_license_product(),
+            debug=debug,
+        )
+        return result.get("license") if result.get("ok") else {}
+    except Exception:
+        return {}
 
 
 def validate_saved_license(debug: bool = False) -> tuple[bool, str]:

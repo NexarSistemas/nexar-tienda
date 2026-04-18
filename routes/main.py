@@ -40,6 +40,20 @@ def _validate_password(password: str) -> tuple[bool, str]:
     return True, ""
 
 
+def _limit_allows(kind: str) -> bool:
+    current_sql = {
+        "productos": "SELECT COUNT(*) FROM productos WHERE activo=1",
+        "clientes": "SELECT COUNT(*) FROM clientes WHERE activo=1",
+        "proveedores": "SELECT COUNT(*) FROM proveedores WHERE activo=1",
+    }[kind]
+    current = int(db.q(current_sql, fetchone=True)[0] or 0)
+    check = db.check_license_limits(kind, current + 1)
+    if not check["ok"]:
+        flash(f"⚠️ {check['message']}", "warning")
+        return False
+    return True
+
+
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -202,6 +216,8 @@ def productos():
 @login_required
 def producto_nuevo():
     if request.method == "POST":
+        if not _limit_allows("productos"):
+            return redirect(url_for("productos"))
         db.add_producto(request.form.to_dict())
         flash("✅ Producto creado.", "success")
         return redirect(url_for("productos"))
@@ -498,6 +514,8 @@ def clientes():
 @login_required
 def cliente_nuevo():
     if request.method == "POST":
+        if not _limit_allows("clientes"):
+            return redirect(url_for("clientes"))
         db.add_cliente(request.form.to_dict())
         return redirect(url_for("clientes"))
     return render_template("cliente_form.html", cliente=None, accion="Crear")
@@ -538,13 +556,16 @@ def cliente_eliminar(cid):
 @main_bp.route("/proveedores")
 @login_required
 def proveedores():
-    return render_template("proveedores.html", proveedores=db.get_proveedores(active_only=False) if False else db.get_proveedores(activo_only=False, search=request.args.get("q", "")), buscar=request.args.get("q", ""))
+    buscar = request.args.get("q", "")
+    return render_template("proveedores.html", proveedores=db.get_proveedores(activo_only=False, search=buscar), buscar=buscar)
 
 
 @main_bp.route("/proveedores/nuevo", methods=["GET", "POST"])
 @login_required
 def proveedor_nuevo():
     if request.method == "POST":
+        if not _limit_allows("proveedores"):
+            return redirect(url_for("proveedores"))
         db.add_proveedor(request.form.to_dict())
         return redirect(url_for("proveedores"))
     return render_template("proveedor_form.html", proveedor=None, accion="Crear")
@@ -689,9 +710,10 @@ def licencia():
 @main_bp.route("/licencia/activar", methods=["POST"])
 @admin_required
 def licencia_activar():
+    license_key = request.form.get("license_key", "")
     ok, msg = validate_license_key(request.form.get("license_key", ""), debug=True)
     if ok:
-        guardar_licencia(request.form.get("license_key", ""))
+        guardar_licencia(license_key, db.get_license_info())
         flash(f"✅ {msg} La licencia quedó vinculada a este equipo.", "success")
     else:
         flash(f"❌ {msg}", "danger")
@@ -705,7 +727,12 @@ def licencia_generar_desarrollador():
     if not secret_expected or request.form.get("dev_secret", "").strip() != secret_expected:
         flash("❌ Clave de desarrollador inválida o no configurada.", "danger")
         return redirect(url_for("licencia"))
-    ok, msg, row = create_license(usuario=request.form.get("usuario", "Cliente"), producto=get_license_product(), dias=int(request.form.get("dias", "365") or 365))
+    ok, msg, row = create_license(
+        usuario=request.form.get("usuario", "Cliente"),
+        producto=get_license_product(),
+        dias=int(request.form.get("dias", "30") or 30),
+        plan=request.form.get("plan", "BASICA"),
+    )
     flash(f"✅ {msg} Key emitida: {row.get('license_key', '—')}" if ok and row else f"❌ {msg}")
     return redirect(url_for("licencia"))
 
