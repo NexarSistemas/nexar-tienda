@@ -94,7 +94,16 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
         return False, f"Error validando licencia: {ex}"
 
     if not ok:
-        return False, "La licencia es inválida, expiró o fue revocada."
+        reason = result.get("reason") if validar_detalle is not None else ""
+        messages = {
+            "expirada": "La licencia expiró. Pedí la renovación al desarrollador.",
+            "revocada": "La licencia fue revocada o está desactivada.",
+            "limite_dispositivos": "La licencia alcanzó el límite de dispositivos. Pedí reset o más equipos al desarrollador.",
+            "no_se_pudo_vincular_dispositivo": "La licencia existe, pero no se pudo vincular este equipo. Intentá de nuevo o pedí reset al desarrollador.",
+            "no_existe": "No existe una licencia activa con esa clave para este producto.",
+            "sin_cache": "No se pudo validar online y no hay cache offline para esta licencia.",
+        }
+        return False, messages.get(reason, "La licencia es inválida, expiró o fue revocada.")
 
     try:
         import database as db
