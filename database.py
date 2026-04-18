@@ -653,6 +653,8 @@ def _seed_changelog(c):
          'Implementación de un mecanismo que persiste la fecha de inicio del período de prueba en un archivo externo (`telemetry.bin`), evitando que el contador de la demo se reinicie al reinstalar la aplicación o eliminar la base de datos.'),
         ('1.24.0', '2026-04-18', 'Nueva función', 'Licencias Supabase y Build Distribuible',
          'Integración del SDK nexar_licencias en builds PyInstaller, soporte de licencias Demo/Básica/Mensual Full con multi-PC, recuperación obligatoria para usuarios nuevos e instalador Windows con aceptación de licencia.'),
+        ('1.24.1', '2026-04-18', 'Seguridad', 'Hardening de Seguridad',
+         'Protección CSRF centralizada, hash seguro para respuestas de recuperación, permisos restrictivos para archivos locales y restauración de respaldos con validación SQLite y backup previo.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(

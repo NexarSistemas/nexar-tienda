@@ -4,6 +4,20 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.24.1] - 18 Abril 2026 - Hardening de Seguridad
+
+### 🛡️ Seguridad
+- **Protección CSRF centralizada**: Validación obligatoria de token para operaciones `POST`, `PUT`, `PATCH` y `DELETE`, con inyección automática en formularios y llamadas `fetch` same-origin.
+- **Recuperación de cuenta reforzada**: Las respuestas secretas nuevas se guardan con hash seguro de Werkzeug, manteniendo compatibilidad con hashes SHA256 legados y rehash automático al verificarse correctamente.
+- **Archivos locales protegidos**: `secret.key`, licencias, cache offline, base SQLite y respaldos se crean con permisos restrictivos en sistemas POSIX.
+- **Respaldos más seguros**: La restauración valida que el archivo sea SQLite, limita rutas al directorio de respaldos y crea una copia de seguridad automática antes de sobrescribir la base activa.
+
+### 🛠️ Cambios Técnicos
+- **Scripts legacy alineados**: `activar_licencia.py`, `license_check.py` y `license_manager.py` usan el flujo actual de `services/license_*` y guardan datos en la carpeta runtime segura.
+- **Higiene de release**: Refuerzo de `.gitignore` para evitar que secretos, bases locales, caches, llaves y artefactos de build entren al control de versiones.
+
+---
+
 ## [1.24.0] - 18 Abril 2026 - Licencias Supabase y Build Distribuible
 
 ### ✨ Características Nuevas
