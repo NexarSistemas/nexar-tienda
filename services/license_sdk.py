@@ -99,6 +99,11 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
     try:
         import database as db
 
+        plan = db.normalize_license_plan(
+            license_data.get("plan") or license_data.get("tier") or license_data.get("license_plan")
+        )
+        if plan == "MENSUAL_FULL" and db.get_config().get("basica_activada", "0") != "1":
+            return False, "Para activar Mensual Full primero tenés que activar una licencia Básica en esta instalación."
         db.sync_license_from_remote(license_data)
     except Exception:
         pass

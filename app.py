@@ -49,6 +49,9 @@ def create_app() -> Flask:
                 "dias_restantes": 0 if has_license else demo.get("dias_restantes", 0),
                 "support": info.get("support", False),
                 "updates": info.get("updates", False),
+                "full_days": info.get("full_days"),
+                "full_expires_soon": bool(info.get("pro_expires_soon")),
+                "full_expires_tomorrow": bool(info.get("pro_expires_tomorrow")),
             }
 
         return {
