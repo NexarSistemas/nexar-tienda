@@ -24,13 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout SDK de licencias
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
-          path: nexar_licencias_src
-          token: ${{ secrets.NEXAR_SDK_TOKEN || github.token }}
-
       - name: Obtener y validar versión
         id: ver
         run: |
@@ -52,6 +45,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validar token del SDK de licencias
+        env:
+          NEXAR_SDK_TOKEN: ${{ secrets.NEXAR_SDK_TOKEN }}
+          NEXAR_LICENCIAS_REPOSITORY: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
+        run: |
+          if [ -z "$NEXAR_SDK_TOKEN" ]; then
+            echo "❌ ERROR: El secret NEXAR_SDK_TOKEN no está configurado."
+            echo "   Este workflow necesita leer el repositorio privado: $NEXAR_LICENCIAS_REPOSITORY"
+            echo "   Crear un PAT con permiso de lectura sobre ese repo y guardarlo en:"
+            echo "   Settings → Secrets and variables → Actions → New repository secret"
+            echo "   Nombre: NEXAR_SDK_TOKEN"
+            exit 1
+          fi
+
+      - name: Checkout SDK de licencias
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
+          path: nexar_licencias_src
+          token: ${{ secrets.NEXAR_SDK_TOKEN }}
 
       - name: Instalar dependencias del sistema
         run: |
@@ -163,12 +177,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validar token del SDK de licencias
+        shell: pwsh
+        env:
+          NEXAR_SDK_TOKEN: ${{ secrets.NEXAR_SDK_TOKEN }}
+          NEXAR_LICENCIAS_REPOSITORY: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
+        run: |
+          if (-not $env:NEXAR_SDK_TOKEN) {
+            Write-Error "❌ ERROR: El secret NEXAR_SDK_TOKEN no está configurado."
+            Write-Host "   Este workflow necesita leer el repositorio privado: $env:NEXAR_LICENCIAS_REPOSITORY"
+            Write-Host "   Crear un PAT con permiso de lectura sobre ese repo y guardarlo en:"
+            Write-Host "   Settings → Secrets and variables → Actions → New repository secret"
+            Write-Host "   Nombre: NEXAR_SDK_TOKEN"
+            exit 1
+          }
+
       - name: Checkout SDK de licencias
         uses: actions/checkout@v4
         with:
           repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
           path: nexar_licencias_src
-          token: ${{ secrets.NEXAR_SDK_TOKEN || github.token }}
+          token: ${{ secrets.NEXAR_SDK_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
