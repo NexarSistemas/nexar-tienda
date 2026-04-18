@@ -1,32 +1,25 @@
-from flask import Blueprint, render_template, request, redirect
-from nexar_licencias import validar_licencia
+from flask import Blueprint, flash, redirect, request
+
 from services.license_storage import guardar_licencia
+from services.license_sdk import validate_license_key
 
 licencia_bp = Blueprint("licencia", __name__)
 
 
 @licencia_bp.route("/activar", methods=["GET"])
 def activar_form():
-    return render_template("activar.html")
+    return redirect("/licencia")
 
 
 @licencia_bp.route("/activar", methods=["POST"])
 def activar():
-    license_key = request.form.get("license_key")
-
-    licencia = {
-        "license_key": license_key
-    }
-
-    ok = validar_licencia(
-        licencia,
-        None,
-        "nexar-tienda",
-        debug=True
-    )
+    license_key = request.form.get("license_key", "").strip()
+    ok, msg = validate_license_key(license_key, debug=True)
 
     if ok:
         guardar_licencia(license_key)
+        flash("✅ Licencia activada correctamente.")
         return redirect("/")
-    else:
-        return render_template("activar.html", error="Licencia inválida")
+
+    flash(f"❌ {msg}")
+    return redirect("/licencia")

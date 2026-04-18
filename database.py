@@ -15,6 +15,7 @@ import sys
 import hashlib
 import json
 from datetime import datetime, date, timedelta
+from werkzeug.security import check_password_hash, generate_password_hash
 
 # ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
 # Define limites de productos, clientes y proveedores por tipo de licencia
@@ -24,6 +25,8 @@ TIER_LIMITS = {
         "clientes": None,
         "proveedores": None,
         "dias_prueba": 30,
+        "support": False,
+        "updates": False,
         "descripcion": "Periodo de prueba (30 dias)"
     },
     "BASICA": {
@@ -31,16 +34,35 @@ TIER_LIMITS = {
         "clientes": 100,        # max 100 clientes
         "proveedores": 50,      # max 50 proveedores
         "dias_prueba": None,
-        "descripcion": "Licencia Basica"
+        "support": False,
+        "updates": False,
+        "descripcion": "Licencia Basica permanente"
     },
-    "PRO": {
+    "MENSUAL_FULL": {
         "productos": None,      # ilimitado
         "clientes": None,
         "proveedores": None,
         "dias_prueba": None,
-        "descripcion": "Licencia Profesional"
+        "support": True,
+        "updates": True,
+        "descripcion": "Mensual Full (actualizaciones y soporte)"
     },
 }
+TIER_LIMITS["PRO"] = TIER_LIMITS["MENSUAL_FULL"]
+
+
+def normalize_license_plan(plan: str = None) -> str:
+    raw = (plan or "BASICA").strip().upper().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "BASIC": "BASICA",
+        "BASICO": "BASICA",
+        "TDA_BASICA": "BASICA",
+        "FULL": "MENSUAL_FULL",
+        "MENSUAL": "MENSUAL_FULL",
+        "PRO": "MENSUAL_FULL",
+        "TDA_PRO": "MENSUAL_FULL",
+    }
+    return aliases.get(raw, raw if raw in TIER_LIMITS else "BASICA")
 
 DEFAULT_GASTO_CATEGORIAS = [
     {'nombre': 'Servicios (Luz/Agua/Internet)', 'tipo': 'Necesario'},
@@ -57,12 +79,21 @@ DEFAULT_GASTO_CATEGORIAS = [
 def _get_app_dir():
     """
     Retorna el directorio base para datos persistentes.
-    - En modo congelado (PyInstaller .exe): usa la carpeta del ejecutable.
-      Ej: C:\\Users\\usuario\\AppData\\Roaming\\Nexar Tienda\\
+    - En modo congelado (PyInstaller): usa una carpeta de datos del usuario.
+      Windows: %APPDATA%\\Nexar Tienda\\
+      Linux: ~/.local/share/nexar-tienda/
     - En desarrollo normal: usa la carpeta de este archivo.
     """
+    try:
+        from services.runtime_config import app_data_dir
+
+        return str(app_data_dir())
+    except Exception:
+        pass
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
+        if os.name == "nt":
+            return os.path.join(os.getenv("APPDATA", os.path.expanduser("~")), "Nexar Tienda")
+        return os.path.join(os.path.expanduser("~"), ".local", "share", "nexar-tienda")
     return os.path.dirname(os.path.abspath(__file__))
 
 DB_PATH = os.path.join(_get_app_dir(), 'tienda.db')
@@ -444,6 +475,8 @@ def init_db():
         ('license_owner_name', ''),         # Nombre titular
         ('license_owner_email', ''),        # Email titular
         ('license_plan', 'DEMO'),           # Plan del token
+        ('license_support', '0'),           # 1 = incluye soporte
+        ('license_updates', '0'),           # 1 = incluye actualizaciones
     ]
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO config VALUES (?,?)", (k, v))
@@ -607,6 +640,8 @@ def _seed_changelog(c):
          'Implementación de degradación automática a BÁSICA al vencer PRO y sistema de alertas preventivas (5 días y 1 día antes).'),
         ('1.23.0', '2026-04-15', 'Nueva función', 'Anti-Reinstalación de Demo',
          'Implementación de un mecanismo que persiste la fecha de inicio del período de prueba en un archivo externo (`telemetry.bin`), evitando que el contador de la demo se reinicie al reinstalar la aplicación o eliminar la base de datos.'),
+        ('1.24.0', '2026-04-18', 'Nueva función', 'Licencias Supabase y Build Distribuible',
+         'Integración del SDK nexar_licencias en builds PyInstaller, soporte de licencias Demo/Básica/Mensual Full con multi-PC, recuperación obligatoria para usuarios nuevos e instalador Windows con aceptación de licencia.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -799,21 +834,22 @@ def get_demo_status() -> dict:
 def get_license_info() -> dict:
     """Devuelve informacion completa de la licencia actual."""
     cfg = get_config()
-    tier = cfg.get('license_tier', 'DEMO')
+    tier = normalize_license_plan(cfg.get('license_tier', 'DEMO'))
     expires_at_str = cfg.get('license_expires_at', '')
     
-    # ── Calcular días restantes y alertas para el Plan PRO ──────────────────
-    pro_days = None
-    if tier == 'PRO' and expires_at_str:
+    # ── Calcular días restantes y alertas para el Plan Mensual Full ──────────
+    full_days = None
+    if tier == 'MENSUAL_FULL' and expires_at_str:
         try:
             expires_date = date.fromisoformat(expires_at_str)
-            pro_days = (expires_date - date.today()).days
+            full_days = (expires_date - date.today()).days
             
-            # Si ya venció hoy, forzar degradación efectiva a BASICA si corresponde
-            if pro_days < 0 and cfg.get('basica_activada', '0') == '1':
-                tier = 'BASICA'
+            if full_days < 0:
+                tier = 'BASICA' if cfg.get('basica_activada', '0') == '1' else 'DEMO'
         except Exception:
             pass
+
+    limits = TIER_LIMITS.get(tier, TIER_LIMITS["DEMO"])
 
     return {
         'type':        cfg.get('license_type', 'TDA_BASICA'),
@@ -821,20 +857,54 @@ def get_license_info() -> dict:
         'key':         cfg.get('license_key', ''),
         'owner_name':  cfg.get('license_owner_name', ''),
         'owner_email': cfg.get('license_owner_email', ''),
-        'plan':        cfg.get('license_plan', tier),
+        'plan':        normalize_license_plan(cfg.get('license_plan', tier)),
         'activated_at': cfg.get('license_activated_at', ''),
         'expires_at':  expires_at_str,
         'last_check':  cfg.get('license_last_check', ''),
         'max_machines': int(cfg.get('license_max_machines', '1')),
         'drive_index_id': cfg.get('license_drive_index_id', ''),
-        'limits':      TIER_LIMITS.get(tier, {}),
+        'limits':      limits,
         'demo_mode':   cfg.get('demo_mode', '1'),
+        'support':     cfg.get('license_support', '0') == '1' or bool(limits.get('support')),
+        'updates':     cfg.get('license_updates', '0') == '1' or bool(limits.get('updates')),
         # Campos de notificación de vencimiento
-        'pro_days':    pro_days,
-        'pro_vencido': pro_days is not None and pro_days < 0,
-        'pro_expires_soon':     pro_days == 5,
-        'pro_expires_tomorrow': pro_days == 1,
+        'pro_days':    full_days,
+        'pro_vencido': full_days is not None and full_days < 0,
+        'pro_expires_soon':     full_days == 5,
+        'pro_expires_tomorrow': full_days == 1,
+        'full_days': full_days,
+        'full_vencido': full_days is not None and full_days < 0,
     }
+
+
+def sync_license_from_remote(license_data: dict):
+    """Sincroniza una licencia Supabase/SDK al estado local de la app."""
+    if not license_data:
+        return
+
+    plan = normalize_license_plan(
+        license_data.get('plan') or license_data.get('tier') or license_data.get('license_plan')
+    )
+    expira = license_data.get('expira') or license_data.get('expires_at') or ''
+    if plan == 'BASICA':
+        expira = ''
+
+    updates = {
+        'demo_mode': '0' if plan != 'DEMO' else '1',
+        'license_type': license_data.get('type', plan),
+        'license_tier': plan,
+        'license_plan': plan,
+        'license_key': license_data.get('license_key', ''),
+        'license_activated_at': datetime.now().isoformat(),
+        'license_expires_at': expira,
+        'license_last_check': datetime.now().date().isoformat(),
+        'license_max_machines': str(license_data.get('max_devices') or license_data.get('max_machines') or 1),
+        'license_support': '1' if license_data.get('support') or TIER_LIMITS[plan].get('support') else '0',
+        'license_updates': '1' if license_data.get('updates') or TIER_LIMITS[plan].get('updates') else '0',
+    }
+    if plan == 'BASICA':
+        updates['basica_activada'] = '1'
+    set_config(updates)
 
 
 def validar_licencia_rsa(token_b64: str) -> tuple:
@@ -940,15 +1010,15 @@ def activar_licencia(token_b64: str) -> tuple:
     if not ok:
         return False, msg
 
-    tier = data.get("tier", "BASICA")
+    tier = normalize_license_plan(data.get("tier", "BASICA"))
 
-    # ── Regla: PRO requiere BASICA previa ────────────────────────────────────
-    if tier == "PRO":
+    # ── Regla: Mensual Full requiere BASICA previa en el flujo legacy RSA ────
+    if tier == "MENSUAL_FULL":
         cfg = get_config()
         if cfg.get("basica_activada", "0") != "1":
             return (
                 False,
-                "Para activar la licencia PRO primero debés activar la licencia BÁSICA.\n"
+                "Para activar la licencia Mensual Full primero debés activar la licencia BÁSICA.\n"
                 "Contactá al desarrollador para obtener tu token BÁSICA.",
             )
 
@@ -975,8 +1045,7 @@ def activar_licencia(token_b64: str) -> tuple:
 
 def activate_license(tier: str, key: str = '', expires_at: str = ''):
     """Activa una licencia directamente por tier (uso interno/admin)."""
-    if tier not in TIER_LIMITS:
-        tier = 'DEMO'
+    tier = normalize_license_plan(tier)
     demo_val = '0' if tier != 'DEMO' else '1'
     set_config({
         'demo_mode':            demo_val,
@@ -986,6 +1055,8 @@ def activate_license(tier: str, key: str = '', expires_at: str = ''):
         'license_activated_at': datetime.now().isoformat(),
         'license_expires_at':   expires_at,
         'license_last_check':   datetime.now().date().isoformat(),
+        'license_support':      '1' if TIER_LIMITS[tier].get('support') else '0',
+        'license_updates':      '1' if TIER_LIMITS[tier].get('updates') else '0',
     })
 
 
@@ -1198,17 +1269,27 @@ def get_usuario_by_username(username):
 
 def verify_password(password, password_hash):
     """Verifica contraseña contra hash."""
+    if not password_hash:
+        return False
+    try:
+        if password_hash.startswith(("pbkdf2:", "scrypt:")):
+            return check_password_hash(password_hash, password)
+    except Exception:
+        pass
     return hashlib.sha256(password.encode()).hexdigest() == password_hash
 
 
 def get_usuarios():
     """Devuelve todos los usuarios."""
-    return q("SELECT id,username,rol,nombre_completo,activo FROM usuarios ORDER BY nombre_completo")
+    return q(
+        """SELECT id,username,rol,nombre_completo,activo,security_question,security_answer_hash
+        FROM usuarios ORDER BY nombre_completo"""
+    )
 
 
 def add_usuario(username, password, rol, nombre_completo, security_question=None, security_answer=None):
     """Agrega un nuevo usuario."""
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    password_hash = generate_password_hash(password)
     ans_hash = None
     if security_answer:
         ans_hash = hashlib.sha256(security_answer.strip().lower().encode()).hexdigest()
@@ -1220,11 +1301,47 @@ def add_usuario(username, password, rol, nombre_completo, security_question=None
     )
 
 
+def count_usuarios():
+    """Devuelve la cantidad de usuarios creados."""
+    row = q("SELECT COUNT(*) as total FROM usuarios", fetchone=True)
+    return int(row["total"] if row else 0)
+
+
+def count_admins_activos(exclude_uid=None):
+    """Cuenta administradores activos, opcionalmente excluyendo un usuario."""
+    params = []
+    where = "WHERE activo=1 AND rol IN ('Administrador','admin')"
+    if exclude_uid is not None:
+        where += " AND id<>?"
+        params.append(exclude_uid)
+    row = q(f"SELECT COUNT(*) as total FROM usuarios {where}", params, fetchone=True)
+    return int(row["total"] if row else 0)
+
+
+def set_password_for_username(username, password):
+    """Actualiza la contraseña de un usuario por username."""
+    q(
+        "UPDATE usuarios SET password_hash=? WHERE username=?",
+        (generate_password_hash(password), username),
+        commit=True,
+    )
+
+
 def update_usuario(uid, data):
     """Actualiza usuario."""
     updates = ["rol=?", "nombre_completo=?", "activo=?"]
     params = [data.get('rol', 'usuario'), data.get('nombre_completo', ''), int(data.get('activo', 1)), uid]
     q(f"UPDATE usuarios SET {','.join(updates)} WHERE id=?", params, fetchall=False, commit=True)
+
+
+def set_usuario_activo(uid, activo):
+    """Activa o desactiva un usuario."""
+    q("UPDATE usuarios SET activo=? WHERE id=?", (1 if activo else 0, uid), commit=True)
+
+
+def delete_usuario(uid):
+    """Elimina definitivamente un usuario."""
+    q("DELETE FROM usuarios WHERE id=?", (uid,), commit=True)
 
 
 def update_perfil(uid, data):
@@ -1234,7 +1351,7 @@ def update_perfil(uid, data):
     
     if data.get('password'):
         sets.append("password_hash=?")
-        params.append(hashlib.sha256(data['password'].encode()).hexdigest())
+        params.append(generate_password_hash(data['password']))
         
     if data.get('security_question'):
         sets.append("security_question=?")
@@ -1246,6 +1363,16 @@ def update_perfil(uid, data):
         
     params.append(uid)
     q(f"UPDATE usuarios SET {','.join(sets)} WHERE id=?", params, commit=True)
+
+
+def delete_cliente(cid):
+    """Desactiva un cliente sin borrar historial."""
+    q("UPDATE clientes SET activo=0 WHERE id=?", (cid,), commit=True)
+
+
+def delete_proveedor(pid):
+    """Desactiva un proveedor sin borrar historial."""
+    q("UPDATE proveedores SET activo=0 WHERE id=?", (pid,), commit=True)
 
 
 def has_permission(role_name, perm_key):
@@ -1945,6 +2072,28 @@ def add_gasto(data):
          necesario, data.get('comprobante', ''), data.get('observaciones', '')),
         fetchall=False, commit=True
     )
+
+
+def update_gasto(gid, data):
+    """Actualiza un gasto."""
+    categoria = data.get('categoria', '')
+    necesario = normalizar_tipo_gasto(data.get('necesario'))
+    if 'necesario' not in data:
+        necesario = get_tipo_gasto_categoria(categoria)
+    q(
+        """UPDATE gastos SET fecha=?,tipo=?,categoria=?,descripcion=?,monto=?,iva_incluido=?,
+        medio_pago=?,proveedor=?,necesario=?,comprobante=?,observaciones=? WHERE id=?""",
+        (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('tipo', 'Gasto'),
+         categoria, data.get('descripcion', ''), float(data.get('monto', 0)),
+         int(data.get('iva_incluido', 1)), data.get('medio_pago', 'Efectivo'), data.get('proveedor', ''),
+         necesario, data.get('comprobante', ''), data.get('observaciones', ''), gid),
+        commit=True
+    )
+
+
+def delete_gasto(gid):
+    """Elimina un gasto."""
+    q("DELETE FROM gastos WHERE id=?", (gid,), commit=True)
 
 
 # ─── TEMPORADAS ──────────────────────────────────────────────────────────────

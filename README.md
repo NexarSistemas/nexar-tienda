@@ -1,4 +1,4 @@
-# 🎁 Nexar Tienda v1.23.0
+# 🎁 Nexar Tienda v1.24.0
 
 Sistema Integral de Gestión Comercial diseñado para tiendas de regalos, bijouterie, marroquinería y productos estacionales. Optimizado para un funcionamiento fluido, seguro y con una interfaz estética de alto nivel.
 
@@ -73,12 +73,14 @@ El launcher buscará automáticamente un puerto libre (rango 5200-5999) e inicia
 
 - **Acceso RBAC**: Control de acceso basado en roles (Administrador, Encargado, Vendedor).
 - **Seguridad de Cuentas**: Validación de contraseñas fuertes y recuperación mediante pregunta secreta.
-- **Licencia RSA**: Sistema de activación offline mediante tokens Base64 firmados digitalmente (RSA-2048), vinculados al Hardware ID del equipo.
+- **Licenciamiento Supabase + SDK Nexar**: Activación online mediante `nexar_licencias`, vinculación por HWID y cache offline para continuidad operativa.
 - **Tiers de Licencia**:
     - **DEMO**: 30 días de prueba con funcionalidad completa.
     - **BÁSICA**: Pago único, límites de catálogo estándar.
-    - **PRO**: Suscripción mensual, recursos ilimitados y funciones BI avanzadas. Al vencer, el sistema degrada automáticamente a BÁSICA sin pérdida de datos.
+    - **MENSUAL FULL**: Suscripción mensual con uso completo, actualizaciones y soporte. Al vencer, el sistema degrada automáticamente a BÁSICA sin pérdida de datos si existe activación básica.
     - **Anti-Reinstalación**: El contador de la demo no se reinicia al reinstalar la aplicación.
+- **Multi-PC**: Las licencias soportan `max_devices` y lista de equipos autorizados.
+- **Recuperación Obligatoria**: Los usuarios creados por el administrador deben configurar pregunta y respuesta secreta al primer inicio.
 
 ---
 
@@ -96,6 +98,26 @@ El launcher buscará automáticamente un puerto libre (rango 5200-5999) e inicia
 - **Frontend**: Bootstrap 5.3, Inter Font, Font Awesome 6.
 - **Base de Datos**: SQLite 3 con integridad referencial.
 - **Desktop Wrapper**: pywebview para una experiencia de usuario nativa.
+
+---
+
+## 🚀 Builds e Instaladores
+
+Los instaladores se generan con GitHub Actions, PyInstaller e Inno Setup.
+Para que la activación online funcione sin que el usuario instale nada extra,
+el build instala el SDK `nexar_licencias` e incluye una configuración pública
+de runtime.
+
+Secrets/variables esperados en GitHub:
+
+- `PUBLIC_KEY`: contenido de `keys/public_key.pem`.
+- `SUPABASE_URL`: URL pública del proyecto Supabase.
+- `SUPABASE_ANON_KEY`: clave anon/pública con políticas RLS limitadas para validar licencias.
+- `NEXAR_SDK_TOKEN`: solo si el repo `nexar_licencias` es privado y el `GITHUB_TOKEN` no puede leerlo.
+- Variable opcional `NEXAR_LICENCIAS_REPOSITORY`: repo del SDK, por defecto `<owner>/nexar_licencias`.
+
+No se debe incluir `SUPABASE_SERVICE_ROLE_KEY` en instaladores, `.spec`, `.iss`
+ni binarios de cliente. Esa clave queda reservada para `nexar-admin`.
 
 ---
 

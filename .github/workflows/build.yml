@@ -24,10 +24,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Obtener versión desde CHANGELOG
+      - name: Checkout SDK de licencias
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
+          path: nexar_licencias_src
+          token: ${{ secrets.NEXAR_SDK_TOKEN || github.token }}
+
+      - name: Obtener y validar versión
         id: ver
         run: |
-          VERSION=$(grep -m1 -oP '\[\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md)
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          CHANGELOG_VERSION=$(grep -m1 -oP '\[\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md)
+          if [ "$VERSION" != "$CHANGELOG_VERSION" ]; then
+            echo "❌ VERSION ($VERSION) no coincide con la última entrada de CHANGELOG ($CHANGELOG_VERSION)."
+            exit 1
+          fi
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "✅ Versión detectada: $VERSION"
 
@@ -65,7 +77,33 @@ jobs:
             openpyxl \
             reportlab \
             python-dotenv \
-            markdown
+            markdown \
+            requests \
+            cryptography
+          pip install ./nexar_licencias_src
+
+      - name: Generar configuración pública de licencias
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          python - <<'PY'
+          import json, os
+          url = os.getenv("SUPABASE_URL", "").strip()
+          anon = os.getenv("SUPABASE_ANON_KEY", "").strip()
+          if not url or not anon:
+              print("⚠️ SUPABASE_URL/SUPABASE_ANON_KEY no configurados: el binario usará demo local y solo validará online si se configura el entorno.")
+              raise SystemExit(0)
+          os.makedirs("build", exist_ok=True)
+          with open("build/license_runtime_config.json", "w", encoding="utf-8") as fh:
+              json.dump({
+                  "SUPABASE_URL": url,
+                  "SUPABASE_ANON_KEY": anon,
+                  "SUPABASE_KEY": anon,
+                  "LICENSE_PRODUCT": "nexar-tienda"
+              }, fh, indent=2)
+          print("✅ Configuración pública de licencias generada para runtime.")
+          PY
 
       - name: Escribir clave pública RSA
         env:
@@ -125,6 +163,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout SDK de licencias
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
+          path: nexar_licencias_src
+          token: ${{ secrets.NEXAR_SDK_TOKEN || github.token }}
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -140,7 +185,30 @@ jobs:
             openpyxl `
             reportlab `
             python-dotenv `
-            markdown
+            markdown `
+            requests `
+            cryptography
+          pip install ./nexar_licencias_src
+
+      - name: Generar configuración pública de licencias
+        shell: pwsh
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if (-not $env:SUPABASE_URL -or -not $env:SUPABASE_ANON_KEY) {
+            Write-Host "⚠️ SUPABASE_URL/SUPABASE_ANON_KEY no configurados: el binario usará demo local y solo validará online si se configura el entorno."
+            exit 0
+          }
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+          $config = @{
+            SUPABASE_URL = $env:SUPABASE_URL
+            SUPABASE_ANON_KEY = $env:SUPABASE_ANON_KEY
+            SUPABASE_KEY = $env:SUPABASE_ANON_KEY
+            LICENSE_PRODUCT = "nexar-tienda"
+          }
+          $config | ConvertTo-Json | Set-Content -Path build\license_runtime_config.json -Encoding UTF8
+          Write-Host "✅ Configuración pública de licencias generada para runtime."
 
       - name: Instalar Inno Setup
         run: choco install innosetup -y

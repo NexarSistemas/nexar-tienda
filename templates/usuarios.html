@@ -18,6 +18,7 @@
                         <th>Usuario</th>
                         <th>Nombre Completo</th>
                         <th>Rol / Perfil</th>
+                        <th class="text-center">Recuperación</th>
                         <th class="text-center">Estado</th>
                         <th class="text-center">Acciones</th>
                     </tr>
@@ -28,9 +29,22 @@
                         <td class="fw-bold">{{ u.username }}</td>
                         <td>{{ u.nombre_completo }}</td>
                         <td>
-                            <span class="badge bg-navy-subtle text-navy border">
+                            {% set rol_key = (u.rol or '')|lower %}
+                            <span class="badge role-badge
+                                {% if 'admin' in rol_key %}role-admin
+                                {% elif 'vendedor' in rol_key %}role-vendedor
+                                {% elif 'cajero' in rol_key %}role-cajero
+                                {% elif 'supervisor' in rol_key %}role-supervisor
+                                {% else %}role-default{% endif %}">
                                 {{ u.rol }}
                             </span>
+                        </td>
+                        <td class="text-center">
+                            {% if u.security_question and u.security_answer_hash %}
+                            <span class="badge bg-success-subtle text-success">CONFIGURADA</span>
+                            {% else %}
+                            <span class="badge bg-warning-subtle text-warning">PENDIENTE</span>
+                            {% endif %}
                         </td>
                         <td class="text-center">
                             {% if u.activo %}
@@ -45,9 +59,14 @@
                                     <i class="fas fa-edit"></i>
                                 </a>
                                 {% if u.username != 'admin' and u.username != session['user']['username'] %}
-                                <form action="{{ url_for('usuario_eliminar', uid=u.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Desactivar este usuario?')">
+                                <form action="{{ url_for('usuario_toggle_activo', uid=u.id) }}" method="POST" class="d-inline" onsubmit="return confirm('{{ '¿Desactivar este usuario?' if u.activo else '¿Activar este usuario?' }}')">
+                                    <button type="submit" class="btn btn-sm {% if u.activo %}btn-outline-warning{% else %}btn-outline-success{% endif %}" title="{{ 'Desactivar' if u.activo else 'Activar' }}">
+                                        <i class="fas {% if u.activo %}fa-user-slash{% else %}fa-user-check{% endif %}"></i>
+                                    </button>
+                                </form>
+                                <form action="{{ url_for('usuario_eliminar', uid=u.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar definitivamente este usuario? Esta acción no se puede deshacer.')">
                                     <button type="submit" class="btn btn-sm btn-outline-danger">
-                                        <i class="fas fa-user-slash"></i>
+                                        <i class="fas fa-trash-alt"></i>
                                     </button>
                                 </form>
                                 {% endif %}
@@ -60,4 +79,17 @@
         </div>
     </div>
 </div>
+<style>
+    .role-badge {
+        background: #fff;
+        border: 1px solid currentColor;
+        font-weight: 700;
+        letter-spacing: .02em;
+    }
+    .role-admin { color: #b42318; }
+    .role-vendedor { color: #175cd3; }
+    .role-cajero { color: #027a48; }
+    .role-supervisor { color: #93370d; }
+    .role-default { color: #475467; }
+</style>
 {% endblock %}

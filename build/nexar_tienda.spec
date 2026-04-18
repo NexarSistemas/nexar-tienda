@@ -16,6 +16,14 @@ datas = [
     (os.path.join(PROJ, 'CHANGELOG.md'), '.'),
 ]
 
+_runtime_config = os.path.join(PROJ, 'build', 'license_runtime_config.json')
+if os.path.isfile(_runtime_config):
+    datas.append((_runtime_config, '.'))
+
+_keys_dir = os.path.join(PROJ, 'keys')
+if os.path.isdir(_keys_dir):
+    datas.append((_keys_dir, 'keys'))
+
 a = Analysis(
     [os.path.join(PROJ, 'iniciar.py')],
     pathex=[PROJ],
@@ -26,6 +34,11 @@ a = Analysis(
         'jinja2', 'jinja2.ext',
         'werkzeug', 'werkzeug.serving', 'werkzeug.routing', 'werkzeug.exceptions',
         'app', 'database',
+        'services.runtime_config', 'services.license_sdk', 'services.license_storage',
+        'nexar_licencias', 'nexar_licencias.cache', 'nexar_licencias.config',
+        'nexar_licencias.device', 'nexar_licencias.plans',
+        'nexar_licencias.validator', 'nexar_licencias.verifier_local',
+        'nexar_licencias.verifier_online',
         'openpyxl', 'reportlab', 'reportlab.lib.pagesizes',
         'reportlab.platypus', 'reportlab.lib.styles',
         'webview', 'webview.platforms', 'webview.platforms.winforms',
@@ -33,6 +46,7 @@ a = Analysis(
         'clr',
         'sqlite3', 'json', 'hashlib', 'uuid', 'socket',
         'threading', 'signal', 'webbrowser', 'importlib', 'importlib.util',
+        'requests', 'cryptography',
     ],
     hookspath=[],
     hooksconfig={},

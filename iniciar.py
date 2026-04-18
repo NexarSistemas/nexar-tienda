@@ -6,6 +6,7 @@ import threading
 import time
 import socket
 import webbrowser
+import threading as _threading
 
 # ==============================
 # 🔹 Safe print (evita errores Unicode)
@@ -192,13 +193,25 @@ if __name__ == "__main__":
     try:
         import webview
 
+        class NexarBridge:
+            def closeWindow(self):
+                def _close():
+                    try:
+                        if getattr(webview, "windows", None):
+                            webview.windows[0].destroy()
+                    finally:
+                        os._exit(0)
+                _threading.Timer(0.1, _close).start()
+                return True
+
         webview.create_window(
             APP_TITLE,
             url,
             width=1200,
             height=800,
             maximized=True,
-            confirm_close=True
+            confirm_close=True,
+            js_api=NexarBridge(),
         )
 
         localization = {

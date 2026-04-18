@@ -4,6 +4,22 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.24.0] - 18 Abril 2026 - Licencias Supabase y Build Distribuible
+
+### ✨ Características Nuevas
+- **Licenciamiento Supabase alineado**: Integración del flujo Demo, Básica y Mensual Full con validación online por SDK `nexar_licencias`, cache offline y soporte multi-PC mediante `hwids`/`max_devices`.
+- **Gestión de usuarios reforzada**: El administrador puede activar, desactivar y eliminar usuarios con protecciones para no perder el último administrador activo.
+- **Recuperación obligatoria**: Los usuarios creados por el administrador deben configurar pregunta y respuesta secreta al primer inicio.
+- **Instalador Windows con aceptación de licencia**: Inno Setup muestra el acuerdo de licencia antes de instalar.
+
+### 🛠️ Cambios Técnicos
+- **Build GitHub Actions**: Instalación del SDK de licencias durante el build e inclusión explícita en PyInstaller.
+- **Configuración runtime segura**: Soporte para `SUPABASE_URL` + `SUPABASE_ANON_KEY` embebidos desde CI, evitando incluir `SUPABASE_SERVICE_ROLE_KEY` en binarios de cliente.
+- **Rutas de datos por usuario**: En binarios empaquetados, la base local, `license.json`, cache y `SECRET_KEY` persistente se guardan en carpeta de datos del usuario.
+- **Versionado consistente**: `VERSION`, `README`, `CHANGELOG`, build `.deb` e instalador Windows quedan alineados en la misma versión.
+
+---
+
 ## [1.23.0] - 15 Abril 2026 - Anti-Reinstalación de Demo
 
 ### ✨ Características Nuevas
