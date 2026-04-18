@@ -79,12 +79,21 @@ DEFAULT_GASTO_CATEGORIAS = [
 def _get_app_dir():
     """
     Retorna el directorio base para datos persistentes.
-    - En modo congelado (PyInstaller .exe): usa la carpeta del ejecutable.
-      Ej: C:\\Users\\usuario\\AppData\\Roaming\\Nexar Tienda\\
+    - En modo congelado (PyInstaller): usa una carpeta de datos del usuario.
+      Windows: %APPDATA%\\Nexar Tienda\\
+      Linux: ~/.local/share/nexar-tienda/
     - En desarrollo normal: usa la carpeta de este archivo.
     """
+    try:
+        from services.runtime_config import app_data_dir
+
+        return str(app_data_dir())
+    except Exception:
+        pass
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
+        if os.name == "nt":
+            return os.path.join(os.getenv("APPDATA", os.path.expanduser("~")), "Nexar Tienda")
+        return os.path.join(os.path.expanduser("~"), ".local", "share", "nexar-tienda")
     return os.path.dirname(os.path.abspath(__file__))
 
 DB_PATH = os.path.join(_get_app_dir(), 'tienda.db')
@@ -631,6 +640,8 @@ def _seed_changelog(c):
          'Implementación de degradación automática a BÁSICA al vencer PRO y sistema de alertas preventivas (5 días y 1 día antes).'),
         ('1.23.0', '2026-04-15', 'Nueva función', 'Anti-Reinstalación de Demo',
          'Implementación de un mecanismo que persiste la fecha de inicio del período de prueba en un archivo externo (`telemetry.bin`), evitando que el contador de la demo se reinicie al reinstalar la aplicación o eliminar la base de datos.'),
+        ('1.24.0', '2026-04-18', 'Nueva función', 'Licencias Supabase y Build Distribuible',
+         'Integración del SDK nexar_licencias en builds PyInstaller, soporte de licencias Demo/Básica/Mensual Full con multi-PC, recuperación obligatoria para usuarios nuevos e instalador Windows con aceptación de licencia.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(

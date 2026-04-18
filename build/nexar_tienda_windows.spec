@@ -20,6 +20,10 @@ datas = [
     (os.path.join(PROJ, 'CHANGELOG.md'), '.'),
 ]
 
+_runtime_config = os.path.join(PROJ, 'build', 'license_runtime_config.json')
+if os.path.isfile(_runtime_config):
+    datas.append((_runtime_config, '.'))
+
 # Incluir clave pública RSA sólo si existe la carpeta keys/
 # En CI se escribe desde el secret PUBLIC_KEY antes de correr pyinstaller.
 # Si no existe, la app busca la clave vía variable de entorno PUBLIC_KEY.
@@ -46,6 +50,17 @@ a = Analysis(
         # Módulos del proyecto
         'app',
         'database',
+        'services.runtime_config',
+        'services.license_sdk',
+        'services.license_storage',
+        'nexar_licencias',
+        'nexar_licencias.cache',
+        'nexar_licencias.config',
+        'nexar_licencias.device',
+        'nexar_licencias.plans',
+        'nexar_licencias.validator',
+        'nexar_licencias.verifier_local',
+        'nexar_licencias.verifier_online',
         # Exportaciones
         'openpyxl',
         'reportlab',
@@ -76,6 +91,8 @@ a = Analysis(
         'logging',
         'logging.handlers',
         'traceback',
+        'requests',
+        'cryptography',
     ],
     hookspath=[os.path.join(PROJ, 'build', 'hooks')],  # hooks personalizados
     hooksconfig={},

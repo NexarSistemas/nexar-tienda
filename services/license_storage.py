@@ -1,10 +1,8 @@
 import json
-import os
-from pathlib import Path
 
-# 📁 Guardar en directorio del proyecto (más seguro)
-BASE_DIR = Path(__file__).resolve().parent.parent
-LICENSE_FILE = BASE_DIR / "license.json"
+from services.runtime_config import app_data_dir
+
+LICENSE_FILE = app_data_dir() / "license.json"
 
 
 def guardar_licencia(license_key, license_data=None):

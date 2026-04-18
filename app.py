@@ -2,16 +2,17 @@ import os
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
 from flask import Flask, redirect, request, session
+
+from services.runtime_config import load_runtime_env
+
+load_runtime_env()
 
 import database as db
 from routes.licencia import licencia_bp
 from routes.main import main_bp
 from services.license_storage import cargar_licencia
 from services.license_sdk import validate_saved_license
-
-load_dotenv()
 
 
 def create_app() -> Flask:
