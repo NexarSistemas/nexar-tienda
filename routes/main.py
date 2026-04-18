@@ -1,10 +1,9 @@
-from flask import Blueprint, flash, redirect, render_template, request, session
+from flask import Blueprint, current_app, flash, redirect, render_template, request, session
 from services.license_storage import guardar_licencia, cargar_licencia
 from services.supabase_license_api import (
     PRODUCTO_DEFAULT,
     activate_license,
-    build_machine_id,
-    create_license,
+    generate_activation_id,
     is_configured as supabase_configured,
 )
 
@@ -49,6 +48,16 @@ def recuperar_password():
 def apagar_rapido():
     session.clear()
     return _render("apagado.html")
+
+
+@main_bp.route("/shutdown", methods=["POST"])
+def shutdown():
+    fn = request.environ.get("werkzeug.server.shutdown")
+    if fn:
+        fn()
+        return ("", 204)
+    current_app.logger.info("Shutdown solicitado, pero no disponible en este servidor.")
+    return ("", 202)
 
 
 @main_bp.route("/en-construccion/<path:endpoint>")
@@ -149,7 +158,7 @@ def config():
 
 @main_bp.route("/licencia")
 def licencia():
-    machine_id = build_machine_id(session.get("user", {}).get("username", "local-machine"))
+    machine_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
     local_lic = cargar_licencia() or {}
     license_key_local = local_lic.get("license_key", "")
 
@@ -157,31 +166,15 @@ def licencia():
         "licencia.html",
         supabase_ok=supabase_configured(),
         machine_id=machine_id,
+        machine_details=machine_details,
         producto=PRODUCTO_DEFAULT,
         license_key_local=license_key_local,
     )
 
 
-@main_bp.route("/licencia/crear", methods=["POST"])
-def licencia_crear():
-    machine_id = build_machine_id(request.form.get("machine_id", ""))
-    usuario = request.form.get("usuario", "").strip()
-    try:
-        dias = int(request.form.get("dias", "365") or "365")
-    except ValueError:
-        dias = 365
-    ok, msg, row = create_license(machine_id=machine_id, usuario=usuario, dias=dias)
-    if ok and row:
-        guardar_licencia(row.get("license_key", ""))
-        flash(f"✅ {msg} Clave: {row.get('license_key', '—')}")
-    else:
-        flash(f"❌ {msg}")
-    return redirect("/licencia")
-
-
 @main_bp.route("/licencia/activar", methods=["POST"])
 def licencia_activar():
-    machine_id = build_machine_id(request.form.get("machine_id", ""))
+    machine_id = request.form.get("machine_id", "").strip()
     license_key = request.form.get("license_key", "").strip()
     ok, msg, row = activate_license(license_key=license_key, machine_id=machine_id)
     if ok:

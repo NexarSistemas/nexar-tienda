@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from flask import Flask, redirect, request, session
@@ -29,6 +30,12 @@ def _import_validar_licencia():
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-key")
+    version_file = Path(__file__).resolve().parent / "VERSION"
+    app_version = "0.0.0"
+    try:
+        app_version = version_file.read_text(encoding="utf-8").strip() or app_version
+    except Exception:
+        pass
 
     @app.context_processor
     def inject_global_vars() -> dict[str, Any]:
@@ -48,7 +55,7 @@ def create_app() -> Flask:
         return {
             "get_config_valor": get_config_valor,
             "get_licencia_status": get_licencia_status,
-            "app_version": "1.0.0",
+            "app_version": app_version,
         }
 
 
@@ -87,6 +94,7 @@ def create_app() -> Flask:
             "/static",
             "/recuperar-password",
             "/apagar-rapido",
+            "/shutdown",
             "/en-construccion",
         )
         if request.path.startswith(public_paths):
@@ -145,7 +153,6 @@ def create_app() -> Flask:
         "perfil",
         "config",
         "licencia",
-        "licencia_crear",
         "licencia_activar",
         "usuarios",
         "respaldo",

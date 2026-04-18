@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import os
+import platform
 import secrets
+import hashlib
+import getpass
 from datetime import date, timedelta
 from typing import Any
 
@@ -36,6 +39,46 @@ def is_configured() -> bool:
 def build_machine_id(raw: str) -> str:
     value = (raw or "").strip().lower()
     return "".join(ch for ch in value if ch.isalnum() or ch in "-_")[:120]
+
+
+def _read_first(paths: list[str]) -> str:
+    for path in paths:
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+                    data = fh.read().strip()
+                    if data:
+                        return data
+        except Exception:
+            continue
+    return ""
+
+
+def generate_activation_id(user_hint: str = "") -> tuple[str, dict[str, str]]:
+    """
+    Genera un ID de activación estable para enviar al desarrollador.
+    Usa datos locales (máquina + disco + usuario) y devuelve (id, detalles).
+    """
+    username = user_hint or getpass.getuser() or os.getenv("USERNAME", "") or os.getenv("USER", "")
+    host = platform.node()
+    machine_id = _read_first(["/etc/machine-id", "/var/lib/dbus/machine-id"])
+    product_uuid = _read_first(["/sys/class/dmi/id/product_uuid"])
+    disk_hint = os.path.abspath(os.sep)
+    try:
+        disk_hint = os.stat(disk_hint).st_dev.__str__()
+    except Exception:
+        pass
+
+    raw = "|".join([username, host, machine_id, product_uuid, disk_hint])
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest().upper()
+    activation_id = f"NXID-{digest[:24]}"
+    details = {
+        "username": username,
+        "host": host,
+        "machine_id": machine_id or "(sin machine-id)",
+        "disk_hint": disk_hint,
+    }
+    return activation_id, details
 
 
 def create_license(machine_id: str, usuario: str = "", producto: str = PRODUCTO_DEFAULT, dias: int = 365) -> tuple[bool, str, dict[str, Any] | None]:

@@ -6,6 +6,7 @@ import threading
 import time
 import socket
 import webbrowser
+import threading as _threading
 
 # ==============================
 # 🔹 Safe print (evita errores Unicode)
@@ -191,6 +192,18 @@ if __name__ == "__main__":
 
     try:
         import webview
+        from webview import windows
+
+        class NexarBridge:
+            def closeWindow(self):
+                def _close():
+                    try:
+                        if windows:
+                            windows[0].destroy()
+                    finally:
+                        os._exit(0)
+                _threading.Timer(0.1, _close).start()
+                return True
 
         webview.create_window(
             APP_TITLE,
@@ -204,7 +217,7 @@ if __name__ == "__main__":
         localization = {
             'global.quitConfirmation': '¿Está seguro de que desea cerrar el sistema?'
         }
-        webview.start(localization=localization)
+        webview.start(localization=localization, js_api=NexarBridge())
 
     except Exception as e:
         safe_print("⚠️ No se pudo abrir ventana nativa")
