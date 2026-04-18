@@ -49,7 +49,7 @@ jobs:
       - name: Validar token del SDK de licencias
         env:
           NEXAR_SDK_TOKEN: ${{ secrets.NEXAR_SDK_TOKEN }}
-          NEXAR_LICENCIAS_REPOSITORY: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
+          NEXAR_LICENCIAS_REPOSITORY: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || 'rolojnb/nexar_licencias' }}
         run: |
           if [ -z "$NEXAR_SDK_TOKEN" ]; then
             echo "❌ ERROR: El secret NEXAR_SDK_TOKEN no está configurado."
@@ -59,12 +59,19 @@ jobs:
             echo "   Nombre: NEXAR_SDK_TOKEN"
             exit 1
           fi
+          REPO_URL="https://x-access-token:${NEXAR_SDK_TOKEN}@github.com/${NEXAR_LICENCIAS_REPOSITORY}.git"
+          if ! git ls-remote --heads "$REPO_URL" >/dev/null 2>&1; then
+            echo "❌ ERROR: NEXAR_SDK_TOKEN no puede leer el repositorio $NEXAR_LICENCIAS_REPOSITORY."
+            echo "   Verificar que el repo exista con ese nombre y que el PAT tenga permiso Contents: Read-only."
+            exit 1
+          fi
 
       - name: Checkout SDK de licencias
         uses: actions/checkout@v4
         with:
-          repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
+          repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || 'rolojnb/nexar_licencias' }}
           path: nexar_licencias_src
+          ref: ${{ vars.NEXAR_LICENCIAS_REF || 'main' }}
           token: ${{ secrets.NEXAR_SDK_TOKEN }}
 
       - name: Instalar dependencias del sistema
@@ -181,7 +188,7 @@ jobs:
         shell: pwsh
         env:
           NEXAR_SDK_TOKEN: ${{ secrets.NEXAR_SDK_TOKEN }}
-          NEXAR_LICENCIAS_REPOSITORY: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
+          NEXAR_LICENCIAS_REPOSITORY: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || 'rolojnb/nexar_licencias' }}
         run: |
           if (-not $env:NEXAR_SDK_TOKEN) {
             Write-Error "❌ ERROR: El secret NEXAR_SDK_TOKEN no está configurado."
@@ -191,12 +198,20 @@ jobs:
             Write-Host "   Nombre: NEXAR_SDK_TOKEN"
             exit 1
           }
+          $repoUrl = "https://x-access-token:$env:NEXAR_SDK_TOKEN@github.com/$env:NEXAR_LICENCIAS_REPOSITORY.git"
+          git ls-remote --heads $repoUrl *> $null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ ERROR: NEXAR_SDK_TOKEN no puede leer el repositorio $env:NEXAR_LICENCIAS_REPOSITORY."
+            Write-Host "   Verificar que el repo exista con ese nombre y que el PAT tenga permiso Contents: Read-only."
+            exit 1
+          }
 
       - name: Checkout SDK de licencias
         uses: actions/checkout@v4
         with:
-          repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || format('{0}/nexar_licencias', github.repository_owner) }}
+          repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || 'rolojnb/nexar_licencias' }}
           path: nexar_licencias_src
+          ref: ${{ vars.NEXAR_LICENCIAS_REF || 'main' }}
           token: ${{ secrets.NEXAR_SDK_TOKEN }}
 
       - uses: actions/setup-python@v5
