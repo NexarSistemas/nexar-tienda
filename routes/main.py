@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -118,10 +117,23 @@ def _backup_file(nombre: str) -> Path:
     return path
 
 
+def _is_sqlite_database(path: Path) -> bool:
+    try:
+        with path.open("rb") as fh:
+            return fh.read(16) == b"SQLite format 3\x00"
+    except Exception:
+        return False
+
+
 def _make_backup() -> Path:
     BACKUP_DIR.mkdir(exist_ok=True)
     target = BACKUP_DIR / f"tienda_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db"
     shutil.copy2(db.DB_PATH, target)
+    try:
+        if os.name != "nt":
+            target.chmod(0o600)
+    except Exception:
+        pass
     db.set_config({"backup_ultimo": datetime.now().strftime("%Y-%m-%d %H:%M")})
     keep = int(db.get_config().get("backup_keep", "10") or 10)
     for extra in sorted(BACKUP_DIR.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True)[keep:]:
@@ -233,8 +245,10 @@ def recuperar_password():
                 flash("❌ Usuario inexistente o sin recuperación configurada.", "danger")
         elif step == 2:
             user = db.get_usuario_by_username(username)
-            answer_hash = hashlib.sha256(request.form.get("security_answer", "").strip().lower().encode()).hexdigest()
-            if user and answer_hash == (user["security_answer_hash"] or ""):
+            security_answer = request.form.get("security_answer", "")
+            if user and db.verify_security_answer(security_answer, user["security_answer_hash"] or ""):
+                if db.needs_security_answer_rehash(user["security_answer_hash"] or ""):
+                    db.set_security_answer_hash(user["id"], security_answer)
                 step = 3
             else:
                 flash("❌ La respuesta no coincide.", "danger")
@@ -903,7 +917,16 @@ def respaldo_descargar(nombre):
 @main_bp.route("/respaldo/restaurar/<nombre>", methods=["POST"])
 @admin_required
 def respaldo_restaurar(nombre):
-    shutil.copy2(_backup_file(nombre), db.DB_PATH)
+    source = _backup_file(nombre)
+    if not _is_sqlite_database(source):
+        abort(400)
+    _make_backup()
+    shutil.copy2(source, db.DB_PATH)
+    try:
+        if os.name != "nt":
+            Path(db.DB_PATH).chmod(0o600)
+    except Exception:
+        pass
     return redirect(url_for("respaldo"))
 
 

@@ -1,8 +1,10 @@
 import os
+import hmac
+import secrets
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, redirect, request, session
+from flask import Flask, abort, redirect, request, session
 
 from services.runtime_config import load_runtime_env
 
@@ -29,6 +31,19 @@ def create_app() -> Flask:
     except Exception:
         pass
     app.config["APP_VERSION"] = app_version
+
+    def csrf_token() -> str:
+        token = session.get("_csrf_token")
+        if not token:
+            token = secrets.token_urlsafe(32)
+            session["_csrf_token"] = token
+            session.modified = True
+        return token
+
+    def validate_csrf_token() -> bool:
+        expected = session.get("_csrf_token", "")
+        provided = request.form.get("csrf_token", "") or request.headers.get("X-CSRFToken", "")
+        return bool(expected and provided and hmac.compare_digest(expected, provided))
 
     @app.context_processor
     def inject_global_vars() -> dict[str, Any]:
@@ -59,6 +74,7 @@ def create_app() -> Flask:
             "get_config_valor": get_config_valor,
             "get_licencia_status": get_licencia_status,
             "app_version": app_version,
+            "csrf_token": csrf_token,
         }
 
 
@@ -91,6 +107,9 @@ def create_app() -> Flask:
 
     @app.before_request
     def global_middleware():
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and not validate_csrf_token():
+            abort(400)
+
         public_paths = (
             "/login",
             "/registro-inicial",

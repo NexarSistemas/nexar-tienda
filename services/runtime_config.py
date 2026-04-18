@@ -43,7 +43,17 @@ def app_data_dir() -> Path:
         path = base / LINUX_DIR_NAME
 
     path.mkdir(parents=True, exist_ok=True)
+    restrict_permissions(path, directory=True)
     return path
+
+
+def restrict_permissions(path: Path, *, directory: bool = False) -> None:
+    if os.name == "nt":
+        return
+    try:
+        path.chmod(0o700 if directory else 0o600)
+    except Exception:
+        pass
 
 
 def _load_json_config() -> dict:
@@ -75,6 +85,7 @@ def _ensure_secret_key(data_dir: Path) -> None:
         else:
             secret = secrets.token_hex(32)
             secret_path.write_text(secret, encoding="utf-8")
+        restrict_permissions(secret_path)
         os.environ["SECRET_KEY"] = secret
     except Exception:
         os.environ["SECRET_KEY"] = secrets.token_hex(32)

@@ -99,6 +99,16 @@ def _get_app_dir():
 DB_PATH = os.path.join(_get_app_dir(), 'tienda.db')
 
 
+def _restrict_file(path):
+    if os.name == "nt":
+        return
+    try:
+        if os.path.exists(path):
+            os.chmod(path, 0o600)
+    except Exception:
+        pass
+
+
 # ─── CONEXIÓN ─────────────────────────────────────────────────────────────────
 
 def get_conn():
@@ -573,6 +583,7 @@ def init_db():
 
     conn.commit()
     conn.close()
+    _restrict_file(DB_PATH)
 
 
 def _seed_changelog(c):
@@ -1279,6 +1290,38 @@ def verify_password(password, password_hash):
     return hashlib.sha256(password.encode()).hexdigest() == password_hash
 
 
+def _normalize_security_answer(answer: str) -> str:
+    return (answer or "").strip().lower()
+
+
+def hash_security_answer(answer: str) -> str:
+    return generate_password_hash(_normalize_security_answer(answer))
+
+
+def verify_security_answer(answer: str, answer_hash: str) -> bool:
+    if not answer_hash:
+        return False
+    normalized = _normalize_security_answer(answer)
+    try:
+        if answer_hash.startswith(("pbkdf2:", "scrypt:")):
+            return check_password_hash(answer_hash, normalized)
+    except Exception:
+        return False
+    return hashlib.sha256(normalized.encode()).hexdigest() == answer_hash
+
+
+def needs_security_answer_rehash(answer_hash: str) -> bool:
+    return bool(answer_hash and not answer_hash.startswith(("pbkdf2:", "scrypt:")))
+
+
+def set_security_answer_hash(uid, answer):
+    q(
+        "UPDATE usuarios SET security_answer_hash=? WHERE id=?",
+        (hash_security_answer(answer), uid),
+        commit=True,
+    )
+
+
 def get_usuarios():
     """Devuelve todos los usuarios."""
     return q(
@@ -1292,7 +1335,7 @@ def add_usuario(username, password, rol, nombre_completo, security_question=None
     password_hash = generate_password_hash(password)
     ans_hash = None
     if security_answer:
-        ans_hash = hashlib.sha256(security_answer.strip().lower().encode()).hexdigest()
+        ans_hash = hash_security_answer(security_answer)
     q(
         """INSERT INTO usuarios (username,password_hash,rol,nombre_completo, security_question, security_answer_hash)
         VALUES (?,?,?,?,?,?)""",
@@ -1359,7 +1402,7 @@ def update_perfil(uid, data):
         
     if data.get('security_answer'):
         sets.append("security_answer_hash=?")
-        params.append(hashlib.sha256(data['security_answer'].strip().lower().encode()).hexdigest())
+        params.append(hash_security_answer(data['security_answer']))
         
     params.append(uid)
     q(f"UPDATE usuarios SET {','.join(sets)} WHERE id=?", params, commit=True)
