@@ -1,4 +1,5 @@
 import importlib
+import os
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session
 from services.license_storage import guardar_licencia, cargar_licencia
@@ -179,6 +180,7 @@ def licencia():
         machine_details=machine_details,
         producto=PRODUCTO_DEFAULT,
         license_key_local=license_key_local,
+        dev_mode=bool(os.getenv("NEXAR_LICENSE_DEV_SECRET")),
     )
 
 
@@ -205,6 +207,39 @@ def licencia_activar():
         guardar_licencia(license_key)
         titular = (row or {}).get("usuario", "SDK")
         flash(f"✅ {msg} Titular: {titular}.")
+    else:
+        flash(f"❌ {msg}")
+    return redirect("/licencia")
+
+
+@main_bp.route("/licencia/desarrollador/generar", methods=["POST"])
+def licencia_generar_desarrollador():
+    secret_expected = os.getenv("NEXAR_LICENSE_DEV_SECRET", "").strip()
+    if not secret_expected:
+        flash("❌ La generación por desarrollador no está habilitada en este entorno.")
+        return redirect("/licencia")
+
+    secret = request.form.get("dev_secret", "").strip()
+    if secret != secret_expected:
+        flash("❌ Clave de desarrollador inválida.")
+        return redirect("/licencia")
+
+    if not supabase_configured():
+        flash("❌ Supabase no está configurado.")
+        return redirect("/licencia")
+
+    from services.supabase_license_api import create_license
+
+    activation_id = request.form.get("activation_id", "").strip()
+    usuario = request.form.get("usuario", "").strip() or "Cliente"
+    try:
+        dias = int(request.form.get("dias", "365") or "365")
+    except ValueError:
+        dias = 365
+
+    ok, msg, row = create_license(machine_id=activation_id, usuario=usuario, dias=dias)
+    if ok and row:
+        flash(f"✅ {msg} Key emitida: {row.get('license_key', '—')}")
     else:
         flash(f"❌ {msg}")
     return redirect("/licencia")
