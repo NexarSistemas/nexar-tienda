@@ -62,6 +62,18 @@ def get_current_hwid() -> str:
         return ""
 
 
+def _save_sdk_cache(license_data: dict) -> None:
+    if not license_data:
+        return
+    try:
+        cache_module = _import_module("nexar_licencias.cache")
+        save_cache = getattr(cache_module, "save_cache", None)
+        if callable(save_cache):
+            save_cache(license_data)
+    except Exception:
+        pass
+
+
 def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, str]:
     license_key = (license_key or "").strip()
     if not license_key:
@@ -95,6 +107,26 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
 
     if not ok:
         reason = result.get("reason") if validar_detalle is not None else ""
+        if reason == "sin_cache":
+            try:
+                from services.supabase_license_api import activate_license
+
+                fallback_ok, fallback_msg, fallback_data = activate_license(
+                    license_key,
+                    get_current_hwid(),
+                    get_license_product(),
+                )
+                if fallback_ok and fallback_data:
+                    ok = True
+                    license_data = fallback_data
+                    _save_sdk_cache(license_data)
+                else:
+                    return False, fallback_msg
+            except Exception as ex:
+                return False, f"No se pudo validar online: {ex}"
+
+    if not ok:
+        reason = result.get("reason") if validar_detalle is not None else ""
         messages = {
             "expirada": "La licencia expiró. Pedí la renovación al desarrollador.",
             "revocada": "La licencia fue revocada o está desactivada.",
@@ -104,6 +136,8 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
             "sin_cache": "No se pudo validar online y no hay cache offline para esta licencia.",
         }
         return False, messages.get(reason, "La licencia es inválida, expiró o fue revocada.")
+
+    _save_sdk_cache(license_data)
 
     try:
         import database as db
