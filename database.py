@@ -15,6 +15,7 @@ import sys
 import hashlib
 import json
 from datetime import datetime, date, timedelta
+from werkzeug.security import check_password_hash, generate_password_hash
 
 # ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
 # Define limites de productos, clientes y proveedores por tipo de licencia
@@ -1198,6 +1199,13 @@ def get_usuario_by_username(username):
 
 def verify_password(password, password_hash):
     """Verifica contraseña contra hash."""
+    if not password_hash:
+        return False
+    try:
+        if password_hash.startswith(("pbkdf2:", "scrypt:")):
+            return check_password_hash(password_hash, password)
+    except Exception:
+        pass
     return hashlib.sha256(password.encode()).hexdigest() == password_hash
 
 
@@ -1208,7 +1216,7 @@ def get_usuarios():
 
 def add_usuario(username, password, rol, nombre_completo, security_question=None, security_answer=None):
     """Agrega un nuevo usuario."""
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    password_hash = generate_password_hash(password)
     ans_hash = None
     if security_answer:
         ans_hash = hashlib.sha256(security_answer.strip().lower().encode()).hexdigest()
@@ -1217,6 +1225,21 @@ def add_usuario(username, password, rol, nombre_completo, security_question=None
         VALUES (?,?,?,?,?,?)""",
         (username, password_hash, rol, nombre_completo, security_question, ans_hash),
         fetchall=False, commit=True
+    )
+
+
+def count_usuarios():
+    """Devuelve la cantidad de usuarios creados."""
+    row = q("SELECT COUNT(*) as total FROM usuarios", fetchone=True)
+    return int(row["total"] if row else 0)
+
+
+def set_password_for_username(username, password):
+    """Actualiza la contraseña de un usuario por username."""
+    q(
+        "UPDATE usuarios SET password_hash=? WHERE username=?",
+        (generate_password_hash(password), username),
+        commit=True,
     )
 
 
@@ -1234,7 +1257,7 @@ def update_perfil(uid, data):
     
     if data.get('password'):
         sets.append("password_hash=?")
-        params.append(hashlib.sha256(data['password'].encode()).hexdigest())
+        params.append(generate_password_hash(data['password']))
         
     if data.get('security_question'):
         sets.append("security_question=?")
@@ -1246,6 +1269,16 @@ def update_perfil(uid, data):
         
     params.append(uid)
     q(f"UPDATE usuarios SET {','.join(sets)} WHERE id=?", params, commit=True)
+
+
+def delete_cliente(cid):
+    """Desactiva un cliente sin borrar historial."""
+    q("UPDATE clientes SET activo=0 WHERE id=?", (cid,), commit=True)
+
+
+def delete_proveedor(pid):
+    """Desactiva un proveedor sin borrar historial."""
+    q("UPDATE proveedores SET activo=0 WHERE id=?", (pid,), commit=True)
 
 
 def has_permission(role_name, perm_key):
@@ -1945,6 +1978,28 @@ def add_gasto(data):
          necesario, data.get('comprobante', ''), data.get('observaciones', '')),
         fetchall=False, commit=True
     )
+
+
+def update_gasto(gid, data):
+    """Actualiza un gasto."""
+    categoria = data.get('categoria', '')
+    necesario = normalizar_tipo_gasto(data.get('necesario'))
+    if 'necesario' not in data:
+        necesario = get_tipo_gasto_categoria(categoria)
+    q(
+        """UPDATE gastos SET fecha=?,tipo=?,categoria=?,descripcion=?,monto=?,iva_incluido=?,
+        medio_pago=?,proveedor=?,necesario=?,comprobante=?,observaciones=? WHERE id=?""",
+        (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('tipo', 'Gasto'),
+         categoria, data.get('descripcion', ''), float(data.get('monto', 0)),
+         int(data.get('iva_incluido', 1)), data.get('medio_pago', 'Efectivo'), data.get('proveedor', ''),
+         necesario, data.get('comprobante', ''), data.get('observaciones', ''), gid),
+        commit=True
+    )
+
+
+def delete_gasto(gid):
+    """Elimina un gasto."""
+    q("DELETE FROM gastos WHERE id=?", (gid,), commit=True)
 
 
 # ─── TEMPORADAS ──────────────────────────────────────────────────────────────

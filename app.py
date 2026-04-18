@@ -2,37 +2,46 @@ import os
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from flask import Flask, redirect, request, session
 
+import database as db
 from routes.licencia import licencia_bp
 from routes.main import main_bp
 from services.license_storage import cargar_licencia
 from services.license_sdk import validate_saved_license
 
+load_dotenv()
+
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-key")
+    db.init_db()
+    secret_key = os.getenv("SECRET_KEY", "").strip()
+    if not secret_key:
+        raise RuntimeError("SECRET_KEY no definida. Configurar variable de entorno.")
+    app.secret_key = secret_key
     version_file = Path(__file__).resolve().parent / "VERSION"
     app_version = "0.0.0"
     try:
         app_version = version_file.read_text(encoding="utf-8").strip() or app_version
     except Exception:
         pass
+    app.config["APP_VERSION"] = app_version
 
     @app.context_processor
     def inject_global_vars() -> dict[str, Any]:
         def get_config_valor(key: str, default: Any = None) -> Any:
-            config = {"nombre_negocio": "Nexar Tienda"}
+            config = db.get_config()
             return config.get(key, default)
 
         def get_licencia_status() -> dict[str, Any]:
-            # Estado mínimo para no romper templates mientras se integra licenciamiento online.
+            has_license = bool(cargar_licencia())
             return {
-                "es_demo": False,
+                "es_demo": not has_license,
                 "vencido": False,
-                "tier": "PRO",
-                "dias_restantes": 30,
+                "tier": "ACTIVA" if has_license else "DEMO",
+                "dias_restantes": 0 if has_license else 30,
             }
 
         return {
@@ -73,6 +82,7 @@ def create_app() -> Flask:
     def global_middleware():
         public_paths = (
             "/login",
+            "/registro-inicial",
             "/activar",
             "/static",
             "/recuperar-password",
@@ -82,6 +92,9 @@ def create_app() -> Flask:
         )
         if request.path.startswith(public_paths):
             return None
+
+        if db.count_usuarios() == 0:
+            return redirect("/registro-inicial")
 
         if "user" not in session:
             return redirect("/login")
@@ -110,27 +123,72 @@ def create_app() -> Flask:
 
     # Compatibilidad con templates legados que usan endpoints sin prefijo de blueprint.
     legacy_endpoints = [
+        "registro_inicial",
+        "login",
+        "recuperar_password",
         "dashboard",
         "productos",
+        "producto_nuevo",
+        "producto_editar",
+        "producto_eliminar",
+        "exportar_excel",
+        "exportar_pdf",
         "stock",
+        "stock_ajustar",
         "temporadas",
+        "temporada_nueva",
+        "temporada_editar",
+        "temporada_eliminar",
         "punto_venta",
+        "venta_finalizar",
+        "ticket",
         "historial",
+        "historial_detalle",
         "compras",
+        "compra_nueva",
+        "compra_detalle",
+        "compra_eliminar",
         "caja",
+        "caja_abrir",
+        "caja_movimiento",
+        "caja_cerrar",
         "gastos",
+        "gasto_nuevo",
+        "gasto_eliminar",
         "clientes",
+        "cliente_nuevo",
+        "cliente_editar",
+        "cliente_detalle",
+        "cliente_agregar_movimiento",
+        "cliente_eliminar",
         "proveedores",
+        "proveedor_nuevo",
+        "proveedor_editar",
+        "proveedor_detalle",
+        "proveedor_agregar_movimiento",
+        "proveedor_eliminar",
         "reportes",
         "estadisticas",
         "analisis",
         "perfil",
         "config",
+        "config_categoria",
+        "config_categoria_eliminar",
+        "config_gasto_categoria",
+        "config_gasto_categoria_eliminar",
+        "config_gasto_categoria_editar",
         "licencia",
         "licencia_activar",
         "licencia_generar_desarrollador",
         "usuarios",
+        "usuario_nuevo",
+        "usuario_editar",
+        "usuario_eliminar",
         "respaldo",
+        "respaldo_ahora",
+        "respaldo_config",
+        "respaldo_descargar",
+        "respaldo_restaurar",
         "ayuda",
         "changelog",
         "acerca",
