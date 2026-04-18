@@ -165,13 +165,20 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
 
     db_hwid = row.get("hwid") or ""
     db_hwids = row.get("hwids") or []
+    if isinstance(db_hwids, str):
+        db_hwids = [db_hwids] if db_hwids else []
+    max_devices = max(int(row.get("max_devices") or 1), 1)
 
-    if db_hwid and db_hwid != machine_id and machine_id not in db_hwids:
-        return False, "La licencia pertenece a otra máquina.", row
+    if db_hwid == machine_id or machine_id in db_hwids:
+        update_hwids = sorted(set([*db_hwids, machine_id]))
+    elif not db_hwid or len(db_hwids) < max_devices:
+        update_hwids = sorted(set([*db_hwids, machine_id]))[:max_devices]
+    else:
+        return False, "La licencia alcanzó el límite de dispositivos.", row
 
     update_data = {
-        "hwid": machine_id,
-        "hwids": sorted(set([*db_hwids, machine_id]))[: max(int(row.get("max_devices") or 1), 1)],
+        "hwid": db_hwid or machine_id,
+        "hwids": update_hwids,
     }
     upd = requests.patch(
         _table_url(),
