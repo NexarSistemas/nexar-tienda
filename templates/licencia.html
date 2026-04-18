@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Licencias Supabase — Nexar Tienda{% endblock %}
-{% block page_title %}<i class="fas fa-key me-2"></i>Licencias Supabase{% endblock %}
+{% block title %}Activación de Licencia — Nexar Tienda{% endblock %}
+{% block page_title %}<i class="fas fa-key me-2"></i>Activación de licencia{% endblock %}
 
 {% block content %}
 <div class="row g-3">
   <div class="col-lg-5">
     <div class="card">
-      <div class="card-header bg-light"><strong>Identificador de este equipo</strong></div>
+      <div class="card-header bg-light"><strong>ID de este equipo</strong></div>
       <div class="card-body">
         <p class="mb-2"><strong>Producto:</strong> <code>{{ producto }}</code></p>
-        <label class="form-label">HWID usado por el SDK de licencias</label>
+        <label class="form-label">Código para solicitar una licencia</label>
         <input id="activation-id" class="form-control font-monospace mb-2" value="{{ device_hwid or machine_id }}" readonly>
         <button class="btn btn-outline-secondary btn-sm mb-3" onclick="copiarId()" type="button">
           <i class="fas fa-copy"></i> Copiar ID
@@ -23,18 +23,22 @@
 
         <hr>
         <p class="small mb-2">
-          1) El desarrollador crea la licencia en Nexar Admin para <code>{{ producto }}</code>.<br>
-          2) Pegá la clave abajo y activala en este equipo.<br>
-          3) En la primera validación, el SDK la vincula a este dispositivo y guarda cache offline.
+          Si todavía no tenés licencia, copiá este ID y envialo al desarrollador.
+          Si ya recibiste una clave, pegala en el formulario de activación.
         </p>
 
-        {% if supabase_ok %}
-          <div class="alert alert-success mb-0">✅ Conexión Supabase configurada.</div>
+        {% if dev_mode %}
+          {% if supabase_ok %}
+            <div class="alert alert-success mb-0">✅ Conexión Supabase configurada para herramientas de desarrollador.</div>
+          {% else %}
+            <div class="alert alert-warning mb-0">
+              Modo desarrollador: faltan <code>SUPABASE_URL</code> y una key REST en el entorno de Tienda.
+              La activación del usuario puede funcionar por SDK si <code>nexar_licencias</code> está configurado.
+            </div>
+          {% endif %}
         {% else %}
           <div class="alert alert-info mb-0">
-            ℹ️ Supabase no está configurado en este equipo.  
-            Si tenés instalado <code>nexar_licencias</code>, igual podés activar con SDK.  
-            Para activar directo contra Supabase, definí <code>SUPABASE_URL</code> + <code>SUPABASE_SERVICE_ROLE_KEY</code> (o <code>SUPABASE_ANON_KEY</code>).
+            Este equipo puede usarse en modo demo o activarse con una clave de licencia válida.
           </div>
         {% endif %}
       </div>
@@ -43,17 +47,17 @@
 
   <div class="col-lg-7">
     <div class="card">
-      <div class="card-header bg-light"><strong>Activar licencia emitida por desarrollador</strong></div>
+      <div class="card-header bg-light"><strong>Activar licencia</strong></div>
       <div class="card-body">
         <form method="POST" action="{{ url_for('licencia_activar') }}" class="row g-2">
           <div class="col-12">
-            <label class="form-label">License key / token</label>
-            <input name="license_key" class="form-control font-monospace" required placeholder="Ej: ABC123 / NXR-...">
+            <label class="form-label">Clave de licencia</label>
+            <input name="license_key" class="form-control font-monospace" required placeholder="Ej: NXR-...">
           </div>
 
           <div class="col-12">
             <button class="btn btn-success w-100" type="submit">
-              <i class="fas fa-check-circle"></i> Activar en esta máquina
+              <i class="fas fa-check-circle"></i> Activar en este equipo
             </button>
           </div>
         </form>
