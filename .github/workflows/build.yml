@@ -59,6 +59,17 @@ jobs:
             echo "   Nombre: NEXAR_SDK_TOKEN"
             exit 1
           fi
+          API_STATUS=$(curl -sS -o /tmp/nexar_licencias_repo.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${NEXAR_SDK_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${NEXAR_LICENCIAS_REPOSITORY}")
+          if [ "$API_STATUS" != "200" ]; then
+            echo "❌ ERROR: GitHub API no permite ver $NEXAR_LICENCIAS_REPOSITORY con NEXAR_SDK_TOKEN. HTTP $API_STATUS"
+            echo "   401: token inválido o mal copiado."
+            echo "   403: token sin permisos suficientes."
+            echo "   404: repo privado invisible para ese token, repo mal escrito o no seleccionado en el PAT."
+            exit 1
+          fi
           REPO_URL="https://x-access-token:${NEXAR_SDK_TOKEN}@github.com/${NEXAR_LICENCIAS_REPOSITORY}.git"
           if ! git ls-remote --heads "$REPO_URL" >/dev/null 2>&1; then
             echo "❌ ERROR: NEXAR_SDK_TOKEN no puede leer el repositorio $NEXAR_LICENCIAS_REPOSITORY."
@@ -196,6 +207,20 @@ jobs:
             Write-Host "   Crear un PAT con permiso de lectura sobre ese repo y guardarlo en:"
             Write-Host "   Settings → Secrets and variables → Actions → New repository secret"
             Write-Host "   Nombre: NEXAR_SDK_TOKEN"
+            exit 1
+          }
+          $headers = @{
+            Authorization = "Bearer $env:NEXAR_SDK_TOKEN"
+            Accept = "application/vnd.github+json"
+          }
+          try {
+            Invoke-RestMethod -Uri "https://api.github.com/repos/$env:NEXAR_LICENCIAS_REPOSITORY" -Headers $headers | Out-Null
+          } catch {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+            Write-Error "❌ ERROR: GitHub API no permite ver $env:NEXAR_LICENCIAS_REPOSITORY con NEXAR_SDK_TOKEN. HTTP $statusCode"
+            Write-Host "   401: token inválido o mal copiado."
+            Write-Host "   403: token sin permisos suficientes."
+            Write-Host "   404: repo privado invisible para ese token, repo mal escrito o no seleccionado en el PAT."
             exit 1
           }
           $repoUrl = "https://x-access-token:$env:NEXAR_SDK_TOKEN@github.com/$env:NEXAR_LICENCIAS_REPOSITORY.git"
