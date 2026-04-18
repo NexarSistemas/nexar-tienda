@@ -81,17 +81,22 @@ def create_app() -> Flask:
 
     @app.before_request
     def global_middleware():
-        session.setdefault(
-            "user",
-            {
-                "nombre_completo": "Rolo",
-                "username": "rolo",
-                "rol": "admin",
-            },
+        public_paths = (
+            "/login",
+            "/activar",
+            "/static",
+            "/recuperar-password",
+            "/apagar-rapido",
+            "/en-construccion",
         )
+        if request.path.startswith(public_paths):
+            return None
 
-        # Permitir rutas libres.
-        if request.path.startswith("/activar") or request.path.startswith("/static"):
+        if "user" not in session:
+            return redirect("/login")
+
+        # Permitir rutas libres de chequeo de licencia.
+        if request.path.startswith(("/activar", "/static")):
             return None
 
         licencia = cargar_licencia()
@@ -115,6 +120,11 @@ def create_app() -> Flask:
 
     app.register_blueprint(main_bp)
     app.register_blueprint(licencia_bp)
+
+    def _legacy_url_build_error(error, endpoint, values):
+        return f"/en-construccion/{endpoint}"
+
+    app.url_build_error_handlers.append(_legacy_url_build_error)
 
     # Compatibilidad con templates legados que usan endpoints sin prefijo de blueprint.
     legacy_endpoints = [

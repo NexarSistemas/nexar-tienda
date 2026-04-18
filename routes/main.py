@@ -1,10 +1,55 @@
-from flask import Blueprint, redirect, render_template, session
+from flask import Blueprint, flash, redirect, render_template, request, session
 
 main_bp = Blueprint("main", __name__)
 
 
-def _render(nombre_template: str):
-    return render_template(nombre_template)
+def _render(nombre_template: str, **context):
+    try:
+        return render_template(nombre_template, **context)
+    except Exception:
+        titulo = nombre_template.replace(".html", "").replace("_", " ").title()
+        return render_template(
+            "placeholder.html",
+            pagina=titulo,
+            detalle="Esta pantalla aún no está conectada al backend en esta rama.",
+        )
+
+
+@main_bp.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        if not username or not password:
+            flash("⚠️ Usuario y contraseña son obligatorios.")
+            return render_template("login.html")
+        session["user"] = {
+            "nombre_completo": username.title(),
+            "username": username,
+            "rol": "admin",
+        }
+        return redirect("/")
+    return render_template("login.html")
+
+
+@main_bp.route("/recuperar-password")
+def recuperar_password():
+    return _render("recuperar_password.html")
+
+
+@main_bp.route("/apagar-rapido", methods=["POST"])
+def apagar_rapido():
+    session.clear()
+    return _render("apagado.html")
+
+
+@main_bp.route("/en-construccion/<path:endpoint>")
+def endpoint_en_construccion(endpoint: str):
+    return render_template(
+        "placeholder.html",
+        pagina=endpoint,
+        detalle="Este enlace existe en la UI pero aún no tiene ruta funcional en esta rama.",
+    )
 
 
 @main_bp.route("/")
