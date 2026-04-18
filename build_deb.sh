@@ -61,6 +61,17 @@ cp -r "${SCRIPT_DIR}/static"       "${INSTALL_DIR}/"
 cp    "${SCRIPT_DIR}/VERSION"      "${INSTALL_DIR}/"
 cp    "${SCRIPT_DIR}/CHANGELOG.md" "${INSTALL_DIR}/"
 
+# Configuración pública de licencias generada por CI.
+# También se incluye dentro del binario PyInstaller, pero dejarla al lado del
+# ejecutable hace el .deb más robusto ante cambios de modo onefile/onedir.
+if [ -f "${SCRIPT_DIR}/build/license_runtime_config.json" ]; then
+  cp "${SCRIPT_DIR}/build/license_runtime_config.json" "${INSTALL_DIR}/"
+else
+  echo "❌ No se encontró build/license_runtime_config.json"
+  echo "   El paquete .deb necesita SUPABASE_URL y SUPABASE_ANON_KEY para validar licencias online."
+  exit 1
+fi
+
 # README y LICENSE opcionales
 [ -f "${SCRIPT_DIR}/README.md" ] && cp "${SCRIPT_DIR}/README.md" "${INSTALL_DIR}/"
 [ -f "${SCRIPT_DIR}/LICENSE"   ] && cp "${SCRIPT_DIR}/LICENSE"   "${INSTALL_DIR}/"

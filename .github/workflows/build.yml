@@ -118,8 +118,9 @@ jobs:
           url = os.getenv("SUPABASE_URL", "").strip()
           anon = os.getenv("SUPABASE_ANON_KEY", "").strip()
           if not url or not anon:
-              print("⚠️ SUPABASE_URL/SUPABASE_ANON_KEY no configurados: el binario usará demo local y solo validará online si se configura el entorno.")
-              raise SystemExit(0)
+              print("❌ ERROR: SUPABASE_URL y SUPABASE_ANON_KEY son obligatorios para compilar un instalador con activación online.")
+              print("   Configurarlos en Settings → Secrets and variables → Actions.")
+              raise SystemExit(1)
           os.makedirs("build", exist_ok=True)
           with open("build/license_runtime_config.json", "w", encoding="utf-8") as fh:
               json.dump({
@@ -253,8 +254,9 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           if (-not $env:SUPABASE_URL -or -not $env:SUPABASE_ANON_KEY) {
-            Write-Host "⚠️ SUPABASE_URL/SUPABASE_ANON_KEY no configurados: el binario usará demo local y solo validará online si se configura el entorno."
-            exit 0
+            Write-Error "❌ ERROR: SUPABASE_URL y SUPABASE_ANON_KEY son obligatorios para compilar un instalador con activación online."
+            Write-Host "   Configurarlos en Settings → Secrets and variables → Actions."
+            exit 1
           }
           New-Item -ItemType Directory -Force -Path build | Out-Null
           $config = @{
