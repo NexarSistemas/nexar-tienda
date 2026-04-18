@@ -11,7 +11,7 @@ from io import BytesIO
 from pathlib import Path
 
 import database as db
-from flask import Blueprint, Response, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.license_sdk import get_current_hwid, get_license_product, validate_license_key
 from services.supabase_license_api import create_license, generate_activation_id, is_configured as supabase_configured
@@ -24,6 +24,17 @@ CHANGELOG_PATH = BASE_DIR / "CHANGELOG.md"
 
 def _as_bool(value) -> bool:
     return str(value).strip().lower() in {"1", "true", "on", "yes", "si"}
+
+
+def _is_same_origin_local_request() -> bool:
+    if request.remote_addr not in {"127.0.0.1", "::1", "localhost"}:
+        return False
+    expected = request.host_url.rstrip("/")
+    for header in ("Origin", "Referer"):
+        value = request.headers.get(header, "").rstrip("/")
+        if value and not value.startswith(expected):
+            return False
+    return True
 
 
 def _validate_password(password: str) -> tuple[bool, str]:
@@ -95,6 +106,16 @@ def _backup_list() -> list[dict]:
         stat = path.stat()
         items.append({"nombre": path.name, "fecha": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M"), "tamanio_kb": round(stat.st_size / 1024, 1)})
     return items
+
+
+def _backup_file(nombre: str) -> Path:
+    safe_name = Path(nombre or "").name
+    if safe_name != nombre or not safe_name.endswith(".db"):
+        abort(404)
+    path = (BACKUP_DIR / safe_name).resolve()
+    if path.parent != BACKUP_DIR.resolve() or not path.exists():
+        abort(404)
+    return path
 
 
 def _make_backup() -> Path:
@@ -876,13 +897,13 @@ def respaldo_config():
 @main_bp.route("/respaldo/descargar/<nombre>")
 @admin_required
 def respaldo_descargar(nombre):
-    return send_file(BACKUP_DIR / nombre, as_attachment=True)
+    return send_file(_backup_file(nombre), as_attachment=True)
 
 
 @main_bp.route("/respaldo/restaurar/<nombre>", methods=["POST"])
 @admin_required
 def respaldo_restaurar(nombre):
-    shutil.copy2(BACKUP_DIR / nombre, db.DB_PATH)
+    shutil.copy2(_backup_file(nombre), db.DB_PATH)
     return redirect(url_for("respaldo"))
 
 
@@ -959,6 +980,8 @@ def apagar_sistema():
 
 @main_bp.route("/shutdown", methods=["POST"])
 def shutdown():
+    if not _is_same_origin_local_request():
+        abort(403)
     fn = request.environ.get("werkzeug.server.shutdown")
     if fn:
         fn()

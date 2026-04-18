@@ -47,8 +47,16 @@ def _table_url() -> str:
     return f"{base}/rest/v1/licencias" if base else ""
 
 
-def _headers() -> dict[str, str]:
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
+def _anon_key() -> str:
+    return os.getenv("SUPABASE_ANON_KEY", "") or os.getenv("SUPABASE_KEY", "")
+
+
+def _service_role_key() -> str:
+    return os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+
+def _headers(*, require_service_role: bool = False) -> dict[str, str]:
+    key = _service_role_key() if require_service_role else _anon_key()
     return {
         "apikey": key,
         "Authorization": f"Bearer {key}",
@@ -58,7 +66,11 @@ def _headers() -> dict[str, str]:
 
 
 def is_configured() -> bool:
-    return bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")))
+    return bool(os.getenv("SUPABASE_URL") and _anon_key())
+
+
+def is_admin_configured() -> bool:
+    return bool(os.getenv("SUPABASE_URL") and _service_role_key())
 
 
 def build_machine_id(raw: str) -> str:
@@ -107,8 +119,8 @@ def generate_activation_id(user_hint: str = "") -> tuple[str, dict[str, str]]:
 
 
 def create_license(usuario: str = "", producto: str = PRODUCTO_DEFAULT, dias: int = None, plan: str = "BASICA") -> tuple[bool, str, dict[str, Any] | None]:
-    if not is_configured():
-        return False, "Falta configurar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY/ANON_KEY.", None
+    if not is_admin_configured():
+        return False, "Falta configurar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY para emitir licencias.", None
 
     plan = normalize_plan(plan)
     cfg = PLAN_CONFIG[plan]
@@ -132,7 +144,7 @@ def create_license(usuario: str = "", producto: str = PRODUCTO_DEFAULT, dias: in
         "limits": cfg["limits"],
     }
 
-    resp = requests.post(_table_url(), headers=_headers(), json=payload, timeout=12)
+    resp = requests.post(_table_url(), headers=_headers(require_service_role=True), json=payload, timeout=12)
     if resp.status_code >= 300:
         return False, f"Error al crear licencia en Supabase ({resp.status_code}): {resp.text[:240]}", None
 
@@ -143,7 +155,7 @@ def create_license(usuario: str = "", producto: str = PRODUCTO_DEFAULT, dias: in
 
 def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO_DEFAULT) -> tuple[bool, str, dict[str, Any] | None]:
     if not is_configured():
-        return False, "Falta configurar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY/ANON_KEY.", None
+        return False, "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY.", None
 
     key = (license_key or "").strip()
     machine_id = build_machine_id(machine_id)

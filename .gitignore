@@ -17,7 +17,7 @@ lib64/
 # Archivos de variables de entorno (¡CRÍTICO: No subir secretos!)
 .env
 .env.local
-.env.sample
+.env.*.local
 instance/
 .webassets-cache
 
@@ -35,6 +35,8 @@ dist/
 *.egg-info/
 *.deb
 build_deb/
+build/work/
+build/license_runtime_config.json
 
 ### --- ESPECÍFICOS DEL PROYECTO --- ###
 # Directorios de código fuente externo o compilados locales
@@ -69,5 +71,10 @@ respaldo/
 *.key
 *.crt
 *.cache.json
-*_cache.jsonlicense_cache.json
+*_cache.json
 license_cache.json
+license.json
+config/license.json
+secret.key
+.port
+.codex
