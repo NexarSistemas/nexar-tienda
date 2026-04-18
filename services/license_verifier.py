@@ -4,12 +4,7 @@ license_verifier.py — Nexar Tienda
 Verifica la licencia online contra Supabase usando el SDK nexar_licencias.
 """
 
-from datetime import date, datetime
-import sys
-import os
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'nexar_licencias')))
-from nexar_licencias import validar_licencia
+from services.license_sdk import get_license_product, import_validar_licencia, load_public_key
 
 # ── Configuracion ─────────────────────────────────────────────────────────────
 DIAS_GRACIA = 7
@@ -37,9 +32,12 @@ def verificar_licencia_online(db_module) -> dict:
     except:
         licencia = {"license_key": cfg.get('license_key', ''), "public_signature": cfg.get('license_signature', '')}
 
-    # Usar variable de entorno para la clave pública
-    public_key = os.getenv("PUBLIC_KEY", "")
-    ok = validar_licencia(licencia, public_key, "tienda", debug=True)
+    validar_licencia = import_validar_licencia()
+    if validar_licencia is None:
+        _revocar(db_module)
+        return {'ok': False, 'modo': 'revocada', 'mensaje': 'No se pudo cargar el SDK de licencias.'}
+
+    ok = validar_licencia(licencia, load_public_key(), get_license_product(), debug=True)
 
     if not ok:
         _revocar(db_module)

@@ -1,11 +1,9 @@
-import importlib
 import os
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session
 from services.license_storage import guardar_licencia, cargar_licencia
+from services.license_sdk import get_current_hwid, get_license_product, validate_license_key
 from services.supabase_license_api import (
-    PRODUCTO_DEFAULT,
-    activate_license,
     generate_activation_id,
     is_configured as supabase_configured,
 )
@@ -23,15 +21,6 @@ def _render(nombre_template: str, **context):
             pagina=titulo,
             detalle="Esta pantalla aún no está conectada al backend en esta rama.",
         )
-
-
-def _import_validar_licencia():
-    try:
-        module = importlib.import_module("nexar_licencias")
-        return getattr(module, "validar_licencia", None)
-    except Exception:
-        return None
-
 
 @main_bp.route("/login", methods=["GET", "POST"])
 def login():
@@ -177,8 +166,9 @@ def licencia():
         "licencia.html",
         supabase_ok=supabase_configured(),
         machine_id=machine_id,
+        device_hwid=get_current_hwid(),
         machine_details=machine_details,
-        producto=PRODUCTO_DEFAULT,
+        producto=get_license_product(),
         license_key_local=license_key_local,
         dev_mode=bool(os.getenv("NEXAR_LICENSE_DEV_SECRET")),
     )
@@ -186,27 +176,12 @@ def licencia():
 
 @main_bp.route("/licencia/activar", methods=["POST"])
 def licencia_activar():
-    machine_id = request.form.get("machine_id", "").strip()
     license_key = request.form.get("license_key", "").strip()
-
-    row = None
-    if supabase_configured():
-        ok, msg, row = activate_license(license_key=license_key, machine_id=machine_id)
-    else:
-        validar_licencia = _import_validar_licencia()
-        if validar_licencia is None:
-            ok, msg = False, "No hay conexión a Supabase ni SDK nexar_licencias instalado."
-        else:
-            try:
-                ok = bool(validar_licencia({"license_key": license_key}, None, PRODUCTO_DEFAULT, debug=True))
-                msg = "Licencia validada por SDK externo."
-            except Exception as ex:
-                ok, msg = False, f"Error validando con SDK: {ex}"
+    ok, msg = validate_license_key(license_key, debug=True)
 
     if ok:
         guardar_licencia(license_key)
-        titular = (row or {}).get("usuario", "SDK")
-        flash(f"✅ {msg} Titular: {titular}.")
+        flash(f"✅ {msg} La licencia quedó vinculada a este equipo.")
     else:
         flash(f"❌ {msg}")
     return redirect("/licencia")
@@ -230,14 +205,13 @@ def licencia_generar_desarrollador():
 
     from services.supabase_license_api import create_license
 
-    activation_id = request.form.get("activation_id", "").strip()
     usuario = request.form.get("usuario", "").strip() or "Cliente"
     try:
         dias = int(request.form.get("dias", "365") or "365")
     except ValueError:
         dias = 365
 
-    ok, msg, row = create_license(machine_id=activation_id, usuario=usuario, dias=dias)
+    ok, msg, row = create_license(usuario=usuario, producto=get_license_product(), dias=dias)
     if ok and row:
         flash(f"✅ {msg} Key emitida: {row.get('license_key', '—')}")
     else:

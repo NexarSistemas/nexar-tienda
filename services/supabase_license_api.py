@@ -10,7 +10,7 @@ from typing import Any
 
 import requests
 
-PRODUCTO_DEFAULT = "nexar-tienda"
+PRODUCTO_DEFAULT = os.getenv("LICENSE_PRODUCT", "nexar-tienda")
 
 
 def _clean_base_url(url: str) -> str:
@@ -81,13 +81,9 @@ def generate_activation_id(user_hint: str = "") -> tuple[str, dict[str, str]]:
     return activation_id, details
 
 
-def create_license(machine_id: str, usuario: str = "", producto: str = PRODUCTO_DEFAULT, dias: int = 365) -> tuple[bool, str, dict[str, Any] | None]:
+def create_license(usuario: str = "", producto: str = PRODUCTO_DEFAULT, dias: int = 365) -> tuple[bool, str, dict[str, Any] | None]:
     if not is_configured():
         return False, "Falta configurar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY/ANON_KEY.", None
-
-    machine_id = build_machine_id(machine_id)
-    if not machine_id:
-        return False, "El ID de máquina es obligatorio.", None
 
     payload = {
         "license_key": f"NXR-{secrets.token_hex(4).upper()}",
@@ -95,8 +91,8 @@ def create_license(machine_id: str, usuario: str = "", producto: str = PRODUCTO_
         "usuario": usuario or "Cliente",
         "activa": True,
         "expira": (date.today() + timedelta(days=max(1, dias))).isoformat(),
-        "hwid": machine_id,
-        "hwids": [machine_id],
+        "hwid": "",
+        "hwids": [],
         "max_devices": 1,
     }
 

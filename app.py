@@ -1,8 +1,4 @@
-from __future__ import annotations
-
-import importlib
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -11,20 +7,7 @@ from flask import Flask, redirect, request, session
 from routes.licencia import licencia_bp
 from routes.main import main_bp
 from services.license_storage import cargar_licencia
-
-
-def _import_validar_licencia():
-    """Importa el SDK de licencias de forma tolerante a errores."""
-    sdk_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "nexar_licencias"))
-    if sdk_path not in sys.path:
-        sys.path.append(sdk_path)
-
-    try:
-        module = importlib.import_module("nexar_licencias")
-    except Exception:
-        return None
-
-    return getattr(module, "validar_licencia", None)
+from services.license_sdk import validate_saved_license
 
 
 def create_app() -> Flask:
@@ -104,25 +87,16 @@ def create_app() -> Flask:
             return redirect("/login")
 
         # Permitir rutas libres de chequeo de licencia.
-        if request.path.startswith(("/activar", "/static")):
+        if request.path.startswith(("/activar", "/licencia", "/static")):
             return None
 
         licencia = cargar_licencia()
         if not licencia:
-            return redirect("/activar")
+            return redirect("/licencia")
 
-        validar_licencia = _import_validar_licencia()
-        if validar_licencia is None:
-            # Si el SDK no está instalado no bloqueamos el uso local.
-            return None
-
-        try:
-            ok = validar_licencia(licencia, None, "nexar-tienda", debug=True)
-        except Exception:
-            return redirect("/activar")
-
+        ok, _ = validate_saved_license(debug=True)
         if not ok:
-            return redirect("/activar")
+            return redirect("/licencia")
 
         return None
 

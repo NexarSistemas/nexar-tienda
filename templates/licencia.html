@@ -6,11 +6,11 @@
 <div class="row g-3">
   <div class="col-lg-5">
     <div class="card">
-      <div class="card-header bg-light"><strong>ID de activación (enviar al desarrollador)</strong></div>
+      <div class="card-header bg-light"><strong>Identificador de este equipo</strong></div>
       <div class="card-body">
         <p class="mb-2"><strong>Producto:</strong> <code>{{ producto }}</code></p>
-        <label class="form-label">ID único generado (máquina + disco + usuario)</label>
-        <input id="activation-id" class="form-control font-monospace mb-2" value="{{ machine_id }}" readonly>
+        <label class="form-label">HWID usado por el SDK de licencias</label>
+        <input id="activation-id" class="form-control font-monospace mb-2" value="{{ device_hwid or machine_id }}" readonly>
         <button class="btn btn-outline-secondary btn-sm mb-3" onclick="copiarId()" type="button">
           <i class="fas fa-copy"></i> Copiar ID
         </button>
@@ -23,9 +23,9 @@
 
         <hr>
         <p class="small mb-2">
-          1) Enviá este ID al desarrollador.<br>
-          2) El desarrollador genera la licencia/token en Supabase.<br>
-          3) Pegá la clave abajo para activar.
+          1) El desarrollador crea la licencia en Nexar Admin para <code>{{ producto }}</code>.<br>
+          2) Pegá la clave abajo y activala en este equipo.<br>
+          3) En la primera validación, el SDK la vincula a este dispositivo y guarda cache offline.
         </p>
 
         {% if supabase_ok %}
@@ -50,7 +50,6 @@
             <label class="form-label">License key / token</label>
             <input name="license_key" class="form-control font-monospace" required placeholder="Ej: ABC123 / NXR-...">
           </div>
-          <input type="hidden" name="machine_id" value="{{ machine_id }}">
 
           <div class="col-12">
             <button class="btn btn-success w-100" type="submit">
@@ -70,11 +69,7 @@
       <div class="card-header bg-light"><strong>Panel desarrollador — emitir licencia</strong></div>
       <div class="card-body">
         <form method="POST" action="{{ url_for('licencia_generar_desarrollador') }}" class="row g-2">
-          <div class="col-md-7">
-            <label class="form-label">IDE / Activation ID</label>
-            <input name="activation_id" class="form-control font-monospace" value="{{ machine_id }}" required>
-          </div>
-          <div class="col-md-5">
+          <div class="col-md-6">
             <label class="form-label">Días</label>
             <input name="dias" type="number" class="form-control" value="365" min="1" max="3650">
           </div>
@@ -82,7 +77,12 @@
             <label class="form-label">Usuario cliente</label>
             <input name="usuario" class="form-control" placeholder="Nombre cliente">
           </div>
-          <div class="col-md-6">
+          <div class="col-12">
+            <div class="small text-muted">
+              La licencia se crea sin dispositivo asignado. El SDK la vincula al primer equipo que la valide correctamente.
+            </div>
+          </div>
+          <div class="col-12">
             <label class="form-label">Clave desarrollador</label>
             <input name="dev_secret" type="password" class="form-control" required>
           </div>
