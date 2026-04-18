@@ -25,6 +25,7 @@ AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
 AppUpdatesURL={#AppURL}
+LicenseFile=..\LICENSE.txt
 
 DefaultDirName={userappdata}\{#AppName}
 DefaultGroupName={#AppName}
@@ -58,6 +59,7 @@ Name: "desktopicon"; Description: "Crear acceso directo en el Escritorio"; Group
 
 [Files]
 Source: "..\dist\NexarTienda.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 ; ── Clave pública RSA para verificación de licencias ────────────────
 ; Sin este archivo, la activación de licencias fallará con

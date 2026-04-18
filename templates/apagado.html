@@ -19,11 +19,17 @@
     </div>
 
     <script>
-        // Comportamiento replicado de Nexar Almacén:
-        // Intentar cerrar la ventana nativa o pestaña tras 2 segundos
+        // 1) Pedir apagado del servidor (en segundo plano)
+        fetch('/shutdown', { method: 'POST', keepalive: true }).catch(() => {});
+
+        // 2) Cerrar ventana en webview/navegador
         setTimeout(function() {
+            if (window.pywebview?.api?.closeWindow) {
+                window.pywebview.api.closeWindow();
+                return;
+            }
             window.close();
-        }, 2000);
+        }, 1200);
     </script>
 </body>
 </html>

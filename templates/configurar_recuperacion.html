@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Configurar Recuperación — Nexar Tienda{% endblock %}
+{% block page_title %}<i class="fas fa-shield-alt me-2"></i>Configurar recuperación{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-7">
+            <div class="card shadow-sm border-warning">
+                <div class="card-header bg-warning-subtle">
+                    <h5 class="mb-0">Configuración obligatoria de seguridad</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="alert alert-info">
+                        Para proteger tu cuenta, configurá una pregunta y respuesta secreta.
+                        Estos datos se usan para recuperar la contraseña si la olvidás.
+                    </div>
+
+                    <form method="POST">
+                        <input type="hidden" name="next" value="{{ next or '' }}">
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Usuario</label>
+                            <input class="form-control bg-light" value="{{ usuario.username }}" readonly>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Pregunta secreta</label>
+                            <input type="text" name="security_question" class="form-control" required autofocus placeholder="Ej: ¿Nombre de mi primera mascota?">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Respuesta secreta</label>
+                            <input type="text" name="security_answer" class="form-control" required placeholder="Tu respuesta secreta">
+                            <div class="form-text">Guardala mentalmente. No se mostrará de nuevo.</div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-save me-2"></i>Guardar y continuar
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

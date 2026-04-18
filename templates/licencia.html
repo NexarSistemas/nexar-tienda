@@ -1,262 +1,122 @@
 {% extends "base.html" %}
-{% block title %}Gestionar Licencia — Nexar Tienda{% endblock %}
-{% block page_title %}<i class="fas fa-key me-2"></i>Gestión de Licencia{% endblock %}
+{% block title %}Activación de Licencia — Nexar Tienda{% endblock %}
+{% block page_title %}<i class="fas fa-key me-2"></i>Activación de licencia{% endblock %}
 
 {% block content %}
-<div class="licencia-container">
-    <div class="row">
-        <!-- INFORMACIÓN ACTUAL -->
-        <div class="col-lg-6">
-            <div class="card mb-4">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0">
-                        <i class="fas fa-info-circle"></i>
-                        Estado Actual
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <!-- Tier Actual -->
-                    <div class="mb-3">
-                        <label class="form-label"><strong>Tier Actual:</strong></label>
-                        <div class="alert" style="background-color: {% if license_info['tier'] == 'DEMO' %}#fef3c7{% elif license_info['tier'] == 'BASICA' %}#dbeafe{% else %}#dcfce7{% endif %}; border-left: 4px solid {% if license_info['tier'] == 'DEMO' %}#f59e0b{% elif license_info['tier'] == 'BASICA' %}#3b82f6{% else %}#22c55e{% endif %};">
-                            <strong>{{ tier_limits[license_info['tier']]['descripcion'] }}</strong>
-                            <div class="small mt-2">
-                                {% if license_info['tier'] == 'DEMO' %}
-                                    <i class="fas fa-hourglass-half"></i> Periodo de prueba
-                                    {% if not license_info['activated_at'] %}
-                                        (Comienza al activar)
-                                    {% else %}
-                                        desde {{ license_info['activated_at'][:10] }}
-                                    {% endif %}
-                                {% elif license_info['tier'] == 'BASICA' %}
-                                    <i class="fas fa-check"></i> Licencia Basica
-                                {% else %}
-                                    <i class="fas fa-crown"></i> Licencia Profesional
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header bg-light"><strong>ID de este equipo</strong></div>
+      <div class="card-body">
+        <p class="mb-2"><strong>Producto:</strong> <code>{{ producto }}</code></p>
+        <label class="form-label">Código para solicitar una licencia</label>
+        <input id="activation-id" class="form-control font-monospace mb-2" value="{{ device_hwid or machine_id }}" readonly>
+        <button class="btn btn-outline-secondary btn-sm mb-3" onclick="copiarId()" type="button">
+          <i class="fas fa-copy"></i> Copiar ID
+        </button>
 
-                    <!-- Clave de Licencia -->
-                    <div class="mb-3">
-                        <label class="form-label"><strong>Clave de Licencia:</strong></label>
-                        <div class="input-group">
-                            <input type="text" class="form-control" value="{{ license_info['key'] or '(ninguna)' }}" disabled>
-                        </div>
-                        {% if not license_info['key'] %}
-                        <small class="text-muted"><i class="fas fa-info-circle"></i> Modo DEMO - Sin clave requerida</small>
-                        {% endif %}
-                    </div>
+        <ul class="small text-muted mb-0">
+          <li><strong>Usuario:</strong> {{ machine_details.username }}</li>
+          <li><strong>Equipo:</strong> {{ machine_details.host }}</li>
+          <li><strong>Disco/Hint:</strong> {{ machine_details.disk_hint }}</li>
+        </ul>
 
-                    <!-- Dates -->
-                    {% if license_info['activated_at'] %}
-                    <div class="row">
-                        <div class="col-md-6">
-                            <label class="form-label"><small>Activada:</small></label>
-                            <div class="small">{{ license_info['activated_at'][:10] }}</div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label"><small>Vencimiento:</small></label>
-                            <div class="small">
-                                {% if license_info['expires_at'] %}
-                                    {{ license_info['expires_at'][:10] }}
-                                {% else %}
-                                    <span class="text-success">No vence</span>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-                </div>
+        <hr>
+        <p class="small mb-2">
+          Si todavía no tenés licencia, copiá este ID y envialo al desarrollador.
+          Si ya recibiste una clave, pegala en el formulario de activación.
+        </p>
+
+        {% if dev_mode %}
+          {% if supabase_ok %}
+            <div class="alert alert-success mb-0">✅ Conexión Supabase configurada para herramientas de desarrollador.</div>
+          {% else %}
+            <div class="alert alert-warning mb-0">
+              Modo desarrollador: faltan <code>SUPABASE_URL</code> y una key REST en el entorno de Tienda.
+              La activación del usuario puede funcionar por SDK si <code>nexar_licencias</code> está configurado.
             </div>
-
-            <!-- LIMITES ACTUALES -->
-            <div class="card">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0">
-                        <i class="fas fa-chart-bar"></i>
-                        Limites de Licencia
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <!-- Productos -->
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <label class="form-label mb-0"><strong>Productos:</strong></label>
-                            <span class="badge {% if productos_count >= (license_info['limits'].get('productos') or 999999) %}bg-danger{% elif license_info['limits'].get('productos') and productos_count > license_info['limits'].get('productos', 0) * 0.8 %}bg-warning{% else %}bg-success{% endif %}">
-                                {{ productos_count }}{% if license_info['limits'].get('productos') %} / {{ license_info['limits']['productos'] }}{% else %} (ilimitado){% endif %}
-                            </span>
-                        </div>
-                        {% if license_info['limits'].get('productos') %}
-                        <div class="progress" style="height: 20px;">
-                            <div class="progress-bar {% if productos_count >= license_info['limits']['productos'] %}bg-danger{% elif productos_count > license_info['limits']['productos'] * 0.8 %}bg-warning{% else %}bg-success{% endif %}"
-                                 style="width: {{ (productos_count / license_info['limits']['productos'] * 100)|min(100) }}%">
-                                {{ ((productos_count / license_info['limits']['productos'] * 100)|min(100))|int }}%
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Clientes -->
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <label class="form-label mb-0"><strong>Clientes:</strong></label>
-                            <span class="badge {% if clientes_count >= (license_info['limits'].get('clientes') or 999999) %}bg-danger{% elif license_info['limits'].get('clientes') and clientes_count > license_info['limits'].get('clientes', 0) * 0.8 %}bg-warning{% else %}bg-success{% endif %}">
-                                {{ clientes_count }}{% if license_info['limits'].get('clientes') %} / {{ license_info['limits']['clientes'] }}{% else %} (ilimitado){% endif %}
-                            </span>
-                        </div>
-                        {% if license_info['limits'].get('clientes') %}
-                        <div class="progress" style="height: 20px;">
-                            <div class="progress-bar {% if clientes_count >= license_info['limits']['clientes'] %}bg-danger{% elif clientes_count > license_info['limits']['clientes'] * 0.8 %}bg-warning{% else %}bg-success{% endif %}"
-                                 style="width: {{ (clientes_count / license_info['limits']['clientes'] * 100)|min(100) }}%">
-                                {{ ((clientes_count / license_info['limits']['clientes'] * 100)|min(100))|int }}%
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Proveedores -->
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <label class="form-label mb-0"><strong>Proveedores:</strong></label>
-                            <span class="badge {% if proveedores_count >= (license_info['limits'].get('proveedores') or 999999) %}bg-danger{% elif license_info['limits'].get('proveedores') and proveedores_count > license_info['limits'].get('proveedores', 0) * 0.8 %}bg-warning{% else %}bg-success{% endif %}">
-                                {{ proveedores_count }}{% if license_info['limits'].get('proveedores') %} / {{ license_info['limits']['proveedores'] }}{% else %} (ilimitado){% endif %}
-                            </span>
-                        </div>
-                        {% if license_info['limits'].get('proveedores') %}
-                        <div class="progress" style="height: 20px;">
-                            <div class="progress-bar {% if proveedores_count >= license_info['limits']['proveedores'] %}bg-danger{% elif proveedores_count > license_info['limits']['proveedores'] * 0.8 %}bg-warning{% else %}bg-success{% endif %}"
-                                 style="width: {{ (proveedores_count / license_info['limits']['proveedores'] * 100)|min(100) }}%">
-                                {{ ((proveedores_count / license_info['limits']['proveedores'] * 100)|min(100))|int }}%
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- CAMBIAR LICENCIA -->
-        <div class="col-lg-6">
-            <div class="card">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0">
-                        <i class="fas fa-edit"></i>
-                        Cambiar Licencia
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <form method="POST">
-                        <!-- Seleccionar Tier -->
-                        <div class="mb-3">
-                            <label for="tier" class="form-label"><strong>Tipo de Licencia</strong></label>
-                            <div>
-                                {% for tier_key, tier_data in tier_limits.items() %}
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="radio" name="tier" id="tier_{{ tier_key }}" 
-                                           value="{{ tier_key }}" {% if license_info['tier'] == tier_key %}checked{% endif %}>
-                                    <label class="form-check-label" for="tier_{{ tier_key }}">
-                                        <strong>{{ tier_data['descripcion'] }}</strong>
-                                        {% if tier_key == 'DEMO' %}
-                                            <small class="text-muted d-block">
-                                                Ilimitado por {{ tier_data['dias_prueba'] }} dias
-                                            </small>
-                                        {% elif tier_key == 'BASICA' %}
-                                            <small class="text-muted d-block">
-                                                Max: {{ tier_data['productos'] }} productos, {{ tier_data['clientes'] }} clientes, {{ tier_data['proveedores'] }} proveedores
-                                            </small>
-                                        {% elif tier_key == 'PRO' %}
-                                            <small class="text-muted d-block">
-                                                Acceso total a todas las funciones sin limites
-                                            </small>
-                                        {% endif %}
-                                    </label>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-
-                        <!-- Clave de Licencia (solo BASICA y PRO) -->
-                        <div class="mb-3" id="keyField" style="display: none;">
-                            <label for="key" class="form-label">Clave de Licencia</label>
-                            <input type="text" class="form-control" id="key" name="key" 
-                                   placeholder="Ingrese clave de licencia" value="{{ license_info['key'] or '' }}">
-                            <small class="text-muted">Obtenga su clave en www.nexarapp.com</small>
-                        </div>
-
-                        <!-- Fecha de Vencimiento (solo BASICA y PRO) -->
-                        <div class="mb-3" id="expiresField" style="display: none;">
-                            <label for="expires_at" class="form-label">Fecha de Vencimiento (opcional)</label>
-                            <input type="date" class="form-control" id="expires_at" name="expires_at" 
-                                   value="{{ license_info['expires_at'][:10] if license_info['expires_at'] else '' }}">
-                            <small class="text-muted">Dejar en blanco = No vence</small>
-                        </div>
-
-                        <!-- Botones -->
-                        <div class="row">
-                            <div class="col-md-6">
-                                <button type="submit" class="btn btn-primary w-100">
-                                    <i class="fas fa-save"></i>
-                                    Guardar Licencia
-                                </button>
-                            </div>
-                            <div class="col-md-6">
-                                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary w-100">
-                                    <i class="fas fa-times"></i>
-                                    Cancelar
-                                </a>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- INFO ADICIONAL -->
-            <div class="card mt-3">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0"><i class="fas fa-lightbulb"></i> Informacion</h5>
-                </div>
-                <div class="card-body small">
-                    <ul class="mb-0">
-                        <li><strong>DEMO:</strong> Usa tu tienda sin limites durante 30 dias</li>
-                        <li><strong>BASICA:</strong> Uso permanente con limites de registros</li>
-                        <li><strong>PRO:</strong> Uso profesional sin limites</li>
-                        <li>Los limites se verifican al crear nuevos registros</li>
-                        <li>Puedes cambiar de tier en cualquier momento</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
+          {% endif %}
+        {% else %}
+          <div class="alert alert-info mb-0">
+            Este equipo puede usarse en modo demo o activarse con una clave de licencia válida.
+          </div>
+        {% endif %}
+      </div>
     </div>
-</div>
+  </div>
 
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header bg-light"><strong>Activar licencia</strong></div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('licencia_activar') }}" class="row g-2">
+          <div class="col-12">
+            <label class="form-label">Clave de licencia</label>
+            <input name="license_key" class="form-control font-monospace" required placeholder="Ej: NXR-...">
+          </div>
+
+          <div class="col-12">
+            <button class="btn btn-success w-100" type="submit">
+              <i class="fas fa-check-circle"></i> Activar en este equipo
+            </button>
+          </div>
+        </form>
+
+        <hr>
+        <label class="form-label small">Licencia guardada localmente</label>
+        <input class="form-control form-control-sm font-monospace" value="{{ license_key_local or '(ninguna)' }}" readonly>
+      </div>
+    </div>
+
+    {% if dev_mode %}
+    <div class="card mt-3 border-danger">
+      <div class="card-header bg-light"><strong>Panel desarrollador — emitir licencia</strong></div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('licencia_generar_desarrollador') }}" class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label">Plan</label>
+            <select name="plan" class="form-select">
+              <option value="DEMO">Demo 30 días</option>
+              <option value="BASICA" selected>Básica permanente</option>
+              <option value="MENSUAL_FULL">Mensual full</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Días</label>
+            <input name="dias" type="number" class="form-control" value="30" min="1" max="3650">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Usuario cliente</label>
+            <input name="usuario" class="form-control" placeholder="Nombre cliente">
+          </div>
+          <div class="col-12">
+            <div class="small text-muted">
+              La licencia se crea sin dispositivo asignado. El SDK la vincula al primer equipo que la valide correctamente.
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Clave desarrollador</label>
+            <input name="dev_secret" type="password" class="form-control" required>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-danger w-100" type="submit">
+              <i class="fas fa-key"></i> Generar key en Supabase
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const tierRadios = document.querySelectorAll('input[name="tier"]');
-    const keyField = document.getElementById('keyField');
-    const expiresField = document.getElementById('expiresField');
-    
-    function updateFields() {
-        const selectedTier = document.querySelector('input[name="tier"]:checked').value;
-        if (selectedTier === 'DEMO') {
-            keyField.style.display = 'none';
-            expiresField.style.display = 'none';
-        } else {
-            keyField.style.display = 'block';
-            expiresField.style.display = 'block';
-        }
-    }
-    
-    // Initial state
-    updateFields();
-    
-    // On change
-    tierRadios.forEach(radio => {
-        radio.addEventListener('change', updateFields);
-    });
-});
+function copiarId() {
+  const el = document.getElementById('activation-id');
+  el.select();
+  navigator.clipboard?.writeText(el.value);
+}
 </script>
 {% endblock %}

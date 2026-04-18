@@ -1,0 +1,10 @@
+<h2>Activar licencia</h2>
+
+{% if error %}
+<p style="color:red;">{{ error }}</p>
+{% endif %}
+
+<form method="POST">
+    <input name="license_key" placeholder="Ingresa tu licencia">
+    <button type="submit">Activar</button>
+</form>

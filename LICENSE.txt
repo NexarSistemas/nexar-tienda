@@ -1,0 +1,49 @@
+ACUERDO DE LICENCIA DE USUARIO FINAL
+Nexar Tienda
+
+Copyright (c) 2026 Nexar Sistemas.
+
+Al instalar o usar Nexar Tienda, el usuario acepta las condiciones de esta
+licencia. Si no acepta estas condiciones, no debe instalar ni usar el software.
+
+1. Uso permitido
+Nexar Sistemas concede una licencia de uso no exclusiva e intransferible para
+usar Nexar Tienda en los equipos y bajo el plan de licencia contratado o
+habilitado por el desarrollador.
+
+2. Activación y validación
+El software puede validar su licencia mediante identificadores técnicos del
+equipo, claves de licencia y servicios remotos de validación. La licencia puede
+ser Demo, Básica o Mensual Full, según corresponda.
+
+3. Restricciones
+No se permite revender, redistribuir, alquilar, sublicenciar, descompilar,
+modificar mecanismos de activación, eludir límites de licencia ni usar claves
+no autorizadas.
+
+4. Datos locales
+Nexar Tienda almacena datos operativos localmente, incluyendo base SQLite,
+configuración, copias de seguridad, caché de licencia y datos necesarios para
+el funcionamiento del sistema. El usuario es responsable de mantener respaldos
+actualizados de su información comercial.
+
+5. Servicio Demo y planes
+El modo Demo tiene una duración limitada. La licencia Básica es permanente con
+restricciones funcionales. La licencia Mensual Full agrega soporte,
+actualizaciones y límites ampliados mientras se encuentre vigente. Al vencer
+Mensual Full, el sistema puede volver al plan Básico si existe una activación
+válida.
+
+6. Garantía limitada
+El software se entrega "tal cual", sin garantía absoluta de disponibilidad,
+compatibilidad con todos los entornos ni ausencia total de errores. Nexar
+Sistemas no será responsable por pérdidas indirectas, lucro cesante o pérdida
+de datos derivada del uso del software.
+
+7. Soporte
+El soporte y las actualizaciones dependen del plan contratado. Las condiciones
+comerciales pueden variar según acuerdo con Nexar Sistemas.
+
+8. Aceptación
+La instalación y uso de Nexar Tienda implica la aceptación completa de este
+acuerdo.

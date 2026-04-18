@@ -6,6 +6,7 @@ import threading
 import time
 import socket
 import webbrowser
+import threading as _threading
 
 # ==============================
 # 🔹 Safe print (evita errores Unicode)
@@ -38,7 +39,6 @@ def omitir_venv():
 
 
 def preparar_entorno_linux_frozen():
-    """Evita colisiones de schemas GSettings en binarios PyInstaller."""
     if not (sys.platform.startswith("linux") and es_ejecutable()):
         return
 
@@ -66,7 +66,7 @@ def reiniciar_en_venv():
     else:
         python_venv = os.path.join(VENV_DIR, "bin", "python")
 
-    # ✅ Crear venv con acceso a paquetes del sistema (CLAVE para GTK)
+    # ✅ Crear venv
     if not os.path.exists(python_venv):
         safe_print("📦 Creando entorno virtual...")
         subprocess.check_call([
@@ -93,9 +93,26 @@ def reiniciar_en_venv():
                 stderr=subprocess.DEVNULL
             )
 
+        # ==============================
+        # 🔥 INSTALAR SDK NEXAR LICENCIAS
+        # ==============================
+        ruta_sdk = os.path.abspath("../nexar_licencias")
+
+        if os.path.exists(ruta_sdk):
+            safe_print("📦 Instalando SDK Nexar Licencias...")
+            safe_print(f"📁 Ruta SDK: {ruta_sdk}")
+
+            subprocess.check_call(
+                [python_venv, "-m", "pip", "install", "-e", ruta_sdk],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            safe_print("⚠️ No se encontró nexar_licencias (SDK no instalado)")
+            safe_print(f"👉 Esperado en: {ruta_sdk}")
+
     except subprocess.CalledProcessError:
-        safe_print("⚠️ Error instalando dependencias")
-        safe_print("👉 Intentá manualmente: venv/bin/pip install -r requirements.txt")
+        safe_print("⚠️ Error instalando dependencias o SDK")
 
     # 🔁 Relanzar dentro del venv
     subprocess.check_call([python_venv, __file__])
@@ -118,7 +135,7 @@ def obtener_puerto_libre():
 # ==============================
 def iniciar_flask(port):
     from app import app
-
+    
     app.run(
         host=APP_HOST,
         port=port,
@@ -151,7 +168,6 @@ def esperar_servidor(url, timeout=10):
 if __name__ == "__main__":
     safe_print("🚀 Iniciando Nexar Tienda...")
 
-    # ✅ Manejo de venv
     if not es_ejecutable() and not omitir_venv():
         if not en_virtualenv():
             reiniciar_en_venv()
@@ -174,11 +190,19 @@ if __name__ == "__main__":
 
     safe_print("✅ Servidor listo")
 
-    # ==============================
-    # 🔹 Intentar abrir ventana nativa
-    # ==============================
     try:
         import webview
+
+        class NexarBridge:
+            def closeWindow(self):
+                def _close():
+                    try:
+                        if getattr(webview, "windows", None):
+                            webview.windows[0].destroy()
+                    finally:
+                        os._exit(0)
+                _threading.Timer(0.1, _close).start()
+                return True
 
         webview.create_window(
             APP_TITLE,
@@ -186,7 +210,8 @@ if __name__ == "__main__":
             width=1200,
             height=800,
             maximized=True,
-            confirm_close=True
+            confirm_close=True,
+            js_api=NexarBridge(),
         )
 
         localization = {
@@ -201,6 +226,5 @@ if __name__ == "__main__":
 
         webbrowser.open(url)
 
-        # Mantener vivo el proceso
         while True:
             time.sleep(1)

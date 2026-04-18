@@ -64,6 +64,7 @@ cp    "${SCRIPT_DIR}/CHANGELOG.md" "${INSTALL_DIR}/"
 # README y LICENSE opcionales
 [ -f "${SCRIPT_DIR}/README.md" ] && cp "${SCRIPT_DIR}/README.md" "${INSTALL_DIR}/"
 [ -f "${SCRIPT_DIR}/LICENSE"   ] && cp "${SCRIPT_DIR}/LICENSE"   "${INSTALL_DIR}/"
+[ -f "${SCRIPT_DIR}/LICENSE.txt" ] && cp "${SCRIPT_DIR}/LICENSE.txt" "${INSTALL_DIR}/"
 
 # Limpieza de archivos innecesarios
 find "${INSTALL_DIR}" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
