@@ -70,3 +70,4 @@ respaldo/
 *.crt
 *.cache.json
 *_cache.json
+*.json
