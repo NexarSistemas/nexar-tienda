@@ -5,7 +5,7 @@ import os
 import sys
 from typing import Any
 
-from flask import Flask, redirect, render_template, request, session
+from flask import Flask, redirect, request, session
 
 from routes.licencia import licencia_bp
 from routes.main import main_bp
@@ -51,6 +51,34 @@ def create_app() -> Flask:
             "app_version": "1.0.0",
         }
 
+
+
+    @app.template_filter("fmt_ars")
+    def fmt_ars(value: Any) -> str:
+        try:
+            number = float(value or 0)
+        except (TypeError, ValueError):
+            number = 0.0
+        entero, dec = f"{number:,.2f}".split(".")
+        entero = entero.replace(",", ".")
+        return f"$ {entero},{dec}"
+
+
+
+    @app.template_filter("date")
+    def format_date(value: Any) -> str:
+        if value in (None, ""):
+            return "-"
+        text = str(value)
+        for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+            try:
+                from datetime import datetime
+
+                return datetime.strptime(text[:19], fmt).strftime("%d/%m/%Y")
+            except ValueError:
+                continue
+        return text
+
     @app.before_request
     def global_middleware():
         session.setdefault(
@@ -85,12 +113,50 @@ def create_app() -> Flask:
 
         return None
 
-    @app.route("/")
-    def index():
-        return render_template("index.html")
-
     app.register_blueprint(main_bp)
     app.register_blueprint(licencia_bp)
+
+    # Compatibilidad con templates legados que usan endpoints sin prefijo de blueprint.
+    legacy_endpoints = [
+        "dashboard",
+        "productos",
+        "stock",
+        "temporadas",
+        "punto_venta",
+        "historial",
+        "compras",
+        "caja",
+        "gastos",
+        "clientes",
+        "proveedores",
+        "reportes",
+        "estadisticas",
+        "analisis",
+        "perfil",
+        "config",
+        "licencia",
+        "usuarios",
+        "respaldo",
+        "ayuda",
+        "changelog",
+        "acerca",
+        "logout",
+        "apagar_sistema",
+    ]
+    for endpoint in legacy_endpoints:
+        prefixed = f"main.{endpoint}"
+        if prefixed in app.view_functions and endpoint not in app.view_functions:
+            rules = [r for r in app.url_map.iter_rules() if r.endpoint == prefixed]
+            if not rules:
+                continue
+            rule = rules[0]
+            methods = sorted(m for m in rule.methods if m not in {"HEAD", "OPTIONS"})
+            app.add_url_rule(
+                rule.rule,
+                endpoint=endpoint,
+                view_func=app.view_functions[prefixed],
+                methods=methods,
+            )
 
     return app
 
