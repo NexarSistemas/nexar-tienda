@@ -163,9 +163,39 @@ def login():
             flash("❌ Usuario o contraseña incorrectos.", "danger")
             return render_template("login.html", next=request.form.get("next", ""))
         session["user"] = {"id": user["id"], "username": user["username"], "nombre_completo": user["nombre_completo"] or user["username"], "rol": user["rol"]}
+        if not user["security_question"] or not user["security_answer_hash"]:
+            flash("⚠️ Antes de continuar, configurá tu pregunta y respuesta secreta.", "warning")
+            return redirect(url_for("configurar_recuperacion", next=request.form.get("next", "")))
         flash(f"✅ Bienvenido, {user['nombre_completo'] or user['username']}!", "success")
         return redirect(request.form.get("next") or url_for("dashboard"))
     return render_template("login.html", next=request.args.get("next", ""))
+
+
+@main_bp.route("/configurar-recuperacion", methods=["GET", "POST"])
+@login_required
+def configurar_recuperacion():
+    usuario = db.q("SELECT * FROM usuarios WHERE id=?", (session["user"]["id"],), fetchone=True)
+    if not usuario:
+        session.clear()
+        return redirect(url_for("login"))
+    if usuario["security_question"] and usuario["security_answer_hash"]:
+        return redirect(request.args.get("next") or url_for("dashboard"))
+
+    if request.method == "POST":
+        question = request.form.get("security_question", "").strip()
+        answer = request.form.get("security_answer", "").strip()
+        if not question or not answer:
+            flash("⚠️ La pregunta y la respuesta secreta son obligatorias.", "warning")
+            return render_template("configurar_recuperacion.html", usuario=usuario)
+        db.update_perfil(usuario["id"], {
+            "nombre_completo": usuario["nombre_completo"],
+            "security_question": question,
+            "security_answer": answer,
+        })
+        flash("✅ Recuperación de contraseña configurada.", "success")
+        return redirect(request.form.get("next") or url_for("dashboard"))
+
+    return render_template("configurar_recuperacion.html", usuario=usuario, next=request.args.get("next", ""))
 
 
 @main_bp.route("/recuperar-password", methods=["GET", "POST"])
@@ -646,6 +676,9 @@ def perfil():
             if not ok:
                 flash(f"❌ {msg}", "danger")
                 return render_template("perfil.html", usuario=usuario)
+        if bool(data.get("security_question", "").strip()) != bool(data.get("security_answer", "").strip()):
+            flash("⚠️ Para cambiar la recuperación, ingresá pregunta y respuesta secreta.", "warning")
+            return render_template("perfil.html", usuario=usuario)
         db.update_perfil(usuario["id"], data)
         flash("✅ Perfil actualizado.", "success")
         return redirect(url_for("perfil"))
@@ -760,18 +793,62 @@ def usuario_nuevo():
 @admin_required
 def usuario_editar(uid):
     usuario = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
+    if not usuario:
+        flash("❌ Usuario inexistente.", "danger")
+        return redirect(url_for("usuarios"))
     if request.method == "POST":
-        db.update_usuario(uid, {"rol": request.form.get("rol", usuario["rol"]), "nombre_completo": request.form.get("nombre_completo", usuario["nombre_completo"]), "activo": 1 if _as_bool(request.form.get("activo")) else 0})
+        activo = 1 if _as_bool(request.form.get("activo")) else 0
+        nuevo_rol = request.form.get("rol", usuario["rol"])
+        if not activo and uid == session["user"]["id"]:
+            flash("⚠️ No podés desactivar tu propio usuario.", "warning")
+            return redirect(url_for("usuarios"))
+        if not activo and usuario["rol"] in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
+            flash("⚠️ No podés desactivar el último administrador activo.", "warning")
+            return redirect(url_for("usuarios"))
+        if usuario["rol"] in {"Administrador", "admin"} and nuevo_rol not in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
+            flash("⚠️ No podés quitar el rol al último administrador activo.", "warning")
+            return redirect(url_for("usuarios"))
+        db.update_usuario(uid, {"rol": nuevo_rol, "nombre_completo": request.form.get("nombre_completo", usuario["nombre_completo"]), "activo": activo})
         return redirect(url_for("usuarios"))
     return render_template("usuario_form.html", usuario=usuario, roles=db.get_roles(), accion="Editar")
+
+
+@main_bp.route("/usuarios/<int:uid>/toggle-activo", methods=["POST"])
+@admin_required
+def usuario_toggle_activo(uid):
+    user = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
+    if not user:
+        flash("❌ Usuario inexistente.", "danger")
+        return redirect(url_for("usuarios"))
+    if uid == session["user"]["id"]:
+        flash("⚠️ No podés cambiar el estado de tu propio usuario.", "warning")
+        return redirect(url_for("usuarios"))
+
+    nuevo_estado = 0 if int(user["activo"] or 0) else 1
+    if nuevo_estado == 0 and user["rol"] in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
+        flash("⚠️ No podés desactivar el último administrador activo.", "warning")
+        return redirect(url_for("usuarios"))
+
+    db.set_usuario_activo(uid, nuevo_estado)
+    flash("✅ Usuario activado." if nuevo_estado else "✅ Usuario desactivado.", "success")
+    return redirect(url_for("usuarios"))
 
 
 @main_bp.route("/usuarios/<int:uid>/eliminar", methods=["POST"])
 @admin_required
 def usuario_eliminar(uid):
-    if uid != session["user"]["id"]:
-        user = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
-        db.update_usuario(uid, {"rol": user["rol"], "nombre_completo": user["nombre_completo"], "activo": 0})
+    user = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
+    if not user:
+        flash("❌ Usuario inexistente.", "danger")
+        return redirect(url_for("usuarios"))
+    if uid == session["user"]["id"]:
+        flash("⚠️ No podés eliminar tu propio usuario.", "warning")
+        return redirect(url_for("usuarios"))
+    if user["rol"] in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
+        flash("⚠️ No podés eliminar el último administrador activo.", "warning")
+        return redirect(url_for("usuarios"))
+    db.delete_usuario(uid)
+    flash("✅ Usuario eliminado definitivamente.", "success")
     return redirect(url_for("usuarios"))
 
 

@@ -1270,7 +1270,10 @@ def verify_password(password, password_hash):
 
 def get_usuarios():
     """Devuelve todos los usuarios."""
-    return q("SELECT id,username,rol,nombre_completo,activo FROM usuarios ORDER BY nombre_completo")
+    return q(
+        """SELECT id,username,rol,nombre_completo,activo,security_question,security_answer_hash
+        FROM usuarios ORDER BY nombre_completo"""
+    )
 
 
 def add_usuario(username, password, rol, nombre_completo, security_question=None, security_answer=None):
@@ -1293,6 +1296,17 @@ def count_usuarios():
     return int(row["total"] if row else 0)
 
 
+def count_admins_activos(exclude_uid=None):
+    """Cuenta administradores activos, opcionalmente excluyendo un usuario."""
+    params = []
+    where = "WHERE activo=1 AND rol IN ('Administrador','admin')"
+    if exclude_uid is not None:
+        where += " AND id<>?"
+        params.append(exclude_uid)
+    row = q(f"SELECT COUNT(*) as total FROM usuarios {where}", params, fetchone=True)
+    return int(row["total"] if row else 0)
+
+
 def set_password_for_username(username, password):
     """Actualiza la contraseña de un usuario por username."""
     q(
@@ -1307,6 +1321,16 @@ def update_usuario(uid, data):
     updates = ["rol=?", "nombre_completo=?", "activo=?"]
     params = [data.get('rol', 'usuario'), data.get('nombre_completo', ''), int(data.get('activo', 1)), uid]
     q(f"UPDATE usuarios SET {','.join(updates)} WHERE id=?", params, fetchall=False, commit=True)
+
+
+def set_usuario_activo(uid, activo):
+    """Activa o desactiva un usuario."""
+    q("UPDATE usuarios SET activo=? WHERE id=?", (1 if activo else 0, uid), commit=True)
+
+
+def delete_usuario(uid):
+    """Elimina definitivamente un usuario."""
+    q("DELETE FROM usuarios WHERE id=?", (uid,), commit=True)
 
 
 def update_perfil(uid, data):

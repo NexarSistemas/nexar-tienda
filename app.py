@@ -109,6 +109,21 @@ def create_app() -> Flask:
         if "user" not in session:
             return redirect("/login")
 
+        recovery_allowed_paths = (
+            "/configurar-recuperacion",
+            "/logout",
+            "/static",
+            "/apagar-rapido",
+            "/shutdown",
+        )
+        if not request.path.startswith(recovery_allowed_paths):
+            user = db.q("SELECT security_question, security_answer_hash FROM usuarios WHERE id=?", (session["user"]["id"],), fetchone=True)
+            if not user:
+                session.clear()
+                return redirect("/login")
+            if user and (not user["security_question"] or not user["security_answer_hash"]):
+                return redirect("/configurar-recuperacion")
+
         # Permitir rutas libres de chequeo de licencia.
         if request.path.startswith(("/activar", "/licencia", "/static")):
             return None
@@ -141,6 +156,7 @@ def create_app() -> Flask:
         "registro_inicial",
         "login",
         "recuperar_password",
+        "configurar_recuperacion",
         "dashboard",
         "productos",
         "producto_nuevo",
@@ -198,6 +214,7 @@ def create_app() -> Flask:
         "usuarios",
         "usuario_nuevo",
         "usuario_editar",
+        "usuario_toggle_activo",
         "usuario_eliminar",
         "respaldo",
         "respaldo_ahora",
