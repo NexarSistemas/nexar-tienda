@@ -192,14 +192,13 @@ if __name__ == "__main__":
 
     try:
         import webview
-        from webview import windows
 
         class NexarBridge:
             def closeWindow(self):
                 def _close():
                     try:
-                        if windows:
-                            windows[0].destroy()
+                        if getattr(webview, "windows", None):
+                            webview.windows[0].destroy()
                     finally:
                         os._exit(0)
                 _threading.Timer(0.1, _close).start()
@@ -211,13 +210,14 @@ if __name__ == "__main__":
             width=1200,
             height=800,
             maximized=True,
-            confirm_close=True
+            confirm_close=True,
+            js_api=NexarBridge(),
         )
 
         localization = {
             'global.quitConfirmation': '¿Está seguro de que desea cerrar el sistema?'
         }
-        webview.start(localization=localization, js_api=NexarBridge())
+        webview.start(localization=localization)
 
     except Exception as e:
         safe_print("⚠️ No se pudo abrir ventana nativa")

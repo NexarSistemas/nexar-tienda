@@ -1,3 +1,5 @@
+import importlib
+
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session
 from services.license_storage import guardar_licencia, cargar_licencia
 from services.supabase_license_api import (
@@ -20,6 +22,14 @@ def _render(nombre_template: str, **context):
             pagina=titulo,
             detalle="Esta pantalla aún no está conectada al backend en esta rama.",
         )
+
+
+def _import_validar_licencia():
+    try:
+        module = importlib.import_module("nexar_licencias")
+        return getattr(module, "validar_licencia", None)
+    except Exception:
+        return None
 
 
 @main_bp.route("/login", methods=["GET", "POST"])
@@ -176,10 +186,24 @@ def licencia():
 def licencia_activar():
     machine_id = request.form.get("machine_id", "").strip()
     license_key = request.form.get("license_key", "").strip()
-    ok, msg, row = activate_license(license_key=license_key, machine_id=machine_id)
+
+    row = None
+    if supabase_configured():
+        ok, msg, row = activate_license(license_key=license_key, machine_id=machine_id)
+    else:
+        validar_licencia = _import_validar_licencia()
+        if validar_licencia is None:
+            ok, msg = False, "No hay conexión a Supabase ni SDK nexar_licencias instalado."
+        else:
+            try:
+                ok = bool(validar_licencia({"license_key": license_key}, None, PRODUCTO_DEFAULT, debug=True))
+                msg = "Licencia validada por SDK externo."
+            except Exception as ex:
+                ok, msg = False, f"Error validando con SDK: {ex}"
+
     if ok:
         guardar_licencia(license_key)
-        titular = (row or {}).get("usuario", "—")
+        titular = (row or {}).get("usuario", "SDK")
         flash(f"✅ {msg} Titular: {titular}.")
     else:
         flash(f"❌ {msg}")
