@@ -1,4 +1,12 @@
 from flask import Blueprint, flash, redirect, render_template, request, session
+from services.license_storage import guardar_licencia, cargar_licencia
+from services.supabase_license_api import (
+    PRODUCTO_DEFAULT,
+    activate_license,
+    build_machine_id,
+    create_license,
+    is_configured as supabase_configured,
+)
 
 main_bp = Blueprint("main", __name__)
 
@@ -141,7 +149,48 @@ def config():
 
 @main_bp.route("/licencia")
 def licencia():
-    return _render("licencia.html")
+    machine_id = build_machine_id(session.get("user", {}).get("username", "local-machine"))
+    local_lic = cargar_licencia() or {}
+    license_key_local = local_lic.get("license_key", "")
+
+    return _render(
+        "licencia.html",
+        supabase_ok=supabase_configured(),
+        machine_id=machine_id,
+        producto=PRODUCTO_DEFAULT,
+        license_key_local=license_key_local,
+    )
+
+
+@main_bp.route("/licencia/crear", methods=["POST"])
+def licencia_crear():
+    machine_id = build_machine_id(request.form.get("machine_id", ""))
+    usuario = request.form.get("usuario", "").strip()
+    try:
+        dias = int(request.form.get("dias", "365") or "365")
+    except ValueError:
+        dias = 365
+    ok, msg, row = create_license(machine_id=machine_id, usuario=usuario, dias=dias)
+    if ok and row:
+        guardar_licencia(row.get("license_key", ""))
+        flash(f"✅ {msg} Clave: {row.get('license_key', '—')}")
+    else:
+        flash(f"❌ {msg}")
+    return redirect("/licencia")
+
+
+@main_bp.route("/licencia/activar", methods=["POST"])
+def licencia_activar():
+    machine_id = build_machine_id(request.form.get("machine_id", ""))
+    license_key = request.form.get("license_key", "").strip()
+    ok, msg, row = activate_license(license_key=license_key, machine_id=machine_id)
+    if ok:
+        guardar_licencia(license_key)
+        titular = (row or {}).get("usuario", "—")
+        flash(f"✅ {msg} Titular: {titular}.")
+    else:
+        flash(f"❌ {msg}")
+    return redirect("/licencia")
 
 
 @main_bp.route("/usuarios")

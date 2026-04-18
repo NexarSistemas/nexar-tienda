@@ -145,6 +145,8 @@ def create_app() -> Flask:
         "perfil",
         "config",
         "licencia",
+        "licencia_crear",
+        "licencia_activar",
         "usuarios",
         "respaldo",
         "ayuda",
