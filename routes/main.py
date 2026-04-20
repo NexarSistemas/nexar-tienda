@@ -120,21 +120,26 @@ def _backup_list() -> list[dict]:
 def _update_list() -> list[dict]:
     UPDATE_DIR.mkdir(parents=True, exist_ok=True)
     items = []
-    for path in sorted(UPDATE_DIR.glob("nexar-tienda_*_amd64.deb"), key=lambda p: p.stat().st_mtime, reverse=True):
+    candidates = [*UPDATE_DIR.glob("nexar-tienda_*_amd64.deb"), *UPDATE_DIR.glob("NexarTienda_*_Setup.exe")]
+    for path in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
         stat = path.stat()
+        is_windows_installer = path.suffix.lower() == ".exe"
         items.append({
             "nombre": path.name,
             "ruta": str(path),
             "fecha": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M"),
             "tamanio_mb": round(stat.st_size / 1024 / 1024, 1),
-            "comando": f"sudo apt install {path}",
+            "comando": str(path) if is_windows_installer else f"sudo apt install {path}",
+            "tipo": "Windows" if is_windows_installer else "Linux",
         })
     return items
 
 
 def _update_file(nombre: str) -> Path:
     safe_name = Path(nombre or "").name
-    if safe_name != nombre or not safe_name.startswith("nexar-tienda_") or not safe_name.endswith("_amd64.deb"):
+    valid_linux = safe_name.startswith("nexar-tienda_") and safe_name.endswith("_amd64.deb")
+    valid_windows = safe_name.startswith("NexarTienda_") and safe_name.endswith("_Setup.exe")
+    if safe_name != nombre or not (valid_linux or valid_windows):
         abort(404)
     path = (UPDATE_DIR / safe_name).resolve()
     if path.parent != UPDATE_DIR.resolve() or not path.exists():
@@ -991,7 +996,7 @@ def actualizacion_descargar():
         flash("No hay una actualizacion nueva disponible.", "info")
         return redirect(url_for("respaldo"))
     if not update_info.get("asset_url"):
-        flash("La release existe, pero no tiene instalador .deb adjunto. Abrila en GitHub.", "warning")
+        flash("La release existe, pero no tiene instalador compatible para este sistema. Abrila en GitHub.", "warning")
         return redirect(url_for("respaldo"))
 
     backup_path = _make_backup()
@@ -1017,6 +1022,12 @@ def actualizacion_abrir_carpeta():
             flash("Carpeta de actualizaciones abierta.", "success")
         except Exception as exc:
             flash(f"No se pudo abrir la carpeta: {exc}", "warning")
+    elif sys.platform.startswith("win"):
+        try:
+            os.startfile(str(UPDATE_DIR))  # type: ignore[attr-defined]
+            flash("Carpeta de actualizaciones abierta.", "success")
+        except Exception as exc:
+            flash(f"No se pudo abrir la carpeta: {exc}", "warning")
     else:
         flash(f"Carpeta de actualizaciones: {UPDATE_DIR}", "info")
     return redirect(url_for("respaldo"))
@@ -1027,7 +1038,20 @@ def actualizacion_abrir_carpeta():
 def actualizacion_instalar(nombre):
     installer = _update_file(nombre)
     backup_path = _make_backup()
-    command = f"sudo apt install {installer}"
+    is_windows_installer = installer.suffix.lower() == ".exe"
+    command = str(installer) if is_windows_installer else f"sudo apt install {installer}"
+
+    if sys.platform.startswith("win") and is_windows_installer:
+        try:
+            os.startfile(str(installer))  # type: ignore[attr-defined]
+            flash(
+                f"Instalador de Windows iniciado. Respaldo previo: {backup_path.name}. "
+                "Cuando termine, cerra y volve a abrir Nexar Tienda.",
+                "success",
+            )
+        except Exception as exc:
+            flash(f"No se pudo iniciar el instalador: {exc}. Ejecuta manualmente: {command}", "warning")
+        return redirect(url_for("respaldo"))
 
     if not sys.platform.startswith("linux"):
         flash(f"Respaldo creado ({backup_path.name}). Instala manualmente: {command}", "info")

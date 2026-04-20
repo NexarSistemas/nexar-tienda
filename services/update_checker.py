@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,25 @@ def _release_api_url() -> str:
     return f"https://api.github.com/repos/{repo}/releases/latest"
 
 
+def _is_windows() -> bool:
+    return sys.platform.startswith("win")
+
+
+def _asset_matches_platform(name: str) -> bool:
+    normalized = name.lower()
+    if _is_windows():
+        return normalized.startswith("nexartienda_") and normalized.endswith("_setup.exe")
+    return normalized.startswith("nexar-tienda_") and normalized.endswith("_amd64.deb")
+
+
+def _installer_kind(asset_name: str) -> str:
+    if asset_name.lower().endswith(".exe"):
+        return "windows"
+    if asset_name.lower().endswith(".deb"):
+        return "linux"
+    return ""
+
+
 def check_latest_release(current_version: str) -> dict[str, Any]:
     if os.getenv("NEXAR_DISABLE_UPDATE_CHECK", "").lower() in {"1", "true", "yes"}:
         return {"available": False}
@@ -45,22 +65,23 @@ def check_latest_release(current_version: str) -> dict[str, Any]:
 
     available = _parse_version(latest) > _parse_version(current_version)
     assets = release.get("assets") or []
-    deb_asset = next(
+    installer_asset = next(
         (
             asset for asset in assets
-            if str(asset.get("name") or "").endswith("_amd64.deb")
-            and "nexar-tienda" in str(asset.get("name") or "")
+            if _asset_matches_platform(str(asset.get("name") or ""))
         ),
         None,
     )
+    asset_name = installer_asset.get("name") if installer_asset else ""
     return {
         "available": available,
         "current": current_version,
         "latest": latest,
         "url": release.get("html_url") or f"https://github.com/{DEFAULT_REPO}/releases/latest",
         "name": release.get("name") or f"Nexar Tienda v{latest}",
-        "asset_name": deb_asset.get("name") if deb_asset else "",
-        "asset_url": deb_asset.get("browser_download_url") if deb_asset else "",
+        "asset_name": asset_name,
+        "asset_url": installer_asset.get("browser_download_url") if installer_asset else "",
+        "asset_kind": _installer_kind(asset_name),
     }
 
 
@@ -85,7 +106,7 @@ def download_release_asset(asset_url: str, destination_dir: Path) -> Path:
 
     destination_dir.mkdir(parents=True, exist_ok=True)
     filename = Path(asset_url.split("?", 1)[0]).name
-    if not filename.endswith(".deb") or "/" in filename:
+    if not _asset_matches_platform(filename) or "/" in filename:
         raise ValueError("El instalador de actualizacion no es valido.")
 
     target = destination_dir / filename

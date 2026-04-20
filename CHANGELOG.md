@@ -4,6 +4,18 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.6] - 20 Abril 2026 - Actualizaciones Windows
+
+### Correcciones
+- **Actualizaciones en Windows**: El flujo de actualizaciones ahora detecta y descarga el instalador `NexarTienda_VERSION_Setup.exe` cuando la app corre en Windows.
+- **Instalacion por sistema**: En Windows el boton Instalar abre el instalador `.exe`; en Linux mantiene el flujo `.deb`.
+
+### Cambios Tecnicos
+- **Assets por plataforma**: El verificador de releases elige automaticamente el asset compatible con el sistema operativo actual.
+- **Listado mixto**: La pantalla de respaldos muestra instaladores descargados de Linux y Windows con su tipo correspondiente.
+
+---
+
 ## [1.25.5] - 20 Abril 2026 - Actualizaciones Seguras
 
 ### Caracteristicas Nuevas
