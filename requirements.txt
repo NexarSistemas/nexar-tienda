@@ -1,30 +1,31 @@
 # ==============================================================================
-# 🚀 NEXAR SISTEMAS - REQUERIMIENTOS UNIFICADOS (ABRIL 2026)
-# Proyectos: Tienda, Almacén y Finanzas
+# Nexar Sistemas - requerimientos unificados
+# Proyectos desktop Flask/pywebview: Tienda, Admin y builds CI.
 # ==============================================================================
 
-# 🌐 Backend Framework
-# Se establece 3.0.3 como base estable, compatible con las 3 verticales.
-Flask>=3.0.3
-python-dotenv>=1.0.1
-gunicorn>=20.1.0
+# Backend web
+Flask>=3.0.3,<4
+python-dotenv>=1.0.1,<2
+requests>=2.32.3,<3
+cryptography>=46.0.6,<47
 
-# 🌍 Protocolos y Comunicación
-# Versión actualizada para evitar vulnerabilidades de seguridad (CVEs).
-requests>=2.32.3
+# Desktop webview
+pywebview>=6.1,<7 ; sys_platform != "linux"
+pythonnet>=3.0.5,<4 ; sys_platform == "win32"
 
-# 🖥️ Interfaz de Usuario (Desktop Webview)
-pywebview>=5.0.0
+# Linux: usar Qt/PySide6 para una ventana nativa empaquetable con PyInstaller.
+# Evita depender de PyGObject/python3-gi del sistema en GitHub Actions.
+pywebview[pyside6]>=6.1,<7 ; sys_platform == "linux"
+qtpy>=2.4.3,<3 ; sys_platform == "linux"
+PySide6>=6.7,<7 ; sys_platform == "linux"
 
-# 🔐 Seguridad y Cifrado
-# Importante: cryptography >= 42.0.0 resuelve fallos críticos de memoria.
-cryptography>=46.0.6
+# Build
+pyinstaller>=6.11.1,<7
 
-# 📦 Generación de Ejecutables y Documentación
-pyinstaller>=6.11.1
-markdown>=3.6
+# Funcionalidades usadas por Tienda
+markdown>=3.6,<4
+openpyxl>=3.1.5,<4
+reportlab>=4.2.2,<5
 
-# 📊 Reportes y Exportación de Datos
-# (Instalar solo si el módulo de reportes está activo en el código)
-openpyxl>=3.1.5
-reportlab>=4.2.2
+# Servidor WSGI opcional para despliegues web, no requerido por el ejecutable.
+gunicorn>=20.1.0,<24 ; sys_platform != "win32"

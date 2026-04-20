@@ -7,6 +7,7 @@ import time
 import socket
 import webbrowser
 import threading as _threading
+import platform
 
 # ==============================
 # 🔹 Safe print (evita errores Unicode)
@@ -217,7 +218,10 @@ if __name__ == "__main__":
         localization = {
             'global.quitConfirmation': '¿Está seguro de que desea cerrar el sistema?'
         }
-        webview.start(localization=localization)
+        start_kwargs = {"localization": localization}
+        if platform.system().lower() == "linux":
+            start_kwargs["gui"] = "qt"
+        webview.start(**start_kwargs)
 
     except Exception as e:
         safe_print("⚠️ No se pudo abrir ventana nativa")

@@ -71,10 +71,20 @@ a = Analysis(
         'reportlab.lib.pagesizes',
         'reportlab.platypus',
         'reportlab.lib.styles',
-        # pywebview — en Linux usa GTK/webkit
+        # pywebview en Linux: Qt/PySide6 se empaqueta mejor que GTK en CI.
         'webview',
         'webview.platforms',
+        'webview.platforms.qt',
         'webview.platforms.gtk',
+        'qtpy',
+        'PySide6',
+        'PySide6.QtCore',
+        'PySide6.QtGui',
+        'PySide6.QtWidgets',
+        'PySide6.QtNetwork',
+        'PySide6.QtWebChannel',
+        'PySide6.QtWebEngineCore',
+        'PySide6.QtWebEngineWidgets',
         # stdlib
         'sqlite3',
         'json',

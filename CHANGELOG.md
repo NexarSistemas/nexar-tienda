@@ -4,6 +4,19 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.3] - 20 Abril 2026 - Hotfix Build Linux
+
+### Correcciones
+- **Ventana nativa en Linux**: Se cambio el backend de `pywebview` a Qt/PySide6 para que el ejecutable generado por GitHub Actions abra como ventana nativa.
+- **Build reproducible**: El workflow ahora instala dependencias desde `requirements.txt` en Linux y Windows, evitando diferencias entre el entorno local y CI.
+- **Paquete DEB**: Se actualizaron las dependencias de sistema declaradas para cubrir las bibliotecas Qt/XCB necesarias en instalaciones limpias.
+
+### Cambios Tecnicos
+- **Requirements unificado**: Se alinearon las dependencias compartidas con `nexar-admin`, usando marcadores por plataforma para Windows y Linux.
+- **PyInstaller Linux**: Se agregaron imports ocultos de Qt/PySide6 y se fuerza `gui="qt"` al iniciar `pywebview` en Linux.
+
+---
+
 ## [1.25.2] - 20 Abril 2026 - Hotfix Activacion Windows
 
 ### Correcciones
