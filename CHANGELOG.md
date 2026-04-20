@@ -4,6 +4,22 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.5] - 20 Abril 2026 - Actualizaciones Seguras
+
+### Caracteristicas Nuevas
+- **Actualizaciones desde Respaldos**: La pantalla de respaldos ahora permite preparar actualizaciones, descargar el instalador `.deb` de la ultima release y ver los instaladores disponibles.
+- **Instalacion guiada**: Cada instalador descargado incluye boton para iniciar la instalacion con permisos del sistema y comando manual de respaldo.
+
+### Correcciones
+- **Datos protegidos**: Los respaldos y actualizaciones se guardan en la carpeta persistente del usuario, separada de `/opt/nexar-tienda`, para evitar pisar base de datos o licencia al actualizar.
+- **Respaldo previo**: La descarga e instalacion de actualizaciones crean un respaldo antes de avanzar.
+
+### Cambios Tecnicos
+- **Release assets**: El verificador de actualizaciones detecta el asset `.deb` de GitHub Releases y lo descarga de forma controlada.
+- **Fallback seguro**: Si `pkexec` no esta disponible, la app muestra el comando `sudo apt install` para completar la instalacion manualmente.
+
+---
+
 ## [1.25.4] - 20 Abril 2026 - Instalacion DEB Linux
 
 ### Correcciones

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -43,12 +44,23 @@ def check_latest_release(current_version: str) -> dict[str, Any]:
         return {"available": False}
 
     available = _parse_version(latest) > _parse_version(current_version)
+    assets = release.get("assets") or []
+    deb_asset = next(
+        (
+            asset for asset in assets
+            if str(asset.get("name") or "").endswith("_amd64.deb")
+            and "nexar-tienda" in str(asset.get("name") or "")
+        ),
+        None,
+    )
     return {
         "available": available,
         "current": current_version,
         "latest": latest,
         "url": release.get("html_url") or f"https://github.com/{DEFAULT_REPO}/releases/latest",
         "name": release.get("name") or f"Nexar Tienda v{latest}",
+        "asset_name": deb_asset.get("name") if deb_asset else "",
+        "asset_url": deb_asset.get("browser_download_url") if deb_asset else "",
     }
 
 
@@ -65,3 +77,24 @@ def get_cached_update_info(app, current_version: str) -> dict[str, Any]:
 
     app.config["UPDATE_INFO_CACHE"] = {"checked_at": now, "data": data}
     return data
+
+
+def download_release_asset(asset_url: str, destination_dir: Path) -> Path:
+    if not asset_url or not asset_url.startswith("https://"):
+        raise ValueError("No hay un instalador descargable para esta version.")
+
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    filename = Path(asset_url.split("?", 1)[0]).name
+    if not filename.endswith(".deb") or "/" in filename:
+        raise ValueError("El instalador de actualizacion no es valido.")
+
+    target = destination_dir / filename
+    partial = destination_dir / f"{filename}.part"
+    with requests.get(asset_url, stream=True, timeout=30) as response:
+        response.raise_for_status()
+        with partial.open("wb") as fh:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    fh.write(chunk)
+    partial.replace(target)
+    return target

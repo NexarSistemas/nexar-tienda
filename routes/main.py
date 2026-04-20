@@ -4,6 +4,8 @@ import json
 import os
 import re
 import shutil
+import subprocess
+import sys
 from datetime import date, datetime, timedelta
 from functools import wraps
 from io import BytesIO
@@ -13,15 +15,19 @@ import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.license_sdk import get_current_hwid, get_license_product, validate_license_key
+from services.runtime_config import app_data_dir
 from services.supabase_license_api import (
     create_license_request,
     generate_activation_id,
     is_configured as supabase_configured,
 )
+from services.update_checker import download_release_asset, get_cached_update_info
 
 main_bp = Blueprint("main", __name__)
 BASE_DIR = Path(__file__).resolve().parent.parent
-BACKUP_DIR = BASE_DIR / "respaldo"
+DATA_DIR = app_data_dir()
+BACKUP_DIR = DATA_DIR / "respaldo"
+UPDATE_DIR = DATA_DIR / "updates"
 CHANGELOG_PATH = BASE_DIR / "CHANGELOG.md"
 
 
@@ -109,6 +115,31 @@ def _backup_list() -> list[dict]:
         stat = path.stat()
         items.append({"nombre": path.name, "fecha": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M"), "tamanio_kb": round(stat.st_size / 1024, 1)})
     return items
+
+
+def _update_list() -> list[dict]:
+    UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+    items = []
+    for path in sorted(UPDATE_DIR.glob("nexar-tienda_*_amd64.deb"), key=lambda p: p.stat().st_mtime, reverse=True):
+        stat = path.stat()
+        items.append({
+            "nombre": path.name,
+            "ruta": str(path),
+            "fecha": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M"),
+            "tamanio_mb": round(stat.st_size / 1024 / 1024, 1),
+            "comando": f"sudo apt install {path}",
+        })
+    return items
+
+
+def _update_file(nombre: str) -> Path:
+    safe_name = Path(nombre or "").name
+    if safe_name != nombre or not safe_name.startswith("nexar-tienda_") or not safe_name.endswith("_amd64.deb"):
+        abort(404)
+    path = (UPDATE_DIR / safe_name).resolve()
+    if path.parent != UPDATE_DIR.resolve() or not path.exists():
+        abort(404)
+    return path
 
 
 def _backup_file(nombre: str) -> Path:
@@ -904,7 +935,16 @@ def usuario_eliminar(uid):
 @admin_required
 def respaldo():
     cfg = db.get_config()
-    return render_template("respaldo.html", archivos=_backup_list(), ultimo=cfg.get("backup_ultimo", "Nunca"), intervalo=cfg.get("backup_intervalo_h", "24"), keep=cfg.get("backup_keep", "10"))
+    update_info = get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
+    return render_template(
+        "respaldo.html",
+        archivos=_backup_list(),
+        actualizaciones=_update_list(),
+        update_info=update_info,
+        ultimo=cfg.get("backup_ultimo", "Nunca"),
+        intervalo=cfg.get("backup_intervalo_h", "24"),
+        keep=cfg.get("backup_keep", "10"),
+    )
 
 
 @main_bp.route("/respaldo/ahora", methods=["POST"])
@@ -940,6 +980,70 @@ def respaldo_restaurar(nombre):
             Path(db.DB_PATH).chmod(0o600)
     except Exception:
         pass
+    return redirect(url_for("respaldo"))
+
+
+@main_bp.route("/respaldo/actualizacion/descargar", methods=["POST"])
+@admin_required
+def actualizacion_descargar():
+    update_info = get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
+    if not update_info.get("available"):
+        flash("No hay una actualizacion nueva disponible.", "info")
+        return redirect(url_for("respaldo"))
+    if not update_info.get("asset_url"):
+        flash("La release existe, pero no tiene instalador .deb adjunto. Abrila en GitHub.", "warning")
+        return redirect(url_for("respaldo"))
+
+    backup_path = _make_backup()
+    try:
+        target = download_release_asset(update_info["asset_url"], UPDATE_DIR)
+    except Exception as exc:
+        flash(f"No se pudo descargar la actualizacion: {exc}", "danger")
+        return redirect(url_for("respaldo"))
+
+    flash(
+        f"Actualizacion descargada: {target.name}. Respaldo creado antes de actualizar: {backup_path.name}.",
+        "success",
+    )
+    return redirect(url_for("respaldo"))
+
+
+@main_bp.route("/respaldo/actualizacion/abrir-carpeta", methods=["POST"])
+@admin_required
+def actualizacion_abrir_carpeta():
+    if sys.platform.startswith("linux"):
+        try:
+            subprocess.Popen(["xdg-open", str(UPDATE_DIR)])
+            flash("Carpeta de actualizaciones abierta.", "success")
+        except Exception as exc:
+            flash(f"No se pudo abrir la carpeta: {exc}", "warning")
+    else:
+        flash(f"Carpeta de actualizaciones: {UPDATE_DIR}", "info")
+    return redirect(url_for("respaldo"))
+
+
+@main_bp.route("/respaldo/actualizacion/instalar/<nombre>", methods=["POST"])
+@admin_required
+def actualizacion_instalar(nombre):
+    installer = _update_file(nombre)
+    backup_path = _make_backup()
+    command = f"sudo apt install {installer}"
+
+    if not sys.platform.startswith("linux"):
+        flash(f"Respaldo creado ({backup_path.name}). Instala manualmente: {command}", "info")
+        return redirect(url_for("respaldo"))
+
+    try:
+        subprocess.Popen(["pkexec", "apt", "install", "-y", str(installer)])
+        flash(
+            f"Instalador iniciado con permisos de administrador. Respaldo previo: {backup_path.name}. "
+            "Cuando termine, cerra y volve a abrir Nexar Tienda.",
+            "success",
+        )
+    except FileNotFoundError:
+        flash(f"Respaldo creado ({backup_path.name}). pkexec no esta disponible; ejecuta: {command}", "warning")
+    except Exception as exc:
+        flash(f"No se pudo iniciar el instalador: {exc}. Ejecuta: {command}", "warning")
     return redirect(url_for("respaldo"))
 
 

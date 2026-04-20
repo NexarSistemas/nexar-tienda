@@ -34,6 +34,22 @@
           </form>
         </div>
       </div>
+
+      <div class="card shadow-sm mt-4">
+        <div class="card-header bg-white"><strong>Actualizaciones</strong></div>
+        <div class="card-body">
+          {% if update_info and update_info.available %}
+            <p class="mb-2"><strong>Disponible v{{ update_info.latest }}</strong></p>
+            <p class="small text-muted">Antes de descargar se crea un respaldo. La base de datos y la licencia se guardan fuera de <code>/opt/nexar-tienda</code>, por eso no se pisan al actualizar.</p>
+            <form method="POST" action="{{ url_for('actualizacion_descargar') }}" class="mb-2">
+              <button class="btn btn-success w-100"><i class="fas fa-download me-1"></i>Descargar actualizacion</button>
+            </form>
+            <a class="btn btn-outline-secondary btn-sm w-100" href="{{ update_info.url }}" target="_blank" rel="noopener">Ver release</a>
+          {% else %}
+            <p class="small text-muted mb-0">No hay actualizaciones nuevas disponibles.</p>
+          {% endif %}
+        </div>
+      </div>
     </div>
 
     <div class="col-md-8">
@@ -62,6 +78,44 @@
               {% endfor %}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mt-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+          <strong>Actualizaciones descargadas</strong>
+          <form method="POST" action="{{ url_for('actualizacion_abrir_carpeta') }}">
+            <button class="btn btn-sm btn-outline-secondary"><i class="fas fa-folder-open"></i></button>
+          </form>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Instalador</th><th>Fecha</th><th>Tamaño</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in actualizaciones %}
+              <tr>
+                <td><code class="small">{{ u.nombre }}</code></td>
+                <td>{{ u.fecha }}</td>
+                <td>{{ u.tamanio_mb }} MB</td>
+                <td>
+                  <form method="POST" action="{{ url_for('actualizacion_instalar', nombre=u.nombre) }}" class="d-inline" onsubmit="return confirm('Se creara un respaldo y se abrira el instalador del sistema. Al terminar, cerra y volve a abrir Nexar Tienda.')">
+                    <button class="btn btn-sm btn-success"><i class="fas fa-box-open me-1"></i>Instalar</button>
+                  </form>
+                  <div class="mt-1"><code class="small">{{ u.comando }}</code></div>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-muted small p-3">Todavia no hay instaladores descargados.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer small text-muted">
+          Para evitar cortes, cerrá Nexar Tienda y ejecutá el comando de instalacion. Si usaste <code>dpkg -i</code>, repará dependencias con <code>sudo apt --fix-broken install</code>.
         </div>
       </div>
     </div>
