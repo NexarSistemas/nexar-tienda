@@ -18,7 +18,11 @@ if [[ -z "${DEB_PATH:-}" || ! -f "${DEB_PATH}" ]]; then
 fi
 
 echo "Instalando $(basename "${DEB_PATH}") con apt para resolver dependencias..."
-sudo apt install -y "${DEB_PATH}"
+TMP_DEB="/tmp/$(basename "${DEB_PATH}")"
+cp "${DEB_PATH}" "${TMP_DEB}"
+chmod 0644 "${TMP_DEB}"
+sudo apt install -y "${TMP_DEB}"
+rm -f "${TMP_DEB}"
 
 echo ""
 echo "Nexar Tienda instalado. Ejecutar con:"

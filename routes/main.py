@@ -147,6 +147,18 @@ def _update_file(nombre: str) -> Path:
     return path
 
 
+def _apt_readable_copy(installer: Path) -> Path:
+    temp_dir = Path("/tmp") / "nexar-tienda-updates"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    if os.name != "nt":
+        temp_dir.chmod(0o755)
+    target = temp_dir / installer.name
+    shutil.copy2(installer, target)
+    if os.name != "nt":
+        target.chmod(0o644)
+    return target
+
+
 def _backup_file(nombre: str) -> Path:
     safe_name = Path(nombre or "").name
     if safe_name != nombre or not safe_name.endswith(".db"):
@@ -1039,7 +1051,7 @@ def actualizacion_instalar(nombre):
     installer = _update_file(nombre)
     backup_path = _make_backup()
     is_windows_installer = installer.suffix.lower() == ".exe"
-    command = str(installer) if is_windows_installer else f"sudo apt install {installer}"
+    command = str(installer) if is_windows_installer else f"sudo apt install /tmp/nexar-tienda-updates/{installer.name}"
 
     if sys.platform.startswith("win") and is_windows_installer:
         try:
@@ -1058,7 +1070,8 @@ def actualizacion_instalar(nombre):
         return redirect(url_for("respaldo"))
 
     try:
-        subprocess.Popen(["pkexec", "apt", "install", "-y", str(installer)])
+        apt_installer = _apt_readable_copy(installer)
+        subprocess.Popen(["pkexec", "apt", "install", "-y", str(apt_installer)])
         flash(
             f"Instalador iniciado con permisos de administrador. Respaldo previo: {backup_path.name}. "
             "Cuando termine, cerra y volve a abrir Nexar Tienda.",

@@ -1,4 +1,4 @@
-# 🎁 Nexar Tienda v1.25.6
+# 🎁 Nexar Tienda v1.25.7
 
 Sistema Integral de Gestión Comercial diseñado para tiendas de regalos, bijouterie, marroquinería y productos estacionales. Optimizado para un funcionamiento fluido, seguro y con una interfaz estética de alto nivel.
 
@@ -46,6 +46,14 @@ Para instalar el paquete generado por GitHub Actions o por `build_deb.sh`, usar 
 
 ```bash
 sudo apt install ./nexar-tienda_VERSION_amd64.deb
+```
+
+Si `apt` muestra una nota sobre el usuario `_apt` y permisos de `Descargas`, no es un fallo. Para evitar esa advertencia, copiá el paquete a `/tmp` antes de instalar:
+
+```bash
+cp ~/Descargas/nexar-tienda_VERSION_amd64.deb /tmp/
+chmod 0644 /tmp/nexar-tienda_VERSION_amd64.deb
+sudo apt install /tmp/nexar-tienda_VERSION_amd64.deb
 ```
 
 `dpkg -i` no descarga dependencias. Si se instalo con `dpkg -i` y el paquete quedo "sin configurar", reparar con:

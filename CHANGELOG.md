@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.7] - 20 Abril 2026 - Instalacion APT Limpia
+
+### Correcciones
+- **Advertencia `_apt`**: El helper `install_deb.sh` copia el `.deb` a `/tmp` con permisos legibles antes de instalar, evitando la nota de sandbox de `apt` cuando el archivo esta en `Descargas`.
+- **Actualizador Linux**: El boton Instalar tambien usa una copia temporal legible por `apt` antes de ejecutar `pkexec apt install`.
+
+### Documentacion
+- **Instalacion manual**: Se agrego una nota para copiar el `.deb` a `/tmp` si `apt` no puede leerlo desde la carpeta del usuario.
+
+---
+
 ## [1.25.6] - 20 Abril 2026 - Actualizaciones Windows
 
 ### Correcciones
