@@ -1,41 +1,22 @@
 from __future__ import annotations
 
+import getpass
+import hashlib
 import os
 import platform
-import secrets
-import hashlib
-import getpass
-from datetime import date, timedelta
 from typing import Any
 
 import requests
 
 PRODUCTO_DEFAULT = os.getenv("LICENSE_PRODUCT", "nexar-tienda")
-PLAN_CONFIG = {
-    "DEMO": {
-        "duration_days": 30,
-        "support": False,
-        "updates": False,
-        "limits": {"productos": None, "clientes": None, "proveedores": None},
-    },
-    "BASICA": {
-        "duration_days": None,
-        "support": False,
-        "updates": False,
-        "limits": {"productos": 200, "clientes": 100, "proveedores": 50},
-    },
-    "MENSUAL_FULL": {
-        "duration_days": 30,
-        "support": True,
-        "updates": True,
-        "limits": {"productos": None, "clientes": None, "proveedores": None},
-    },
-}
+PLANES_VALIDOS = {"DEMO", "BASICA", "MENSUAL_FULL"}
 
 
 def normalize_plan(plan: str = "") -> str:
     raw = (plan or "BASICA").strip().upper().replace("-", "_").replace(" ", "_")
-    return {"PRO": "MENSUAL_FULL", "FULL": "MENSUAL_FULL", "BASIC": "BASICA"}.get(raw, raw if raw in PLAN_CONFIG else "BASICA")
+    aliases = {"PRO": "MENSUAL_FULL", "FULL": "MENSUAL_FULL", "BASIC": "BASICA"}
+    normalized = aliases.get(raw, raw)
+    return normalized if normalized in PLANES_VALIDOS else "BASICA"
 
 
 def _clean_base_url(url: str) -> str:
@@ -47,16 +28,17 @@ def _table_url() -> str:
     return f"{base}/rest/v1/licencias" if base else ""
 
 
+def _requests_table_url() -> str:
+    base = _clean_base_url(os.getenv("SUPABASE_URL", ""))
+    return f"{base}/rest/v1/solicitudes_licencia" if base else ""
+
+
 def _anon_key() -> str:
     return os.getenv("SUPABASE_ANON_KEY", "") or os.getenv("SUPABASE_KEY", "")
 
 
-def _service_role_key() -> str:
-    return os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-
-
-def _headers(*, require_service_role: bool = False) -> dict[str, str]:
-    key = _service_role_key() if require_service_role else _anon_key()
+def _headers() -> dict[str, str]:
+    key = _anon_key()
     return {
         "apikey": key,
         "Authorization": f"Bearer {key}",
@@ -67,10 +49,6 @@ def _headers(*, require_service_role: bool = False) -> dict[str, str]:
 
 def is_configured() -> bool:
     return bool(os.getenv("SUPABASE_URL") and _anon_key())
-
-
-def is_admin_configured() -> bool:
-    return bool(os.getenv("SUPABASE_URL") and _service_role_key())
 
 
 def build_machine_id(raw: str) -> str:
@@ -93,8 +71,8 @@ def _read_first(paths: list[str]) -> str:
 
 def generate_activation_id(user_hint: str = "") -> tuple[str, dict[str, str]]:
     """
-    Genera un ID de activación estable para enviar al desarrollador.
-    Usa datos locales (máquina + disco + usuario) y devuelve (id, detalles).
+    Genera un ID de activacion estable para enviar al desarrollador.
+    Usa datos locales de la maquina y devuelve (id, detalles).
     """
     username = user_hint or getpass.getuser() or os.getenv("USERNAME", "") or os.getenv("USER", "")
     host = platform.node()
@@ -102,7 +80,7 @@ def generate_activation_id(user_hint: str = "") -> tuple[str, dict[str, str]]:
     product_uuid = _read_first(["/sys/class/dmi/id/product_uuid"])
     disk_hint = os.path.abspath(os.sep)
     try:
-        disk_hint = os.stat(disk_hint).st_dev.__str__()
+        disk_hint = str(os.stat(disk_hint).st_dev)
     except Exception:
         pass
 
@@ -118,39 +96,44 @@ def generate_activation_id(user_hint: str = "") -> tuple[str, dict[str, str]]:
     return activation_id, details
 
 
-def create_license(usuario: str = "", producto: str = PRODUCTO_DEFAULT, dias: int = None, plan: str = "BASICA") -> tuple[bool, str, dict[str, Any] | None]:
-    if not is_admin_configured():
-        return False, "Falta configurar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY para emitir licencias.", None
+def create_license_request(
+    *,
+    nombre: str,
+    email: str,
+    whatsapp: str = "",
+    activation_id: str,
+    producto: str = PRODUCTO_DEFAULT,
+    plan: str = "BASICA",
+    machine_details: dict[str, Any] | None = None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    if not is_configured():
+        return False, "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY para enviar solicitudes.", None
 
+    nombre = (nombre or "").strip()
+    email = (email or "").strip().lower()
+    whatsapp = (whatsapp or "").strip()
+    activation_id = build_machine_id(activation_id)
     plan = normalize_plan(plan)
-    cfg = PLAN_CONFIG[plan]
-    expira = ""
-    if cfg["duration_days"] is not None:
-        expira = (date.today() + timedelta(days=max(1, int(dias or cfg["duration_days"])))).isoformat()
+
+    if not nombre or not email or not activation_id:
+        return False, "Nombre, email e ID del equipo son obligatorios.", None
 
     payload = {
-        "license_key": f"NXR-{secrets.token_hex(4).upper()}",
         "producto": producto,
-        "usuario": usuario or "Cliente",
+        "activation_id": activation_id,
+        "nombre": nombre,
+        "email": email,
+        "whatsapp": whatsapp,
         "plan": plan,
-        "tier": plan,
-        "activa": True,
-        "expira": expira or None,
-        "hwid": "",
-        "hwids": [],
-        "max_devices": 1,
-        "support": cfg["support"],
-        "updates": cfg["updates"],
-        "limits": cfg["limits"],
+        "estado": "pendiente",
+        "machine_details": machine_details or {},
     }
-
-    resp = requests.post(_table_url(), headers=_headers(require_service_role=True), json=payload, timeout=12)
+    headers = {**_headers(), "Prefer": "return=minimal"}
+    resp = requests.post(_requests_table_url(), headers=headers, json=payload, timeout=12)
     if resp.status_code >= 300:
-        return False, f"Error al crear licencia en Supabase ({resp.status_code}): {resp.text[:240]}", None
+        return False, f"Error al registrar solicitud en Supabase ({resp.status_code}): {resp.text[:240]}", None
 
-    data = resp.json()
-    row = data[0] if isinstance(data, list) and data else data
-    return True, "Licencia creada correctamente en Supabase.", row
+    return True, "Solicitud enviada correctamente. El administrador debe aprobarla.", None
 
 
 def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO_DEFAULT) -> tuple[bool, str, dict[str, Any] | None]:
@@ -160,7 +143,7 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
     key = (license_key or "").strip()
     machine_id = build_machine_id(machine_id)
     if not key or not machine_id:
-        return False, "La clave y el ID de máquina son obligatorios.", None
+        return False, "La clave y el ID de maquina son obligatorios.", None
 
     params = {"license_key": f"eq.{key}", "producto": f"eq.{producto}", "select": "*"}
     resp = requests.get(_table_url(), headers=_headers(), params=params, timeout=12)
@@ -173,7 +156,7 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
 
     row = rows[0]
     if not row.get("activa", True):
-        return False, "La licencia está desactivada/revocada.", row
+        return False, "La licencia esta desactivada/revocada.", row
 
     db_hwid = row.get("hwid") or ""
     db_hwids = row.get("hwids") or []
@@ -186,17 +169,13 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
     elif not db_hwid or len(db_hwids) < max_devices:
         update_hwids = sorted(set([*db_hwids, machine_id]))[:max_devices]
     else:
-        return False, "La licencia alcanzó el límite de dispositivos.", row
+        return False, "La licencia alcanzo el limite de dispositivos.", row
 
-    update_data = {
-        "hwid": db_hwid or machine_id,
-        "hwids": update_hwids,
-    }
     upd = requests.patch(
         _table_url(),
         headers={**_headers(), "Prefer": "return=representation"},
         params={"id": f"eq.{row['id']}"},
-        json=update_data,
+        json={"hwid": db_hwid or machine_id, "hwids": update_hwids},
         timeout=12,
     )
     if upd.status_code >= 300:
@@ -204,4 +183,4 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
 
     updated_rows = upd.json() if upd.text else [row]
     updated = updated_rows[0] if updated_rows else row
-    return True, "Licencia activada correctamente para esta máquina.", updated
+    return True, "Licencia activada correctamente para esta maquina.", updated

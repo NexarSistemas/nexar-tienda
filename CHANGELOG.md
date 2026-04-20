@@ -4,6 +4,19 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.0] - 20 Abril 2026 - Solicitudes de Licencia
+
+### Caracteristicas Nuevas
+- **Solicitud de licencia desde la app**: El administrador local puede enviar nombre, email, WhatsApp opcional, plan solicitado e ID del equipo a Supabase para revision manual.
+- **Separacion segura del panel desarrollador**: Nexar Tienda conserva solo el flujo cliente de solicitar y activar; la aprobacion, rechazo, emision y envio de claves quedan fuera de la app cliente y se gestionan desde `nexar-admin`.
+
+### Cambios Tecnicos
+- **Tabla de solicitudes documentada**: Se agrego el SQL de `solicitudes_licencia` y la policy RLS minima para permitir unicamente inserciones con `anon`.
+- **Configuracion local clara**: Se agrego `.env.example` con las variables publicas necesarias para validar licencias y enviar solicitudes, sin incluir claves administrativas.
+- **Servicio Supabase cliente**: `services/supabase_license_api.py` quedo limitado a operaciones seguras para la app instalada, sin uso de `SUPABASE_SERVICE_ROLE_KEY`.
+
+---
+
 ## [1.24.1] - 18 Abril 2026 - Hardening de Seguridad
 
 ### 🛡️ Seguridad

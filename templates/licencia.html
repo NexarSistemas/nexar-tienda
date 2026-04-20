@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Activación de Licencia — Nexar Tienda{% endblock %}
-{% block page_title %}<i class="fas fa-key me-2"></i>Activación de licencia{% endblock %}
+{% block title %}Activacion de Licencia - Nexar Tienda{% endblock %}
+{% block page_title %}<i class="fas fa-key me-2"></i>Activacion de licencia{% endblock %}
 
 {% block content %}
 <div class="row g-3">
@@ -9,7 +9,7 @@
       <div class="card-header bg-light"><strong>ID de este equipo</strong></div>
       <div class="card-body">
         <p class="mb-2"><strong>Producto:</strong> <code>{{ producto }}</code></p>
-        <label class="form-label">Código para solicitar una licencia</label>
+        <label class="form-label">Codigo para solicitar una licencia</label>
         <input id="activation-id" class="form-control font-monospace mb-2" value="{{ device_hwid or machine_id }}" readonly>
         <button class="btn btn-outline-secondary btn-sm mb-3" onclick="copiarId()" type="button">
           <i class="fas fa-copy"></i> Copiar ID
@@ -22,25 +22,56 @@
         </ul>
 
         <hr>
-        <p class="small mb-2">
-          Si todavía no tenés licencia, copiá este ID y envialo al desarrollador.
-          Si ya recibiste una clave, pegala en el formulario de activación.
-        </p>
-
-        {% if dev_mode %}
-          {% if supabase_ok %}
-            <div class="alert alert-success mb-0">✅ Conexión Supabase configurada para herramientas de desarrollador.</div>
-          {% else %}
-            <div class="alert alert-warning mb-0">
-              Modo desarrollador: faltan <code>SUPABASE_URL</code> y una key REST en el entorno de Tienda.
-              La activación del usuario puede funcionar por SDK si <code>nexar_licencias</code> está configurado.
-            </div>
-          {% endif %}
-        {% else %}
+        {% if supabase_ok %}
           <div class="alert alert-info mb-0">
-            Este equipo puede usarse en modo demo o activarse con una clave de licencia válida.
+            Envia una solicitud con tus datos. El desarrollador debe aprobarla desde Nexar Admin antes de emitir la clave.
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-0">
+            Falta configurar <code>SUPABASE_URL</code> y <code>SUPABASE_ANON_KEY</code> para enviar solicitudes online.
+            Igual podes copiar el ID y enviarlo manualmente.
           </div>
         {% endif %}
+      </div>
+    </div>
+
+    <div class="card mt-3 border-primary">
+      <div class="card-header bg-light"><strong>Solicitar licencia</strong></div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('licencia_solicitar') }}" class="row g-2">
+          <input type="hidden" name="activation_id" value="{{ device_hwid or machine_id }}">
+
+          <div class="col-12">
+            <label class="form-label">Nombre del titular</label>
+            <input name="nombre" class="form-control" required placeholder="Nombre y apellido o comercio">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Email</label>
+            <input name="email" type="email" class="form-control" required placeholder="cliente@email.com">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">WhatsApp <span class="text-muted small">(opcional)</span></label>
+            <input name="whatsapp" class="form-control" placeholder="Ej: 5492645858874">
+            <div class="form-text">Usar codigo de pais y area para poder abrir WhatsApp directo.</div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Plan solicitado</label>
+            <select name="plan" class="form-select">
+              <option value="BASICA" selected>Basica permanente</option>
+              <option value="MENSUAL_FULL">Mensual full</option>
+              <option value="DEMO">Demo 30 dias</option>
+            </select>
+          </div>
+
+          <div class="col-12">
+            <button class="btn btn-primary w-100" type="submit" {% if not supabase_ok %}disabled{% endif %}>
+              <i class="fas fa-paper-plane"></i> Enviar solicitud al administrador
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -67,46 +98,6 @@
         <input class="form-control form-control-sm font-monospace" value="{{ license_key_local or '(ninguna)' }}" readonly>
       </div>
     </div>
-
-    {% if dev_mode %}
-    <div class="card mt-3 border-danger">
-      <div class="card-header bg-light"><strong>Panel desarrollador — emitir licencia</strong></div>
-      <div class="card-body">
-        <form method="POST" action="{{ url_for('licencia_generar_desarrollador') }}" class="row g-2">
-          <div class="col-md-6">
-            <label class="form-label">Plan</label>
-            <select name="plan" class="form-select">
-              <option value="DEMO">Demo 30 días</option>
-              <option value="BASICA" selected>Básica permanente</option>
-              <option value="MENSUAL_FULL">Mensual full</option>
-            </select>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Días</label>
-            <input name="dias" type="number" class="form-control" value="30" min="1" max="3650">
-          </div>
-          <div class="col-12">
-            <label class="form-label">Usuario cliente</label>
-            <input name="usuario" class="form-control" placeholder="Nombre cliente">
-          </div>
-          <div class="col-12">
-            <div class="small text-muted">
-              La licencia se crea sin dispositivo asignado. El SDK la vincula al primer equipo que la valide correctamente.
-            </div>
-          </div>
-          <div class="col-12">
-            <label class="form-label">Clave desarrollador</label>
-            <input name="dev_secret" type="password" class="form-control" required>
-          </div>
-          <div class="col-12">
-            <button class="btn btn-danger w-100" type="submit">
-              <i class="fas fa-key"></i> Generar key en Supabase
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-    {% endif %}
   </div>
 </div>
 {% endblock %}

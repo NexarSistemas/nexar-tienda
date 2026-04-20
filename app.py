@@ -230,7 +230,7 @@ def create_app() -> Flask:
         "config_gasto_categoria_editar",
         "licencia",
         "licencia_activar",
-        "licencia_generar_desarrollador",
+        "licencia_solicitar",
         "usuarios",
         "usuario_nuevo",
         "usuario_editar",
@@ -267,3 +267,7 @@ def create_app() -> Flask:
 
 # Compatibilidad con ejecuciones directas (`python app.py`).
 app = create_app()
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=int(os.getenv("PORT", "5000")), debug=False)
