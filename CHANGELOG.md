@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.8] - 20 Abril 2026 - Fix URLs Actualizacion
+
+### Correcciones
+- **Preparar actualizacion**: Se agregaron alias de compatibilidad para las rutas nuevas de actualizacion, evitando que Flask envie a `/en-construccion/...`.
+- **Apagado desde login**: Se agregaron alias para `apagar_rapido` y `shutdown`, corrigiendo el cierre del sistema cuando no hay sesion activa.
+
+### Cambios Tecnicos
+- **Compatibilidad de endpoints**: La lista de endpoints legados ahora incluye `actualizacion_descargar`, `actualizacion_abrir_carpeta`, `actualizacion_instalar`, `apagar_rapido` y `shutdown`.
+
+---
+
 ## [1.25.7] - 20 Abril 2026 - Instalacion APT Limpia
 
 ### Correcciones

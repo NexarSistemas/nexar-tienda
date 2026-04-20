@@ -266,11 +266,16 @@ def create_app() -> Flask:
         "respaldo_config",
         "respaldo_descargar",
         "respaldo_restaurar",
+        "actualizacion_descargar",
+        "actualizacion_abrir_carpeta",
+        "actualizacion_instalar",
         "ayuda",
         "changelog",
         "acerca",
         "logout",
+        "apagar_rapido",
         "apagar_sistema",
+        "shutdown",
     ]
     for endpoint in legacy_endpoints:
         prefixed = f"main.{endpoint}"
