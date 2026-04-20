@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Activación de Licencia — Nexar Tienda{% endblock %}
-{% block page_title %}<i class="fas fa-key me-2"></i>Activación de licencia{% endblock %}
+{% block title %}Activacion de Licencia - Nexar Tienda{% endblock %}
+{% block page_title %}<i class="fas fa-key me-2"></i>Activacion de licencia{% endblock %}
 
 {% block content %}
 <div class="row g-3">
@@ -9,7 +9,7 @@
       <div class="card-header bg-light"><strong>ID de este equipo</strong></div>
       <div class="card-body">
         <p class="mb-2"><strong>Producto:</strong> <code>{{ producto }}</code></p>
-        <label class="form-label">Código para solicitar una licencia</label>
+        <label class="form-label">Codigo para solicitar una licencia</label>
         <input id="activation-id" class="form-control font-monospace mb-2" value="{{ device_hwid or machine_id }}" readonly>
         <button class="btn btn-outline-secondary btn-sm mb-3" onclick="copiarId()" type="button">
           <i class="fas fa-copy"></i> Copiar ID
@@ -22,25 +22,56 @@
         </ul>
 
         <hr>
-        <p class="small mb-2">
-          Si todavía no tenés licencia, copiá este ID y envialo al desarrollador.
-          Si ya recibiste una clave, pegala en el formulario de activación.
-        </p>
-
-        {% if dev_mode %}
-          {% if supabase_ok %}
-            <div class="alert alert-success mb-0">✅ Conexión Supabase configurada para herramientas de desarrollador.</div>
-          {% else %}
-            <div class="alert alert-warning mb-0">
-              Modo desarrollador: faltan <code>SUPABASE_URL</code> y una key REST en el entorno de Tienda.
-              La activación del usuario puede funcionar por SDK si <code>nexar_licencias</code> está configurado.
-            </div>
-          {% endif %}
-        {% else %}
+        {% if supabase_ok %}
           <div class="alert alert-info mb-0">
-            Este equipo puede usarse en modo demo o activarse con una clave de licencia válida.
+            Envia una solicitud con tus datos. El desarrollador debe aprobarla antes de emitir la clave.
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-0">
+            Falta configurar <code>SUPABASE_URL</code> y <code>SUPABASE_ANON_KEY</code> para enviar solicitudes online.
+            Igual podes copiar el ID y enviarlo manualmente.
           </div>
         {% endif %}
+      </div>
+    </div>
+
+    <div class="card mt-3 border-primary">
+      <div class="card-header bg-light"><strong>Solicitar licencia</strong></div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('licencia_solicitar') }}" class="row g-2">
+          <input type="hidden" name="activation_id" value="{{ device_hwid or machine_id }}">
+
+          <div class="col-12">
+            <label class="form-label">Nombre del titular</label>
+            <input name="nombre" class="form-control" required placeholder="Nombre y apellido o comercio">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Email</label>
+            <input name="email" type="email" class="form-control" required placeholder="cliente@email.com">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">WhatsApp <span class="text-muted small">(opcional)</span></label>
+            <input name="whatsapp" class="form-control" placeholder="Ej: 5492645858874">
+            <div class="form-text">Usar codigo de pais y area para poder abrir WhatsApp directo.</div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Plan solicitado</label>
+            <select name="plan" class="form-select">
+              <option value="BASICA" selected>Basica permanente</option>
+              <option value="MENSUAL_FULL">Mensual full</option>
+              <option value="DEMO">Demo 30 dias</option>
+            </select>
+          </div>
+
+          <div class="col-12">
+            <button class="btn btn-primary w-100" type="submit" {% if not supabase_ok %}disabled{% endif %}>
+              <i class="fas fa-paper-plane"></i> Enviar solicitud al administrador
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -70,19 +101,27 @@
 
     {% if dev_mode %}
     <div class="card mt-3 border-danger">
-      <div class="card-header bg-light"><strong>Panel desarrollador — emitir licencia</strong></div>
+      <div class="card-header bg-light"><strong>Panel desarrollador - emitir licencia manual</strong></div>
       <div class="card-body">
+        {% if supabase_admin_ok %}
+          <div class="alert alert-success small">Supabase admin configurado. Se puede emitir y aprobar licencias.</div>
+        {% else %}
+          <div class="alert alert-warning small">
+            Falta <code>SUPABASE_SERVICE_ROLE_KEY</code>. Podras ver la pantalla, pero no aprobar ni emitir licencias.
+          </div>
+        {% endif %}
+
         <form method="POST" action="{{ url_for('licencia_generar_desarrollador') }}" class="row g-2">
           <div class="col-md-6">
             <label class="form-label">Plan</label>
             <select name="plan" class="form-select">
-              <option value="DEMO">Demo 30 días</option>
-              <option value="BASICA" selected>Básica permanente</option>
+              <option value="DEMO">Demo 30 dias</option>
+              <option value="BASICA" selected>Basica permanente</option>
               <option value="MENSUAL_FULL">Mensual full</option>
             </select>
           </div>
           <div class="col-md-6">
-            <label class="form-label">Días</label>
+            <label class="form-label">Dias</label>
             <input name="dias" type="number" class="form-control" value="30" min="1" max="3650">
           </div>
           <div class="col-12">
@@ -91,7 +130,7 @@
           </div>
           <div class="col-12">
             <div class="small text-muted">
-              La licencia se crea sin dispositivo asignado. El SDK la vincula al primer equipo que la valide correctamente.
+              La licencia manual se crea sin dispositivo asignado. Para vincularla a un ID, aproba una solicitud.
             </div>
           </div>
           <div class="col-12">
@@ -104,6 +143,114 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div class="card mt-3 border-warning">
+      <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <strong>Solicitudes de licencia</strong>
+        <span class="badge bg-secondary">{{ solicitudes|length }}</span>
+      </div>
+      <div class="card-body">
+        {% if solicitudes_error %}
+          <div class="alert alert-warning mb-0">{{ solicitudes_error }}</div>
+        {% elif solicitudes %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Plan</th>
+                  <th>Estado</th>
+                  <th>ID</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for s in solicitudes %}
+                <tr>
+                  <td>
+                    <strong>{{ s.nombre or 'Sin nombre' }}</strong><br>
+                    <small class="text-muted">{{ s.email or 'sin email' }}</small>
+                    {% if s.whatsapp %}<br><small class="text-muted">WA: {{ s.whatsapp }}</small>{% endif %}
+                  </td>
+                  <td>{{ s.plan or 'BASICA' }}</td>
+                  <td>
+                    {% if s.estado == 'aprobada' %}
+                      <span class="badge bg-success">Aprobada</span>
+                    {% elif s.estado == 'rechazada' %}
+                      <span class="badge bg-danger">Rechazada</span>
+                    {% else %}
+                      <span class="badge bg-warning text-dark">Pendiente</span>
+                    {% endif %}
+                    {% if s.license_key %}
+                      <br><code class="small">{{ s.license_key }}</code>
+                    {% endif %}
+                  </td>
+                  <td><code class="small">{{ s.activation_id }}</code></td>
+                  <td style="min-width: 260px;">
+                    {% if s.estado != 'aprobada' %}
+                    <form method="POST" action="{{ url_for('licencia_solicitud_aprobar', request_id=s.id) }}" class="row g-1 mb-2">
+                      <div class="col-6">
+                        <select name="plan" class="form-select form-select-sm">
+                          <option value="BASICA" {% if s.plan == 'BASICA' %}selected{% endif %}>Basica</option>
+                          <option value="MENSUAL_FULL" {% if s.plan == 'MENSUAL_FULL' %}selected{% endif %}>Mensual full</option>
+                          <option value="DEMO" {% if s.plan == 'DEMO' %}selected{% endif %}>Demo</option>
+                        </select>
+                      </div>
+                      <div class="col-6">
+                        <input name="dias" type="number" class="form-control form-control-sm" value="30" min="1" max="3650">
+                      </div>
+                      <div class="col-12">
+                        <input name="dev_secret" type="password" class="form-control form-control-sm" placeholder="Clave desarrollador" required>
+                      </div>
+                      <div class="col-12">
+                        <button class="btn btn-success btn-sm w-100" type="submit">
+                          <i class="fas fa-check"></i> Aprobar y generar key
+                        </button>
+                      </div>
+                    </form>
+                    {% endif %}
+
+                    {% if s.estado == 'pendiente' %}
+                    <form method="POST" action="{{ url_for('licencia_solicitud_rechazar', request_id=s.id) }}" class="row g-1 mb-2">
+                      <div class="col-12">
+                        <input name="admin_note" class="form-control form-control-sm" placeholder="Motivo opcional">
+                      </div>
+                      <div class="col-12">
+                        <input name="dev_secret" type="password" class="form-control form-control-sm" placeholder="Clave desarrollador" required>
+                      </div>
+                      <div class="col-12">
+                        <button class="btn btn-outline-danger btn-sm w-100" type="submit">
+                          <i class="fas fa-times"></i> Rechazar
+                        </button>
+                      </div>
+                    </form>
+                    {% endif %}
+
+                    {% if s.license_key %}
+                      <div class="d-grid gap-1">
+                        {% if s.delivery_links.email %}
+                          <a class="btn btn-outline-primary btn-sm" href="{{ s.delivery_links.email }}">
+                            <i class="fas fa-envelope"></i> Enviar por email
+                          </a>
+                        {% endif %}
+                        {% if s.delivery_links.whatsapp %}
+                          <a class="btn btn-outline-success btn-sm" href="{{ s.delivery_links.whatsapp }}" target="_blank" rel="noopener">
+                            <i class="fab fa-whatsapp"></i> Enviar por WhatsApp
+                          </a>
+                        {% endif %}
+                      </div>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="alert alert-light border mb-0">Todavia no hay solicitudes registradas.</div>
+        {% endif %}
       </div>
     </div>
     {% endif %}

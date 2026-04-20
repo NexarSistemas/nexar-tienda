@@ -8,12 +8,22 @@ from datetime import date, datetime, timedelta
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import quote
 
 import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.license_sdk import get_current_hwid, get_license_product, validate_license_key
-from services.supabase_license_api import create_license, generate_activation_id, is_configured as supabase_configured
+from services.supabase_license_api import (
+    create_license,
+    create_license_request,
+    generate_activation_id,
+    get_license_request,
+    is_admin_configured as supabase_admin_configured,
+    is_configured as supabase_configured,
+    list_license_requests,
+    update_license_request_status,
+)
 
 main_bp = Blueprint("main", __name__)
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -767,12 +777,55 @@ def config_gasto_categoria_editar():
     return redirect(url_for("config"))
 
 
+def _clean_whatsapp_number(value: str) -> str:
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def _license_delivery_links(row: dict, license_key: str) -> dict[str, str]:
+    name = (row.get("nombre") or "cliente").strip()
+    product = row.get("producto") or get_license_product()
+    message = (
+        f"Hola {name}, tu licencia de {product} fue aprobada. "
+        f"Clave: {license_key}. Pegala en la pantalla de Activacion de licencia."
+    )
+    subject = f"Licencia {product}"
+    links = {"email": "", "whatsapp": ""}
+    if row.get("email"):
+        links["email"] = f"mailto:{row['email']}?subject={quote(subject)}&body={quote(message)}"
+    phone = _clean_whatsapp_number(row.get("whatsapp", ""))
+    if phone:
+        links["whatsapp"] = f"https://wa.me/{phone}?text={quote(message)}"
+    return links
+
+
 @main_bp.route("/licencia")
 @admin_required
 def licencia():
     machine_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
     local_lic = cargar_licencia() or {}
-    return render_template("licencia.html", supabase_ok=supabase_configured(), machine_id=machine_id, device_hwid=get_current_hwid(), machine_details=machine_details, producto=get_license_product(), license_key_local=local_lic.get("license_key", ""), dev_mode=bool(os.getenv("NEXAR_LICENSE_DEV_SECRET")))
+    dev_mode = bool(os.getenv("NEXAR_LICENSE_DEV_SECRET"))
+    solicitudes = []
+    solicitudes_error = ""
+    if dev_mode:
+        ok_req, msg_req, solicitudes = list_license_requests(producto=get_license_product(), limit=30)
+        if not ok_req:
+            solicitudes_error = msg_req
+        for row in solicitudes:
+            row["delivery_links"] = _license_delivery_links(row, row.get("license_key", "")) if row.get("license_key") else {}
+
+    return render_template(
+        "licencia.html",
+        supabase_ok=supabase_configured(),
+        supabase_admin_ok=supabase_admin_configured(),
+        machine_id=machine_id,
+        device_hwid=get_current_hwid(),
+        machine_details=machine_details,
+        producto=get_license_product(),
+        license_key_local=local_lic.get("license_key", ""),
+        dev_mode=dev_mode,
+        solicitudes=solicitudes,
+        solicitudes_error=solicitudes_error,
+    )
 
 
 @main_bp.route("/licencia/activar", methods=["POST"])
@@ -785,6 +838,24 @@ def licencia_activar():
         flash(f"✅ {msg} La licencia quedó vinculada a este equipo.", "success")
     else:
         flash(f"❌ {msg}", "danger")
+    return redirect(url_for("licencia"))
+
+
+@main_bp.route("/licencia/solicitar", methods=["POST"])
+@admin_required
+def licencia_solicitar():
+    machine_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
+    activation_id = request.form.get("activation_id") or get_current_hwid() or machine_id
+    ok, msg, _ = create_license_request(
+        nombre=request.form.get("nombre", ""),
+        email=request.form.get("email", ""),
+        whatsapp=request.form.get("whatsapp", ""),
+        activation_id=activation_id,
+        producto=get_license_product(),
+        plan=request.form.get("plan", "BASICA"),
+        machine_details=machine_details,
+    )
+    flash(f"Solicitud enviada: {msg}" if ok else f"No se pudo enviar la solicitud: {msg}", "success" if ok else "danger")
     return redirect(url_for("licencia"))
 
 
@@ -802,6 +873,69 @@ def licencia_generar_desarrollador():
         plan=request.form.get("plan", "BASICA"),
     )
     flash(f"✅ {msg} Key emitida: {row.get('license_key', '—')}" if ok and row else f"❌ {msg}")
+    return redirect(url_for("licencia"))
+
+
+@main_bp.route("/licencia/desarrollador/solicitudes/<int:request_id>/aprobar", methods=["POST"])
+@admin_required
+def licencia_solicitud_aprobar(request_id: int):
+    secret_expected = os.getenv("NEXAR_LICENSE_DEV_SECRET", "").strip()
+    if not secret_expected or request.form.get("dev_secret", "").strip() != secret_expected:
+        flash("Clave de desarrollador invalida o no configurada.", "danger")
+        return redirect(url_for("licencia"))
+
+    ok_req, msg_req, solicitud = get_license_request(request_id, producto=get_license_product())
+    if not ok_req or not solicitud:
+        flash(msg_req, "danger")
+        return redirect(url_for("licencia"))
+    if solicitud.get("estado") == "aprobada" and solicitud.get("license_key"):
+        flash("Esta solicitud ya estaba aprobada.", "warning")
+        return redirect(url_for("licencia"))
+
+    try:
+        dias = int(request.form.get("dias", "30") or 30)
+    except ValueError:
+        dias = 30
+
+    ok_lic, msg_lic, row = create_license(
+        usuario=solicitud.get("nombre") or "Cliente",
+        producto=get_license_product(),
+        dias=dias,
+        plan=request.form.get("plan") or solicitud.get("plan") or "BASICA",
+        machine_id=solicitud.get("activation_id", ""),
+    )
+    if not ok_lic or not row:
+        flash(msg_lic, "danger")
+        return redirect(url_for("licencia"))
+
+    license_key = row.get("license_key", "")
+    ok_upd, msg_upd, _ = update_license_request_status(
+        request_id,
+        estado="aprobada",
+        license_key=license_key,
+        admin_note=request.form.get("admin_note", ""),
+    )
+    if ok_upd:
+        flash(f"Solicitud aprobada. Key emitida: {license_key}", "success")
+    else:
+        flash(f"Licencia creada ({license_key}), pero no se pudo actualizar la solicitud: {msg_upd}", "warning")
+    return redirect(url_for("licencia"))
+
+
+@main_bp.route("/licencia/desarrollador/solicitudes/<int:request_id>/rechazar", methods=["POST"])
+@admin_required
+def licencia_solicitud_rechazar(request_id: int):
+    secret_expected = os.getenv("NEXAR_LICENSE_DEV_SECRET", "").strip()
+    if not secret_expected or request.form.get("dev_secret", "").strip() != secret_expected:
+        flash("Clave de desarrollador invalida o no configurada.", "danger")
+        return redirect(url_for("licencia"))
+
+    ok, msg, _ = update_license_request_status(
+        request_id,
+        estado="rechazada",
+        admin_note=request.form.get("admin_note", ""),
+    )
+    flash("Solicitud rechazada." if ok else msg, "success" if ok else "danger")
     return redirect(url_for("licencia"))
 
 
