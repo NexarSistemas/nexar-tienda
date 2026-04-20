@@ -160,6 +160,17 @@
         </header>
         <!-- ─── ALERTS ─── -->
         <div class="container-fluid pt-2">
+            {% if update_info and update_info.available %}
+                <div class="alert alert-info shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2" role="alert">
+                    <div>
+                        <strong>Nueva version disponible: v{{ update_info.latest }}.</strong>
+                        Tenes instalada la v{{ update_info.current }}. Descargala desde GitHub cuando termines tu trabajo.
+                    </div>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ update_info.url }}" target="_blank" rel="noopener">
+                        Ver actualizacion
+                    </a>
+                </div>
+            {% endif %}
             {% set lic_alert = get_licencia_status() if 'user' in session else None %}
             {% if lic_alert and lic_alert.tier == 'MENSUAL_FULL' and lic_alert.full_expires_soon %}
                 <div class="alert alert-warning shadow-sm" role="alert">

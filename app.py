@@ -15,6 +15,7 @@ from routes.licencia import licencia_bp
 from routes.main import main_bp
 from services.license_storage import cargar_licencia
 from services.license_sdk import validate_saved_license
+from services.update_checker import get_cached_update_info
 
 
 def create_app() -> Flask:
@@ -74,6 +75,7 @@ def create_app() -> Flask:
             "get_config_valor": get_config_valor,
             "get_licencia_status": get_licencia_status,
             "app_version": app_version,
+            "update_info": get_cached_update_info(app, app_version) if "user" in session else {"available": False},
             "csrf_token": csrf_token,
         }
 
@@ -145,7 +147,19 @@ def create_app() -> Flask:
                 return redirect("/configurar-recuperacion")
 
         # Permitir rutas libres de chequeo de licencia.
-        if request.path.startswith(("/activar", "/licencia", "/static")):
+        license_allowed_paths = (
+            "/activar",
+            "/licencia",
+            "/logout",
+            "/apagar",
+            "/apagar-rapido",
+            "/shutdown",
+            "/static",
+            "/ayuda",
+            "/acerca",
+            "/changelog",
+        )
+        if request.path.startswith(license_allowed_paths):
             return None
 
         licencia = cargar_licencia()
@@ -157,6 +171,17 @@ def create_app() -> Flask:
 
         ok, _ = validate_saved_license(debug=True)
         if not ok:
+            cfg = db.get_config()
+            if cfg.get("basica_activada", "0") == "1":
+                db.set_config({
+                    "demo_mode": "0",
+                    "license_tier": "BASICA",
+                    "license_plan": "BASICA",
+                    "license_expires_at": "",
+                    "license_support": "0",
+                    "license_updates": "0",
+                })
+                return None
             if db.get_license_info().get("tier") == "BASICA":
                 return None
             return redirect("/licencia")

@@ -4,6 +4,18 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.1] - 20 Abril 2026 - Actualizacion y Licencias
+
+### Correcciones
+- **Salida segura con licencia invalida**: Si la licencia queda vencida, revocada o invalida, la app permite acceder a licencia, ayuda, novedades, acerca de, cierre de sesion y apagado para evitar quedar atrapada.
+- **Degradacion a Basica**: Si una licencia Mensual Full deja de validar y la instalacion ya tenia Basica activada, el sistema vuelve automaticamente a Basica en lugar de bloquear la navegacion.
+
+### Cambios Tecnicos
+- **Aviso de nueva version**: La app consulta la ultima release de GitHub con cache y timeout corto, y muestra un banner no invasivo cuando hay una version disponible.
+- **Servicio de actualizaciones**: Se agrego `services/update_checker.py` con comprobacion tolerante a falta de internet.
+
+---
+
 ## [1.25.0] - 20 Abril 2026 - Solicitudes de Licencia
 
 ### Caracteristicas Nuevas
