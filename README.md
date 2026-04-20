@@ -40,6 +40,26 @@ python iniciar.py
 
 El launcher buscará automáticamente un puerto libre (rango 5200-5999) e iniciará la aplicación en una **ventana nativa** independiente, maximizada y optimizada para el uso diario.
 
+### Instalacion Linux (.deb)
+
+Para instalar el paquete generado por GitHub Actions o por `build_deb.sh`, usar `apt`:
+
+```bash
+sudo apt install ./nexar-tienda_VERSION_amd64.deb
+```
+
+`dpkg -i` no descarga dependencias. Si se instalo con `dpkg -i` y el paquete quedo "sin configurar", reparar con:
+
+```bash
+sudo apt --fix-broken install
+```
+
+Tambien se puede usar el helper del repo:
+
+```bash
+./install_deb.sh ./nexar-tienda_VERSION_amd64.deb
+```
+
 ---
 
 ## ✨ Módulos Principales
