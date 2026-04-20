@@ -4,6 +4,18 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.9] - 20 Abril 2026 - Actualizaciones Solo Full
+
+### Correcciones
+- **Plan Basica**: Se corrigio la disponibilidad de actualizaciones para que no aparezcan ni puedan descargarse en el plan Basica.
+- **Plan Mensual Full**: Las actualizaciones y soporte ahora se calculan desde el plan vigente, evitando heredar flags guardados de licencias anteriores.
+
+### Cambios Tecnicos
+- **Bloqueo backend**: Las rutas de descarga e instalacion de actualizaciones validan que la licencia actual sea Mensual Full antes de continuar.
+- **Pantalla de respaldos**: La seccion de actualizaciones oculta acciones no permitidas cuando el plan no incluye actualizaciones.
+
+---
+
 ## [1.25.8] - 20 Abril 2026 - Fix URLs Actualizacion
 
 ### Correcciones

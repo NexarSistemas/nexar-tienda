@@ -952,12 +952,19 @@ def usuario_eliminar(uid):
 @admin_required
 def respaldo():
     cfg = db.get_config()
-    update_info = get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
+    license_info = db.get_license_info()
+    can_use_updates = license_info.get("tier") == "MENSUAL_FULL" and license_info.get("updates")
+    update_info = (
+        get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
+        if can_use_updates
+        else {"available": False, "restricted": True}
+    )
     return render_template(
         "respaldo.html",
         archivos=_backup_list(),
-        actualizaciones=_update_list(),
+        actualizaciones=_update_list() if can_use_updates else [],
         update_info=update_info,
+        can_use_updates=can_use_updates,
         ultimo=cfg.get("backup_ultimo", "Nunca"),
         intervalo=cfg.get("backup_intervalo_h", "24"),
         keep=cfg.get("backup_keep", "10"),
@@ -1003,6 +1010,11 @@ def respaldo_restaurar(nombre):
 @main_bp.route("/respaldo/actualizacion/descargar", methods=["POST"])
 @admin_required
 def actualizacion_descargar():
+    license_info = db.get_license_info()
+    if license_info.get("tier") != "MENSUAL_FULL" or not license_info.get("updates"):
+        flash("Las actualizaciones estan disponibles solo para el plan Mensual Full.", "warning")
+        return redirect(url_for("respaldo"))
+
     update_info = get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
     if not update_info.get("available"):
         flash("No hay una actualizacion nueva disponible.", "info")
@@ -1048,6 +1060,11 @@ def actualizacion_abrir_carpeta():
 @main_bp.route("/respaldo/actualizacion/instalar/<nombre>", methods=["POST"])
 @admin_required
 def actualizacion_instalar(nombre):
+    license_info = db.get_license_info()
+    if license_info.get("tier") != "MENSUAL_FULL" or not license_info.get("updates"):
+        flash("Las actualizaciones estan disponibles solo para el plan Mensual Full.", "warning")
+        return redirect(url_for("respaldo"))
+
     installer = _update_file(nombre)
     backup_path = _make_backup()
     is_windows_installer = installer.suffix.lower() == ".exe"

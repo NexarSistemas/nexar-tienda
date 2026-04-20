@@ -71,11 +71,17 @@ def create_app() -> Flask:
                 "full_expires_tomorrow": bool(info.get("pro_expires_tomorrow")),
             }
 
+        lic_status = get_licencia_status() if "user" in session else None
+
         return {
             "get_config_valor": get_config_valor,
             "get_licencia_status": get_licencia_status,
             "app_version": app_version,
-            "update_info": get_cached_update_info(app, app_version) if "user" in session else {"available": False},
+            "update_info": (
+                get_cached_update_info(app, app_version)
+                if lic_status and lic_status.get("updates")
+                else {"available": False}
+            ),
             "csrf_token": csrf_token,
         }
 

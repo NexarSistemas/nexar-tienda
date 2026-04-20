@@ -38,7 +38,9 @@
       <div class="card shadow-sm mt-4">
         <div class="card-header bg-white"><strong>Actualizaciones</strong></div>
         <div class="card-body">
-          {% if update_info and update_info.available %}
+          {% if not can_use_updates %}
+            <p class="small text-muted mb-0">Las actualizaciones estan disponibles solo para el plan Mensual Full.</p>
+          {% elif update_info and update_info.available %}
             <p class="mb-2"><strong>Disponible v{{ update_info.latest }}</strong></p>
             <p class="small text-muted">Antes de descargar se crea un respaldo. La base de datos y la licencia se guardan en la carpeta persistente del usuario, por eso no se pisan al actualizar.</p>
             <form method="POST" action="{{ url_for('actualizacion_descargar') }}" class="mb-2">
@@ -84,9 +86,11 @@
       <div class="card shadow-sm mt-4">
         <div class="card-header bg-white d-flex justify-content-between align-items-center">
           <strong>Actualizaciones descargadas</strong>
-          <form method="POST" action="{{ url_for('actualizacion_abrir_carpeta') }}">
-            <button class="btn btn-sm btn-outline-secondary"><i class="fas fa-folder-open"></i></button>
-          </form>
+          {% if can_use_updates %}
+            <form method="POST" action="{{ url_for('actualizacion_abrir_carpeta') }}">
+              <button class="btn btn-sm btn-outline-secondary"><i class="fas fa-folder-open"></i></button>
+            </form>
+          {% endif %}
         </div>
         <div class="card-body p-0">
           <table class="table table-hover mb-0">
@@ -110,14 +114,24 @@
                 </td>
               </tr>
               {% else %}
-              <tr><td colspan="5" class="text-muted small p-3">Todavia no hay instaladores descargados.</td></tr>
+              <tr>
+                <td colspan="5" class="text-muted small p-3">
+                  {% if can_use_updates %}
+                    Todavia no hay instaladores descargados.
+                  {% else %}
+                    Disponible solo para el plan Mensual Full.
+                  {% endif %}
+                </td>
+              </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
-        <div class="card-footer small text-muted">
-          Para evitar cortes, cerrá Nexar Tienda durante la instalacion. En Linux, si usaste <code>dpkg -i</code>, repará dependencias con <code>sudo apt --fix-broken install</code>.
-        </div>
+        {% if can_use_updates %}
+          <div class="card-footer small text-muted">
+            Para evitar cortes, cerrá Nexar Tienda durante la instalacion. En Linux, si usaste <code>dpkg -i</code>, repará dependencias con <code>sudo apt --fix-broken install</code>.
+          </div>
+        {% endif %}
       </div>
     </div>
   </div>

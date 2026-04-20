@@ -878,8 +878,8 @@ def get_license_info() -> dict:
         'drive_index_id': cfg.get('license_drive_index_id', ''),
         'limits':      limits,
         'demo_mode':   cfg.get('demo_mode', '1'),
-        'support':     cfg.get('license_support', '0') == '1' or bool(limits.get('support')),
-        'updates':     cfg.get('license_updates', '0') == '1' or bool(limits.get('updates')),
+        'support':     bool(limits.get('support')),
+        'updates':     bool(limits.get('updates')),
         # Campos de notificación de vencimiento
         'pro_days':    full_days,
         'pro_vencido': full_days is not None and full_days < 0,
@@ -912,8 +912,8 @@ def sync_license_from_remote(license_data: dict):
         'license_expires_at': expira,
         'license_last_check': datetime.now().date().isoformat(),
         'license_max_machines': str(license_data.get('max_devices') or license_data.get('max_machines') or 1),
-        'license_support': '1' if license_data.get('support') or TIER_LIMITS[plan].get('support') else '0',
-        'license_updates': '1' if license_data.get('updates') or TIER_LIMITS[plan].get('updates') else '0',
+        'license_support': '1' if TIER_LIMITS[plan].get('support') else '0',
+        'license_updates': '1' if TIER_LIMITS[plan].get('updates') else '0',
     }
     if plan == 'BASICA':
         updates['basica_activada'] = '1'
@@ -1046,6 +1046,8 @@ def activar_licencia(token_b64: str) -> tuple:
         'license_activated_at':   datetime.now().isoformat(),
         'license_expires_at':     expires_at,
         'license_last_check':     datetime.now().date().isoformat(),
+        'license_support':        '1' if TIER_LIMITS[tier].get('support') else '0',
+        'license_updates':        '1' if TIER_LIMITS[tier].get('updates') else '0',
     }
 
     # ── Marcar BASICA como activada (necesario para poder activar PRO luego) ─
