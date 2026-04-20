@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -8,21 +8,15 @@ from datetime import date, datetime, timedelta
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import quote
 
 import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.license_sdk import get_current_hwid, get_license_product, validate_license_key
 from services.supabase_license_api import (
-    create_license,
     create_license_request,
     generate_activation_id,
-    get_license_request,
-    is_admin_configured as supabase_admin_configured,
     is_configured as supabase_configured,
-    list_license_requests,
-    update_license_request_status,
 )
 
 main_bp = Blueprint("main", __name__)
@@ -48,15 +42,15 @@ def _is_same_origin_local_request() -> bool:
 
 def _validate_password(password: str) -> tuple[bool, str]:
     if len(password or "") < 6 or len(password or "") > 12:
-        return False, "La contraseña debe tener entre 6 y 12 caracteres."
+        return False, "La contraseÃ±a debe tener entre 6 y 12 caracteres."
     if not re.search(r"[A-Z]", password or ""):
-        return False, "La contraseña debe incluir una mayúscula."
+        return False, "La contraseÃ±a debe incluir una mayÃºscula."
     if not re.search(r"[a-z]", password or ""):
-        return False, "La contraseña debe incluir una minúscula."
+        return False, "La contraseÃ±a debe incluir una minÃºscula."
     if not re.search(r"[0-9]", password or ""):
-        return False, "La contraseña debe incluir un número."
+        return False, "La contraseÃ±a debe incluir un nÃºmero."
     if not re.search(r"[^A-Za-z0-9]", password or ""):
-        return False, "La contraseña debe incluir un símbolo."
+        return False, "La contraseÃ±a debe incluir un sÃ­mbolo."
     return True, ""
 
 
@@ -69,7 +63,7 @@ def _limit_allows(kind: str) -> bool:
     current = int(db.q(current_sql, fetchone=True)[0] or 0)
     check = db.check_license_limits(kind, current + 1)
     if not check["ok"]:
-        flash(f"⚠️ {check['message']}", "warning")
+        flash(f"âš ï¸ {check['message']}", "warning")
         return False
     return True
 
@@ -88,7 +82,7 @@ def admin_required(view):
     @login_required
     def wrapped(*args, **kwargs):
         if session.get("user", {}).get("rol") not in {"Administrador", "admin"}:
-            flash("❌ No tenés permisos para acceder a esa sección.", "danger")
+            flash("âŒ No tenÃ©s permisos para acceder a esa secciÃ³n.", "danger")
             return redirect(url_for("dashboard"))
         return view(*args, **kwargs)
     return wrapped
@@ -182,14 +176,14 @@ def registro_inicial():
         question = request.form.get("security_question", "").strip()
         answer = request.form.get("security_answer", "").strip()
         if not all([nombre, username, password, question, answer]):
-            flash("⚠️ Completá todos los campos.", "warning")
+            flash("âš ï¸ CompletÃ¡ todos los campos.", "warning")
             return render_template("registro_inicial.html", nombre=nombre, username=username)
         ok, msg = _validate_password(password)
         if not ok:
-            flash(f"❌ {msg}", "danger")
+            flash(f"âŒ {msg}", "danger")
             return render_template("registro_inicial.html", nombre=nombre, username=username)
         db.add_usuario(username, password, "Administrador", nombre, question, answer)
-        flash("✅ Administrador creado. Ya podés iniciar sesión.", "success")
+        flash("âœ… Administrador creado. Ya podÃ©s iniciar sesiÃ³n.", "success")
         return redirect(url_for("login"))
     return render_template("registro_inicial.html")
 
@@ -203,13 +197,13 @@ def login():
         password = request.form.get("password", "")
         user = db.get_usuario_by_username(username)
         if not user or not int(user["activo"] or 0) or not db.verify_password(password, user["password_hash"]):
-            flash("❌ Usuario o contraseña incorrectos.", "danger")
+            flash("âŒ Usuario o contraseÃ±a incorrectos.", "danger")
             return render_template("login.html", next=request.form.get("next", ""))
         session["user"] = {"id": user["id"], "username": user["username"], "nombre_completo": user["nombre_completo"] or user["username"], "rol": user["rol"]}
         if not user["security_question"] or not user["security_answer_hash"]:
-            flash("⚠️ Antes de continuar, configurá tu pregunta y respuesta secreta.", "warning")
+            flash("âš ï¸ Antes de continuar, configurÃ¡ tu pregunta y respuesta secreta.", "warning")
             return redirect(url_for("configurar_recuperacion", next=request.form.get("next", "")))
-        flash(f"✅ Bienvenido, {user['nombre_completo'] or user['username']}!", "success")
+        flash(f"âœ… Bienvenido, {user['nombre_completo'] or user['username']}!", "success")
         return redirect(request.form.get("next") or url_for("dashboard"))
     return render_template("login.html", next=request.args.get("next", ""))
 
@@ -228,14 +222,14 @@ def configurar_recuperacion():
         question = request.form.get("security_question", "").strip()
         answer = request.form.get("security_answer", "").strip()
         if not question or not answer:
-            flash("⚠️ La pregunta y la respuesta secreta son obligatorias.", "warning")
+            flash("âš ï¸ La pregunta y la respuesta secreta son obligatorias.", "warning")
             return render_template("configurar_recuperacion.html", usuario=usuario)
         db.update_perfil(usuario["id"], {
             "nombre_completo": usuario["nombre_completo"],
             "security_question": question,
             "security_answer": answer,
         })
-        flash("✅ Recuperación de contraseña configurada.", "success")
+        flash("âœ… RecuperaciÃ³n de contraseÃ±a configurada.", "success")
         return redirect(request.form.get("next") or url_for("dashboard"))
 
     return render_template("configurar_recuperacion.html", usuario=usuario, next=request.args.get("next", ""))
@@ -252,7 +246,7 @@ def recuperar_password():
             if user and user["security_question"]:
                 step = 2
             else:
-                flash("❌ Usuario inexistente o sin recuperación configurada.", "danger")
+                flash("âŒ Usuario inexistente o sin recuperaciÃ³n configurada.", "danger")
         elif step == 2:
             user = db.get_usuario_by_username(username)
             security_answer = request.form.get("security_answer", "")
@@ -261,15 +255,15 @@ def recuperar_password():
                     db.set_security_answer_hash(user["id"], security_answer)
                 step = 3
             else:
-                flash("❌ La respuesta no coincide.", "danger")
+                flash("âŒ La respuesta no coincide.", "danger")
                 step = 1
         elif step == 3:
             ok, msg = _validate_password(request.form.get("password", ""))
             if ok:
                 db.set_password_for_username(username, request.form.get("password", ""))
-                flash("✅ Contraseña restablecida.", "success")
+                flash("âœ… ContraseÃ±a restablecida.", "success")
                 return redirect(url_for("login"))
-            flash(f"❌ {msg}", "danger")
+            flash(f"âŒ {msg}", "danger")
     return render_template("recuperar_password.html", step=step, user=user, username=username)
 
 
@@ -294,7 +288,7 @@ def producto_nuevo():
         if not _limit_allows("productos"):
             return redirect(url_for("productos"))
         db.add_producto(request.form.to_dict())
-        flash("✅ Producto creado.", "success")
+        flash("âœ… Producto creado.", "success")
         return redirect(url_for("productos"))
     return render_template("producto_form.html", producto=None, stock=None, categorias=db.get_categorias(), accion="Nuevo")
 
@@ -305,14 +299,14 @@ def producto_editar(pid):
     producto = db.get_producto(pid)
     stock = db.q("SELECT * FROM stock WHERE producto_id=?", (pid,), fetchone=True)
     if not producto:
-        flash("❌ Producto inexistente.", "danger")
+        flash("âŒ Producto inexistente.", "danger")
         return redirect(url_for("productos"))
     if request.method == "POST":
         data = request.form.to_dict()
         data["activo"] = 1 if _as_bool(data.get("activo", "1")) else 0
         db.update_producto(pid, data)
         db.update_stock_item(pid, float(data.get("stock_actual", stock["stock_actual"] if stock else 0)), float(data.get("stock_minimo", 5)), float(data.get("stock_maximo", 50)), data.get("proveedor_habitual", ""))
-        flash("✅ Producto actualizado.", "success")
+        flash("âœ… Producto actualizado.", "success")
         return redirect(url_for("productos"))
     return render_template("producto_form.html", producto=producto, stock=stock, categorias=db.get_categorias(), accion="Editar")
 
@@ -321,7 +315,7 @@ def producto_editar(pid):
 @login_required
 def producto_eliminar(pid):
     db.delete_producto(pid)
-    flash("✅ Producto desactivado.", "success")
+    flash("âœ… Producto desactivado.", "success")
     return redirect(url_for("productos"))
 
 
@@ -350,7 +344,7 @@ def stock_ajustar(pid):
         nuevo = float(request.form.get("stock_actual", anterior) or anterior)
         db.update_stock_item(pid, nuevo, float(request.form.get("stock_minimo", 5)), float(request.form.get("stock_maximo", 50)), request.form.get("proveedor_habitual", ""))
         db.q("INSERT INTO stock_movimientos (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo) VALUES (?,?,?,?,?,?)", (pid, "AJUSTE", nuevo - anterior, anterior, nuevo, request.form.get("motivo", "Ajuste manual")), commit=True)
-        flash("✅ Stock actualizado.", "success")
+        flash("âœ… Stock actualizado.", "success")
         return redirect(url_for("stock"))
     return render_template("stock_ajustar.html", producto=producto, stock=stock_row, movimientos=db.get_stock_movimientos(pid))
 
@@ -368,7 +362,7 @@ def temporada_nueva():
         data = request.form.to_dict()
         data["activa"] = 1 if _as_bool(data.get("activa")) else 0
         db.add_temporada(data)
-        flash("✅ Temporada creada.", "success")
+        flash("âœ… Temporada creada.", "success")
         return redirect(url_for("temporadas"))
     return render_template("temporada_form.html", temporada={}, accion="Nueva")
 
@@ -381,7 +375,7 @@ def temporada_editar(tid):
         data = request.form.to_dict()
         data["activa"] = 1 if _as_bool(data.get("activa")) else 0
         db.update_temporada(tid, data)
-        flash("✅ Temporada actualizada.", "success")
+        flash("âœ… Temporada actualizada.", "success")
         return redirect(url_for("temporadas"))
     return render_template("temporada_form.html", temporada=temporada, accion="Editar")
 
@@ -390,7 +384,7 @@ def temporada_editar(tid):
 @login_required
 def temporada_eliminar(tid):
     db.delete_temporada(tid)
-    flash("✅ Temporada eliminada.", "success")
+    flash("âœ… Temporada eliminada.", "success")
     return redirect(url_for("temporadas"))
 
 
@@ -418,7 +412,7 @@ def api_carrito_agregar():
     producto = db.get_producto(pid)
     stock_row = db.q("SELECT stock_actual FROM stock WHERE producto_id=?", (pid,), fetchone=True)
     if not producto or not stock_row or cantidad <= 0:
-        return jsonify({"ok": False, "error": "Producto o cantidad inválida."}), 400
+        return jsonify({"ok": False, "error": "Producto o cantidad invÃ¡lida."}), 400
     if cantidad > float(stock_row["stock_actual"] or 0):
         return jsonify({"ok": False, "error": "Stock insuficiente."}), 400
     existing = next((i for i in cart if i["producto_id"] == pid), None)
@@ -452,7 +446,7 @@ def api_carrito_vaciar():
 def venta_finalizar():
     cart = _cart()
     if not cart:
-        flash("⚠️ El carrito está vacío.", "warning")
+        flash("âš ï¸ El carrito estÃ¡ vacÃ­o.", "warning")
         return redirect(url_for("punto_venta"))
     cliente_id = int(request.form.get("cliente_id", 0) or 0)
     cliente_nombre = request.form.get("cliente_nombre", "") or "Mostrador"
@@ -462,7 +456,7 @@ def venta_finalizar():
     venta_id = db.crear_venta(cart, cliente_nombre, request.form.get("medio_pago", "Efectivo"), float(request.form.get("descuento_adicional", 0) or 0), session["user"]["username"], cliente_id=cliente_id, temporada=(db.get_temporada_actual() or {}).get("nombre", ""))
     db.decrementar_stock_venta(venta_id)
     _clear_cart()
-    flash("✅ Venta registrada.", "success")
+    flash("âœ… Venta registrada.", "success")
     return redirect(url_for("ticket", vid=venta_id))
 
 
@@ -504,7 +498,7 @@ def compra_nueva():
             data["proveedor_nombre"] = proveedor["nombre"]
         data["total"] = float(data.get("cantidad", 0) or 0) * float(data.get("costo_unitario", 0) or 0)
         db.add_compra(data)
-        flash("✅ Compra registrada.", "success")
+        flash("âœ… Compra registrada.", "success")
         return redirect(url_for("compras"))
     return render_template("compra_form.html", compra=None, proveedores=db.get_proveedores(), productos=db.get_productos(), accion="Nueva")
 
@@ -519,7 +513,7 @@ def compra_detalle(cid):
 @login_required
 def compra_eliminar(cid):
     db.delete_compra(cid)
-    flash("✅ Compra eliminada.", "success")
+    flash("âœ… Compra eliminada.", "success")
     return redirect(url_for("compras"))
 
 
@@ -719,13 +713,13 @@ def perfil():
         if data.get("password"):
             ok, msg = _validate_password(data["password"])
             if not ok:
-                flash(f"❌ {msg}", "danger")
+                flash(f"âŒ {msg}", "danger")
                 return render_template("perfil.html", usuario=usuario)
         if bool(data.get("security_question", "").strip()) != bool(data.get("security_answer", "").strip()):
-            flash("⚠️ Para cambiar la recuperación, ingresá pregunta y respuesta secreta.", "warning")
+            flash("âš ï¸ Para cambiar la recuperaciÃ³n, ingresÃ¡ pregunta y respuesta secreta.", "warning")
             return render_template("perfil.html", usuario=usuario)
         db.update_perfil(usuario["id"], data)
-        flash("✅ Perfil actualizado.", "success")
+        flash("âœ… Perfil actualizado.", "success")
         return redirect(url_for("perfil"))
     return render_template("perfil.html", usuario=usuario)
 
@@ -777,54 +771,19 @@ def config_gasto_categoria_editar():
     return redirect(url_for("config"))
 
 
-def _clean_whatsapp_number(value: str) -> str:
-    return "".join(ch for ch in (value or "") if ch.isdigit())
-
-
-def _license_delivery_links(row: dict, license_key: str) -> dict[str, str]:
-    name = (row.get("nombre") or "cliente").strip()
-    product = row.get("producto") or get_license_product()
-    message = (
-        f"Hola {name}, tu licencia de {product} fue aprobada. "
-        f"Clave: {license_key}. Pegala en la pantalla de Activacion de licencia."
-    )
-    subject = f"Licencia {product}"
-    links = {"email": "", "whatsapp": ""}
-    if row.get("email"):
-        links["email"] = f"mailto:{row['email']}?subject={quote(subject)}&body={quote(message)}"
-    phone = _clean_whatsapp_number(row.get("whatsapp", ""))
-    if phone:
-        links["whatsapp"] = f"https://wa.me/{phone}?text={quote(message)}"
-    return links
-
-
 @main_bp.route("/licencia")
 @admin_required
 def licencia():
     machine_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
     local_lic = cargar_licencia() or {}
-    dev_mode = bool(os.getenv("NEXAR_LICENSE_DEV_SECRET"))
-    solicitudes = []
-    solicitudes_error = ""
-    if dev_mode:
-        ok_req, msg_req, solicitudes = list_license_requests(producto=get_license_product(), limit=30)
-        if not ok_req:
-            solicitudes_error = msg_req
-        for row in solicitudes:
-            row["delivery_links"] = _license_delivery_links(row, row.get("license_key", "")) if row.get("license_key") else {}
-
     return render_template(
         "licencia.html",
         supabase_ok=supabase_configured(),
-        supabase_admin_ok=supabase_admin_configured(),
         machine_id=machine_id,
         device_hwid=get_current_hwid(),
         machine_details=machine_details,
         producto=get_license_product(),
         license_key_local=local_lic.get("license_key", ""),
-        dev_mode=dev_mode,
-        solicitudes=solicitudes,
-        solicitudes_error=solicitudes_error,
     )
 
 
@@ -835,9 +794,9 @@ def licencia_activar():
     ok, msg = validate_license_key(request.form.get("license_key", ""), debug=True)
     if ok:
         guardar_licencia(license_key, db.get_license_info())
-        flash(f"✅ {msg} La licencia quedó vinculada a este equipo.", "success")
+        flash(f"âœ… {msg} La licencia quedÃ³ vinculada a este equipo.", "success")
     else:
-        flash(f"❌ {msg}", "danger")
+        flash(f"âŒ {msg}", "danger")
     return redirect(url_for("licencia"))
 
 
@@ -859,86 +818,6 @@ def licencia_solicitar():
     return redirect(url_for("licencia"))
 
 
-@main_bp.route("/licencia/desarrollador/generar", methods=["POST"])
-@admin_required
-def licencia_generar_desarrollador():
-    secret_expected = os.getenv("NEXAR_LICENSE_DEV_SECRET", "").strip()
-    if not secret_expected or request.form.get("dev_secret", "").strip() != secret_expected:
-        flash("❌ Clave de desarrollador inválida o no configurada.", "danger")
-        return redirect(url_for("licencia"))
-    ok, msg, row = create_license(
-        usuario=request.form.get("usuario", "Cliente"),
-        producto=get_license_product(),
-        dias=int(request.form.get("dias", "30") or 30),
-        plan=request.form.get("plan", "BASICA"),
-    )
-    flash(f"✅ {msg} Key emitida: {row.get('license_key', '—')}" if ok and row else f"❌ {msg}")
-    return redirect(url_for("licencia"))
-
-
-@main_bp.route("/licencia/desarrollador/solicitudes/<int:request_id>/aprobar", methods=["POST"])
-@admin_required
-def licencia_solicitud_aprobar(request_id: int):
-    secret_expected = os.getenv("NEXAR_LICENSE_DEV_SECRET", "").strip()
-    if not secret_expected or request.form.get("dev_secret", "").strip() != secret_expected:
-        flash("Clave de desarrollador invalida o no configurada.", "danger")
-        return redirect(url_for("licencia"))
-
-    ok_req, msg_req, solicitud = get_license_request(request_id, producto=get_license_product())
-    if not ok_req or not solicitud:
-        flash(msg_req, "danger")
-        return redirect(url_for("licencia"))
-    if solicitud.get("estado") == "aprobada" and solicitud.get("license_key"):
-        flash("Esta solicitud ya estaba aprobada.", "warning")
-        return redirect(url_for("licencia"))
-
-    try:
-        dias = int(request.form.get("dias", "30") or 30)
-    except ValueError:
-        dias = 30
-
-    ok_lic, msg_lic, row = create_license(
-        usuario=solicitud.get("nombre") or "Cliente",
-        producto=get_license_product(),
-        dias=dias,
-        plan=request.form.get("plan") or solicitud.get("plan") or "BASICA",
-        machine_id=solicitud.get("activation_id", ""),
-    )
-    if not ok_lic or not row:
-        flash(msg_lic, "danger")
-        return redirect(url_for("licencia"))
-
-    license_key = row.get("license_key", "")
-    ok_upd, msg_upd, _ = update_license_request_status(
-        request_id,
-        estado="aprobada",
-        license_key=license_key,
-        admin_note=request.form.get("admin_note", ""),
-    )
-    if ok_upd:
-        flash(f"Solicitud aprobada. Key emitida: {license_key}", "success")
-    else:
-        flash(f"Licencia creada ({license_key}), pero no se pudo actualizar la solicitud: {msg_upd}", "warning")
-    return redirect(url_for("licencia"))
-
-
-@main_bp.route("/licencia/desarrollador/solicitudes/<int:request_id>/rechazar", methods=["POST"])
-@admin_required
-def licencia_solicitud_rechazar(request_id: int):
-    secret_expected = os.getenv("NEXAR_LICENSE_DEV_SECRET", "").strip()
-    if not secret_expected or request.form.get("dev_secret", "").strip() != secret_expected:
-        flash("Clave de desarrollador invalida o no configurada.", "danger")
-        return redirect(url_for("licencia"))
-
-    ok, msg, _ = update_license_request_status(
-        request_id,
-        estado="rechazada",
-        admin_note=request.form.get("admin_note", ""),
-    )
-    flash("Solicitud rechazada." if ok else msg, "success" if ok else "danger")
-    return redirect(url_for("licencia"))
-
-
 @main_bp.route("/usuarios")
 @admin_required
 def usuarios():
@@ -951,7 +830,7 @@ def usuario_nuevo():
     if request.method == "POST":
         ok, msg = _validate_password(request.form.get("password", ""))
         if not ok:
-            flash(f"❌ {msg}", "danger")
+            flash(f"âŒ {msg}", "danger")
         else:
             db.add_usuario(request.form.get("username", ""), request.form.get("password", ""), request.form.get("rol", "Vendedor"), request.form.get("nombre_completo", ""))
             return redirect(url_for("usuarios"))
@@ -963,19 +842,19 @@ def usuario_nuevo():
 def usuario_editar(uid):
     usuario = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
     if not usuario:
-        flash("❌ Usuario inexistente.", "danger")
+        flash("âŒ Usuario inexistente.", "danger")
         return redirect(url_for("usuarios"))
     if request.method == "POST":
         activo = 1 if _as_bool(request.form.get("activo")) else 0
         nuevo_rol = request.form.get("rol", usuario["rol"])
         if not activo and uid == session["user"]["id"]:
-            flash("⚠️ No podés desactivar tu propio usuario.", "warning")
+            flash("âš ï¸ No podÃ©s desactivar tu propio usuario.", "warning")
             return redirect(url_for("usuarios"))
         if not activo and usuario["rol"] in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
-            flash("⚠️ No podés desactivar el último administrador activo.", "warning")
+            flash("âš ï¸ No podÃ©s desactivar el Ãºltimo administrador activo.", "warning")
             return redirect(url_for("usuarios"))
         if usuario["rol"] in {"Administrador", "admin"} and nuevo_rol not in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
-            flash("⚠️ No podés quitar el rol al último administrador activo.", "warning")
+            flash("âš ï¸ No podÃ©s quitar el rol al Ãºltimo administrador activo.", "warning")
             return redirect(url_for("usuarios"))
         db.update_usuario(uid, {"rol": nuevo_rol, "nombre_completo": request.form.get("nombre_completo", usuario["nombre_completo"]), "activo": activo})
         return redirect(url_for("usuarios"))
@@ -987,19 +866,19 @@ def usuario_editar(uid):
 def usuario_toggle_activo(uid):
     user = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
     if not user:
-        flash("❌ Usuario inexistente.", "danger")
+        flash("âŒ Usuario inexistente.", "danger")
         return redirect(url_for("usuarios"))
     if uid == session["user"]["id"]:
-        flash("⚠️ No podés cambiar el estado de tu propio usuario.", "warning")
+        flash("âš ï¸ No podÃ©s cambiar el estado de tu propio usuario.", "warning")
         return redirect(url_for("usuarios"))
 
     nuevo_estado = 0 if int(user["activo"] or 0) else 1
     if nuevo_estado == 0 and user["rol"] in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
-        flash("⚠️ No podés desactivar el último administrador activo.", "warning")
+        flash("âš ï¸ No podÃ©s desactivar el Ãºltimo administrador activo.", "warning")
         return redirect(url_for("usuarios"))
 
     db.set_usuario_activo(uid, nuevo_estado)
-    flash("✅ Usuario activado." if nuevo_estado else "✅ Usuario desactivado.", "success")
+    flash("âœ… Usuario activado." if nuevo_estado else "âœ… Usuario desactivado.", "success")
     return redirect(url_for("usuarios"))
 
 
@@ -1008,16 +887,16 @@ def usuario_toggle_activo(uid):
 def usuario_eliminar(uid):
     user = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
     if not user:
-        flash("❌ Usuario inexistente.", "danger")
+        flash("âŒ Usuario inexistente.", "danger")
         return redirect(url_for("usuarios"))
     if uid == session["user"]["id"]:
-        flash("⚠️ No podés eliminar tu propio usuario.", "warning")
+        flash("âš ï¸ No podÃ©s eliminar tu propio usuario.", "warning")
         return redirect(url_for("usuarios"))
     if user["rol"] in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
-        flash("⚠️ No podés eliminar el último administrador activo.", "warning")
+        flash("âš ï¸ No podÃ©s eliminar el Ãºltimo administrador activo.", "warning")
         return redirect(url_for("usuarios"))
     db.delete_usuario(uid)
-    flash("✅ Usuario eliminado definitivamente.", "success")
+    flash("âœ… Usuario eliminado definitivamente.", "success")
     return redirect(url_for("usuarios"))
 
 

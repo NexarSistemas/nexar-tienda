@@ -88,9 +88,9 @@ El launcher buscará automáticamente un puerto libre (rango 5200-5999) e inicia
 
 La pantalla de licencia permite que el cliente envie una solicitud con nombre,
 email, WhatsApp opcional e ID del equipo. Esa solicitud queda pendiente en
-Supabase y el desarrollador la aprueba o rechaza manualmente desde el panel
-desarrollador. Al aprobar, se genera una licencia real en la tabla `licencias`
-y quedan disponibles botones para enviar la clave por email o WhatsApp.
+Supabase y el desarrollador la aprueba o rechaza manualmente desde `nexar-admin`.
+Al aprobar, se genera una licencia real en la tabla `licencias` y el cliente
+recibe la clave para pegarla en Nexar Tienda.
 
 Tabla necesaria en Supabase:
 
@@ -128,7 +128,13 @@ La policy anterior es solo para `insert`: permite que la app instalada envie
 una solicitud nueva. No agregues policies de `select`, `update` ni `delete`
 para `anon`, asi ningun cliente puede leer, modificar o borrar solicitudes de
 otros. La bandeja de solicitudes se consulta solo con `SUPABASE_SERVICE_ROLE_KEY`
-en modo desarrollador.
+desde `nexar-admin`.
+
+Para probar localmente, usa `.env.example` como referencia. El envio de
+solicitudes en Nexar Tienda necesita `SUPABASE_URL` y `SUPABASE_ANON_KEY`.
+La bandeja de aprobacion, rechazo y emision de licencias vive en `nexar-admin`.
+La service role key debe quedar solo en el entorno local/admin de `nexar-admin`,
+nunca dentro del instalador de Nexar Tienda.
 
 ---
 
