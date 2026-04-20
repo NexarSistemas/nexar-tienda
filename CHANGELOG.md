@@ -4,6 +4,18 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.4] - 20 Abril 2026 - Instalacion DEB Linux
+
+### Correcciones
+- **Instalacion con dependencias**: Se documento el uso de `apt install ./nexar-tienda_VERSION_amd64.deb` para que Linux resuelva dependencias como `libxcb-cursor0`.
+- **Recuperacion de dpkg**: Se agrego la indicacion `sudo apt --fix-broken install` para reparar instalaciones hechas con `dpkg -i` que queden sin configurar.
+
+### Cambios Tecnicos
+- **Helper de instalacion**: Se agrego `install_deb.sh` para instalar el paquete `.deb` usando `apt`.
+- **Mensajes del builder**: `build_deb.sh` ahora imprime el comando recomendado de instalacion y la advertencia sobre `dpkg -i`.
+
+---
+
 ## [1.25.3] - 20 Abril 2026 - Hotfix Build Linux
 
 ### Correcciones
