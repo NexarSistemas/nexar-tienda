@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.2] - 20 Abril 2026 - Hotfix Activacion Windows
+
+### Correcciones
+- **Activacion de licencia en build Windows**: Se corrigio un `Internal Server Error` provocado por mensajes `print` con caracteres no compatibles con la consola `cp1252` al guardar la licencia.
+- **Logs seguros**: `services/license_storage.py` ahora usa salida ASCII segura para evitar que un mensaje de log rompa el flujo de activacion aunque la licencia se haya validado correctamente.
+
+---
+
 ## [1.25.1] - 20 Abril 2026 - Actualizacion y Licencias
 
 ### Correcciones
