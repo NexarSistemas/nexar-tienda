@@ -4,6 +4,15 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.14] - 21 Abril 2026 - Bienvenida y Texto de Login
+
+### Correcciones
+- **Bienvenida unica**: Al iniciar sesion queda un solo aviso de bienvenida, con check verde, y se muestra una sola vez por sesion.
+- **Texto de login**: Se corrigio el mensaje de usuario o contrasena incorrectos que aparecia con caracteres mal codificados.
+- **Codificacion**: `routes/main.py` ya no conserva BOM al inicio del archivo.
+
+---
+
 ## [1.25.13] - 21 Abril 2026 - Cierre Seguro en Actualizaciones Windows
 
 ### Cambios

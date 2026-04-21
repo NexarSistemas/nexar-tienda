@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import os
@@ -344,13 +344,13 @@ def login():
         password = request.form.get("password", "")
         user = db.get_usuario_by_username(username)
         if not user or not int(user["activo"] or 0) or not db.verify_password(password, user["password_hash"]):
-            flash("âŒ Usuario o contraseÃ±a incorrectos.", "danger")
+            flash("❌ Usuario o contraseña incorrectos.", "danger")
             return render_template("login.html", next=request.form.get("next", ""))
         session["user"] = {"id": user["id"], "username": user["username"], "nombre_completo": user["nombre_completo"] or user["username"], "rol": user["rol"]}
+        session["show_welcome"] = True
         if not user["security_question"] or not user["security_answer_hash"]:
             flash("âš ï¸ Antes de continuar, configurÃ¡ tu pregunta y respuesta secreta.", "warning")
             return redirect(url_for("configurar_recuperacion", next=request.form.get("next", "")))
-        flash(f"âœ… Bienvenido, {user['nombre_completo'] or user['username']}!", "success")
         return redirect(request.form.get("next") or url_for("dashboard"))
     return render_template("login.html", next=request.args.get("next", ""))
 
@@ -417,7 +417,8 @@ def recuperar_password():
 @main_bp.route("/")
 @login_required
 def dashboard():
-    return render_template("dashboard.html", stats=db.get_dashboard_stats())
+    show_welcome = bool(session.pop("show_welcome", False))
+    return render_template("dashboard.html", stats=db.get_dashboard_stats(), show_welcome=show_welcome)
 
 
 @main_bp.route("/productos")

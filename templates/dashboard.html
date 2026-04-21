@@ -4,11 +4,12 @@
 
 {% block content %}
 
+    {% if show_welcome %}
     <!-- ─── BIENVENIDA ─── -->
     <div class="row mb-3">
         <div class="col-12">
-            <div class="alert alert-info alert-dismissible fade show" role="alert">
-                <i class="fas fa-info-circle"></i>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle"></i>
                 <strong>¡Bienvenido, {{ session['user']['nombre_completo'] }}!</strong>
                 {% if stats.temporada != 'Ninguna' %}
                     Actual: {{ stats.temporada }}
@@ -17,6 +18,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 <div class="dashboard">
     <!-- ─── KPIs ─── -->
     <div class="row mb-4">
