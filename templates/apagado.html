@@ -20,15 +20,24 @@
     </div>
 
     <script>
-        // 1) Pedir apagado del servidor (en segundo plano)
-        fetch('/shutdown', {
-            method: 'POST',
-            keepalive: true,
-            headers: { 'X-CSRFToken': '{{ csrf_token() }}' }
-        }).catch(() => {});
+        const restartDelay = Number({{ restart_delay_ms|default(0) }});
+
+        if (restartDelay > 0 && window.pywebview?.api?.restartApp) {
+            window.pywebview.api.restartApp(restartDelay);
+        } else {
+            // 1) Pedir apagado del servidor (en segundo plano)
+            fetch('/shutdown', {
+                method: 'POST',
+                keepalive: true,
+                headers: { 'X-CSRFToken': '{{ csrf_token() }}' }
+            }).catch(() => {});
+        }
 
         // 2) Cerrar ventana en webview/navegador
         setTimeout(function() {
+            if (restartDelay > 0 && window.pywebview?.api?.restartApp) {
+                return;
+            }
             if (window.pywebview?.api?.closeWindow) {
                 window.pywebview.api.closeWindow();
                 return;

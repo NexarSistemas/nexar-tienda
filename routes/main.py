@@ -1234,9 +1234,10 @@ def actualizacion_reiniciar():
     return render_template(
         "apagado.html",
         titulo="Reiniciando Nexar Tienda",
-        mensaje="La app se cerrara para completar la actualizacion.",
-        estado="Volvela a abrir en unos segundos para usar la version nueva.",
+        mensaje="La app se cerrara y volvera a abrirse con la version nueva.",
+        estado="Esto puede tardar unos segundos mientras el sistema libera el instalador.",
         delay_ms=5000,
+        restart_delay_ms=5000,
     )
 
 

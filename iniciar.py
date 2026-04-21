@@ -195,6 +195,20 @@ if __name__ == "__main__":
         import webview
 
         class NexarBridge:
+            def restartApp(self, delay_ms=5000):
+                def _restart():
+                    try:
+                        time.sleep(max(int(delay_ms or 5000), 1000) / 1000)
+                        if es_ejecutable():
+                            subprocess.Popen([sys.executable], cwd=os.path.dirname(sys.executable) or None)
+                        else:
+                            subprocess.Popen([sys.executable, os.path.abspath(__file__)], cwd=os.path.dirname(os.path.abspath(__file__)))
+                    finally:
+                        os._exit(0)
+
+                _threading.Thread(target=_restart, daemon=True).start()
+                return True
+
             def closeWindow(self):
                 def _close():
                     try:

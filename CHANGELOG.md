@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.12] - 20 Abril 2026 - Relanzamiento Post Actualizacion
+
+### Caracteristicas Nuevas
+- **Reinicio automatico**: Despues de instalar una actualizacion, el boton Reiniciar app ahora cierra Nexar Tienda y vuelve a abrirlo automaticamente.
+
+### Cambios Tecnicos
+- **Espera prudente**: El relanzamiento espera 5 segundos antes de abrir la app para evitar conflictos mientras el sistema libera el instalador.
+- **Launcher pywebview**: Se agrego un metodo de puente para reiniciar el ejecutable o script actual desde la ventana nativa.
+
+---
+
 ## [1.25.11] - 20 Abril 2026 - Soporte Integrado
 
 ### Caracteristicas Nuevas
