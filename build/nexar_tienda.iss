@@ -75,7 +75,7 @@ Name: "{userprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: 
 Name: "{userdesktop}\{#AppName}";  Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "Sistema de gestión para tiendas"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Description: "Iniciar {#AppName} ahora"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Description: "Iniciar {#AppName} ahora"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
 

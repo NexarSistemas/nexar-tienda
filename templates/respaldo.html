@@ -51,10 +51,18 @@
           {% elif update_state and update_state.status == 'ready_restart' %}
             <div class="alert alert-warning small mb-3">
               <strong>Actualizacion v{{ update_state.target_version }} lista.</strong><br>
-              Reinicia Nexar Tienda para terminar de aplicar la version nueva.
+              {% if update_state.manual_reopen %}
+                Cierra Nexar Tienda y volve a abrirlo desde el acceso directo para terminar de aplicar la version nueva.
+              {% else %}
+                Reinicia Nexar Tienda para terminar de aplicar la version nueva.
+              {% endif %}
             </div>
             <form method="POST" action="{{ url_for('actualizacion_reiniciar') }}">
-              <button class="btn btn-warning w-100"><i class="fas fa-sync-alt me-1"></i>Reiniciar app</button>
+              {% if update_state.manual_reopen %}
+                <button class="btn btn-warning w-100"><i class="fas fa-power-off me-1"></i>Cerrar app</button>
+              {% else %}
+                <button class="btn btn-warning w-100"><i class="fas fa-sync-alt me-1"></i>Reiniciar app</button>
+              {% endif %}
             </form>
           {% elif update_state and update_state.status == 'in_progress' %}
             <div class="alert alert-info small mb-0" id="update-progress-alert">

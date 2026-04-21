@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.13] - 21 Abril 2026 - Cierre Seguro en Actualizaciones Windows
+
+### Cambios
+- **Actualizacion Windows mas estable**: Despues de instalar el `.exe`, Nexar Tienda ahora pide cerrar la app y volver a abrirla desde el acceso directo, evitando el relanzamiento inmediato que podia fallar mientras Windows liberaba archivos.
+- **Instalador Windows prudente**: La opcion "Iniciar Nexar Tienda ahora" queda desmarcada por defecto para evitar aperturas automaticas durante una actualizacion.
+
+### Cambios Tecnicos
+- **Deteccion por instalador**: El estado de actualizacion distingue instaladores Windows y muestra una accion de cierre manual sin afectar el reinicio automatico usado en otros entornos.
+
+---
+
 ## [1.25.12] - 20 Abril 2026 - Relanzamiento Post Actualizacion
 
 ### Caracteristicas Nuevas

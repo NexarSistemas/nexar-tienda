@@ -176,6 +176,10 @@ def _installer_version(filename: str) -> str:
     return ""
 
 
+def _requires_manual_reopen(installer_name: str) -> bool:
+    return sys.platform.startswith("win") and (installer_name or "").lower().endswith(".exe")
+
+
 def _update_install_state(current_version: str | None = None) -> dict:
     cfg = db.get_config()
     target_version = cfg.get("update_target_version", "")
@@ -184,6 +188,8 @@ def _update_install_state(current_version: str | None = None) -> dict:
         return {"status": ""}
 
     current_version = current_version or current_app.config.get("APP_VERSION", "0.0.0")
+    installer_name = cfg.get("update_installer_name", "")
+    manual_reopen = _requires_manual_reopen(installer_name)
     if _version_tuple(current_version) >= _version_tuple(target_version):
         if status != "installed":
             db.set_config({
@@ -195,18 +201,20 @@ def _update_install_state(current_version: str | None = None) -> dict:
             "status": status,
             "target_version": target_version,
             "current_version": current_version,
-            "installer": cfg.get("update_installer_name", ""),
+            "installer": installer_name,
             "installed_at": cfg.get("update_installed_at", ""),
+            "manual_reopen": manual_reopen,
         }
 
     return {
         "status": status,
         "target_version": target_version,
         "current_version": current_version,
-        "installer": cfg.get("update_installer_name", ""),
+        "installer": installer_name,
         "started_at": cfg.get("update_started_at", ""),
         "finished_at": cfg.get("update_finished_at", ""),
         "error": cfg.get("update_install_error", ""),
+        "manual_reopen": manual_reopen,
     }
 
 
@@ -1231,6 +1239,16 @@ def actualizacion_estado():
 @admin_required
 def actualizacion_reiniciar():
     session.clear()
+    installer_name = db.get_config().get("update_installer_name", "")
+    if _requires_manual_reopen(installer_name):
+        return render_template(
+            "apagado.html",
+            titulo="Cerrando Nexar Tienda",
+            mensaje="La actualizacion ya se instalo. Volve a abrir Nexar Tienda desde el acceso directo.",
+            estado="Windows puede tardar unos segundos en liberar el instalador antes del proximo inicio.",
+            delay_ms=1200,
+        )
+
     return render_template(
         "apagado.html",
         titulo="Reiniciando Nexar Tienda",
