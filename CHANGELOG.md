@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.16] - 21 Abril 2026 - Cierre Seguro de Ventana
+
+### Mejoras
+- **Cierre de sesion obligatorio**: Al cerrar la ventana nativa con la X, Nexar Tienda bloquea el cierre si hay una sesion activa y muestra un aviso para cerrar sesion primero.
+- **Paridad con Nexar Admin**: El comportamiento de cierre queda alineado con el panel administrativo, evitando dejar sesiones abiertas por cerrar la ventana.
+
+---
+
 ## [1.25.15] - 21 Abril 2026 - Limpieza de Codificacion en Main
 
 ### Correcciones

@@ -33,6 +33,11 @@ BACKUP_DIR = DATA_DIR / "respaldo"
 UPDATE_DIR = DATA_DIR / "updates"
 CHANGELOG_PATH = BASE_DIR / "CHANGELOG.md"
 
+DESKTOP_STATE = {
+    "user_logged_in": False,
+    "close_warning_requested": False,
+}
+
 
 def _as_bool(value) -> bool:
     return str(value).strip().lower() in {"1", "true", "on", "yes", "si"}
@@ -348,6 +353,7 @@ def login():
             return render_template("login.html", next=request.form.get("next", ""))
         session["user"] = {"id": user["id"], "username": user["username"], "nombre_completo": user["nombre_completo"] or user["username"], "rol": user["rol"]}
         session["show_welcome"] = True
+        DESKTOP_STATE["user_logged_in"] = True
         if not user["security_question"] or not user["security_answer_hash"]:
             flash("⚠️ Antes de continuar, configurá tu pregunta y respuesta secreta.", "warning")
             return redirect(url_for("configurar_recuperacion", next=request.form.get("next", "")))
@@ -1380,12 +1386,22 @@ def acerca():
 @main_bp.route("/logout")
 def logout():
     session.clear()
+    DESKTOP_STATE["user_logged_in"] = False
     return redirect(url_for("login"))
+
+
+@main_bp.route("/api/desktop/close-warning")
+@login_required
+def desktop_close_warning():
+    requested = bool(DESKTOP_STATE.get("close_warning_requested"))
+    DESKTOP_STATE["close_warning_requested"] = False
+    return jsonify({"requested": requested})
 
 
 @main_bp.route("/apagar-rapido", methods=["POST"])
 def apagar_rapido():
     session.clear()
+    DESKTOP_STATE["user_logged_in"] = False
     return render_template("apagado.html")
 
 
@@ -1393,6 +1409,7 @@ def apagar_rapido():
 @admin_required
 def apagar_sistema():
     session.clear()
+    DESKTOP_STATE["user_logged_in"] = False
     return render_template("apagado.html")
 
 

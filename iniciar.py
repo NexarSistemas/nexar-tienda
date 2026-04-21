@@ -194,6 +194,22 @@ if __name__ == "__main__":
     try:
         import webview
 
+        class DesktopController:
+            def __init__(self):
+                self.allow_close = False
+
+            def handle_closing(self):
+                try:
+                    from routes.main import DESKTOP_STATE
+
+                    if not self.allow_close and DESKTOP_STATE.get("user_logged_in"):
+                        DESKTOP_STATE["close_warning_requested"] = True
+                        return False
+                except Exception:
+                    pass
+                self.allow_close = True
+                return True
+
         class NexarBridge:
             def restartApp(self, delay_ms=5000):
                 def _restart():
@@ -219,15 +235,16 @@ if __name__ == "__main__":
                 _threading.Timer(0.1, _close).start()
                 return True
 
-        webview.create_window(
+        controller = DesktopController()
+        window = webview.create_window(
             APP_TITLE,
             url,
             width=1200,
             height=800,
             maximized=True,
-            confirm_close=True,
             js_api=NexarBridge(),
         )
+        window.events.closing += controller.handle_closing
 
         localization = {
             'global.quitConfirmation': '¿Está seguro de que desea cerrar el sistema?'

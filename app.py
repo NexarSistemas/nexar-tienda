@@ -282,6 +282,7 @@ def create_app() -> Flask:
         "changelog",
         "acerca",
         "logout",
+        "desktop_close_warning",
         "apagar_rapido",
         "apagar_sistema",
         "shutdown",

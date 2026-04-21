@@ -253,6 +253,37 @@
                 }
             });
         }
+
+        async function revisarCierreDesktop() {
+            try {
+                const response = await fetch('{{ url_for("desktop_close_warning") }}', {credentials: 'same-origin'});
+                if (!response.ok) return;
+                const data = await response.json();
+                if (!data.requested) return;
+                Swal.fire({
+                    title: 'Primero cerrá sesión',
+                    text: 'Para cerrar la ventana de Nexar Tienda, antes tenés que cerrar sesión desde el sistema.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#1e3a5f',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Cerrar sesión',
+                    cancelButtonText: 'Seguir trabajando',
+                    background: '#1a2a3f',
+                    color: '#ffffff'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.href = '{{ url_for("logout") }}';
+                    }
+                });
+            } catch (error) {
+                // La ventana puede estar cerrandose o el servidor puede estar apagandose.
+            }
+        }
+
+        {% if 'user' in session %}
+        setInterval(revisarCierreDesktop, 800);
+        {% endif %}
     </script>
     {% block extra_js %}{% endblock %}
 </body>
