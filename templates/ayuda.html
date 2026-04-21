@@ -48,8 +48,64 @@
         </div>
     </div>
 
-    <div class="mt-5 p-4 bg-light rounded text-center">
-        <p class="mb-0">¿Necesitás soporte técnico adicional? Contactanos a través de nuestro portal de soporte oficial.</p>
+    <div class="card shadow-sm mt-5" id="soporte">
+        <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <strong><i class="fas fa-headset me-2"></i>Solicitar soporte</strong>
+            <span class="badge bg-light text-dark border">Nexar Tienda v{{ app_version }}</span>
+        </div>
+        <div class="card-body">
+            {% if not supabase_ok %}
+                <div class="alert alert-warning small">
+                    El formulario online no esta disponible porque falta configurar Supabase. Si necesitas ayuda, escribinos a <strong>nexarsistemas@outlook.com.ar</strong>.
+                </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('ayuda') }}#soporte" class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Nombre de contacto</label>
+                    <input name="nombre" class="form-control" required value="{{ support_defaults.nombre }}" placeholder="Tu nombre">
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Email</label>
+                    <input name="email" type="email" class="form-control" required value="{{ support_defaults.email }}" placeholder="cliente@email.com">
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">WhatsApp <span class="text-muted small">(opcional)</span></label>
+                    <input name="whatsapp" class="form-control" value="{{ support_defaults.whatsapp }}" placeholder="Ej: 5492645858874">
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Motivo</label>
+                    <select name="motivo" class="form-select">
+                        <option value="consulta" {% if support_defaults.motivo == 'consulta' %}selected{% endif %}>Consulta general</option>
+                        <option value="error" {% if support_defaults.motivo == 'error' %}selected{% endif %}>Error o problema</option>
+                        <option value="licencia" {% if support_defaults.motivo == 'licencia' %}selected{% endif %}>Licencia</option>
+                        <option value="actualizacion" {% if support_defaults.motivo == 'actualizacion' %}selected{% endif %}>Actualizacion</option>
+                        <option value="respaldo" {% if support_defaults.motivo == 'respaldo' %}selected{% endif %}>Respaldo</option>
+                        <option value="otro" {% if support_defaults.motivo == 'otro' %}selected{% endif %}>Otro</option>
+                    </select>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Mensaje</label>
+                    <textarea name="mensaje" class="form-control" rows="5" required placeholder="Contanos que necesitas revisar o que problema estas viendo.">{{ support_defaults.mensaje }}</textarea>
+                </div>
+
+                <div class="col-12">
+                    <div class="bg-light border rounded p-3 small text-muted">
+                        Se enviaran tambien estos datos tecnicos: <strong>{{ negocio }}</strong>, version <strong>{{ app_version }}</strong> y plan <strong>{{ licencia.tier }}</strong>.
+                    </div>
+                </div>
+
+                <div class="col-12 d-flex justify-content-end">
+                    <button class="btn btn-primary" type="submit" {% if not supabase_ok %}disabled{% endif %}>
+                        <i class="fas fa-paper-plane me-1"></i>Enviar solicitud
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}

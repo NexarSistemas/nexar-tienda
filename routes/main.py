@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import platform
 from datetime import date, datetime, timedelta
 from functools import wraps
 from io import BytesIO
@@ -19,6 +20,7 @@ from services.license_sdk import get_current_hwid, get_license_product, validate
 from services.runtime_config import app_data_dir
 from services.supabase_license_api import (
     create_license_request,
+    create_support_request,
     generate_activation_id,
     is_configured as supabase_configured,
 )
@@ -1281,10 +1283,60 @@ def exportar_pdf():
     return Response(text, headers={"Content-Disposition": "attachment; filename=lista_precios.txt"}, mimetype="text/plain")
 
 
-@main_bp.route("/ayuda")
+@main_bp.route("/ayuda", methods=["GET", "POST"])
 @login_required
 def ayuda():
-    return render_template("ayuda.html")
+    cfg = db.get_config()
+    licencia = db.get_license_info()
+    usuario = session.get("user", {})
+    negocio = cfg.get("nombre_negocio", "Nexar Tienda")
+    support_defaults = {
+        "nombre": usuario.get("nombre_completo") or usuario.get("username") or "",
+        "email": cfg.get("email_contacto", ""),
+        "whatsapp": cfg.get("telefono", ""),
+        "motivo": request.args.get("motivo", "consulta"),
+        "mensaje": "",
+    }
+
+    if request.method == "POST":
+        support_defaults.update({
+            "nombre": request.form.get("nombre", "").strip(),
+            "email": request.form.get("email", "").strip(),
+            "whatsapp": request.form.get("whatsapp", "").strip(),
+            "motivo": request.form.get("motivo", "consulta").strip(),
+            "mensaje": request.form.get("mensaje", "").strip(),
+        })
+        ok, msg, _ = create_support_request(
+            nombre=support_defaults["nombre"],
+            email=support_defaults["email"],
+            whatsapp=support_defaults["whatsapp"],
+            motivo=support_defaults["motivo"],
+            mensaje=support_defaults["mensaje"],
+            app_version=current_app.config.get("APP_VERSION", "0.0.0"),
+            negocio=negocio,
+            plan=licencia.get("tier", ""),
+            user_name=usuario.get("username", ""),
+            technical_details={
+                "os": platform.platform(),
+                "python": platform.python_version(),
+                "host": platform.node(),
+                "license_tier": licencia.get("tier", ""),
+                "license_plan": licencia.get("plan", ""),
+                "updates": licencia.get("updates", False),
+            },
+        )
+        if ok:
+            flash("Solicitud de soporte enviada correctamente.", "success")
+            return redirect(url_for("ayuda", soporte="enviado"))
+        flash(msg, "warning")
+
+    return render_template(
+        "ayuda.html",
+        supabase_ok=supabase_configured(),
+        support_defaults=support_defaults,
+        negocio=negocio,
+        licencia=licencia,
+    )
 
 
 @main_bp.route("/changelog")

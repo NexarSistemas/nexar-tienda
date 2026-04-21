@@ -33,6 +33,11 @@ def _requests_table_url() -> str:
     return f"{base}/rest/v1/solicitudes_licencia" if base else ""
 
 
+def _support_requests_table_url() -> str:
+    base = _clean_base_url(os.getenv("SUPABASE_URL", ""))
+    return f"{base}/rest/v1/solicitudes_soporte" if base else ""
+
+
 def _anon_key() -> str:
     return os.getenv("SUPABASE_ANON_KEY", "") or os.getenv("SUPABASE_KEY", "")
 
@@ -134,6 +139,58 @@ def create_license_request(
         return False, f"Error al registrar solicitud en Supabase ({resp.status_code}): {resp.text[:240]}", None
 
     return True, "Solicitud enviada correctamente. El administrador debe aprobarla.", None
+
+
+def create_support_request(
+    *,
+    nombre: str,
+    email: str,
+    mensaje: str,
+    whatsapp: str = "",
+    motivo: str = "consulta",
+    producto: str = PRODUCTO_DEFAULT,
+    app_version: str = "",
+    negocio: str = "",
+    plan: str = "",
+    user_name: str = "",
+    technical_details: dict[str, Any] | None = None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    if not is_configured():
+        return False, "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY para enviar solicitudes de soporte.", None
+
+    nombre = (nombre or "").strip()
+    email = (email or "").strip().lower()
+    whatsapp = (whatsapp or "").strip()
+    motivo = (motivo or "consulta").strip().lower()
+    mensaje = (mensaje or "").strip()
+
+    motivos_validos = {"consulta", "error", "licencia", "actualizacion", "respaldo", "otro"}
+    if motivo not in motivos_validos:
+        motivo = "consulta"
+
+    if not nombre or not email or not mensaje:
+        return False, "Nombre, email y mensaje son obligatorios.", None
+
+    payload = {
+        "producto": producto,
+        "app_version": app_version,
+        "negocio": negocio,
+        "nombre": nombre,
+        "email": email,
+        "whatsapp": whatsapp,
+        "motivo": motivo,
+        "mensaje": mensaje,
+        "plan": plan,
+        "user_name": user_name,
+        "estado": "pendiente",
+        "technical_details": technical_details or {},
+    }
+    headers = {**_headers(), "Prefer": "return=minimal"}
+    resp = requests.post(_support_requests_table_url(), headers=headers, json=payload, timeout=12)
+    if resp.status_code >= 300:
+        return False, f"Error al registrar solicitud de soporte ({resp.status_code}): {resp.text[:240]}", None
+
+    return True, "Solicitud de soporte enviada correctamente.", None
 
 
 def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO_DEFAULT) -> tuple[bool, str, dict[str, Any] | None]:

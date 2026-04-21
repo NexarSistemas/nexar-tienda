@@ -96,9 +96,6 @@
             <a class="nav-link {% if request.endpoint == 'ayuda' %}active{% endif %}" href="{{ url_for('ayuda') }}">
                 <i class="fas fa-question-circle"></i> Ayuda
             </a>
-            <a class="nav-link {% if request.endpoint == 'changelog' %}active{% endif %}" href="{{ url_for('changelog') }}">
-                <i class="fas fa-list-alt"></i> Novedades
-            </a>
             <a class="nav-link {% if request.endpoint == 'acerca' %}active{% endif %}" href="{{ url_for('acerca') }}">
                 <i class="fas fa-info-circle"></i> Acerca de
             </a>

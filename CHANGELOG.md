@@ -4,6 +4,20 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.11] - 20 Abril 2026 - Soporte Integrado
+
+### Caracteristicas Nuevas
+- **Formulario de soporte**: La pantalla de Ayuda ahora incluye un formulario integrado para enviar solicitudes sin salir de Nexar Tienda.
+- **Datos tecnicos automaticos**: Las solicitudes adjuntan version, negocio, plan, usuario y datos basicos del sistema para facilitar el diagnostico.
+- **Acceso desde Acerca de**: La pantalla Acerca de reemplaza el contacto telefonico por un acceso directo a Solicitar soporte.
+
+### Cambios Tecnicos
+- **Supabase soporte**: Se agrego el envio de solicitudes a la tabla `solicitudes_soporte` con clave anon y RLS solo de insercion.
+- **Novedades ocultas**: Se quito el acceso a Novedades del menu lateral, manteniendo la ruta y el template disponibles para soporte tecnico.
+- **Documentacion**: README incluye el SQL necesario para crear la tabla y policy de solicitudes de soporte.
+
+---
+
 ## [1.25.10] - 20 Abril 2026 - Reinicio Guiado de Actualizacion
 
 ### Caracteristicas Nuevas
