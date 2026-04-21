@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.15] - 21 Abril 2026 - Limpieza de Codificacion en Main
+
+### Correcciones
+- **Mensajes del backend**: Se corrigieron los textos mojibake restantes en `routes/main.py`, incluyendo avisos de permisos, validacion, ventas, compras, perfil, licencias y usuarios.
+- **Iconos de avisos**: Los mensajes vuelven a mostrar correctamente `✅`, `⚠️` y `❌`.
+
+---
+
 ## [1.25.14] - 21 Abril 2026 - Bienvenida y Texto de Login
 
 ### Correcciones
