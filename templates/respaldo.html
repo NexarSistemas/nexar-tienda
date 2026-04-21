@@ -40,6 +40,35 @@
         <div class="card-body">
           {% if not can_use_updates %}
             <p class="small text-muted mb-0">Las actualizaciones estan disponibles solo para el plan Mensual Full.</p>
+          {% elif update_state and update_state.status == 'installed' %}
+            <div class="alert alert-success small mb-3">
+              <strong>Actualizacion instalada.</strong><br>
+              Nexar Tienda ya esta en la version v{{ update_state.current_version }}.
+            </div>
+            <form method="POST" action="{{ url_for('actualizacion_limpiar_estado') }}">
+              <button class="btn btn-outline-success btn-sm w-100"><i class="fas fa-check me-1"></i>Entendido</button>
+            </form>
+          {% elif update_state and update_state.status == 'ready_restart' %}
+            <div class="alert alert-warning small mb-3">
+              <strong>Actualizacion v{{ update_state.target_version }} lista.</strong><br>
+              Reinicia Nexar Tienda para terminar de aplicar la version nueva.
+            </div>
+            <form method="POST" action="{{ url_for('actualizacion_reiniciar') }}">
+              <button class="btn btn-warning w-100"><i class="fas fa-sync-alt me-1"></i>Reiniciar app</button>
+            </form>
+          {% elif update_state and update_state.status == 'in_progress' %}
+            <div class="alert alert-info small mb-0" id="update-progress-alert">
+              <strong>Instalando v{{ update_state.target_version }}...</strong><br>
+              Cuando el instalador termine, vas a poder reiniciar la app desde aca.
+            </div>
+          {% elif update_state and update_state.status == 'install_failed' %}
+            <div class="alert alert-danger small mb-3">
+              <strong>No se pudo completar la instalacion.</strong><br>
+              {{ update_state.error or 'Revisa el instalador y volve a intentar.' }}
+            </div>
+            <form method="POST" action="{{ url_for('actualizacion_limpiar_estado') }}">
+              <button class="btn btn-outline-danger btn-sm w-100"><i class="fas fa-times me-1"></i>Descartar aviso</button>
+            </form>
           {% elif update_info and update_info.available %}
             <p class="mb-2"><strong>Disponible v{{ update_info.latest }}</strong></p>
             <p class="small text-muted">Antes de descargar se crea un respaldo. La base de datos y la licencia se guardan en la carpeta persistente del usuario, por eso no se pisan al actualizar.</p>
@@ -107,8 +136,8 @@
                 <td>{{ u.fecha }}</td>
                 <td>{{ u.tamanio_mb }} MB</td>
                 <td>
-                  <form method="POST" action="{{ url_for('actualizacion_instalar', nombre=u.nombre) }}" class="d-inline" onsubmit="return confirm('Se creara un respaldo y se abrira el instalador del sistema. Al terminar, cerra y volve a abrir Nexar Tienda.')">
-                    <button class="btn btn-sm btn-success"><i class="fas fa-box-open me-1"></i>Instalar</button>
+                  <form method="POST" action="{{ url_for('actualizacion_instalar', nombre=u.nombre) }}" class="d-inline" onsubmit="return confirm('Se creara un respaldo y se abrira el instalador del sistema. Al terminar, Nexar Tienda te va a pedir reiniciar la app.')">
+                    <button class="btn btn-sm btn-success" {% if update_state and update_state.status in ['in_progress', 'ready_restart'] %}disabled{% endif %}><i class="fas fa-box-open me-1"></i>Instalar</button>
                   </form>
                   <div class="mt-1"><code class="small">{{ u.comando }}</code></div>
                 </td>
@@ -136,4 +165,23 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+  {% if update_state and update_state.status == 'in_progress' %}
+    <script>
+      (function pollUpdateStatus() {
+        fetch("{{ url_for('actualizacion_estado') }}")
+          .then(response => response.ok ? response.json() : null)
+          .then(data => {
+            if (!data) return;
+            if (data.status && data.status !== 'in_progress') {
+              window.location.reload();
+            }
+          })
+          .catch(() => {});
+        setTimeout(pollUpdateStatus, 5000);
+      })();
+    </script>
+  {% endif %}
 {% endblock %}

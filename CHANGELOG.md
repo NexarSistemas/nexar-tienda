@@ -4,6 +4,21 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.10] - 20 Abril 2026 - Reinicio Guiado de Actualizacion
+
+### Caracteristicas Nuevas
+- **Estado de instalacion**: La pantalla de actualizaciones ahora informa cuando una actualizacion esta instalando, lista para reiniciar o ya instalada.
+- **Reinicio guiado**: Se agrego un boton para cerrar la app despues de instalar una actualizacion, con aviso previo para que el usuario vuelva a abrir Nexar Tienda.
+
+### Correcciones
+- **Lista de instaladores**: Los instaladores de versiones iguales o anteriores a la version actual dejan de mostrarse como actualizaciones pendientes.
+
+### Cambios Tecnicos
+- **Seguimiento de instalador**: El sistema guarda la version objetivo y detecta el cierre del proceso de instalacion en Linux y Windows.
+- **Endpoints de actualizacion**: Se agregaron rutas para consultar estado, reiniciar la app y limpiar avisos de actualizacion.
+
+---
+
 ## [1.25.9] - 20 Abril 2026 - Actualizaciones Solo Full
 
 ### Correcciones

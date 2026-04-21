@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 from datetime import date, datetime, timedelta
 from functools import wraps
 from io import BytesIO
@@ -118,15 +119,20 @@ def _backup_list() -> list[dict]:
 
 
 def _update_list() -> list[dict]:
+    current_version = current_app.config.get("APP_VERSION", "0.0.0")
     UPDATE_DIR.mkdir(parents=True, exist_ok=True)
     items = []
     candidates = [*UPDATE_DIR.glob("nexar-tienda_*_amd64.deb"), *UPDATE_DIR.glob("NexarTienda_*_Setup.exe")]
     for path in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
+        installer_version = _installer_version(path.name)
+        if installer_version and _version_tuple(installer_version) <= _version_tuple(current_version):
+            continue
         stat = path.stat()
         is_windows_installer = path.suffix.lower() == ".exe"
         items.append({
             "nombre": path.name,
             "ruta": str(path),
+            "version": installer_version,
             "fecha": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M"),
             "tamanio_mb": round(stat.st_size / 1024 / 1024, 1),
             "comando": str(path) if is_windows_installer else f"sudo apt install {path}",
@@ -145,6 +151,89 @@ def _update_file(nombre: str) -> Path:
     if path.parent != UPDATE_DIR.resolve() or not path.exists():
         abort(404)
     return path
+
+
+def _version_tuple(version: str) -> tuple[int, int, int]:
+    parts = []
+    for chunk in (version or "0.0.0").strip().lstrip("vV").split(".")[:3]:
+        parts.append(int("".join(ch for ch in chunk if ch.isdigit()) or 0))
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts)
+
+
+def _installer_version(filename: str) -> str:
+    patterns = (
+        r"^nexar-tienda_(?P<version>[0-9]+(?:\.[0-9]+){1,2})_amd64\.deb$",
+        r"^NexarTienda_(?P<version>[0-9]+(?:\.[0-9]+){1,2})_Setup\.exe$",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, filename or "")
+        if match:
+            return match.group("version")
+    return ""
+
+
+def _update_install_state(current_version: str | None = None) -> dict:
+    cfg = db.get_config()
+    target_version = cfg.get("update_target_version", "")
+    status = cfg.get("update_install_status", "")
+    if not target_version or not status:
+        return {"status": ""}
+
+    current_version = current_version or current_app.config.get("APP_VERSION", "0.0.0")
+    if _version_tuple(current_version) >= _version_tuple(target_version):
+        if status != "installed":
+            db.set_config({
+                "update_install_status": "installed",
+                "update_installed_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            })
+            status = "installed"
+        return {
+            "status": status,
+            "target_version": target_version,
+            "current_version": current_version,
+            "installer": cfg.get("update_installer_name", ""),
+            "installed_at": cfg.get("update_installed_at", ""),
+        }
+
+    return {
+        "status": status,
+        "target_version": target_version,
+        "current_version": current_version,
+        "installer": cfg.get("update_installer_name", ""),
+        "started_at": cfg.get("update_started_at", ""),
+        "finished_at": cfg.get("update_finished_at", ""),
+        "error": cfg.get("update_install_error", ""),
+    }
+
+
+def _mark_update_process_finished(target_version: str, process: subprocess.Popen) -> None:
+    try:
+        return_code = process.wait()
+        status = "ready_restart" if return_code == 0 else "install_failed"
+        data = {
+            "update_install_status": status,
+            "update_finished_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
+        if return_code != 0:
+            data["update_install_error"] = f"El instalador termino con codigo {return_code}."
+        db.set_config(data)
+    except Exception as exc:
+        db.set_config({
+            "update_install_status": "install_failed",
+            "update_finished_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "update_install_error": str(exc),
+        })
+
+
+def _track_update_process(target_version: str, process: subprocess.Popen) -> None:
+    thread = threading.Thread(
+        target=_mark_update_process_finished,
+        args=(target_version, process),
+        daemon=True,
+    )
+    thread.start()
 
 
 def _apt_readable_copy(installer: Path) -> Path:
@@ -954,9 +1043,10 @@ def respaldo():
     cfg = db.get_config()
     license_info = db.get_license_info()
     can_use_updates = license_info.get("tier") == "MENSUAL_FULL" and license_info.get("updates")
+    update_state = _update_install_state(current_app.config.get("APP_VERSION", "0.0.0"))
     update_info = (
         get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
-        if can_use_updates
+        if can_use_updates and update_state.get("status") not in {"in_progress", "ready_restart"}
         else {"available": False, "restricted": True}
     )
     return render_template(
@@ -964,6 +1054,7 @@ def respaldo():
         archivos=_backup_list(),
         actualizaciones=_update_list() if can_use_updates else [],
         update_info=update_info,
+        update_state=update_state,
         can_use_updates=can_use_updates,
         ultimo=cfg.get("backup_ultimo", "Nunca"),
         intervalo=cfg.get("backup_intervalo_h", "24"),
@@ -1066,38 +1157,99 @@ def actualizacion_instalar(nombre):
         return redirect(url_for("respaldo"))
 
     installer = _update_file(nombre)
+    target_version = _installer_version(installer.name)
+    if not target_version:
+        flash("No se pudo identificar la version del instalador.", "warning")
+        return redirect(url_for("respaldo"))
+
+    db.set_config({
+        "update_install_status": "in_progress",
+        "update_target_version": target_version,
+        "update_installer_name": installer.name,
+        "update_started_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "update_finished_at": "",
+        "update_installed_at": "",
+        "update_install_error": "",
+    })
+
     backup_path = _make_backup()
     is_windows_installer = installer.suffix.lower() == ".exe"
     command = str(installer) if is_windows_installer else f"sudo apt install /tmp/nexar-tienda-updates/{installer.name}"
 
     if sys.platform.startswith("win") and is_windows_installer:
         try:
-            os.startfile(str(installer))  # type: ignore[attr-defined]
+            process = subprocess.Popen([str(installer)])
+            _track_update_process(target_version, process)
             flash(
                 f"Instalador de Windows iniciado. Respaldo previo: {backup_path.name}. "
-                "Cuando termine, cerra y volve a abrir Nexar Tienda.",
+                "Cuando termine, Nexar Tienda te va a pedir reiniciar la app.",
                 "success",
             )
         except Exception as exc:
+            db.set_config({"update_install_status": "install_failed", "update_install_error": str(exc)})
             flash(f"No se pudo iniciar el instalador: {exc}. Ejecuta manualmente: {command}", "warning")
         return redirect(url_for("respaldo"))
 
     if not sys.platform.startswith("linux"):
+        db.set_config({
+            "update_install_status": "ready_restart",
+            "update_finished_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        })
         flash(f"Respaldo creado ({backup_path.name}). Instala manualmente: {command}", "info")
         return redirect(url_for("respaldo"))
 
     try:
         apt_installer = _apt_readable_copy(installer)
-        subprocess.Popen(["pkexec", "apt", "install", "-y", str(apt_installer)])
+        process = subprocess.Popen(["pkexec", "apt", "install", "-y", str(apt_installer)])
+        _track_update_process(target_version, process)
         flash(
             f"Instalador iniciado con permisos de administrador. Respaldo previo: {backup_path.name}. "
-            "Cuando termine, cerra y volve a abrir Nexar Tienda.",
+            "Cuando termine, Nexar Tienda te va a pedir reiniciar la app.",
             "success",
         )
     except FileNotFoundError:
+        db.set_config({
+            "update_install_status": "ready_restart",
+            "update_finished_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        })
         flash(f"Respaldo creado ({backup_path.name}). pkexec no esta disponible; ejecuta: {command}", "warning")
     except Exception as exc:
+        db.set_config({"update_install_status": "install_failed", "update_install_error": str(exc)})
         flash(f"No se pudo iniciar el instalador: {exc}. Ejecuta: {command}", "warning")
+    return redirect(url_for("respaldo"))
+
+
+@main_bp.route("/respaldo/actualizacion/estado")
+@admin_required
+def actualizacion_estado():
+    return jsonify(_update_install_state(current_app.config.get("APP_VERSION", "0.0.0")))
+
+
+@main_bp.route("/respaldo/actualizacion/reiniciar", methods=["POST"])
+@admin_required
+def actualizacion_reiniciar():
+    session.clear()
+    return render_template(
+        "apagado.html",
+        titulo="Reiniciando Nexar Tienda",
+        mensaje="La app se cerrara para completar la actualizacion.",
+        estado="Volvela a abrir en unos segundos para usar la version nueva.",
+        delay_ms=5000,
+    )
+
+
+@main_bp.route("/respaldo/actualizacion/limpiar-estado", methods=["POST"])
+@admin_required
+def actualizacion_limpiar_estado():
+    db.set_config({
+        "update_install_status": "",
+        "update_target_version": "",
+        "update_installer_name": "",
+        "update_started_at": "",
+        "update_finished_at": "",
+        "update_installed_at": "",
+        "update_install_error": "",
+    })
     return redirect(url_for("respaldo"))
 
 
