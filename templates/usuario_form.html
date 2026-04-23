@@ -15,7 +15,14 @@
                     {% if not usuario %}
                     <div class="mb-3">
                         <label class="form-label">Contraseña</label>
-                        <input type="password" name="password" class="form-control" required>
+                        <input type="password" name="password" class="form-control" required minlength="6" maxlength="12" autocomplete="new-password">
+                        <div class="form-text">
+                            6 a 12 caracteres, con mayúscula, minúscula, número y carácter especial.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Repetir Contraseña</label>
+                        <input type="password" name="password_confirm" class="form-control" required minlength="6" maxlength="12" autocomplete="new-password">
                         <div class="form-text">
                             Al iniciar sesión por primera vez, este usuario deberá configurar su pregunta y respuesta secreta.
                         </div>

@@ -31,8 +31,12 @@
                         <div class="row mb-4">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold">Cambiar Contraseña</label>
-                                <input type="password" name="password" class="form-control" placeholder="Dejar en blanco para no cambiar">
+                                <input type="password" name="password" class="form-control" minlength="6" maxlength="12" autocomplete="new-password" placeholder="Dejar en blanco para no cambiar">
                                 <div class="form-text small">6-12 caracteres, mayúscula, minúscula, número y símbolo.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Repetir Contraseña</label>
+                                <input type="password" name="password_confirm" class="form-control" minlength="6" maxlength="12" autocomplete="new-password" placeholder="Repetir solo si cambiás la clave">
                             </div>
                         </div>
 
@@ -49,7 +53,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold">Nueva Respuesta</label>
-                                <input type="text" name="security_answer" class="form-control" placeholder="Nueva respuesta...">
+                                <input type="text" name="security_answer" class="form-control" minlength="2" placeholder="Nueva respuesta...">
                             </div>
                         </div>
 

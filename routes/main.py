@@ -68,6 +68,20 @@ def _validate_password(password: str) -> tuple[bool, str]:
     return True, ""
 
 
+def _validate_password_confirmation(password: str, confirmation: str) -> tuple[bool, str]:
+    if password != confirmation:
+        return False, "Las contraseñas no coinciden."
+    return _validate_password(password)
+
+
+def _validate_security_recovery(question: str, answer: str) -> tuple[bool, str]:
+    if not (question or "").strip() or not (answer or "").strip():
+        return False, "La pregunta y la respuesta secreta son obligatorias."
+    if len((answer or "").strip()) < 2:
+        return False, "La respuesta secreta debe tener al menos 2 caracteres."
+    return True, ""
+
+
 def _limit_allows(kind: str) -> bool:
     current_sql = {
         "productos": "SELECT COUNT(*) FROM productos WHERE activo=1",
@@ -325,12 +339,17 @@ def registro_inicial():
         nombre = request.form.get("nombre_completo", "").strip()
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        password_confirm = request.form.get("password_confirm", "")
         question = request.form.get("security_question", "").strip()
         answer = request.form.get("security_answer", "").strip()
-        if not all([nombre, username, password, question, answer]):
+        if not all([nombre, username, password, password_confirm, question, answer]):
             flash("⚠️ Completá todos los campos.", "warning")
             return render_template("registro_inicial.html", nombre=nombre, username=username)
-        ok, msg = _validate_password(password)
+        ok, msg = _validate_password_confirmation(password, password_confirm)
+        if not ok:
+            flash(f"❌ {msg}", "danger")
+            return render_template("registro_inicial.html", nombre=nombre, username=username)
+        ok, msg = _validate_security_recovery(question, answer)
         if not ok:
             flash(f"❌ {msg}", "danger")
             return render_template("registro_inicial.html", nombre=nombre, username=username)
@@ -374,8 +393,9 @@ def configurar_recuperacion():
     if request.method == "POST":
         question = request.form.get("security_question", "").strip()
         answer = request.form.get("security_answer", "").strip()
-        if not question or not answer:
-            flash("⚠️ La pregunta y la respuesta secreta son obligatorias.", "warning")
+        ok, msg = _validate_security_recovery(question, answer)
+        if not ok:
+            flash(f"⚠️ {msg}", "warning")
             return render_template("configurar_recuperacion.html", usuario=usuario)
         db.update_perfil(usuario["id"], {
             "nombre_completo": usuario["nombre_completo"],
@@ -395,6 +415,7 @@ def recuperar_password():
         step = int(request.form.get("step", "1") or 1)
         username = request.form.get("username", "").strip()
         if step == 1:
+            session.pop("recover_user", None)
             user = db.get_usuario_by_username(username)
             if user and user["security_question"]:
                 step = 2
@@ -406,14 +427,22 @@ def recuperar_password():
             if user and db.verify_security_answer(security_answer, user["security_answer_hash"] or ""):
                 if db.needs_security_answer_rehash(user["security_answer_hash"] or ""):
                     db.set_security_answer_hash(user["id"], security_answer)
+                session["recover_user"] = username
                 step = 3
             else:
                 flash("❌ La respuesta no coincide.", "danger")
                 step = 1
         elif step == 3:
-            ok, msg = _validate_password(request.form.get("password", ""))
+            if session.get("recover_user") != username:
+                flash("⚠️ La sesión de recuperación venció. Empezá de nuevo.", "warning")
+                session.pop("recover_user", None)
+                return redirect(url_for("recuperar_password"))
+            password = request.form.get("password", "")
+            password_confirm = request.form.get("password_confirm", "")
+            ok, msg = _validate_password_confirmation(password, password_confirm)
             if ok:
-                db.set_password_for_username(username, request.form.get("password", ""))
+                db.set_password_for_username(username, password)
+                session.pop("recover_user", None)
                 flash("✅ Contraseña restablecida.", "success")
                 return redirect(url_for("login"))
             flash(f"❌ {msg}", "danger")
@@ -865,13 +894,19 @@ def perfil():
     if request.method == "POST":
         data = request.form.to_dict()
         if data.get("password"):
-            ok, msg = _validate_password(data["password"])
+            ok, msg = _validate_password_confirmation(data["password"], data.get("password_confirm", ""))
             if not ok:
                 flash(f"❌ {msg}", "danger")
                 return render_template("perfil.html", usuario=usuario)
         if bool(data.get("security_question", "").strip()) != bool(data.get("security_answer", "").strip()):
             flash("⚠️ Para cambiar la recuperación, ingresá pregunta y respuesta secreta.", "warning")
             return render_template("perfil.html", usuario=usuario)
+        if data.get("security_question", "").strip() and data.get("security_answer", "").strip():
+            ok, msg = _validate_security_recovery(data["security_question"], data["security_answer"])
+            if not ok:
+                flash(f"⚠️ {msg}", "warning")
+                return render_template("perfil.html", usuario=usuario)
+        data.pop("password_confirm", None)
         db.update_perfil(usuario["id"], data)
         flash("✅ Perfil actualizado.", "success")
         return redirect(url_for("perfil"))
@@ -982,7 +1017,10 @@ def usuarios():
 @admin_required
 def usuario_nuevo():
     if request.method == "POST":
-        ok, msg = _validate_password(request.form.get("password", ""))
+        ok, msg = _validate_password_confirmation(
+            request.form.get("password", ""),
+            request.form.get("password_confirm", ""),
+        )
         if not ok:
             flash(f"❌ {msg}", "danger")
         else:

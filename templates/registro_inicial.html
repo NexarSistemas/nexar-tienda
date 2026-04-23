@@ -54,8 +54,18 @@
                         <ul class="small list-unstyled">
                             <li id="len"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i> Entre 6 y 12 caracteres</li>
                             <li id="upper"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i> Al menos una mayúscula</li>
+                            <li id="lower"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i> Al menos una minúscula</li>
+                            <li id="number"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i> Al menos un número</li>
                             <li id="special"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i> Al menos un carácter especial (@$!%*?&#)</li>
                         </ul>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold small"><i class="fas fa-lock me-1"></i>Repetir Contraseña</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" name="password_confirm" class="form-control" required placeholder="******" autocomplete="new-password">
                     </div>
                 </div>
 
@@ -72,9 +82,9 @@
                     <label class="form-label fw-bold small"><i class="fas fa-key me-1"></i>Respuesta de Seguridad</label>
                     <div class="input-icon-wrapper">
                         <i class="fas fa-key"></i>
-                        <input type="text" name="security_answer" class="form-control" required placeholder="Tu respuesta secreta">
+                        <input type="text" name="security_answer" class="form-control" required minlength="2" placeholder="Tu respuesta secreta">
                     </div>
-                    <div class="form-text text-danger small"><i class="fas fa-exclamation-triangle"></i> No la olvides, es la única forma de restaurar acceso.</div>
+                    <div class="form-text text-danger small"><i class="fas fa-exclamation-triangle"></i> No la olvides. Se guarda protegida y no distingue mayúsculas/minúsculas.</div>
                 </div>
 
                 <button type="submit" class="btn-login-nexar">

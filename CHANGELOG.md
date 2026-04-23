@@ -4,6 +4,15 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.17] - 23 Abril 2026 - Seguridad Uniforme de Usuarios
+
+### Mejoras
+- **Contraseñas reforzadas**: La creacion, edicion y recuperacion de usuarios ahora validan doble ingreso de contraseña y requisitos de 6 a 12 caracteres con mayuscula, minuscula, numero y simbolo.
+- **Recuperacion protegida**: La pregunta y respuesta secreta quedan validadas de forma uniforme, con respuesta minima y verificacion de sesion antes de restablecer la clave.
+- **Paridad entre apps**: El flujo queda alineado con Nexar Almacen y Nexar Finanzas para mantener el mismo criterio de seguridad.
+
+---
+
 ## [1.25.16] - 21 Abril 2026 - Cierre Seguro de Ventana
 
 ### Mejoras
