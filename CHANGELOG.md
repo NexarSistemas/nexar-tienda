@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.18] - 24 Abril 2026 - Categorias de Gastos en Alta
+
+### Correcciones
+- **Selector de categorias**: Se corrigio el alta de gastos para enviar al template la variable correcta con las categorias configuradas, evitando que el combo aparezca vacio.
+- **Contexto del formulario**: La pantalla de nuevo gasto vuelve a recibir la accion y la fecha actual esperadas por el formulario.
+
+---
+
 ## [1.25.17] - 23 Abril 2026 - Seguridad Uniforme de Usuarios
 
 ### Mejoras

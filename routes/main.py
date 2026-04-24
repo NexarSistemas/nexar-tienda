@@ -746,7 +746,12 @@ def gasto_nuevo():
     if request.method == "POST":
         db.add_gasto(request.form.to_dict())
         return redirect(url_for("gastos"))
-    return render_template("gasto_form.html", categorias_gasto=db.get_gasto_categorias())
+    return render_template(
+        "gasto_form.html",
+        categorias_gastos=db.get_gasto_categorias(),
+        accion="Nuevo",
+        hoy=datetime.now().strftime("%Y-%m-%d"),
+    )
 
 
 @main_bp.route("/gastos/<int:gid>/eliminar", methods=["POST"])
