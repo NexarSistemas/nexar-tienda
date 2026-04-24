@@ -78,3 +78,6 @@ config/license.json
 secret.key
 .port
 .codex
+
+### --- Scripts de despliegue y archivos de configuración local --- ###
+scripts/*
