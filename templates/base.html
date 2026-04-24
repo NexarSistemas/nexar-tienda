@@ -254,12 +254,30 @@
             });
         }
 
+        let cierreDesktopEnCurso = false;
+        let cierreDesktopTimer = null;
+
+        function programarRevisionCierreDesktop(delay = 5000) {
+            if (cierreDesktopTimer) {
+                clearTimeout(cierreDesktopTimer);
+            }
+            cierreDesktopTimer = setTimeout(revisarCierreDesktop, delay);
+        }
+
         async function revisarCierreDesktop() {
+            if (cierreDesktopEnCurso) return;
+            cierreDesktopEnCurso = true;
             try {
                 const response = await fetch('{{ url_for("desktop_close_warning") }}', {credentials: 'same-origin'});
-                if (!response.ok) return;
+                if (!response.ok) {
+                    programarRevisionCierreDesktop(10000);
+                    return;
+                }
                 const data = await response.json();
-                if (!data.requested) return;
+                if (!data.requested) {
+                    programarRevisionCierreDesktop(5000);
+                    return;
+                }
                 Swal.fire({
                     title: 'Primero cerrá sesión',
                     text: 'Para cerrar la ventana de Nexar Tienda, antes tenés que cerrar sesión desde el sistema.',
@@ -274,15 +292,20 @@
                 }).then((result) => {
                     if (result.isConfirmed) {
                         window.location.href = '{{ url_for("logout") }}';
+                        return;
                     }
+                    programarRevisionCierreDesktop(5000);
                 });
             } catch (error) {
                 // La ventana puede estar cerrandose o el servidor puede estar apagandose.
+                programarRevisionCierreDesktop(10000);
+            } finally {
+                cierreDesktopEnCurso = false;
             }
         }
 
         {% if 'user' in session %}
-        setInterval(revisarCierreDesktop, 800);
+        programarRevisionCierreDesktop(5000);
         {% endif %}
     </script>
     {% block extra_js %}{% endblock %}

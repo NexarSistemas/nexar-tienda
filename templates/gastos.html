@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Gastos — Nexar Tienda{% endblock %}
+{% block title %}Gastos â€” Nexar Tienda{% endblock %}
 {% block page_title %}<i class="fas fa-file-invoice-dollar me-2"></i>Gastos Operativos{% endblock %}
 
 {% block topbar_actions %}
@@ -14,7 +14,7 @@
         <div class="card-body">
             <form method="GET" class="row g-3">
                 <div class="col-md-4">
-                    <input type="text" name="q" class="form-control" placeholder="Buscar por descripción o proveedor..." value="{{ buscar }}">
+                    <input type="text" name="q" class="form-control" placeholder="Buscar por descripciÃ³n o proveedor..." value="{{ buscar }}">
                 </div>
                 <div class="col-md-3">
                     <input type="date" name="fecha_desde" class="form-control" value="{{ fecha_desde }}">
@@ -38,6 +38,22 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-4">
+            <div class="card bg-success text-white shadow-sm">
+                <div class="card-body">
+                    <h6>Gastos Necesarios</h6>
+                    <h3>{{ total_necesarios | fmt_ars }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-warning text-dark shadow-sm">
+                <div class="card-body">
+                    <h6>Gastos Prescindibles</h6>
+                    <h3>{{ total_prescind | fmt_ars }}</h3>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="card shadow-sm">
@@ -46,8 +62,8 @@
                 <thead class="table-light">
                     <tr>
                         <th>Fecha</th>
-                        <th>Categoría</th>
-                        <th>Descripción</th>
+                        <th>CategorÃ­a</th>
+                        <th>DescripciÃ³n</th>
                         <th>Tipo</th>
                         <th>Medio Pago</th>
                         <th class="text-end">Monto</th>
@@ -71,7 +87,12 @@
                         <td>{{ g.medio_pago }}</td>
                         <td class="text-end fw-bold text-danger">{{ g.monto | fmt_ars }}</td>
                         <td class="text-center">
-                            <form action="{{ url_for('gasto_eliminar', gid=g.id) }}" method="POST" onsubmit="return confirm('¿Eliminar este registro de gasto?');">
+                            {% if session['user']['rol'] in ['Administrador', 'admin'] %}
+                            <a href="{{ url_for('gasto_editar', gid=g.id) }}" class="btn btn-sm btn-outline-primary me-1" title="Editar gasto">
+                                <i class="fas fa-pen"></i>
+                            </a>
+                            {% endif %}
+                            <form action="{{ url_for('gasto_eliminar', gid=g.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Â¿Eliminar este registro de gasto?');">
                                 <button type="submit" class="btn btn-sm btn-outline-danger">
                                     <i class="fas fa-trash"></i>
                                 </button>

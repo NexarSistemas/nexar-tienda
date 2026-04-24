@@ -4,6 +4,18 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.21] - 24 Abril 2026 - Gastos, Caja y Ticket Mejorados
+
+### Correcciones
+- **Gastos operativos**: Se corrigio el total del listado, se agregaron subtotales de necesarios y prescindibles, y la edicion del gasto quedo disponible solo para administradores.
+- **Proveedores en gastos**: El formulario ahora permite elegir un proveedor existente o crear uno nuevo directamente desde el alta o edicion del gasto.
+- **Caja diaria consistente**: Los gastos en efectivo impactan automaticamente como egresos en la caja abierta, y esos movimientos se sincronizan tambien al editar o eliminar gastos.
+- **Cuenta corriente de clientes**: Las ventas en cuenta corriente generan su movimiento automaticamente y se recuperan las ventas previas que hubieran quedado sin asiento.
+- **Ticket de venta**: Se corrigio la carga del detalle de productos, se mejoro el diseño general, se integra el pie configurable y el IVA informativo, y la impresion queda mas compacta para entrar en media hoja A4.
+- **Cierre desktop**: Se redujo el polling del aviso de cierre para evitar consultas continuas al backend mientras la app permanece abierta.
+
+---
+
 ## [1.25.20] - 24 Abril 2026 - Historico en Analisis de Rentabilidad
 
 ### Correcciones

@@ -130,6 +130,34 @@ def _clear_cart() -> None:
     session.modified = True
 
 
+def _resolver_proveedor_gasto(data: dict) -> dict | None:
+    proveedor_id = str(data.get("proveedor_id", "") or "").strip()
+    nuevo_nombre = str(data.get("proveedor_nuevo", "") or "").strip()
+
+    if proveedor_id == "__nuevo__":
+        if not nuevo_nombre:
+            flash("⚠️ Ingresá el nombre del nuevo proveedor.", "warning")
+            return None
+        existente = next((p for p in db.get_proveedores() if str(p["nombre"]).strip().lower() == nuevo_nombre.lower()), None)
+        if existente:
+            data["proveedor"] = existente["nombre"]
+            return data
+        if not _limit_allows("proveedores"):
+            return None
+        db.add_proveedor({"nombre": nuevo_nombre})
+        data["proveedor"] = nuevo_nombre
+        return data
+
+    if proveedor_id:
+        proveedor = db.get_proveedor(int(proveedor_id))
+        data["proveedor"] = proveedor["nombre"] if proveedor else ""
+        return data
+
+    if nuevo_nombre:
+        data["proveedor"] = nuevo_nombre
+    return data
+
+
 def _backup_list() -> list[dict]:
     BACKUP_DIR.mkdir(exist_ok=True)
     items = []
@@ -639,10 +667,15 @@ def venta_finalizar():
         return redirect(url_for("punto_venta"))
     cliente_id = int(request.form.get("cliente_id", 0) or 0)
     cliente_nombre = request.form.get("cliente_nombre", "") or "Mostrador"
+    medio_pago = request.form.get("medio_pago", "Efectivo")
+    if medio_pago == "Cuenta Corriente" and cliente_id <= 0:
+        flash("⚠️ Para vender en cuenta corriente tenés que seleccionar un cliente.", "warning")
+        return redirect(url_for("punto_venta"))
     if cliente_id:
         cliente = db.get_cliente(cliente_id)
         cliente_nombre = cliente["nombre"] if cliente else cliente_nombre
-    venta_id = db.crear_venta(cart, cliente_nombre, request.form.get("medio_pago", "Efectivo"), float(request.form.get("descuento_adicional", 0) or 0), session["user"]["username"], cliente_id=cliente_id, temporada=(db.get_temporada_actual() or {}).get("nombre", ""))
+    venta_id = db.crear_venta(cart, cliente_nombre, medio_pago, float(request.form.get("descuento_adicional", 0) or 0), session["user"]["username"], cliente_id=cliente_id, temporada=(db.get_temporada_actual() or {}).get("nombre", ""))
+    db.reconciliar_cc_clientes_desde_ventas()
     db.decrementar_stock_venta(venta_id)
     _clear_cart()
     flash("✅ Venta registrada.", "success")
@@ -652,7 +685,40 @@ def venta_finalizar():
 @main_bp.route("/ticket/<int:vid>")
 @login_required
 def ticket(vid):
-    return render_template("ticket.html", venta=db.q("SELECT * FROM ventas WHERE id=?", (vid,), fetchone=True), detalle=db.get_venta_detalle(vid), cfg=db.get_config())
+    venta = db.q("SELECT * FROM ventas WHERE id=?", (vid,), fetchone=True)
+    detalle = db.get_venta_detalle(vid)
+    cfg = db.get_config()
+    iva_items = []
+    iva_totales = {}
+    if venta:
+        for item in detalle:
+            producto = db.q("SELECT iva FROM productos WHERE id=?", (item["producto_id"],), fetchone=True)
+            iva_label = (producto["iva"] if producto and producto["iva"] else "21%").strip()
+            try:
+                iva_rate = float(iva_label.replace("%", "").replace(",", "."))
+            except ValueError:
+                iva_rate = 0.0
+            subtotal = float(item["subtotal"] or 0)
+            base = subtotal / (1 + (iva_rate / 100)) if iva_rate > 0 else subtotal
+            iva_importe = subtotal - base
+            item_dict = dict(item)
+            item_dict["iva_label"] = iva_label
+            item_dict["iva_importe"] = round(iva_importe, 2)
+            iva_items.append(item_dict)
+            bucket = iva_totales.setdefault(iva_label, {"base": 0.0, "iva": 0.0, "total": 0.0})
+            bucket["base"] += base
+            bucket["iva"] += iva_importe
+            bucket["total"] += subtotal
+    iva_resumen = [
+        {
+            "alicuota": alicuota,
+            "base": round(valores["base"], 2),
+            "iva": round(valores["iva"], 2),
+            "total": round(valores["total"], 2),
+        }
+        for alicuota, valores in sorted(iva_totales.items(), key=lambda item: item[0])
+    ]
+    return render_template("ticket.html", venta=venta, detalle=iva_items, iva_resumen=iva_resumen, cfg=cfg)
 
 
 @main_bp.route("/historial")
@@ -743,20 +809,62 @@ def caja_cerrar():
 @login_required
 def gastos():
     rows = db.get_gastos(request.args.get("q", ""), request.args.get("fecha_desde", ""), request.args.get("fecha_hasta", ""))
-    return render_template("gastos.html", gastos=rows, buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), total_gasto=sum(float(r["monto"] or 0) for r in rows), total_prescind=sum(float(r["monto"] or 0) for r in rows if "prescindible" in str(r["necesario"]).lower()), cats=db.get_gasto_categorias())
+    return render_template("gastos.html", gastos=rows, buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), total_gastos=sum(float(r["monto"] or 0) for r in rows), total_necesarios=sum(float(r["monto"] or 0) for r in rows if "prescindible" not in str(r["necesario"]).lower()), total_prescind=sum(float(r["monto"] or 0) for r in rows if "prescindible" in str(r["necesario"]).lower()), cats=db.get_gasto_categorias())
 
 
 @main_bp.route("/gastos/nuevo", methods=["GET", "POST"])
 @login_required
 def gasto_nuevo():
     if request.method == "POST":
-        db.add_gasto(request.form.to_dict())
+        data = _resolver_proveedor_gasto(request.form.to_dict())
+        if not data:
+            return render_template(
+                "gasto_form.html",
+                gasto=None,
+                categorias_gastos=db.get_gasto_categorias(),
+                proveedores=db.get_proveedores(),
+                accion="Nuevo",
+                hoy=datetime.now().strftime("%Y-%m-%d"),
+            )
+        db.add_gasto(data)
         return redirect(url_for("gastos"))
     return render_template(
         "gasto_form.html",
         categorias_gastos=db.get_gasto_categorias(),
+        proveedores=db.get_proveedores(),
         accion="Nuevo",
         hoy=datetime.now().strftime("%Y-%m-%d"),
+    )
+
+
+@main_bp.route("/gastos/<int:gid>/editar", methods=["GET", "POST"])
+@admin_required
+def gasto_editar(gid):
+    gasto = db.q("SELECT * FROM gastos WHERE id=?", (gid,), fetchone=True)
+    if not gasto:
+        flash("❌ Gasto no encontrado.", "danger")
+        return redirect(url_for("gastos"))
+    if request.method == "POST":
+        data = _resolver_proveedor_gasto(request.form.to_dict())
+        if not data:
+            return render_template(
+                "gasto_form.html",
+                gasto=gasto,
+                categorias_gastos=db.get_gasto_categorias(),
+                proveedores=db.get_proveedores(),
+                accion="Editar",
+                hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
+            )
+        db.update_gasto(gid, data)
+        flash("✅ Gasto actualizado.", "success")
+        return redirect(url_for("gastos"))
+    return render_template(
+        "gasto_form.html",
+        gasto=gasto,
+        categorias_gastos=db.get_gasto_categorias(),
+        proveedores=db.get_proveedores(),
+        accion="Editar",
+        hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
     )
 
 
@@ -770,6 +878,7 @@ def gasto_eliminar(gid):
 @main_bp.route("/clientes")
 @login_required
 def clientes():
+    db.reconciliar_cc_clientes_desde_ventas()
     return render_template("clientes.html", clientes=db.get_clientes(request.args.get("q", ""), _as_bool(request.args.get("solo_deuda"))), buscar=request.args.get("q", ""), solo_deuda=_as_bool(request.args.get("solo_deuda")))
 
 
@@ -799,6 +908,7 @@ def cliente_editar(cid):
 @main_bp.route("/clientes/<int:cid>")
 @login_required
 def cliente_detalle(cid):
+    db.reconciliar_cc_clientes_desde_ventas()
     return render_template("cliente_detalle.html", cliente=db.get_cliente(cid), saldo=db.get_saldo_cliente(cid), movimientos=db.get_movimientos_cliente(cid), historial_ventas=db.get_historial_ventas_cliente(cid), estadisticas=db.get_estadisticas_cliente(cid))
 
 

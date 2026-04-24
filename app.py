@@ -236,6 +236,7 @@ def create_app() -> Flask:
         "caja_cerrar",
         "gastos",
         "gasto_nuevo",
+        "gasto_editar",
         "gasto_eliminar",
         "clientes",
         "cliente_nuevo",

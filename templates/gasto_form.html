@@ -7,50 +7,65 @@
                 <div class="card-header bg-navy text-white">
                     <h5 class="mb-0"><i class="fas fa-plus-circle me-2"></i>{{ accion }} Gasto Operativo</h5>
                 </div>
-                <form action="{{ url_for('gasto_nuevo') }}" method="POST" class="card-body">
+                <form action="{% if gasto %}{{ url_for('gasto_editar', gid=gasto.id) }}{% else %}{{ url_for('gasto_nuevo') }}{% endif %}" method="POST" class="card-body">
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Fecha</label>
-                            <input type="date" name="fecha" class="form-control" value="{{ hoy }}" required>
+                            <input type="date" name="fecha" class="form-control" value="{{ gasto.fecha if gasto else hoy }}" required>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Categoría</label>
                             <select name="categoria" class="form-select" required>
                                 {% for cat in categorias_gastos %}
-                                <option value="{{ cat.nombre }}">{{ cat.nombre }} ({{ cat.tipo }})</option>
+                                <option value="{{ cat.nombre }}" {% if gasto and gasto.categoria == cat.nombre %}selected{% endif %}>{{ cat.nombre }} ({{ cat.tipo }})</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-12">
                             <label class="form-label">Descripción / Concepto</label>
-                            <input type="text" name="descripcion" class="form-control" placeholder="Ej: Pago internet Abril" required>
+                            <input type="text" name="descripcion" class="form-control" placeholder="Ej: Pago internet Abril" value="{{ gasto.descripcion if gasto else '' }}" required>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Monto</label>
                             <div class="input-group">
                                 <span class="input-group-text">$</span>
-                                <input type="number" step="0.01" name="monto" class="form-control" required>
+                                <input type="number" step="0.01" name="monto" class="form-control" value="{{ gasto.monto if gasto else '' }}" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Medio de Pago</label>
                             <select name="medio_pago" class="form-select">
-                                <option value="Efectivo">Efectivo (Resta de Caja)</option>
-                                <option value="Banco / Transferencia">Banco / Transferencia</option>
-                                <option value="Tarjeta">Tarjeta</option>
+                                <option value="Efectivo" {% if gasto and gasto.medio_pago == 'Efectivo' %}selected{% endif %}>Efectivo (Resta de Caja)</option>
+                                <option value="Banco / Transferencia" {% if gasto and gasto.medio_pago == 'Banco / Transferencia' %}selected{% endif %}>Banco / Transferencia</option>
+                                <option value="Tarjeta" {% if gasto and gasto.medio_pago == 'Tarjeta' %}selected{% endif %}>Tarjeta</option>
                             </select>
                         </div>
                         <div class="col-12">
                             <label class="form-label">Proveedor / Beneficiario</label>
-                            <input type="text" name="proveedor" class="form-control">
+                            {% set proveedor_actual = gasto.proveedor if gasto and gasto.proveedor else '' %}
+                            {% set proveedor_en_lista = proveedores | selectattr('nombre', 'equalto', proveedor_actual) | list | length > 0 %}
+                            <select name="proveedor_id" id="proveedor_id" class="form-select">
+                                <option value="">Sin proveedor</option>
+                                {% if proveedor_actual and not proveedor_en_lista %}
+                                <option value="" selected>{{ proveedor_actual }} (actual)</option>
+                                {% endif %}
+                                {% for proveedor in proveedores %}
+                                <option value="{{ proveedor.id }}" {% if proveedor_actual == proveedor.nombre %}selected{% endif %}>{{ proveedor.nombre }}</option>
+                                {% endfor %}
+                                <option value="__nuevo__">+ Crear nuevo proveedor</option>
+                            </select>
+                            <div id="proveedor_nuevo_wrap" class="mt-2" style="display: none;">
+                                <input type="text" name="proveedor_nuevo" id="proveedor_nuevo" class="form-control" placeholder="Nombre del nuevo proveedor">
+                                <div class="form-text">Si no existe, se crea y queda disponible para próximos gastos.</div>
+                            </div>
                         </div>
                         <div class="col-12">
                             <label class="form-label">Observaciones</label>
-                            <textarea name="observaciones" class="form-control" rows="2"></textarea>
+                            <textarea name="observaciones" class="form-control" rows="2">{{ gasto.observaciones if gasto else '' }}</textarea>
                         </div>
                     </div>
                     <div class="mt-4 d-flex gap-2">
-                        <button type="submit" class="btn btn-primary flex-grow-1">Guardar Gasto</button>
+                        <button type="submit" class="btn btn-primary flex-grow-1">{% if gasto %}Guardar Cambios{% else %}Guardar Gasto{% endif %}</button>
                         <a href="{{ url_for('gastos') }}" class="btn btn-outline-secondary">Cancelar</a>
                     </div>
                 </form>
@@ -58,4 +73,24 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const selectProveedor = document.getElementById('proveedor_id');
+    const wrapNuevo = document.getElementById('proveedor_nuevo_wrap');
+    const inputNuevo = document.getElementById('proveedor_nuevo');
+
+    function toggleProveedorNuevo() {
+        const mostrar = selectProveedor && selectProveedor.value === '__nuevo__';
+        wrapNuevo.style.display = mostrar ? '' : 'none';
+        inputNuevo.required = mostrar;
+        if (!mostrar) inputNuevo.value = '';
+    }
+
+    if (selectProveedor) {
+        selectProveedor.addEventListener('change', toggleProveedorNuevo);
+        toggleProveedorNuevo();
+    }
+});
+</script>
 {% endblock %}

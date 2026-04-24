@@ -451,6 +451,9 @@ def init_db():
         c.execute("ALTER TABLE usuarios ADD COLUMN security_question TEXT")
     if 'security_answer_hash' not in columnas_u:
         c.execute("ALTER TABLE usuarios ADD COLUMN security_answer_hash TEXT")
+    columnas_cm = [r['name'] for r in c.execute("PRAGMA table_info(caja_movimientos)").fetchall()]
+    if 'gasto_id' not in columnas_cm:
+        c.execute("ALTER TABLE caja_movimientos ADD COLUMN gasto_id INTEGER")
 
     # ─── Configuración por defecto ────────────────────────────────────────────
     defaults = [
@@ -1715,6 +1718,32 @@ def agregar_movimiento_cliente(cid, tipo, numero_comprobante, debe=0, haber=0, v
     )
 
 
+def reconciliar_cc_clientes_desde_ventas():
+    """Crea movimientos faltantes para ventas en cuenta corriente ya registradas."""
+    ventas_pendientes = q(
+        """
+        SELECT v.id, v.cliente_id, v.fecha, v.numero_ticket, v.total
+        FROM ventas v
+        LEFT JOIN cc_clientes_mov m ON m.venta_id = v.id
+        WHERE v.cliente_id > 0
+          AND LOWER(v.medio_pago) = LOWER('Cuenta Corriente')
+          AND m.id IS NULL
+        ORDER BY v.id
+        """
+    )
+    for venta in ventas_pendientes:
+        agregar_movimiento_cliente(
+            venta["cliente_id"],
+            "Venta",
+            f"TCK-{venta['numero_ticket']}",
+            debe=float(venta["total"] or 0),
+            haber=0,
+            observaciones="Movimiento generado automaticamente desde venta en cuenta corriente.",
+            fecha=venta["fecha"],
+            venta_id=venta["id"],
+        )
+
+
 def get_historial_ventas_cliente(cid, limit=20):
     """Obtiene historial de ventas de un cliente (una fila por venta con resumen)."""
     return q("""
@@ -2052,6 +2081,45 @@ def get_caja_dia(fecha):
     return q("SELECT * FROM caja_historial WHERE fecha=?", (fecha,), fetchone=True)
 
 
+def get_caja_abierta():
+    """Devuelve la caja actualmente abierta o None."""
+    return q("SELECT * FROM caja WHERE estado=1 ORDER BY id DESC LIMIT 1", fetchone=True)
+
+
+def sync_gasto_caja_movimiento(gasto_id):
+    """Sincroniza el gasto con caja si fue pagado en efectivo durante la caja abierta."""
+    gasto = q("SELECT * FROM gastos WHERE id=?", (gasto_id,), fetchone=True)
+    movimiento = q("SELECT * FROM caja_movimientos WHERE gasto_id=? ORDER BY id DESC LIMIT 1", (gasto_id,), fetchone=True)
+
+    if not gasto:
+        if movimiento:
+            q("DELETE FROM caja_movimientos WHERE id=?", (movimiento["id"],), commit=True)
+        return
+
+    caja = get_caja_abierta()
+    fecha_caja = str(caja["fecha_apertura"])[:10] if caja else ""
+    medio_pago = str(gasto["medio_pago"] or "").strip().lower()
+    aplica_caja = bool(caja and medio_pago == "efectivo" and str(gasto["fecha"] or "") == fecha_caja)
+    motivo = f"Gasto #{gasto_id}: {gasto['descripcion'] or gasto['categoria'] or 'Gasto operativo'}"
+    monto = float(gasto["monto"] or 0)
+
+    if aplica_caja:
+        if movimiento:
+            q(
+                "UPDATE caja_movimientos SET caja_id=?, tipo='EGRESO', monto=?, motivo=? WHERE id=?",
+                (caja["id"], monto, motivo, movimiento["id"]),
+                commit=True,
+            )
+        else:
+            q(
+                "INSERT INTO caja_movimientos (caja_id,tipo,monto,motivo,gasto_id) VALUES (?,?,?,?,?)",
+                (caja["id"], "EGRESO", monto, motivo, gasto_id),
+                commit=True,
+            )
+    elif movimiento:
+        q("DELETE FROM caja_movimientos WHERE id=?", (movimiento["id"],), commit=True)
+
+
 def init_caja_dia(fecha):
     """Inicializa caja del día."""
     ahora = datetime.now()
@@ -2109,7 +2177,7 @@ def add_gasto(data):
     necesario = normalizar_tipo_gasto(data.get('necesario'))
     if 'necesario' not in data:
         necesario = get_tipo_gasto_categoria(categoria)
-    q(
+    gasto_id = q(
         """INSERT INTO gastos
         (fecha,tipo,categoria,descripcion,monto,iva_incluido,medio_pago,proveedor,necesario,comprobante,observaciones)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
@@ -2119,6 +2187,8 @@ def add_gasto(data):
          necesario, data.get('comprobante', ''), data.get('observaciones', '')),
         fetchall=False, commit=True
     )
+    sync_gasto_caja_movimiento(gasto_id)
+    return gasto_id
 
 
 def update_gasto(gid, data):
@@ -2136,11 +2206,13 @@ def update_gasto(gid, data):
          necesario, data.get('comprobante', ''), data.get('observaciones', ''), gid),
         commit=True
     )
+    sync_gasto_caja_movimiento(gid)
 
 
 def delete_gasto(gid):
     """Elimina un gasto."""
     q("DELETE FROM gastos WHERE id=?", (gid,), commit=True)
+    sync_gasto_caja_movimiento(gid)
 
 
 # ─── TEMPORADAS ──────────────────────────────────────────────────────────────
