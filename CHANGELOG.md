@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.20] - 24 Abril 2026 - Historico en Analisis de Rentabilidad
+
+### Correcciones
+- **Tendencia historica**: La vista de analisis de rentabilidad vuelve a recibir los datos historicos necesarios para mostrar la tabla de ingresos, costo y margen.
+- **Consistencia de renderizado**: Se corrige el contexto enviado al template para evitar secciones vacias aun cuando existan movimientos en la base usada por la app.
+
+---
+
 ## [1.25.19] - 24 Abril 2026 - Selector de Proveedor en Ajuste de Stock
 
 ### Correcciones

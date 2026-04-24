@@ -895,7 +895,19 @@ def analisis():
     desde = request.args.get("desde", (date.today() - timedelta(days=30)).isoformat())
     hasta = request.args.get("hasta", date.today().isoformat())
     top = db.get_top_productos_analisis(15, desde, hasta)
-    return render_template("analisis.html", top=top, bottom=db.get_bottom_productos(10), temporadas=db.get_ventas_por_temporada(), rent=db.get_stats_rentabilidad(), gastos_cat=db.q("SELECT categoria, ROUND(SUM(monto),2) as total, necesario FROM gastos GROUP BY categoria ORDER BY total DESC"), fecha_desde=desde, fecha_hasta=hasta, top_labels=json.dumps([t["descripcion"][:20] for t in top]), top_vals=json.dumps([t["total_pesos"] for t in top]))
+    return render_template(
+        "analisis.html",
+        top=top,
+        bottom=db.get_bottom_productos(10),
+        temporadas=db.get_ventas_por_temporada(),
+        rent=db.get_stats_rentabilidad(),
+        rent_hist=db.get_rentabilidad_historica(),
+        gastos_cat=db.q("SELECT categoria, ROUND(SUM(monto),2) as total, necesario FROM gastos GROUP BY categoria ORDER BY total DESC"),
+        fecha_desde=desde,
+        fecha_hasta=hasta,
+        top_labels=json.dumps([t["descripcion"][:20] for t in top]),
+        top_vals=json.dumps([t["total_pesos"] for t in top]),
+    )
 
 
 @main_bp.route("/perfil", methods=["GET", "POST"])
