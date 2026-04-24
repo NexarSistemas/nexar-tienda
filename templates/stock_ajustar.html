@@ -148,14 +148,18 @@
                             <label for="proveedor" class="form-label">
                                 <strong>Proveedor Habitual</strong>
                             </label>
-                            <input 
-                                type="text" 
+                            <select
                                 id="proveedor"
                                 name="proveedor_habitual"
-                                class="form-control"
-                                value="{{ stock['proveedor_habitual'] or '' }}"
-                                placeholder="Nombre del proveedor"
+                                class="form-select"
                             >
+                                <option value="">Seleccionar proveedor</option>
+                                {% for proveedor in proveedores %}
+                                <option value="{{ proveedor.nombre }}" {% if stock['proveedor_habitual'] == proveedor.nombre %}selected{% endif %}>
+                                    {{ proveedor.nombre }}
+                                </option>
+                                {% endfor %}
+                            </select>
                         </div>
 
                         <div class="mb-3">

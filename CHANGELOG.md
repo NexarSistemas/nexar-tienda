@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.19] - 24 Abril 2026 - Selector de Proveedor en Ajuste de Stock
+
+### Correcciones
+- **Proveedor habitual seleccionable**: La pantalla de ajuste de stock ahora muestra un selector con los proveedores activos para poder elegir el proveedor habitual desde Tienda.
+- **Datos del formulario**: La ruta de ajuste de stock vuelve a enviar al template el listado de proveedores necesario para renderizar el combo.
+
+---
+
 ## [1.25.18] - 24 Abril 2026 - Categorias de Gastos en Alta
 
 ### Correcciones

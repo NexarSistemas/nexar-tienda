@@ -529,7 +529,13 @@ def stock_ajustar(pid):
         db.q("INSERT INTO stock_movimientos (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo) VALUES (?,?,?,?,?,?)", (pid, "AJUSTE", nuevo - anterior, anterior, nuevo, request.form.get("motivo", "Ajuste manual")), commit=True)
         flash("✅ Stock actualizado.", "success")
         return redirect(url_for("stock"))
-    return render_template("stock_ajustar.html", producto=producto, stock=stock_row, movimientos=db.get_stock_movimientos(pid))
+    return render_template(
+        "stock_ajustar.html",
+        producto=producto,
+        stock=stock_row,
+        movimientos=db.get_stock_movimientos(pid),
+        proveedores=db.get_proveedores(),
+    )
 
 
 @main_bp.route("/temporadas")
