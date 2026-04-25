@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Gastos â€” Nexar Tienda{% endblock %}
+{% block title %}Gastos — Nexar Tienda{% endblock %}
 {% block page_title %}<i class="fas fa-file-invoice-dollar me-2"></i>Gastos Operativos{% endblock %}
 
 {% block topbar_actions %}
@@ -14,7 +14,7 @@
         <div class="card-body">
             <form method="GET" class="row g-3">
                 <div class="col-md-4">
-                    <input type="text" name="q" class="form-control" placeholder="Buscar por descripciÃ³n o proveedor..." value="{{ buscar }}">
+                    <input type="text" name="q" class="form-control" placeholder="Buscar por descripción o proveedor..." value="{{ buscar }}">
                 </div>
                 <div class="col-md-3">
                     <input type="date" name="fecha_desde" class="form-control" value="{{ fecha_desde }}">
@@ -62,8 +62,8 @@
                 <thead class="table-light">
                     <tr>
                         <th>Fecha</th>
-                        <th>CategorÃ­a</th>
-                        <th>DescripciÃ³n</th>
+                        <th>Categoría</th>
+                        <th>Descripción</th>
                         <th>Tipo</th>
                         <th>Clasificación</th>
                         <th>Medio Pago</th>
@@ -99,7 +99,7 @@
                                 <i class="fas fa-pen"></i>
                             </a>
                             {% endif %}
-                            <form action="{{ url_for('gasto_eliminar', gid=g.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Â¿Eliminar este registro de gasto?');">
+                            <form action="{{ url_for('gasto_eliminar', gid=g.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este registro de gasto?');">
                                 <button type="submit" class="btn btn-sm btn-outline-danger">
                                     <i class="fas fa-trash"></i>
                                 </button>
