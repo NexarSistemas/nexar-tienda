@@ -4,11 +4,11 @@
 
 {% block content %}
 <div class="container-fluid">
-    <div class="row mb-4">
+    <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card shadow-sm border-0 bg-primary text-white">
                 <div class="card-body">
-                    <h6>Ventas Mes Actual</h6>
+                    <h6>Ingresos del Mes</h6>
                     <h3>{{ rentabilidad.ingresos | fmt_ars }}</h3>
                 </div>
             </div>
@@ -16,27 +16,35 @@
         <div class="col-md-3">
             <div class="card shadow-sm border-0 bg-danger text-white">
                 <div class="card-body">
-                    <h6>Gastos Mes Actual</h6>
-                    <h3>- {{ rentabilidad.gastos_operativos | fmt_ars }}</h3>
+                    <h6>Gastos del Mes</h6>
+                    <h3>{{ rentabilidad.total_gastos | fmt_ars }}</h3>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card shadow-sm border-0 bg-info text-white">
+            <div class="card shadow-sm border-0 bg-success text-white">
                 <div class="card-body">
-                    <h6>Costo Mercadería</h6>
-                    <h3>- {{ rentabilidad.costo_mercaderia | fmt_ars }}</h3>
+                    <h6>Gastos Necesarios</h6>
+                    <h3>{{ gastos_necesarios | fmt_ars }}</h3>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card shadow-sm border-0 {% if rentabilidad.utilidad_neta >= 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
+            <div class="card shadow-sm border-0 bg-warning text-dark">
                 <div class="card-body">
-                    <h6>Utilidad Neta</h6>
-                    <h3>{{ rentabilidad.utilidad_neta | fmt_ars }}</h3>
+                    <h6>Gastos Prescindibles</h6>
+                    <h3>{{ gastos_prescindibles | fmt_ars }}</h3>
                 </div>
             </div>
         </div>
+    </div>
+    <div class="alert alert-light border shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="small text-muted">
+            Esta vista resume ventas, medios de pago y gastos. Para cierre semanal, mensual o anual con margen y neta estimada, usá Rentabilidad.
+        </div>
+        <a href="{{ url_for('rentabilidad_detallada') }}" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-chart-column me-2"></i>Ver rentabilidad
+        </a>
     </div>
 
     <div class="row">

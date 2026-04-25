@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+{% block title %}Rentabilidad Detallada{% endblock %}
+{% block page_title %}<i class="fas fa-chart-column me-2"></i>Rentabilidad Detallada{% endblock %}
+
+{% block extra_css %}
+<style>
+    .rentabilidad-tabs .nav-link {
+        color: #334155 !important;
+        background-color: #fff;
+        border-color: #dee2e6 #dee2e6 transparent;
+        gap: 0;
+    }
+
+    .rentabilidad-tabs .nav-link.active {
+        color: #0d6efd !important;
+        background-color: #fff;
+        border-color: #dee2e6 #dee2e6 #fff;
+        font-weight: 700;
+    }
+
+    .rentabilidad-tabs .nav-link:hover {
+        color: #0d6efd !important;
+        background-color: #f8fafc;
+    }
+</style>
+{% endblock %}
+
+{% block topbar_actions %}
+<form class="d-flex gap-2 align-items-end">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="hidden" name="periodo" value="{{ periodo }}">
+    <div>
+        <label class="small text-muted">Desde</label>
+        <input type="date" name="desde" class="form-control form-control-sm" value="{{ fecha_desde }}">
+    </div>
+    <div>
+        <label class="small text-muted">Hasta</label>
+        <input type="date" name="hasta" class="form-control form-control-sm" value="{{ fecha_hasta }}">
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">Actualizar</button>
+</form>
+{% endblock %}
+
+{% macro rentabilidad_table(rows, show_producto=False) %}
+<div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 small">
+        <thead class="table-light">
+            <tr>
+                <th>{% if show_producto %}Producto{% else %}Período{% endif %}</th>
+                {% if show_producto %}<th>Categoría</th><th class="text-center">Unidades</th>{% endif %}
+                <th class="text-end">Ingresos</th>
+                <th class="text-end">Costo</th>
+                <th class="text-end">Ganancia bruta</th>
+                <th class="text-end">Gastos operativos</th>
+                <th class="text-end">{% if show_producto %}Imp./fin. prorrateados{% else %}Imp./financieros{% endif %}</th>
+                <th class="text-end">Neta estimada</th>
+                <th class="text-end">Margen neto</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td>
+                    <strong>{{ row.descripcion if show_producto else row.periodo }}</strong>
+                </td>
+                {% if show_producto %}
+                <td>{{ row.categoria }}</td>
+                <td class="text-center">{{ row.unidades }}</td>
+                {% endif %}
+                <td class="text-end fw-bold">{{ row.ingresos | fmt_ars }}</td>
+                <td class="text-end">{{ row.costo | fmt_ars }}</td>
+                <td class="text-end text-success fw-bold">{{ row.ganancia_bruta | fmt_ars }}</td>
+                <td class="text-end text-danger">{{ row.gastos_operativos | fmt_ars }}</td>
+                <td class="text-end text-primary">
+                    {% if show_producto %}
+                        {{ row.impuestos_financieros | fmt_ars }}
+                    {% else %}
+                        {{ (row.impuestos + row.gastos_financieros) | fmt_ars }}
+                    {% endif %}
+                </td>
+                <td class="text-end fw-bold {% if row.ganancia_neta_estimada >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {{ row.ganancia_neta_estimada | fmt_ars }}
+                </td>
+                <td class="text-end">{{ row.margen_neto }}%</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="{% if show_producto %}11{% else %}9{% endif %}" class="text-center py-5 text-muted">
+                    No hay datos para el período seleccionado.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
+
+{% macro composicion_gastos_table(rows) %}
+<div class="accordion" id="accordionGastos">
+    {% for row in rows %}
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#gastos-{{ loop.index }}">
+                <span class="fw-bold me-3">{{ row.periodo }}</span>
+                <span class="me-3">Ingresos: <strong>{{ row.ingresos | fmt_ars }}</strong></span>
+                <span class="me-3">Gastos reales: <strong class="text-danger">{{ row.total_gastos | fmt_ars }}</strong></span>
+                <span>Resultado: <strong class="{% if row.resultado_despues_gastos >= 0 %}text-success{% else %}text-danger{% endif %}">{{ row.resultado_despues_gastos | fmt_ars }}</strong></span>
+            </button>
+        </h2>
+        <div id="gastos-{{ loop.index }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" data-bs-parent="#accordionGastos">
+            <div class="accordion-body p-0">
+                <table class="table table-hover align-middle mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Clasificación</th>
+                            <th>Categoría</th>
+                            <th class="text-center">Movimientos</th>
+                            <th class="text-end">Total real</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for gasto in row.gastos %}
+                        <tr>
+                            <td>
+                                <span class="badge {% if gasto.clasificacion == 'Impuesto' %}bg-danger-subtle text-danger{% elif gasto.clasificacion == 'Financiero' %}bg-primary-subtle text-primary{% elif gasto.clasificacion == 'Otro' %}bg-secondary-subtle text-secondary{% else %}bg-info-subtle text-info{% endif %}">
+                                    {{ gasto.clasificacion }}
+                                </span>
+                            </td>
+                            <td>{{ gasto.categoria }}</td>
+                            <td class="text-center">{{ gasto.movimientos }}</td>
+                            <td class="text-end fw-bold text-danger">{{ gasto.total | fmt_ars }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-4 text-muted">No hay gastos cargados en este período.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">No hay ingresos ni gastos para el período seleccionado.</div>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="alert alert-info shadow-sm">
+        {% if tab == 'resumen' %}
+        <strong>Resumen de rentabilidad:</strong> información simple para saber cómo va la semana, el mes o el año con ingresos, gastos reales y neta estimada.
+        {% elif tab in ['gastos_mensual', 'gastos_semanal'] %}
+        <strong>Composición real de gastos:</strong> se muestran únicamente ingresos y gastos cargados en el sistema, agrupados por período, clasificación y categoría.
+        {% else %}
+        <strong>Neta estimada por artículo:</strong> los gastos se prorratean por participación en ingresos del período. Este valor sirve para análisis interno y no reemplaza un cierre contable.
+        {% endif %}
+    </div>
+
+    <div class="btn-group mb-3" role="group" aria-label="Periodo de rentabilidad">
+        <a class="btn btn-sm {% if periodo == 'semana' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('rentabilidad_detallada', tab='resumen', periodo='semana') }}">Semana</a>
+        <a class="btn btn-sm {% if periodo == 'mes' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('rentabilidad_detallada', tab='resumen', periodo='mes') }}">Mes</a>
+        <a class="btn btn-sm {% if periodo == 'anio' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('rentabilidad_detallada', tab='resumen', periodo='anio') }}">Año</a>
+    </div>
+
+    <ul class="nav nav-tabs rentabilidad-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'resumen' %}active{% endif %}" href="{{ url_for('rentabilidad_detallada', tab='resumen', periodo=periodo, desde=fecha_desde, hasta=fecha_hasta) }}">Resumen</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'gastos_mensual' %}active{% endif %}" href="{{ url_for('rentabilidad_detallada', tab='gastos_mensual', periodo=periodo, desde=fecha_desde, hasta=fecha_hasta) }}">Gastos por mes</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'gastos_semanal' %}active{% endif %}" href="{{ url_for('rentabilidad_detallada', tab='gastos_semanal', periodo=periodo, desde=fecha_desde, hasta=fecha_hasta) }}">Gastos por semana</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'articulos' %}active{% endif %}" href="{{ url_for('rentabilidad_detallada', tab='articulos', periodo=periodo, desde=fecha_desde, hasta=fecha_hasta) }}">Avanzado por artículo</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'diario' %}active{% endif %}" href="{{ url_for('rentabilidad_detallada', tab='diario', periodo=periodo, desde=fecha_desde, hasta=fecha_hasta) }}">Avanzado diario</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'mensual' %}active{% endif %}" href="{{ url_for('rentabilidad_detallada', tab='mensual', periodo=periodo, desde=fecha_desde, hasta=fecha_hasta) }}">Avanzado mensual</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'anual' %}active{% endif %}" href="{{ url_for('rentabilidad_detallada', tab='anual', periodo=periodo, desde=fecha_desde, hasta=fecha_hasta) }}">Avanzado anual</a>
+        </li>
+    </ul>
+
+    {% if tab == 'resumen' %}
+    <div class="row g-3 mb-4">
+        <div class="col-md-4 col-xl-2">
+            <div class="card shadow-sm border-0 bg-primary text-white">
+                <div class="card-body">
+                    <div class="small text-uppercase opacity-75">Ingresos</div>
+                    <h4 class="mb-0">{{ resumen_simple.ingresos | fmt_ars }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-2">
+            <div class="card shadow-sm border-0 bg-secondary text-white">
+                <div class="card-body">
+                    <div class="small text-uppercase opacity-75">Costo mercadería</div>
+                    <h4 class="mb-0">{{ resumen_simple.costo | fmt_ars }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-2">
+            <div class="card shadow-sm border-0 bg-success text-white">
+                <div class="card-body">
+                    <div class="small text-uppercase opacity-75">Ganancia bruta</div>
+                    <h4 class="mb-0">{{ resumen_simple.ganancia_bruta | fmt_ars }}</h4>
+                    <div class="small opacity-75">{{ resumen_simple.margen_bruto }}%</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-2">
+            <div class="card shadow-sm border-0 bg-danger text-white">
+                <div class="card-body">
+                    <div class="small text-uppercase opacity-75">Gastos</div>
+                    <h4 class="mb-0">{{ resumen_simple.total_gastos | fmt_ars }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-2">
+            <div class="card shadow-sm border-0 {% if resumen_simple.ganancia_neta_estimada >= 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
+                <div class="card-body">
+                    <div class="small text-uppercase opacity-75">Neta estimada</div>
+                    <h4 class="mb-0">{{ resumen_simple.ganancia_neta_estimada | fmt_ars }}</h4>
+                    <div class="small opacity-75">{{ resumen_simple.margen_neto }}%</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-2">
+            <div class="card shadow-sm border-0 bg-info text-white">
+                <div class="card-body">
+                    <div class="small text-uppercase opacity-75">Operativa</div>
+                    <h4 class="mb-0">{{ resumen_simple.ganancia_operativa | fmt_ars }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-5">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white"><strong>Gastos por categoría</strong></div>
+                <div class="card-body">
+                    <canvas id="chartGastosCategoria" height="220"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white"><strong>Evolución del período</strong></div>
+                <div class="card-body">
+                    <canvas id="chartEvolucionRentabilidad" height="220"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white"><strong>Gastos reales del período</strong></div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Categoría</th>
+                        <th>Clasificación</th>
+                        <th class="text-center">Movimientos</th>
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for gasto in gastos_categoria %}
+                    <tr>
+                        <td>{{ gasto.categoria }}</td>
+                        <td>{{ gasto.clasificacion }}</td>
+                        <td class="text-center">{{ gasto.movimientos }}</td>
+                        <td class="text-end fw-bold text-danger">{{ gasto.total | fmt_ars }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center py-4 text-muted">No hay gastos cargados para este período.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <strong>
+                {% if tab == 'articulos' %}Detalle por artículo{% elif tab == 'diario' %}Detalle diario{% elif tab == 'mensual' %}Detalle mensual{% elif tab == 'anual' %}Detalle anual{% elif tab == 'gastos_semanal' %}Composición semanal de gastos{% else %}Composición mensual de gastos{% endif %}
+            </strong>
+            <span class="badge bg-secondary">Solo administradores</span>
+        </div>
+        <div class="card-body p-0">
+            {% if tab == 'diario' %}
+                {{ rentabilidad_table(diario) }}
+            {% elif tab == 'mensual' %}
+                {{ rentabilidad_table(mensual) }}
+            {% elif tab == 'anual' %}
+                {{ rentabilidad_table(anual) }}
+            {% elif tab == 'gastos_mensual' %}
+                {{ composicion_gastos_table(gastos_mensual) }}
+            {% elif tab == 'gastos_semanal' %}
+                {{ composicion_gastos_table(gastos_semanal) }}
+            {% else %}
+                {{ rentabilidad_table(articulos, True) }}
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if tab == 'resumen' %}
+<script>
+    const gastosLabels = {{ gastos_categoria | map(attribute='categoria') | list | tojson }};
+    const gastosValores = {{ gastos_categoria | map(attribute='total') | list | tojson }};
+    const evolucionLabels = {{ evolucion_simple | map(attribute='periodo') | list | tojson }};
+    const evolucionIngresos = {{ evolucion_simple | map(attribute='ingresos') | list | tojson }};
+    const evolucionGastos = {{ evolucion_simple | map(attribute='total_gastos') | list | tojson }};
+    const evolucionNeta = {{ evolucion_simple | map(attribute='ganancia_neta_estimada') | list | tojson }};
+
+    if (document.getElementById('chartGastosCategoria')) {
+        new Chart(document.getElementById('chartGastosCategoria'), {
+            type: 'doughnut',
+            data: {
+                labels: gastosLabels,
+                datasets: [{
+                    data: gastosValores,
+                    backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#64748b']
+                }]
+            },
+            options: { responsive: true }
+        });
+    }
+
+    if (document.getElementById('chartEvolucionRentabilidad')) {
+        new Chart(document.getElementById('chartEvolucionRentabilidad'), {
+            type: 'bar',
+            data: {
+                labels: evolucionLabels,
+                datasets: [
+                    { label: 'Ingresos', data: evolucionIngresos, backgroundColor: '#3b82f6' },
+                    { label: 'Gastos', data: evolucionGastos, backgroundColor: '#ef4444' },
+                    { label: 'Neta estimada', data: evolucionNeta, backgroundColor: '#10b981' }
+                ]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+    }
+</script>
+{% endif %}
+{% endblock %}

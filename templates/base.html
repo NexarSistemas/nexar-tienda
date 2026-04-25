@@ -74,6 +74,11 @@
             <a class="nav-link {% if request.endpoint == 'analisis' %}active{% endif %}" href="{{ url_for('analisis') }}">
                 <i class="fas fa-microchip"></i> Análisis
             </a>
+            {% if session['user']['rol'] in ['Administrador', 'admin'] %}
+            <a class="nav-link {% if request.endpoint == 'rentabilidad_detallada' %}active{% endif %}" href="{{ url_for('rentabilidad_detallada') }}">
+                <i class="fas fa-chart-column"></i> Rentabilidad Detallada
+            </a>
+            {% endif %}
 
             <div class="nav-label">Sistema</div>
             <a class="nav-link {% if request.endpoint == 'perfil' %}active{% endif %}" href="{{ url_for('perfil') }}">
