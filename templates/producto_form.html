@@ -144,9 +144,26 @@
                             </div>
                         </div>
 
-                        <!-- ─── MARGEN DE GANANCIA ─── -->
+                        <!-- ─── RENTABILIDAD ─── -->
                         <div class="alert alert-info" id="margenInfo" style="display: none;">
-                            <strong>Margen de ganancia:</strong> <span id="margenValue">0%</span>
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                <strong>Rentabilidad bruta por unidad</strong>
+                                <span class="badge" id="margenBadge">0%</span>
+                            </div>
+                            <div class="row g-2 mt-2 small">
+                                <div class="col-md-4">
+                                    <div class="text-muted">Ganancia bruta</div>
+                                    <div class="fw-bold" id="gananciaBrutaValue">$ 0,00</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="text-muted">Margen bruto</div>
+                                    <div class="fw-bold" id="margenBrutoValue">0%</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="text-muted">Markup</div>
+                                    <div class="fw-bold" id="markupValue">0%</div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- ─── IVA ─── -->
@@ -277,7 +294,10 @@
                         <strong>Código de barras:</strong> Para búsquedas rápidas al vender.
                     </p>
                     <p class="small text-muted">
-                        <strong>Margen:</strong> Diferencia entre precio de venta y costo. Mínimo recomendado: 20%.
+                        <strong>Margen bruto:</strong> ganancia bruta dividida por precio de venta.
+                    </p>
+                    <p class="small text-muted mb-0">
+                        <strong>Markup:</strong> ganancia bruta dividida por costo.
                     </p>
                 </div>
             </div>
@@ -300,7 +320,7 @@
                 </div>
                 <div class="card-body small">
                     <ul class="mb-0">
-                        <li>Mantén márgenes >20% para sustentabilidad</li>
+                        <li>Mantén margen bruto >20% para sustentabilidad</li>
                         <li>Usa categorías consistentes</li>
                         <li>Actualiza precios regularmente</li>
                         <li>Revisa stock mínimos semanalmente</li>
@@ -319,27 +339,37 @@ document.addEventListener('DOMContentLoaded', function() {
     const costoInput = document.getElementById('costo');
     const precioInput = document.getElementById('precio_venta');
     const margenInfo = document.getElementById('margenInfo');
-    const margenValue = document.getElementById('margenValue');
+    const margenBadge = document.getElementById('margenBadge');
+    const gananciaBrutaValue = document.getElementById('gananciaBrutaValue');
+    const margenBrutoValue = document.getElementById('margenBrutoValue');
+    const markupValue = document.getElementById('markupValue');
+
+    function formatearARSLocal(valor) {
+        return '$ ' + valor.toLocaleString('es-AR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
 
     function calcularMargen() {
         const costo = parseFloat(costoInput.value) || 0;
         const precio = parseFloat(precioInput.value) || 0;
 
         if (precio > 0) {
-            const margen = ((precio - costo) / precio * 100).toFixed(1);
-            margenValue.textContent = margen + '%';
-            
-            const badge = margenValue.parentElement.querySelector('.badge');
-            if (badge) badge.remove();
-            
+            const gananciaBruta = precio - costo;
+            const margen = (gananciaBruta / precio * 100);
+            const markup = costo > 0 ? (gananciaBruta / costo * 100) : 0;
+
             let badgeClass = 'bg-success';
             if (margen < 20) badgeClass = 'bg-danger';
             else if (margen < 30) badgeClass = 'bg-warning';
-            
-            const newBadge = document.createElement('span');
-            newBadge.className = `badge ${badgeClass}`;
-            newBadge.textContent = margen + '%';
-            margenValue.replaceWith(newBadge);
+
+            margenBadge.className = `badge ${badgeClass}`;
+            margenBadge.textContent = margen.toFixed(1) + '%';
+            gananciaBrutaValue.textContent = formatearARSLocal(gananciaBruta);
+            gananciaBrutaValue.classList.toggle('text-danger', gananciaBruta < 0);
+            margenBrutoValue.textContent = margen.toFixed(1) + '%';
+            markupValue.textContent = costo > 0 ? markup.toFixed(1) + '%' : '-';
             
             margenInfo.style.display = 'block';
         } else {
@@ -347,8 +377,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    costoInput.addEventListener('change', calcularMargen);
-    precioInput.addEventListener('change', calcularMargen);
+    costoInput.addEventListener('input', calcularMargen);
+    precioInput.addEventListener('input', calcularMargen);
 
     // Calcular al cargar (edición)
     calcularMargen();

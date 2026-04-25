@@ -74,6 +74,8 @@ DEFAULT_GASTO_CATEGORIAS = [
     {'nombre': 'Otros', 'tipo': 'Prescindible'},
 ]
 
+GASTO_CLASIFICACIONES = ("Operativo", "Impuesto", "Financiero", "Otro")
+
 # ─── RUTA DE LA BASE DE DATOS ────────────────────────────────────────────────
 
 def _get_app_dir():
@@ -279,6 +281,8 @@ def init_db():
             unidad TEXT DEFAULT '',
             cantidad REAL DEFAULT 1,
             precio_unitario REAL DEFAULT 0,
+            costo_unitario REAL,
+            iva TEXT DEFAULT '',
             descuento REAL DEFAULT 0,
             subtotal REAL DEFAULT 0
         );
@@ -344,6 +348,7 @@ def init_db():
             fecha TEXT,
             tipo TEXT DEFAULT 'Gasto',
             categoria TEXT DEFAULT '',
+            clasificacion TEXT DEFAULT 'Operativo',
             descripcion TEXT DEFAULT '',
             monto REAL DEFAULT 0,
             iva_incluido INTEGER DEFAULT 1,
@@ -445,6 +450,26 @@ def init_db():
     if 'interes_financiacion' not in columnas_v:
         c.execute("ALTER TABLE ventas ADD COLUMN interes_financiacion REAL DEFAULT 0")
 
+    columnas_vd = [r['name'] for r in c.execute("PRAGMA table_info(ventas_detalle)").fetchall()]
+    if 'costo_unitario' not in columnas_vd:
+        c.execute("ALTER TABLE ventas_detalle ADD COLUMN costo_unitario REAL")
+        c.execute(
+            """UPDATE ventas_detalle
+            SET costo_unitario = (
+                SELECT p.costo FROM productos p WHERE p.id = ventas_detalle.producto_id
+            )
+            WHERE producto_id > 0"""
+        )
+    if 'iva' not in columnas_vd:
+        c.execute("ALTER TABLE ventas_detalle ADD COLUMN iva TEXT DEFAULT ''")
+        c.execute(
+            """UPDATE ventas_detalle
+            SET iva = COALESCE((
+                SELECT p.iva FROM productos p WHERE p.id = ventas_detalle.producto_id
+            ), '')
+            WHERE producto_id > 0"""
+        )
+
     # Verificar y agregar columnas de recuperación en usuarios
     columnas_u = [r['name'] for r in c.execute("PRAGMA table_info(usuarios)").fetchall()]
     if 'security_question' not in columnas_u:
@@ -454,6 +479,17 @@ def init_db():
     columnas_cm = [r['name'] for r in c.execute("PRAGMA table_info(caja_movimientos)").fetchall()]
     if 'gasto_id' not in columnas_cm:
         c.execute("ALTER TABLE caja_movimientos ADD COLUMN gasto_id INTEGER")
+
+    columnas_g = [r['name'] for r in c.execute("PRAGMA table_info(gastos)").fetchall()]
+    if 'clasificacion' not in columnas_g:
+        c.execute("ALTER TABLE gastos ADD COLUMN clasificacion TEXT DEFAULT 'Operativo'")
+        c.execute(
+            """UPDATE gastos
+            SET clasificacion = CASE
+                WHEN LOWER(categoria) LIKE '%impuesto%' OR LOWER(descripcion) LIKE '%impuesto%' THEN 'Impuesto'
+                ELSE 'Operativo'
+            END"""
+        )
 
     # ─── Configuración por defecto ────────────────────────────────────────────
     defaults = [
@@ -1243,6 +1279,28 @@ def normalizar_tipo_gasto(tipo):
     txt = str(tipo or '').strip().lower()
     return 'Prescindible' if 'prescind' in txt else 'Necesario'
 
+
+def normalizar_clasificacion_gasto(clasificacion, categoria=''):
+    """Normaliza la clasificación contable del gasto."""
+    txt = str(clasificacion or '').strip().lower()
+    if not txt:
+        cat = str(categoria or '').strip().lower()
+        if 'impuesto' in cat:
+            return 'Impuesto'
+        return 'Operativo'
+    if 'imp' in txt:
+        return 'Impuesto'
+    if 'fin' in txt or 'interes' in txt or 'interés' in txt:
+        return 'Financiero'
+    if 'otro' in txt:
+        return 'Otro'
+    return 'Operativo'
+
+
+def get_gasto_clasificaciones():
+    return list(GASTO_CLASIFICACIONES)
+
+
 def get_tipo_gasto_categoria(nombre_categoria):
     """Obtiene el tipo asociado a una categoría de gasto."""
     nombre = (nombre_categoria or '').strip().lower()
@@ -1987,11 +2045,12 @@ def crear_venta(items, cliente_nombre, medio_pago, descuento_adicional, vendedor
     for item in items:
         c.execute(
             """INSERT INTO ventas_detalle
-            (venta_id,producto_id,codigo_interno,descripcion,categoria,unidad,cantidad,precio_unitario,descuento,subtotal)
-            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (venta_id,producto_id,codigo_interno,descripcion,categoria,unidad,cantidad,precio_unitario,costo_unitario,iva,descuento,subtotal)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (venta_id, item.get('producto_id', 0), item.get('codigo_interno', ''), item.get('descripcion', ''),
              item.get('categoria', ''), item.get('unidad', ''), item.get('cantidad', 1),
-             item.get('precio_unitario', 0), item.get('descuento', 0), item.get('subtotal', 0))
+             item.get('precio_unitario', 0), item.get('costo_unitario', 0), item.get('iva', ''),
+             item.get('descuento', 0), item.get('subtotal', 0))
         )
 
     conn.commit()
@@ -2227,12 +2286,13 @@ def add_gasto(data):
     necesario = normalizar_tipo_gasto(data.get('necesario'))
     if 'necesario' not in data:
         necesario = get_tipo_gasto_categoria(categoria)
+    clasificacion = normalizar_clasificacion_gasto(data.get('clasificacion'), categoria)
     gasto_id = q(
         """INSERT INTO gastos
-        (fecha,tipo,categoria,descripcion,monto,iva_incluido,medio_pago,proveedor,necesario,comprobante,observaciones)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (fecha,tipo,categoria,clasificacion,descripcion,monto,iva_incluido,medio_pago,proveedor,necesario,comprobante,observaciones)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('tipo', 'Gasto'),
-         categoria, data.get('descripcion', ''), float(data.get('monto', 0)),
+         categoria, clasificacion, data.get('descripcion', ''), float(data.get('monto', 0)),
          int(data.get('iva_incluido', 1)), data.get('medio_pago', 'Efectivo'), data.get('proveedor', ''),
          necesario, data.get('comprobante', ''), data.get('observaciones', '')),
         fetchall=False, commit=True
@@ -2247,11 +2307,12 @@ def update_gasto(gid, data):
     necesario = normalizar_tipo_gasto(data.get('necesario'))
     if 'necesario' not in data:
         necesario = get_tipo_gasto_categoria(categoria)
+    clasificacion = normalizar_clasificacion_gasto(data.get('clasificacion'), categoria)
     q(
-        """UPDATE gastos SET fecha=?,tipo=?,categoria=?,descripcion=?,monto=?,iva_incluido=?,
+        """UPDATE gastos SET fecha=?,tipo=?,categoria=?,clasificacion=?,descripcion=?,monto=?,iva_incluido=?,
         medio_pago=?,proveedor=?,necesario=?,comprobante=?,observaciones=? WHERE id=?""",
         (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('tipo', 'Gasto'),
-         categoria, data.get('descripcion', ''), float(data.get('monto', 0)),
+         categoria, clasificacion, data.get('descripcion', ''), float(data.get('monto', 0)),
          int(data.get('iva_incluido', 1)), data.get('medio_pago', 'Efectivo'), data.get('proveedor', ''),
          necesario, data.get('comprobante', ''), data.get('observaciones', ''), gid),
         commit=True
@@ -2412,33 +2473,56 @@ def get_venta_ticket(vid):
 # ─── REPORTES Y ESTADÍSTICAS (PASO 12) ───────────────────────────────────────
 
 def get_stats_rentabilidad(mes_actual=None):
-    """Calcula la rentabilidad: Ingresos - Costos - Gastos."""
+    """Calcula ganancia bruta y operativa simple del mes."""
     if not mes_actual:
         mes_actual = datetime.now().strftime('%Y-%m')
     
-    # Total ventas (bruto)
+    # Total ventas.
     ventas = q("SELECT COALESCE(SUM(total), 0) as total FROM ventas WHERE fecha LIKE ?", (f"{mes_actual}%",), fetchone=True)['total']
     
-    # Costo de lo vendido (para calcular utilidad bruta)
-    # Necesitamos un join con productos para obtener el costo al momento de la venta o el actual
+    # Costo de lo vendido: usa el costo guardado al vender y cae al costo actual en ventas viejas.
     costo_ventas = q("""
-        SELECT COALESCE(SUM(vd.cantidad * p.costo), 0) as total_costo
+        SELECT COALESCE(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 0) as total_costo
         FROM ventas_detalle vd
         JOIN ventas v ON v.id = vd.venta_id
-        JOIN productos p ON p.id = vd.producto_id
+        LEFT JOIN productos p ON p.id = vd.producto_id
         WHERE v.fecha LIKE ?
     """, (f"{mes_actual}%",), fetchone=True)['total_costo']
     
-    # Gastos operativos
-    gastos = q("SELECT COALESCE(SUM(monto), 0) as total FROM gastos WHERE fecha LIKE ?", (f"{mes_actual}%",), fetchone=True)['total']
+    gastos_rows = q(
+        """SELECT COALESCE(clasificacion, 'Operativo') as clasificacion,
+                  COALESCE(SUM(monto), 0) as total
+        FROM gastos
+        WHERE fecha LIKE ?
+        GROUP BY COALESCE(clasificacion, 'Operativo')""",
+        (f"{mes_actual}%",),
+    )
+    gastos_por_clasificacion = {
+        normalizar_clasificacion_gasto(r["clasificacion"]): float(r["total"] or 0)
+        for r in gastos_rows
+    }
+    gastos_operativos = gastos_por_clasificacion.get("Operativo", 0) + gastos_por_clasificacion.get("Otro", 0)
+    impuestos = gastos_por_clasificacion.get("Impuesto", 0)
+    gastos_financieros = gastos_por_clasificacion.get("Financiero", 0)
+    total_gastos = gastos_operativos + impuestos + gastos_financieros
     
-    utilidad_neta = ventas - costo_ventas - gastos
+    ganancia_bruta = ventas - costo_ventas
+    ganancia_operativa = ganancia_bruta - gastos_operativos
+    ganancia_neta_estimada = ganancia_operativa - impuestos - gastos_financieros
+    margen_bruto = round((ganancia_bruta / ventas) * 100, 1) if ventas else 0
     
     return {
         'ingresos': ventas,
         'costo_mercaderia': costo_ventas,
-        'gastos_operativos': gastos,
-        'utilidad_neta': utilidad_neta
+        'ganancia_bruta': ganancia_bruta,
+        'margen_bruto': margen_bruto,
+        'gastos_operativos': gastos_operativos,
+        'impuestos': impuestos,
+        'gastos_financieros': gastos_financieros,
+        'total_gastos': total_gastos,
+        'ganancia_operativa': ganancia_operativa,
+        'ganancia_neta_estimada': ganancia_neta_estimada,
+        'utilidad_neta': ganancia_neta_estimada
     }
 
 def get_top_productos_vendidos(limit=5):
@@ -2498,10 +2582,12 @@ def get_ventas_por_temporada():
 def get_ventas_por_categoria():
     """Retorna ventas agrupadas por categoría de producto."""
     return q("""
-        SELECT p.categoria, ROUND(SUM(vd.subtotal), 2) as total
+        SELECT COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
+               ROUND(SUM(vd.subtotal), 2) as total
         FROM ventas_detalle vd
-        JOIN productos p ON vd.producto_id = p.id
-        GROUP BY p.categoria ORDER BY total DESC
+        LEFT JOIN productos p ON vd.producto_id = p.id
+        GROUP BY COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria')
+        ORDER BY total DESC
     """)
 
 def get_top_productos_analisis(limit=15, desde='', hasta=''):
@@ -2512,16 +2598,302 @@ def get_top_productos_analisis(limit=15, desde='', hasta=''):
         condicion = "WHERE v.fecha BETWEEN ? AND ?"
         params = [desde, hasta]
     return q(f"""
-        SELECT p.descripcion, p.categoria,
+        SELECT COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre') as descripcion,
+               COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
                SUM(vd.cantidad) as unidades,
                ROUND(SUM(vd.subtotal), 2) as total_pesos,
-               ROUND(SUM(vd.subtotal - (vd.cantidad * p.costo)), 2) as utilidad
+               ROUND(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 2) as costo_mercaderia,
+               ROUND(SUM(vd.subtotal - (vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0))), 2) as utilidad,
+               ROUND(
+                   CASE
+                       WHEN SUM(vd.subtotal) > 0 THEN
+                           (SUM(vd.subtotal - (vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0))) / SUM(vd.subtotal)) * 100
+                       ELSE 0
+                   END,
+                   1
+               ) as margen_bruto
         FROM ventas_detalle vd
         JOIN ventas v ON vd.venta_id = v.id
-        JOIN productos p ON vd.producto_id = p.id
+        LEFT JOIN productos p ON vd.producto_id = p.id
         {condicion}
-        GROUP BY p.id ORDER BY total_pesos DESC LIMIT ?
+        GROUP BY
+            vd.producto_id,
+            COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre'),
+            COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria')
+        ORDER BY total_pesos DESC LIMIT ?
     """, params + [limit])
+
+
+def get_resumen_rentabilidad_periodo(desde='', hasta=''):
+    """Resume ingresos, costo historico y ganancia bruta de un periodo."""
+    params = []
+    condicion = ""
+    if desde and hasta:
+        condicion = "WHERE v.fecha BETWEEN ? AND ?"
+        params = [desde, hasta]
+    row = q(f"""
+        SELECT ROUND(COALESCE(SUM(vd.subtotal), 0), 2) as ingresos,
+               ROUND(COALESCE(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 0), 2) as costo,
+               ROUND(COALESCE(SUM(vd.subtotal - (vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0))), 0), 2) as ganancia
+        FROM ventas_detalle vd
+        JOIN ventas v ON vd.venta_id = v.id
+        LEFT JOIN productos p ON vd.producto_id = p.id
+        {condicion}
+    """, params, fetchone=True)
+    ingresos = float(row["ingresos"] or 0) if row else 0
+    ganancia = float(row["ganancia"] or 0) if row else 0
+    return {
+        "ingresos": ingresos,
+        "costo": float(row["costo"] or 0) if row else 0,
+        "ganancia": ganancia,
+        "margen": round((ganancia / ingresos) * 100, 1) if ingresos else 0,
+    }
+
+
+def _periodo_ventas_expr(granularidad):
+    if granularidad == "mensual":
+        return "strftime('%Y-%m', v.fecha)"
+    if granularidad == "anual":
+        return "strftime('%Y', v.fecha)"
+    if granularidad == "semanal":
+        return "strftime('%Y-W%W', v.fecha)"
+    return "v.fecha"
+
+
+def _periodo_gastos_expr(granularidad):
+    if granularidad == "mensual":
+        return "strftime('%Y-%m', fecha)"
+    if granularidad == "anual":
+        return "strftime('%Y', fecha)"
+    if granularidad == "semanal":
+        return "strftime('%Y-W%W', fecha)"
+    return "fecha"
+
+
+def _resumen_gastos_periodo(desde='', hasta=''):
+    params = []
+    condicion = ""
+    if desde and hasta:
+        condicion = "WHERE fecha BETWEEN ? AND ?"
+        params = [desde, hasta]
+    rows = q(f"""
+        SELECT COALESCE(clasificacion, 'Operativo') as clasificacion,
+               ROUND(COALESCE(SUM(monto), 0), 2) as total
+        FROM gastos
+        {condicion}
+        GROUP BY COALESCE(clasificacion, 'Operativo')
+    """, params)
+    resumen = {"Operativo": 0.0, "Impuesto": 0.0, "Financiero": 0.0, "Otro": 0.0}
+    for row in rows:
+        resumen[normalizar_clasificacion_gasto(row["clasificacion"])] += float(row["total"] or 0)
+    return {
+        "gastos_operativos": resumen["Operativo"] + resumen["Otro"],
+        "impuestos": resumen["Impuesto"],
+        "gastos_financieros": resumen["Financiero"],
+    }
+
+
+def get_rentabilidad_detallada_articulos(desde='', hasta=''):
+    """Rentabilidad estimada por articulo, con gastos prorrateados por ingresos."""
+    params = []
+    condicion = ""
+    if desde and hasta:
+        condicion = "WHERE v.fecha BETWEEN ? AND ?"
+        params = [desde, hasta]
+
+    rows = q(f"""
+        SELECT COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre') as descripcion,
+               COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
+               SUM(vd.cantidad) as unidades,
+               ROUND(SUM(vd.subtotal), 2) as ingresos,
+               ROUND(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 2) as costo,
+               ROUND(SUM(vd.subtotal - (vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0))), 2) as ganancia_bruta
+        FROM ventas_detalle vd
+        JOIN ventas v ON vd.venta_id = v.id
+        LEFT JOIN productos p ON vd.producto_id = p.id
+        {condicion}
+        GROUP BY
+            vd.producto_id,
+            COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre'),
+            COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria')
+        ORDER BY ingresos DESC
+    """, params)
+
+    total_ingresos = sum(float(row["ingresos"] or 0) for row in rows)
+    gastos = _resumen_gastos_periodo(desde, hasta)
+    resultado = []
+    for row in rows:
+        ingresos = float(row["ingresos"] or 0)
+        ganancia_bruta = float(row["ganancia_bruta"] or 0)
+        proporcion = (ingresos / total_ingresos) if total_ingresos else 0
+        gastos_operativos = round(gastos["gastos_operativos"] * proporcion, 2)
+        impuestos = round(gastos["impuestos"] * proporcion, 2)
+        gastos_financieros = round(gastos["gastos_financieros"] * proporcion, 2)
+        ganancia_operativa = ganancia_bruta - gastos_operativos
+        ganancia_neta = ganancia_operativa - impuestos - gastos_financieros
+        resultado.append({
+            "descripcion": row["descripcion"],
+            "categoria": row["categoria"],
+            "unidades": float(row["unidades"] or 0),
+            "ingresos": ingresos,
+            "costo": float(row["costo"] or 0),
+            "ganancia_bruta": ganancia_bruta,
+            "gastos_operativos": gastos_operativos,
+            "impuestos_financieros": impuestos + gastos_financieros,
+            "ganancia_operativa": ganancia_operativa,
+            "ganancia_neta_estimada": ganancia_neta,
+            "margen_bruto": round((ganancia_bruta / ingresos) * 100, 1) if ingresos else 0,
+            "margen_neto": round((ganancia_neta / ingresos) * 100, 1) if ingresos else 0,
+        })
+    return resultado
+
+
+def get_rentabilidad_detallada_periodos(granularidad='diario', desde='', hasta=''):
+    """Rentabilidad agrupada por dia, mes o anio."""
+    ventas_expr = _periodo_ventas_expr(granularidad)
+    gastos_expr = _periodo_gastos_expr(granularidad)
+    params = []
+    condicion_ventas = ""
+    condicion_gastos = ""
+    if desde and hasta:
+        condicion_ventas = "WHERE v.fecha BETWEEN ? AND ?"
+        condicion_gastos = "WHERE fecha BETWEEN ? AND ?"
+        params = [desde, hasta]
+
+    ventas_rows = q(f"""
+        SELECT {ventas_expr} as periodo,
+               ROUND(COALESCE(SUM(vd.subtotal), 0), 2) as ingresos,
+               ROUND(COALESCE(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 0), 2) as costo
+        FROM ventas_detalle vd
+        JOIN ventas v ON vd.venta_id = v.id
+        LEFT JOIN productos p ON vd.producto_id = p.id
+        {condicion_ventas}
+        GROUP BY {ventas_expr}
+    """, params)
+
+    gastos_rows = q(f"""
+        SELECT {gastos_expr} as periodo,
+               COALESCE(clasificacion, 'Operativo') as clasificacion,
+               ROUND(COALESCE(SUM(monto), 0), 2) as total
+        FROM gastos
+        {condicion_gastos}
+        GROUP BY {gastos_expr}, COALESCE(clasificacion, 'Operativo')
+    """, params)
+
+    periodos = {}
+    for row in ventas_rows:
+        key = row["periodo"] or ""
+        periodos[key] = {
+            "periodo": key,
+            "ingresos": float(row["ingresos"] or 0),
+            "costo": float(row["costo"] or 0),
+            "gastos_operativos": 0.0,
+            "impuestos": 0.0,
+            "gastos_financieros": 0.0,
+        }
+
+    for row in gastos_rows:
+        key = row["periodo"] or ""
+        item = periodos.setdefault(key, {
+            "periodo": key,
+            "ingresos": 0.0,
+            "costo": 0.0,
+            "gastos_operativos": 0.0,
+            "impuestos": 0.0,
+            "gastos_financieros": 0.0,
+        })
+        clasificacion = normalizar_clasificacion_gasto(row["clasificacion"])
+        monto = float(row["total"] or 0)
+        if clasificacion in {"Operativo", "Otro"}:
+            item["gastos_operativos"] += monto
+        elif clasificacion == "Impuesto":
+            item["impuestos"] += monto
+        elif clasificacion == "Financiero":
+            item["gastos_financieros"] += monto
+
+    resultado = []
+    for key in sorted(periodos.keys(), reverse=True):
+        item = periodos[key]
+        ganancia_bruta = item["ingresos"] - item["costo"]
+        ganancia_operativa = ganancia_bruta - item["gastos_operativos"]
+        ganancia_neta = ganancia_operativa - item["impuestos"] - item["gastos_financieros"]
+        item.update({
+            "ganancia_bruta": ganancia_bruta,
+            "ganancia_operativa": ganancia_operativa,
+            "ganancia_neta_estimada": ganancia_neta,
+            "margen_bruto": round((ganancia_bruta / item["ingresos"]) * 100, 1) if item["ingresos"] else 0,
+            "margen_neto": round((ganancia_neta / item["ingresos"]) * 100, 1) if item["ingresos"] else 0,
+        })
+        resultado.append(item)
+    return resultado
+
+
+def get_composicion_gastos_rentabilidad(granularidad='mensual', desde='', hasta=''):
+    """Muestra ingresos y gastos reales agrupados por categoria para explicar el margen."""
+    ventas_expr = _periodo_ventas_expr(granularidad)
+    gastos_expr = _periodo_gastos_expr(granularidad)
+    params = []
+    condicion_ventas = ""
+    condicion_gastos = ""
+    if desde and hasta:
+        condicion_ventas = "WHERE v.fecha BETWEEN ? AND ?"
+        condicion_gastos = "WHERE fecha BETWEEN ? AND ?"
+        params = [desde, hasta]
+
+    ventas_rows = q(f"""
+        SELECT {ventas_expr} as periodo,
+               ROUND(COALESCE(SUM(v.total), 0), 2) as ingresos
+        FROM ventas v
+        {condicion_ventas}
+        GROUP BY {ventas_expr}
+    """, params)
+
+    gastos_rows = q(f"""
+        SELECT {gastos_expr} as periodo,
+               COALESCE(clasificacion, 'Operativo') as clasificacion,
+               COALESCE(NULLIF(categoria, ''), 'Sin categoria') as categoria,
+               ROUND(COALESCE(SUM(monto), 0), 2) as total,
+               COUNT(*) as movimientos
+        FROM gastos
+        {condicion_gastos}
+        GROUP BY {gastos_expr}, COALESCE(clasificacion, 'Operativo'), COALESCE(NULLIF(categoria, ''), 'Sin categoria')
+        ORDER BY periodo DESC, total DESC
+    """, params)
+
+    periodos = {}
+    for row in ventas_rows:
+        key = row["periodo"] or ""
+        periodos[key] = {
+            "periodo": key,
+            "ingresos": float(row["ingresos"] or 0),
+            "gastos": [],
+            "total_gastos": 0.0,
+        }
+
+    for row in gastos_rows:
+        key = row["periodo"] or ""
+        item = periodos.setdefault(key, {
+            "periodo": key,
+            "ingresos": 0.0,
+            "gastos": [],
+            "total_gastos": 0.0,
+        })
+        total = float(row["total"] or 0)
+        item["gastos"].append({
+            "clasificacion": normalizar_clasificacion_gasto(row["clasificacion"]),
+            "categoria": row["categoria"],
+            "total": total,
+            "movimientos": int(row["movimientos"] or 0),
+        })
+        item["total_gastos"] += total
+
+    resultado = []
+    for key in sorted(periodos.keys(), reverse=True):
+        item = periodos[key]
+        item["resultado_despues_gastos"] = item["ingresos"] - item["total_gastos"]
+        resultado.append(item)
+    return resultado
+
 
 def get_bottom_productos(limit=10):
     """Retorna los productos con menor movimiento (activos)."""
@@ -2539,10 +2911,10 @@ def get_rentabilidad_historica():
     return q("""
         SELECT strftime('%Y-%m', v.fecha) as mes,
                ROUND(SUM(v.total), 2) as ingresos,
-               ROUND(SUM(vd.cantidad * p.costo), 2) as costo
+               ROUND(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 2) as costo
         FROM ventas v
         JOIN ventas_detalle vd ON v.id = vd.venta_id
-        JOIN productos p ON vd.producto_id = p.id
+        LEFT JOIN productos p ON vd.producto_id = p.id
         WHERE v.fecha >= date('now', '-6 months')
         GROUP BY mes ORDER BY mes
     """)

@@ -668,7 +668,19 @@ def api_carrito_agregar():
         existing["subtotal"] = round(existing["cantidad"] * existing["precio_unitario"], 2)
     else:
         precio = float(producto["precio_venta"] or 0)
-        cart.append({"producto_id": pid, "codigo_interno": producto["codigo_interno"], "descripcion": producto["descripcion"], "categoria": producto["categoria"], "unidad": producto["unidad"], "cantidad": cantidad, "precio_unitario": precio, "descuento": 0, "subtotal": round(cantidad * precio, 2)})
+        cart.append({
+            "producto_id": pid,
+            "codigo_interno": producto["codigo_interno"],
+            "descripcion": producto["descripcion"],
+            "categoria": producto["categoria"],
+            "unidad": producto["unidad"],
+            "cantidad": cantidad,
+            "precio_unitario": precio,
+            "costo_unitario": float(producto["costo"] or 0),
+            "iva": producto["iva"] or "",
+            "descuento": 0,
+            "subtotal": round(cantidad * precio, 2),
+        })
     _save_cart(cart)
     return jsonify({"ok": True, "carrito": cart})
 
@@ -723,7 +735,7 @@ def ticket(vid):
     if venta:
         for item in detalle:
             producto = db.q("SELECT iva FROM productos WHERE id=?", (item["producto_id"],), fetchone=True)
-            iva_label = (producto["iva"] if producto and producto["iva"] else "21%").strip()
+            iva_label = (item["iva"] or (producto["iva"] if producto and producto["iva"] else "21%")).strip()
             try:
                 iva_rate = float(iva_label.replace("%", "").replace(",", "."))
             except ValueError:
@@ -885,6 +897,7 @@ def gasto_nuevo():
                 "gasto_form.html",
                 gasto=None,
                 categorias_gastos=db.get_gasto_categorias(),
+                clasificaciones_gastos=db.get_gasto_clasificaciones(),
                 proveedores=db.get_proveedores(),
                 accion="Nuevo",
                 hoy=datetime.now().strftime("%Y-%m-%d"),
@@ -894,6 +907,7 @@ def gasto_nuevo():
     return render_template(
         "gasto_form.html",
         categorias_gastos=db.get_gasto_categorias(),
+        clasificaciones_gastos=db.get_gasto_clasificaciones(),
         proveedores=db.get_proveedores(),
         accion="Nuevo",
         hoy=datetime.now().strftime("%Y-%m-%d"),
@@ -914,6 +928,7 @@ def gasto_editar(gid):
                 "gasto_form.html",
                 gasto=gasto,
                 categorias_gastos=db.get_gasto_categorias(),
+                clasificaciones_gastos=db.get_gasto_clasificaciones(),
                 proveedores=db.get_proveedores(),
                 accion="Editar",
                 hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
@@ -925,6 +940,7 @@ def gasto_editar(gid):
         "gasto_form.html",
         gasto=gasto,
         categorias_gastos=db.get_gasto_categorias(),
+        clasificaciones_gastos=db.get_gasto_clasificaciones(),
         proveedores=db.get_proveedores(),
         accion="Editar",
         hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
@@ -1078,8 +1094,32 @@ def analisis():
         gastos_cat=db.q("SELECT categoria, ROUND(SUM(monto),2) as total, necesario FROM gastos GROUP BY categoria ORDER BY total DESC"),
         fecha_desde=desde,
         fecha_hasta=hasta,
+        resumen_bruto=db.get_resumen_rentabilidad_periodo(desde, hasta),
         top_labels=json.dumps([t["descripcion"][:20] for t in top]),
         top_vals=json.dumps([t["total_pesos"] for t in top]),
+    )
+
+
+@main_bp.route("/rentabilidad-detallada")
+@admin_required
+def rentabilidad_detallada():
+    desde = request.args.get("desde", date(date.today().year, 1, 1).isoformat())
+    hasta = request.args.get("hasta", date.today().isoformat())
+    tabs_validos = {"gastos_mensual", "gastos_semanal", "articulos", "diario", "mensual", "anual"}
+    tab = request.args.get("tab", "gastos_mensual")
+    if tab not in tabs_validos:
+        tab = "gastos_mensual"
+    return render_template(
+        "rentabilidad_detallada.html",
+        fecha_desde=desde,
+        fecha_hasta=hasta,
+        tab=tab,
+        articulos=db.get_rentabilidad_detallada_articulos(desde, hasta),
+        diario=db.get_rentabilidad_detallada_periodos("diario", desde, hasta),
+        mensual=db.get_rentabilidad_detallada_periodos("mensual", desde, hasta),
+        anual=db.get_rentabilidad_detallada_periodos("anual", desde, hasta),
+        gastos_mensual=db.get_composicion_gastos_rentabilidad("mensual", desde, hasta),
+        gastos_semanal=db.get_composicion_gastos_rentabilidad("semanal", desde, hasta),
     )
 
 

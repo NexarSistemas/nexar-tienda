@@ -21,6 +21,16 @@
                                 {% endfor %}
                             </select>
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Clasificación contable</label>
+                            <select name="clasificacion" class="form-select" required>
+                                {% set clasificacion_actual = gasto.clasificacion if gasto and gasto.clasificacion else 'Operativo' %}
+                                {% for clasificacion in clasificaciones_gastos %}
+                                <option value="{{ clasificacion }}" {% if clasificacion_actual == clasificacion %}selected{% endif %}>{{ clasificacion }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Define si impacta ganancia operativa o neta estimada.</div>
+                        </div>
                         <div class="col-12">
                             <label class="form-label">Descripción / Concepto</label>
                             <input type="text" name="descripcion" class="form-control" placeholder="Ej: Pago internet Abril" value="{{ gasto.descripcion if gasto else '' }}" required>

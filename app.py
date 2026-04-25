@@ -254,6 +254,7 @@ def create_app() -> Flask:
         "reportes",
         "estadisticas",
         "analisis",
+        "rentabilidad_detallada",
         "perfil",
         "config",
         "config_categoria",

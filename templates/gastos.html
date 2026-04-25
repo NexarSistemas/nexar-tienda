@@ -65,6 +65,7 @@
                         <th>CategorÃ­a</th>
                         <th>DescripciÃ³n</th>
                         <th>Tipo</th>
+                        <th>Clasificación</th>
                         <th>Medio Pago</th>
                         <th class="text-end">Monto</th>
                         <th class="text-center">Acciones</th>
@@ -84,6 +85,12 @@
                                 {{ g.necesario or 'Necesario' }}
                             </span>
                         </td>
+                        <td>
+                            {% set clasificacion = g.clasificacion or 'Operativo' %}
+                            <span class="badge {% if clasificacion == 'Impuesto' %}bg-danger-subtle text-danger{% elif clasificacion == 'Financiero' %}bg-primary-subtle text-primary{% elif clasificacion == 'Otro' %}bg-secondary-subtle text-secondary{% else %}bg-info-subtle text-info{% endif %}">
+                                {{ clasificacion }}
+                            </span>
+                        </td>
                         <td>{{ g.medio_pago }}</td>
                         <td class="text-end fw-bold text-danger">{{ g.monto | fmt_ars }}</td>
                         <td class="text-center">
@@ -101,7 +108,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
+                            <td colspan="8" class="text-center py-5 text-muted">
                             <i class="fas fa-search fa-3x mb-3"></i>
                             <p>No se encontraron gastos registrados.</p>
                         </td>
