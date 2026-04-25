@@ -226,6 +226,7 @@ def create_app() -> Flask:
         "ticket",
         "historial",
         "historial_detalle",
+        "historial_eliminar",
         "compras",
         "compra_nueva",
         "compra_detalle",

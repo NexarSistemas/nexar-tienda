@@ -4,6 +4,16 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.22] - 25 Abril 2026 - Borrado Seguro de Ventas
+
+### Mejoras
+- **Eliminacion protegida de ventas**: El historial permite borrar una venta con una segunda capa de seguridad y confirmacion explicita de responsabilidad por perdida de datos.
+- **Autorizacion administrativa**: Si el usuario logueado es administrador debe confirmar con su propia contrasena; si no lo es, debe ingresar usuario y contrasena de un administrador activo.
+- **Limpieza de historiales asociados**: Al eliminar una venta se borran sus detalles, movimientos de cuenta corriente vinculados y movimientos de stock de esa venta, restaurando el stock vendido.
+- **Filtros de historial**: El filtro por medio de pago del historial de ventas queda conectado a la consulta real.
+
+---
+
 ## [1.25.21] - 24 Abril 2026 - Gastos, Caja y Ticket Mejorados
 
 ### Correcciones

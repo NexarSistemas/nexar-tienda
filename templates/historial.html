@@ -90,6 +90,18 @@
                                 <a href="{{ url_for('historial_detalle', vid=venta.id) }}" class="btn btn-sm btn-outline-primary" title="Ver Ticket">
                                     <i class="fas fa-receipt"></i>
                                 </a>
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-outline-danger ms-1"
+                                    title="Eliminar venta"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalEliminarVenta"
+                                    data-delete-url="{{ url_for('historial_eliminar', vid=venta.id) }}"
+                                    data-ticket="#{{ venta.numero_ticket }}"
+                                    data-total="{{ venta.total | fmt_ars }}"
+                                >
+                                    <i class="fas fa-trash"></i>
+                                </button>
                             </td>
                         </tr>
                         {% else %}
@@ -106,4 +118,79 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="modalEliminarVenta" tabindex="-1" aria-labelledby="modalEliminarVentaLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form id="formEliminarVenta" method="POST" class="modal-content border-danger">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="modalEliminarVentaLabel">
+                    <i class="fas fa-triangle-exclamation me-2"></i>Eliminar venta
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <strong>¡ADVERTENCIA!</strong><br>
+                    Esta acción eliminará permanentemente la venta y todos sus historiales asociados.<br><br>
+                    Usted asume la total responsabilidad por esta pérdida de datos. NexarSistemas no se hace responsable.
+                </div>
+
+                <div class="mb-3">
+                    <div class="small text-muted">Venta seleccionada</div>
+                    <div class="fw-bold"><span id="ventaEliminarTicket">-</span> · <span id="ventaEliminarTotal">-</span></div>
+                </div>
+
+                {% if usuario_es_admin %}
+                <div class="mb-3">
+                    <label class="form-label">Contraseña del usuario logueado</label>
+                    <input type="password" name="current_password" class="form-control" autocomplete="current-password" required>
+                </div>
+                {% else %}
+                <div class="mb-3">
+                    <label class="form-label">Usuario administrador</label>
+                    <input type="text" name="admin_username" class="form-control" autocomplete="username" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Contraseña del administrador</label>
+                    <input type="password" name="admin_password" class="form-control" autocomplete="current-password" required>
+                </div>
+                {% endif %}
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="confirmo_responsabilidad" id="confirmoResponsabilidad" value="1" required>
+                    <label class="form-check-label" for="confirmoResponsabilidad">
+                        Confirmo que entiendo la advertencia y acepto la responsabilidad por este borrado.
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-danger">
+                    <i class="fas fa-trash me-2"></i>Eliminar definitivamente
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const modal = document.getElementById('modalEliminarVenta');
+        const form = document.getElementById('formEliminarVenta');
+        const ticket = document.getElementById('ventaEliminarTicket');
+        const total = document.getElementById('ventaEliminarTotal');
+
+        if (!modal || !form) return;
+
+        modal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            form.action = button.getAttribute('data-delete-url') || '';
+            ticket.textContent = button.getAttribute('data-ticket') || '-';
+            total.textContent = button.getAttribute('data-total') || '-';
+            form.reset();
+        });
+    });
+</script>
 {% endblock %}

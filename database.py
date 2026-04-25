@@ -1285,6 +1285,11 @@ def get_usuario_by_username(username):
     return q("SELECT * FROM usuarios WHERE username=?", (username,), fetchone=True)
 
 
+def get_usuario_by_id(uid):
+    """Obtiene usuario por ID."""
+    return q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
+
+
 def verify_password(password, password_hash):
     """Verifica contraseña contra hash."""
     if not password_hash:
@@ -1943,6 +1948,16 @@ def get_ventas_historial(search='', fecha_desde='', fecha_hasta='', medio_pago='
     """, params)
 
 
+def get_medios_pago_ventas():
+    """Devuelve los medios de pago usados en ventas."""
+    return q(
+        """SELECT DISTINCT medio_pago
+        FROM ventas
+        WHERE medio_pago IS NOT NULL AND TRIM(medio_pago) <> ''
+        ORDER BY medio_pago"""
+    )
+
+
 def get_venta_detalle(vid):
     """Devuelve items de una venta."""
     return q("SELECT * FROM ventas_detalle WHERE venta_id=? ORDER BY id", (vid,))
@@ -1982,6 +1997,41 @@ def crear_venta(items, cliente_nombre, medio_pago, descuento_adicional, vendedor
     conn.commit()
     conn.close()
     return venta_id
+
+
+def delete_venta(venta_id):
+    """Elimina una venta y sus registros asociados, restaurando el stock."""
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        venta = c.execute("SELECT * FROM ventas WHERE id=?", (venta_id,)).fetchone()
+        if not venta:
+            return False
+
+        items = c.execute("SELECT * FROM ventas_detalle WHERE venta_id=?", (venta_id,)).fetchall()
+        for item in items:
+            producto_id = int(item["producto_id"] or 0)
+            cantidad = float(item["cantidad"] or 0)
+            if producto_id <= 0 or cantidad <= 0:
+                continue
+
+            stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
+            if stock:
+                stock_anterior = float(stock["stock_actual"] or 0)
+                stock_nuevo = stock_anterior + cantidad
+                c.execute("UPDATE stock SET stock_actual=? WHERE producto_id=?", (stock_nuevo, producto_id))
+
+        c.execute("DELETE FROM stock_movimientos WHERE motivo=?", (f"Venta #{venta_id}",))
+        c.execute("DELETE FROM cc_clientes_mov WHERE venta_id=?", (venta_id,))
+        c.execute("DELETE FROM ventas_detalle WHERE venta_id=?", (venta_id,))
+        c.execute("DELETE FROM ventas WHERE id=?", (venta_id,))
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 # ─── COMPRAS ─────────────────────────────────────────────────────────────────
