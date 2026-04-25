@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.25.24] - 25 Abril 2026 - Rentabilidad Simple y Precio Sugerido
+
+### Mejoras
+- **Precio sugerido por margen**: El formulario de producto permite ingresar un margen bruto deseado y calcular el precio de venta sugerido.
+- **Rentabilidad ejecutiva**: La pagina de rentabilidad abre en un resumen simple por semana, mes o anio con ingresos, costo, gastos, operativa y neta estimada.
+- **Graficos de cierre**: Se agregan graficos de gastos por categoria y evolucion de ingresos, gastos y neta estimada.
+- **Reportes mas claros**: La vista de reportes queda enfocada en ventas, medios de pago, gastos y top productos, con acceso directo a rentabilidad para el cierre financiero.
+- **Detalle avanzado conservado**: Los analisis por articulo, diario, mensual, anual y composicion de gastos quedan disponibles como secciones avanzadas.
+
+---
+
 ## [1.25.23] - 25 Abril 2026 - Rentabilidad Detallada
 
 ### Mejoras

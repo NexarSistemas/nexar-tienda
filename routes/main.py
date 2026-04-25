@@ -1103,17 +1103,34 @@ def analisis():
 @main_bp.route("/rentabilidad-detallada")
 @admin_required
 def rentabilidad_detallada():
-    desde = request.args.get("desde", date(date.today().year, 1, 1).isoformat())
-    hasta = request.args.get("hasta", date.today().isoformat())
-    tabs_validos = {"gastos_mensual", "gastos_semanal", "articulos", "diario", "mensual", "anual"}
-    tab = request.args.get("tab", "gastos_mensual")
+    hoy = date.today()
+    semana_desde = hoy - timedelta(days=hoy.weekday())
+    mes_desde = date(hoy.year, hoy.month, 1)
+    anio_desde = date(hoy.year, 1, 1)
+    periodo = request.args.get("periodo", "mes")
+    tabs_validos = {"resumen", "gastos_mensual", "gastos_semanal", "articulos", "diario", "mensual", "anual"}
+    tab = request.args.get("tab", "resumen")
     if tab not in tabs_validos:
-        tab = "gastos_mensual"
+        tab = "resumen"
+    rangos = {
+        "semana": (semana_desde.isoformat(), hoy.isoformat(), "semanal"),
+        "mes": (mes_desde.isoformat(), hoy.isoformat(), "diario"),
+        "anio": (anio_desde.isoformat(), hoy.isoformat(), "mensual"),
+    }
+    if periodo not in rangos:
+        periodo = "mes"
+    desde_default, hasta_default, granularidad = rangos[periodo]
+    desde = request.args.get("desde", desde_default)
+    hasta = request.args.get("hasta", hasta_default)
     return render_template(
         "rentabilidad_detallada.html",
         fecha_desde=desde,
         fecha_hasta=hasta,
         tab=tab,
+        periodo=periodo,
+        resumen_simple=db.get_resumen_rentabilidad_simple(desde, hasta),
+        gastos_categoria=db.get_gastos_por_categoria_periodo(desde, hasta),
+        evolucion_simple=db.get_evolucion_rentabilidad_simple(granularidad, desde, hasta),
         articulos=db.get_rentabilidad_detallada_articulos(desde, hasta),
         diario=db.get_rentabilidad_detallada_periodos("diario", desde, hasta),
         mensual=db.get_rentabilidad_detallada_periodos("mensual", desde, hasta),

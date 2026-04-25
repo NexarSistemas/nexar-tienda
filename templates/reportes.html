@@ -5,84 +5,46 @@
 {% block content %}
 <div class="container-fluid">
     <div class="row g-3 mb-4">
-        <div class="col-md-4 col-xl-2">
+        <div class="col-md-3">
             <div class="card shadow-sm border-0 bg-primary text-white">
                 <div class="card-body">
-                    <h6>Ingresos Mes Actual</h6>
+                    <h6>Ingresos del Mes</h6>
                     <h3>{{ rentabilidad.ingresos | fmt_ars }}</h3>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 col-xl-2">
-            <div class="card shadow-sm border-0 bg-info text-white">
-                <div class="card-body">
-                    <h6>Costo Mercadería</h6>
-                    <h3>- {{ rentabilidad.costo_mercaderia | fmt_ars }}</h3>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4 col-xl-2">
-            <div class="card shadow-sm border-0 {% if rentabilidad.ganancia_bruta >= 0 %}bg-success{% else %}bg-danger{% endif %} text-white">
-                <div class="card-body">
-                    <h6>Ganancia Bruta</h6>
-                    <h3>{{ rentabilidad.ganancia_bruta | fmt_ars }}</h3>
-                    <div class="small opacity-75">Margen {{ rentabilidad.margen_bruto }}%</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4 col-xl-2">
+        <div class="col-md-3">
             <div class="card shadow-sm border-0 bg-danger text-white">
                 <div class="card-body">
-                    <h6>Gastos Operativos</h6>
-                    <h3>- {{ rentabilidad.gastos_operativos | fmt_ars }}</h3>
+                    <h6>Gastos del Mes</h6>
+                    <h3>{{ rentabilidad.total_gastos | fmt_ars }}</h3>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 col-xl-2">
-            <div class="card shadow-sm border-0 {% if rentabilidad.ganancia_operativa >= 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 bg-success text-white">
                 <div class="card-body">
-                    <h6>Ganancia Operativa</h6>
-                    <h3>{{ rentabilidad.ganancia_operativa | fmt_ars }}</h3>
+                    <h6>Gastos Necesarios</h6>
+                    <h3>{{ gastos_necesarios | fmt_ars }}</h3>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 col-xl-2">
-            <div class="card shadow-sm border-0 {% if rentabilidad.ganancia_neta_estimada >= 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 bg-warning text-dark">
                 <div class="card-body">
-                    <h6>Neta Estimada</h6>
-                    <h3>{{ rentabilidad.ganancia_neta_estimada | fmt_ars }}</h3>
+                    <h6>Gastos Prescindibles</h6>
+                    <h3>{{ gastos_prescindibles | fmt_ars }}</h3>
                 </div>
             </div>
         </div>
     </div>
-    <div class="alert alert-light border shadow-sm small text-muted">
-        La ganancia operativa descuenta solo gastos clasificados como operativos u otros. La ganancia neta estimada descuenta además impuestos y gastos financieros cargados en el sistema.
-    </div>
-    <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="card shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <span>Impuestos</span>
-                    <strong class="text-danger">{{ rentabilidad.impuestos | fmt_ars }}</strong>
-                </div>
-            </div>
+    <div class="alert alert-light border shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="small text-muted">
+            Esta vista resume ventas, medios de pago y gastos. Para cierre semanal, mensual o anual con margen y neta estimada, usá Rentabilidad.
         </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <span>Gastos financieros</span>
-                    <strong class="text-primary">{{ rentabilidad.gastos_financieros | fmt_ars }}</strong>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <span>Total gastos clasificados</span>
-                    <strong>{{ rentabilidad.total_gastos | fmt_ars }}</strong>
-                </div>
-            </div>
-        </div>
+        <a href="{{ url_for('rentabilidad_detallada') }}" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-chart-column me-2"></i>Ver rentabilidad
+        </a>
     </div>
 
     <div class="row">

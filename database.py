@@ -2818,6 +2818,7 @@ def get_rentabilidad_detallada_periodos(granularidad='diario', desde='', hasta='
         ganancia_operativa = ganancia_bruta - item["gastos_operativos"]
         ganancia_neta = ganancia_operativa - item["impuestos"] - item["gastos_financieros"]
         item.update({
+            "total_gastos": item["gastos_operativos"] + item["impuestos"] + item["gastos_financieros"],
             "ganancia_bruta": ganancia_bruta,
             "ganancia_operativa": ganancia_operativa,
             "ganancia_neta_estimada": ganancia_neta,
@@ -2893,6 +2894,57 @@ def get_composicion_gastos_rentabilidad(granularidad='mensual', desde='', hasta=
         item["resultado_despues_gastos"] = item["ingresos"] - item["total_gastos"]
         resultado.append(item)
     return resultado
+
+
+def get_resumen_rentabilidad_simple(desde='', hasta=''):
+    """Resumen simple de rentabilidad para vista ejecutiva."""
+    bruto = get_resumen_rentabilidad_periodo(desde, hasta)
+    gastos = _resumen_gastos_periodo(desde, hasta)
+    ganancia_bruta = float(bruto["ganancia"] or 0)
+    gastos_operativos = float(gastos["gastos_operativos"] or 0)
+    impuestos = float(gastos["impuestos"] or 0)
+    gastos_financieros = float(gastos["gastos_financieros"] or 0)
+    ganancia_operativa = ganancia_bruta - gastos_operativos
+    ganancia_neta = ganancia_operativa - impuestos - gastos_financieros
+    ingresos = float(bruto["ingresos"] or 0)
+    return {
+        "ingresos": ingresos,
+        "costo": float(bruto["costo"] or 0),
+        "ganancia_bruta": ganancia_bruta,
+        "margen_bruto": bruto["margen"],
+        "gastos_operativos": gastos_operativos,
+        "impuestos": impuestos,
+        "gastos_financieros": gastos_financieros,
+        "total_gastos": gastos_operativos + impuestos + gastos_financieros,
+        "ganancia_operativa": ganancia_operativa,
+        "ganancia_neta_estimada": ganancia_neta,
+        "margen_neto": round((ganancia_neta / ingresos) * 100, 1) if ingresos else 0,
+    }
+
+
+def get_gastos_por_categoria_periodo(desde='', hasta=''):
+    """Gastos reales agrupados por categoria para graficos y cierre."""
+    params = []
+    condicion = ""
+    if desde and hasta:
+        condicion = "WHERE fecha BETWEEN ? AND ?"
+        params = [desde, hasta]
+    return q(f"""
+        SELECT COALESCE(NULLIF(categoria, ''), 'Sin categoria') as categoria,
+               COALESCE(clasificacion, 'Operativo') as clasificacion,
+               ROUND(COALESCE(SUM(monto), 0), 2) as total,
+               COUNT(*) as movimientos
+        FROM gastos
+        {condicion}
+        GROUP BY COALESCE(NULLIF(categoria, ''), 'Sin categoria'), COALESCE(clasificacion, 'Operativo')
+        ORDER BY total DESC
+    """, params)
+
+
+def get_evolucion_rentabilidad_simple(granularidad='mensual', desde='', hasta=''):
+    """Evolucion de ingresos, gastos y neta estimada por periodo."""
+    periodos = get_rentabilidad_detallada_periodos(granularidad, desde, hasta)
+    return list(reversed(periodos))
 
 
 def get_bottom_productos(limit=10):
