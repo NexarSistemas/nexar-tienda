@@ -1,149 +1,639 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
 
-{% block title %}Punto de Venta - Nexar Tienda{% endblock %}
-{% block page_title %}<i class="fas fa-shopping-cart me-2"></i>Punto de Venta{% endblock %}
+{% block title %}Punto de Venta{% endblock %}
+{% block page_title %}<i class="fas fa-cash-register me-2" style="color:var(--accent)"></i>Punto de Venta{% endblock %}
+
+{% block extra_css %}
+<style>
+.pv-shell{padding-bottom:1rem}
+.pv-left{background:var(--white);border-radius:10px;padding:0;overflow:hidden;box-shadow:var(--shadow-md)}
+.pv-right{background:var(--sidebar-bg);border-radius:10px;padding:0;overflow:hidden;box-shadow:0 8px 24px rgba(30,58,95,.18)}
+.pv-header{background:linear-gradient(135deg,var(--sidebar-bg),var(--sidebar-hover));color:var(--white);padding:12px 16px;font-weight:700}
+.pv-right .pv-header{background:linear-gradient(135deg,var(--sidebar-bg),var(--sidebar-active))}
+.item-row:hover{background:#f8fdf8}
+.item-row td{padding:6px 8px!important;vertical-align:middle}
+.total-panel{background:linear-gradient(180deg,var(--sidebar-hover),var(--sidebar-bg));color:var(--white);padding:16px}
+.total-panel .total-val{font-size:2.2rem;font-weight:800;color:#dbeafe}
+.badge-peso{background:var(--accent);color:var(--white);font-size:.68rem;padding:2px 5px;border-radius:3px}
+.search-bar{background:#f8f9f8;border:2px solid #e0e0e0;border-radius:6px;padding:8px 12px;font-size:.95rem}
+.search-bar:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 2px rgba(59,130,246,.15)}
+.btn-add-item{background:linear-gradient(135deg,var(--sidebar-bg),var(--sidebar-active));border:none;color:var(--white);border-radius:6px;padding:8px 14px;cursor:pointer}
+.btn-add-item:hover{background:linear-gradient(135deg,#162d4a,var(--sidebar-bg))}
+.btn-remove{background:#c62828;border:none;color:#fff;border-radius:4px;width:26px;height:26px;cursor:pointer;font-size:.8rem}
+.medio-btn{background:#fff;border:2px solid #ddd;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:.8rem;text-align:center;transition:all .15s}
+.medio-btn:hover,.medio-btn.active{border-color:var(--accent);background:var(--accent-light);font-weight:600}
+.season-pill{background:#dbeafe;color:var(--sidebar-bg);border:1px solid rgba(59,130,246,.25);border-radius:999px;padding:.35rem .75rem;font-size:.78rem;font-weight:700}
+.search-result{cursor:pointer;transition:.1s}
+.search-result:hover{background:var(--accent-light)}
+.cart-head th{background:var(--sidebar-bg)!important;color:var(--white)!important;border-color:rgba(255,255,255,.08)!important}
+.btn-confirm-item{background:linear-gradient(135deg,var(--sidebar-bg),var(--sidebar-active));border:none;color:var(--white)}
+.btn-confirm-item:hover{background:linear-gradient(135deg,#162d4a,var(--sidebar-bg));color:var(--white)}
+@media (max-width: 991.98px){
+  .total-panel .total-val{font-size:1.8rem}
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
-    <div class="row">
-        <!-- Panel de búsqueda y productos -->
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="fas fa-search"></i> Buscar Productos</h5>
-                </div>
-                <div class="card-body">
-                    <div class="input-group mb-3">
-                        <input type="text" id="busqueda" class="form-control" placeholder="Buscar por nombre, código o categoría..." autocomplete="off">
-                        <button class="btn btn-outline-primary" type="button" id="btn-buscar">
-                            <i class="fas fa-search"></i> Buscar
-                        </button>
-                        {% if temporada %}
-                        <button class="btn btn-outline-warning" type="button" id="btn-temporada" data-tid="{{ temporada.id }}" title="Ver productos de {{ temporada.nombre }}">
-                            <i class="fas fa-star"></i> {{ temporada.nombre }}
-                        </button>
-                        {% endif %}
-                    </div>
-                    
-                    <div id="resultados" class="row">
-                        <!-- Resultados de búsqueda aparecerán aquí -->
-                    </div>
-                </div>
-            </div>
+<div class="row g-3 pv-shell">
+  <div class="col-lg-7">
+    <div class="pv-left">
+      <div class="pv-header">
+        <div class="d-flex align-items-center gap-3">
+          <span><i class="fas fa-barcode me-2"></i>Código / Descripción</span>
+          {% if temporada %}
+          <button type="button" class="season-pill ms-auto" id="btn-temporada" data-query="{{ temporada.nombre }}">
+            <i class="fas fa-star me-1"></i>{{ temporada.nombre }}
+          </button>
+          {% else %}
+          <span class="ms-auto text-muted" style="font-size:.8rem;">Ticket nuevo</span>
+          {% endif %}
         </div>
-        
-        <!-- Panel del carrito -->
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0"><i class="fas fa-shopping-cart"></i> Carrito</h5>
-                </div>
-                <div class="card-body">
-                    <div id="carrito-items">
-                        <!-- Items del carrito aparecerán aquí -->
-                        <p class="text-muted text-center">Carrito vacío</p>
-                    </div>
-                    
-                    <hr>
-                    
-                    <div id="carrito-total" class="d-none">
-                        <div class="row mb-2">
-                            <div class="col-6">Subtotal:</div>
-                            <div class="col-6 text-end" id="subtotal">$0.00</div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-6">Descuento:</div>
-                            <div class="col-6 text-end">
-                                <input type="number" id="descuento-adicional" class="form-control form-control-sm d-inline-block w-75" value="0" min="0" step="0.01">
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-6 fw-bold">Total:</div>
-                            <div class="col-6 text-end fw-bold" id="total">$0.00</div>
-                        </div>
-                    </div>
-                    
-                    <form id="form-venta" method="POST" action="{{ url_for('venta_finalizar') }}">
-                        <div class="mb-3">
-                            <label for="cliente" class="form-label">Cliente</label>
-                            <select name="cliente_id" id="cliente" class="form-select">
-                                <option value="0">Mostrador</option>
-                                {% for cliente in clientes %}
-                                <option value="{{ cliente.id }}">{{ cliente.nombre }}</option>
-                                {% endfor %}
-                            </select>
-                            <input type="text" name="cliente_nombre" id="cliente-nombre" class="form-control mt-1" placeholder="Nombre del cliente" style="display: none;">
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="medio-pago" class="form-label">Medio de Pago</label>
-                            <select name="medio_pago" id="medio-pago" class="form-select">
-                                <option value="Efectivo">Efectivo</option>
-                                <option value="Débito">Débito</option>
-                                <option value="Crédito">Crédito</option>
-                                <option value="Transferencia">Transferencia</option>
-                                <option value="QR">QR</option>
-                                <option value="Cuenta Corriente">Cuenta Corriente</option>
-                            </select>
-                        </div>
+      </div>
+      <div class="p-3">
+        <div class="d-flex gap-2 mb-1 position-relative">
+          <div class="flex-grow-1 position-relative">
+            <input
+              type="text"
+              id="busqueda"
+              class="search-bar w-100"
+              placeholder="Código interno / descripción / categoría..."
+              autocomplete="off"
+              autofocus
+            >
+            <div
+              id="searchDropdown"
+              class="d-none position-absolute bg-white border rounded shadow-sm w-100"
+              style="z-index:9999;max-height:280px;overflow-y:auto;top:100%;left:0"
+            ></div>
+          </div>
+          <button class="btn-add-item" type="button" id="btn-buscar">
+            <i class="fas fa-plus"></i> Agregar
+          </button>
+        </div>
+        <small class="text-muted d-block mb-3" style="font-size:.78rem">
+          <i class="fas fa-info-circle me-1"></i>Escribí o escaneá un código y presioná Enter para preparar el producto.
+        </small>
 
-                        <div class="mb-3" id="div-cuotas" style="display: none;">
-                            <label class="form-label text-primary fw-bold">Plan de Cuotas (CC)</label>
-                            <select name="cuotas" class="form-select border-primary">
-                                <option value="1">1 Cuota (Saldo total)</option>
-                                <option value="2">2 Cuotas mensuales</option>
-                                <option value="3">3 Cuotas mensuales</option>
-                                <option value="6">6 Cuotas mensuales</option>
-                            </select>
-                            <div class="mt-2">
-                                <label class="form-label small">Interés por financiación (%)</label>
-                                <input type="number" name="interes_porcentaje" class="form-control form-control-sm border-primary" value="0" min="0" step="0.1">
-                            </div>
-                            <small class="text-muted d-block mt-1">Se generarán vencimientos cada 30 días.</small>
-                        </div>
-                        
-                        <div class="d-grid gap-2">
-                            <button type="submit" id="btn-finalizar" class="btn btn-success" disabled>
-                                <i class="fas fa-check"></i> Finalizar Venta
-                            </button>
-                            <button type="button" id="btn-vaciar" class="btn btn-outline-danger">
-                                <i class="fas fa-trash"></i> Vaciar Carrito
-                            </button>
-                        </div>
-                    </form>
-                </div>
+        <div id="prodSuggestion" class="d-none mb-3 p-3" style="background:var(--accent-light);border-radius:6px;">
+          <div class="d-flex align-items-center justify-content-between">
+            <div>
+              <strong id="sugNombre"></strong>
+              <span id="sugPeso" class="badge-peso d-none">× PESO</span><br>
+              <small class="text-muted"><span id="sugCat"></span> · <span id="sugUnidad"></span></small>
             </div>
+            <div class="text-end">
+              <div style="font-size:1.2rem;font-weight:700;color:var(--sidebar-active)">$<span id="sugPrecio"></span></div>
+              <small class="text-muted">Stock: <span id="sugStock"></span></small>
+            </div>
+          </div>
+          <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
+            <label class="fw-bold" style="font-size:.85rem;" id="cantLabel">Cantidad:</label>
+            <input type="number" id="cantInput" class="form-control form-control-sm" style="width:90px" min="0.001" step="0.001" value="1">
+            <button class="btn btn-sm ms-auto btn-confirm-item" type="button" id="btn-confirmar-item">
+              <i class="fas fa-check"></i> Confirmar
+            </button>
+          </div>
         </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm" id="cartTable">
+            <thead class="cart-head">
+              <tr>
+                <th>Producto</th>
+                <th>Cat.</th>
+                <th>Cant.</th>
+                <th>P.Unit.</th>
+                <th>Subtotal</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="cartBody">
+              <tr id="emptyRow">
+                <td colspan="6" class="text-center text-muted py-4">
+                  <i class="fas fa-shopping-basket fa-2x mb-2 d-block" style="color:#ddd"></i>
+                  Escaneá o buscá un producto para agregar
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
-</div>
+  </div>
 
-<!-- Modal para cantidad -->
-<div class="modal fade" id="modal-cantidad" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Cantidad</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label for="cantidad-input" class="form-label">Cantidad a agregar:</label>
-                    <input type="number" id="cantidad-input" class="form-control" value="1" min="0.01" step="0.01">
-                </div>
-                <div class="text-muted small">
-                    Stock disponible: <span id="stock-disponible"></span>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btn-agregar-carrito">Agregar al Carrito</button>
-            </div>
+  <div class="col-lg-5">
+    <form id="form-venta" method="POST" action="{{ url_for('venta_finalizar') }}" class="pv-right">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="cliente_nombre" id="clienteNombre">
+      <input type="hidden" name="medio_pago" id="medioPago" value="Efectivo">
+      <input type="hidden" name="descuento_adicional" id="descuentoAdicional" value="0">
+
+      <div class="pv-header">
+        <i class="fas fa-receipt me-2"></i>Cobro
+      </div>
+      <div class="p-3">
+        <div class="mb-2">
+          <label class="text-white-50" style="font-size:.78rem;font-weight:600">CLIENTE</label>
+          <select id="clienteSel" name="cliente_id" class="form-select form-select-sm">
+            <option value="0">Mostrador</option>
+            {% for cliente in clientes %}
+            <option value="{{ cliente.id }}">{{ cliente.nombre }}</option>
+            {% endfor %}
+          </select>
         </div>
-    </div>
-</div>
 
+        <div class="mb-2">
+          <label class="text-white-50" style="font-size:.78rem;font-weight:600">VENDEDOR</label>
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            value="{{ session['user']['nombre_completo'] or session['user']['username'] }}"
+            readonly
+          >
+        </div>
+
+        <div class="mb-2">
+          <label class="text-white-50" style="font-size:.78rem;font-weight:600">MEDIO DE PAGO</label>
+          <div class="d-flex flex-wrap gap-1 mt-1" id="mediosBtns">
+            {% for medio in ['Efectivo', 'Débito', 'Crédito', 'Transferencia', 'QR', 'Cuenta Corriente'] %}
+            <button
+              type="button"
+              class="medio-btn {% if loop.first %}active{% endif %}"
+              data-medio="{{ medio }}"
+            >{{ medio }}</button>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="text-white-50" style="font-size:.78rem;font-weight:600">DESCUENTO ADICIONAL ($)</label>
+          <input type="number" id="dtoAdicionalInput" class="form-control form-control-sm" value="0" min="0" step="0.01">
+          <small class="text-white-50">Se descuenta del total final del ticket.</small>
+        </div>
+      </div>
+
+      <div class="total-panel">
+        <div class="row mb-2">
+          <div class="col-6 text-white-50" style="font-size:.85rem">SUBTOTAL</div>
+          <div class="col-6 text-end text-white" id="dispSubtotal">$0,00</div>
+        </div>
+        <div class="row mb-2">
+          <div class="col-6 text-white-50" style="font-size:.85rem">DESCUENTO</div>
+          <div class="col-6 text-end text-danger" id="dispDescuento">$0,00</div>
+        </div>
+        <hr style="border-color:rgba(255,255,255,.18)">
+        <div class="mb-1 text-white-50" style="font-size:.8rem">TOTAL A COBRAR</div>
+        <div class="total-val" id="dispTotal">$0,00</div>
+
+        <div class="row mt-3 align-items-center" id="cashPanel">
+          <div class="col-6">
+            <label class="text-white-50" style="font-size:.78rem">RECIBIDO ($)</label>
+            <input type="number" id="recibidoInput" class="form-control" value="0" min="0" step="0.01">
+          </div>
+          <div class="col-6">
+            <label class="text-white-50" style="font-size:.78rem">VUELTO</label>
+            <div id="dispVuelto" style="font-size:1.4rem;font-weight:700;color:#ffd54f">$0,00</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-3">
+        <button class="btn btn-lg w-100 fw-bold" id="btnCobrar" type="submit" style="background:linear-gradient(135deg,#dbeafe,var(--white));color:var(--sidebar-bg);font-size:1.1rem;border:none;">
+          <i class="fas fa-check-circle me-2"></i>CONFIRMAR VENTA
+        </button>
+        <button class="btn btn-outline-danger btn-sm w-100 mt-2" type="button" id="btnCancelarVenta">
+          <i class="fas fa-times me-1"></i>Cancelar / Limpiar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/pos.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  let cart = [];
+  let currentProduct = null;
+  let searchTimer = null;
+  let lastResults = [];
+
+  const busqueda = document.getElementById('busqueda');
+  const btnBuscar = document.getElementById('btn-buscar');
+  const searchDropdown = document.getElementById('searchDropdown');
+  const prodSuggestion = document.getElementById('prodSuggestion');
+  const cantInput = document.getElementById('cantInput');
+  const btnConfirmarItem = document.getElementById('btn-confirmar-item');
+  const cartBody = document.getElementById('cartBody');
+  const clienteSel = document.getElementById('clienteSel');
+  const clienteNombre = document.getElementById('clienteNombre');
+  const medioPago = document.getElementById('medioPago');
+  const descuentoAdicional = document.getElementById('descuentoAdicional');
+  const dtoAdicionalInput = document.getElementById('dtoAdicionalInput');
+  const recibidoInput = document.getElementById('recibidoInput');
+  const dispSubtotal = document.getElementById('dispSubtotal');
+  const dispDescuento = document.getElementById('dispDescuento');
+  const dispTotal = document.getElementById('dispTotal');
+  const dispVuelto = document.getElementById('dispVuelto');
+  const cashPanel = document.getElementById('cashPanel');
+  const formVenta = document.getElementById('form-venta');
+  const btnCancelarVenta = document.getElementById('btnCancelarVenta');
+  const btnTemporada = document.getElementById('btn-temporada');
+
+  function formatNum(n) {
+    return parseFloat(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function showAlert(msg, type) {
+    const div = document.createElement('div');
+    div.className = 'alert alert-' + type + ' alert-dismissible position-fixed';
+    div.style = 'top:20px;right:20px;z-index:9999;min-width:300px;';
+    div.innerHTML = msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 4000);
+  }
+
+  async function fetchCart() {
+    const response = await fetch('/api/carrito/agregar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ producto_id: -1, cantidad: 0 })
+    });
+    const data = await response.json();
+    if (!data.ok) {
+      throw new Error(data.error || 'No se pudo cargar el carrito');
+    }
+    cart = data.carrito || [];
+    renderCart();
+    updateTotals();
+  }
+
+  async function searchProducts(term) {
+    const response = await fetch('/api/buscar_productos?q=' + encodeURIComponent(term || ''));
+    const data = await response.json();
+    if (!data.ok) {
+      throw new Error(data.error || 'No se pudo buscar productos');
+    }
+    lastResults = data.productos || [];
+    return lastResults;
+  }
+
+  async function searchExactProduct(term) {
+    const response = await fetch('/api/producto/buscar?codigo=' + encodeURIComponent(term || ''));
+    const data = await response.json();
+    if (data.ok && data.producto) {
+      return data.producto;
+    }
+    return null;
+  }
+
+  function renderDropdown(items) {
+    if (!items.length) {
+      searchDropdown.classList.add('d-none');
+      searchDropdown.innerHTML = '';
+      return;
+    }
+
+    searchDropdown.innerHTML = items.map((p, idx) => {
+      const stock = parseFloat(p.stock_actual || 0);
+      const stockColor = stock <= 0 ? '#c62828' : '#2563eb';
+      const badgePeso = p.por_peso ? '<span class="badge-peso ms-1" style="font-size:.65rem">× PESO</span>' : '';
+      return `
+        <div class="px-3 py-2 border-bottom search-result" data-idx="${idx}">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <strong style="font-size:.88rem">${p.descripcion}</strong>
+              <small class="ms-1 text-muted">${p.categoria || ''}</small>
+              ${badgePeso}
+            </div>
+            <div class="text-end ms-2 flex-shrink-0">
+              <div style="font-weight:700;color:var(--sidebar-active);font-size:.9rem">$${formatNum(p.precio_venta)}</div>
+              <small style="color:${stockColor}">${stock <= 0 ? 'Sin stock' : 'Stock: ' + stock}</small>
+            </div>
+          </div>
+          <small class="text-muted">${p.codigo_interno || ''}</small>
+        </div>
+      `;
+    }).join('');
+    searchDropdown.classList.remove('d-none');
+  }
+
+  function showSuggestion(product) {
+    currentProduct = product;
+    busqueda.value = '';
+    document.getElementById('sugNombre').textContent = product.descripcion || '';
+    document.getElementById('sugCat').textContent = product.categoria || '-';
+    document.getElementById('sugUnidad').textContent = product.unidad || 'Unidad';
+    document.getElementById('sugPrecio').textContent = formatNum(product.precio_venta);
+    document.getElementById('sugStock').textContent = product.stock_actual || 0;
+    document.getElementById('cantLabel').textContent = product.por_peso ? 'Peso (kg):' : 'Cantidad:';
+    cantInput.step = product.por_peso ? '0.001' : '1';
+    cantInput.value = product.por_peso ? '' : '1';
+    document.getElementById('sugPeso').classList.toggle('d-none', !product.por_peso);
+    prodSuggestion.classList.remove('d-none');
+    searchDropdown.classList.add('d-none');
+    cantInput.focus();
+  }
+
+  async function buscarProducto() {
+    const term = busqueda.value.trim();
+    if (!term) {
+      return;
+    }
+    try {
+      const exactProduct = await searchExactProduct(term);
+      if (exactProduct) {
+        showSuggestion(exactProduct);
+        return;
+      }
+      const items = await searchProducts(term);
+      if (!items.length) {
+        showAlert('No se encontraron productos para esa búsqueda.', 'warning');
+        renderDropdown([]);
+        return;
+      }
+      const normalized = term.toLowerCase();
+      const exactMatch = items.find((item) =>
+        String(item.codigo_interno || '').toLowerCase() === normalized ||
+        String(item.codigo_barras || '').toLowerCase() === normalized
+      );
+      if (exactMatch) {
+        showSuggestion(exactMatch);
+        return;
+      }
+      if (items.length === 1) {
+        showSuggestion(items[0]);
+        return;
+      }
+      renderDropdown(items);
+    } catch (error) {
+      showAlert('Error al buscar productos.', 'danger');
+    }
+  }
+
+  async function confirmarItem() {
+    if (!currentProduct) {
+      return;
+    }
+    const cantidad = parseFloat(cantInput.value);
+    const stock = parseFloat(currentProduct.stock_actual || 0);
+    if (!cantidad || cantidad <= 0) {
+      showAlert('Ingresá una cantidad válida.', 'warning');
+      return;
+    }
+    if (cantidad > stock) {
+      showAlert('La cantidad supera el stock disponible.', 'warning');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/carrito/agregar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          producto_id: currentProduct.id,
+          cantidad: cantidad
+        })
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        showAlert(data.error || 'No se pudo agregar el producto.', 'danger');
+        return;
+      }
+      cart = data.carrito || [];
+      renderCart();
+      updateTotals();
+      prodSuggestion.classList.add('d-none');
+      currentProduct = null;
+      cantInput.value = '1';
+      busqueda.focus();
+    } catch (error) {
+      showAlert('Error al agregar al carrito.', 'danger');
+    }
+  }
+
+  function renderCart() {
+    if (!cart.length) {
+      cartBody.innerHTML = `
+        <tr id="emptyRow">
+          <td colspan="6" class="text-center text-muted py-4">
+            <i class="fas fa-shopping-basket fa-2x mb-2 d-block" style="color:#ddd"></i>
+            Escaneá o buscá un producto para agregar
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    cartBody.innerHTML = cart.map((item, idx) => `
+      <tr class="item-row">
+        <td><strong>${item.descripcion}</strong><br><small class="text-muted">${item.codigo_interno || ''}</small></td>
+        <td><small>${item.categoria || '-'}</small></td>
+        <td>${item.cantidad} ${item.unidad || ''}</td>
+        <td>$${formatNum(item.precio_unitario)}</td>
+        <td><strong>$${formatNum(item.subtotal)}</strong></td>
+        <td><button class="btn-remove" type="button" data-remove-idx="${idx}"><i class="fas fa-times"></i></button></td>
+      </tr>
+    `).join('');
+  }
+
+  function updateTotals() {
+    const subtotal = cart.reduce((acc, item) => acc + parseFloat(item.subtotal || 0), 0);
+    const descuento = Math.max(0, parseFloat(dtoAdicionalInput.value || 0));
+    const total = Math.max(0, subtotal - descuento);
+
+    descuentoAdicional.value = descuento.toFixed(2);
+    dispSubtotal.textContent = '$' + formatNum(subtotal);
+    dispDescuento.textContent = '$' + formatNum(descuento);
+    dispTotal.textContent = '$' + formatNum(total);
+    calcVuelto();
+  }
+
+  function calcVuelto() {
+    const total = cart.reduce((acc, item) => acc + parseFloat(item.subtotal || 0), 0) - Math.max(0, parseFloat(dtoAdicionalInput.value || 0));
+    const recibido = parseFloat(recibidoInput.value || 0);
+    const vuelto = recibido - Math.max(0, total);
+    dispVuelto.textContent = (vuelto >= 0 ? '$' : '-$') + formatNum(Math.abs(vuelto));
+    dispVuelto.style.color = vuelto >= 0 ? '#ffd54f' : '#ef9a9a';
+  }
+
+  function setMedio(button) {
+    document.querySelectorAll('.medio-btn').forEach((item) => item.classList.remove('active'));
+    button.classList.add('active');
+    medioPago.value = button.dataset.medio;
+    const isCash = button.dataset.medio === 'Efectivo';
+    cashPanel.classList.toggle('opacity-50', !isCash);
+    recibidoInput.disabled = !isCash;
+    if (!isCash) {
+      recibidoInput.value = '0';
+    }
+    calcVuelto();
+  }
+
+  async function removeItem(index) {
+    const item = cart[index];
+    if (!item) {
+      return;
+    }
+    try {
+      const response = await fetch('/api/carrito/quitar/' + item.producto_id, { method: 'POST' });
+      const data = await response.json();
+      if (!data.ok) {
+        showAlert(data.error || 'No se pudo quitar el producto.', 'danger');
+        return;
+      }
+      cart = data.carrito || [];
+      renderCart();
+      updateTotals();
+    } catch (error) {
+      showAlert('Error al quitar el producto.', 'danger');
+    }
+  }
+
+  async function cancelarVenta() {
+    if (cart.length) {
+      const result = await Swal.fire({
+        title: '¿Cancelar la venta actual?',
+        text: 'Se quitarán los productos cargados del ticket actual.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#c62828',
+        cancelButtonColor: '#1e3a5f',
+        confirmButtonText: 'Sí, cancelar',
+        cancelButtonText: 'Seguir editando',
+        background: '#1a2a3f',
+        color: '#ffffff'
+      });
+      if (!result.isConfirmed) {
+        return;
+      }
+    }
+    try {
+      const response = await fetch('/api/carrito/vaciar', { method: 'POST' });
+      const data = await response.json();
+      if (!data.ok) {
+        showAlert(data.error || 'No se pudo vaciar el carrito.', 'danger');
+        return;
+      }
+      cart = [];
+      currentProduct = null;
+      prodSuggestion.classList.add('d-none');
+      dtoAdicionalInput.value = '0';
+      recibidoInput.value = '0';
+      renderCart();
+      updateTotals();
+      busqueda.value = '';
+      searchDropdown.classList.add('d-none');
+      busqueda.focus();
+    } catch (error) {
+      showAlert('Error al limpiar la venta.', 'danger');
+    }
+  }
+
+  busqueda.addEventListener('input', function () {
+    const term = this.value.trim();
+    clearTimeout(searchTimer);
+    if (term.length < 2) {
+      renderDropdown([]);
+      return;
+    }
+    searchTimer = setTimeout(async function () {
+      try {
+        const items = await searchProducts(term);
+        renderDropdown(items);
+      } catch (error) {
+        renderDropdown([]);
+      }
+    }, 220);
+  });
+
+  busqueda.addEventListener('keypress', function (event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      buscarProducto();
+    }
+  });
+
+  btnBuscar.addEventListener('click', buscarProducto);
+  btnConfirmarItem.addEventListener('click', confirmarItem);
+  cantInput.addEventListener('keypress', function (event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      confirmarItem();
+    }
+  });
+
+  dtoAdicionalInput.addEventListener('input', updateTotals);
+  recibidoInput.addEventListener('input', calcVuelto);
+  clienteSel.addEventListener('change', function () {
+    clienteNombre.value = this.options[this.selectedIndex].text;
+  });
+
+  document.getElementById('mediosBtns').addEventListener('click', function (event) {
+    const button = event.target.closest('.medio-btn');
+    if (!button) {
+      return;
+    }
+    setMedio(button);
+  });
+
+  searchDropdown.addEventListener('click', function (event) {
+    const row = event.target.closest('[data-idx]');
+    if (!row) {
+      return;
+    }
+    const idx = parseInt(row.dataset.idx, 10);
+    if (!Number.isNaN(idx) && lastResults[idx]) {
+      showSuggestion(lastResults[idx]);
+    }
+  });
+
+  cartBody.addEventListener('click', function (event) {
+    const button = event.target.closest('[data-remove-idx]');
+    if (!button) {
+      return;
+    }
+    removeItem(parseInt(button.dataset.removeIdx, 10));
+  });
+
+  document.addEventListener('click', function (event) {
+    if (!busqueda.contains(event.target) && !searchDropdown.contains(event.target)) {
+      searchDropdown.classList.add('d-none');
+    }
+  });
+
+  if (btnTemporada) {
+    btnTemporada.addEventListener('click', function () {
+      busqueda.value = this.dataset.query || '';
+      buscarProducto();
+    });
+  }
+
+  formVenta.addEventListener('submit', function (event) {
+    if (!cart.length) {
+      event.preventDefault();
+      showAlert('Agregá productos al ticket antes de confirmar.', 'warning');
+      return;
+    }
+    if (medioPago.value === 'Cuenta Corriente' && clienteSel.value === '0') {
+      event.preventDefault();
+      showAlert('Seleccioná un cliente para vender en cuenta corriente.', 'warning');
+      return;
+    }
+    clienteNombre.value = clienteSel.options[clienteSel.selectedIndex].text;
+    descuentoAdicional.value = Math.max(0, parseFloat(dtoAdicionalInput.value || 0)).toFixed(2);
+    document.getElementById('btnCobrar').disabled = true;
+  });
+
+  btnCancelarVenta.addEventListener('click', cancelarVenta);
+
+  clienteNombre.value = clienteSel.options[clienteSel.selectedIndex].text;
+  setMedio(document.querySelector('.medio-btn.active'));
+  fetchCart().catch(() => {
+    renderCart();
+    updateTotals();
+  });
+});
+</script>
 {% endblock %}

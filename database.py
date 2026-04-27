@@ -2120,19 +2120,71 @@ def get_compra(cid):
 
 def update_compra(cid, data):
     """Actualiza una compra."""
-    q(
+    compra_actual = get_compra(cid)
+    if not compra_actual:
+        return
+
+    conn = get_conn()
+    c = conn.cursor()
+
+    producto_anterior = int(compra_actual['producto_id'] or 0)
+    cantidad_anterior = float(compra_actual['cantidad'] or 0)
+    proveedor_nuevo = int(data.get('proveedor_id', 0) or 0)
+    producto_nuevo = int(data.get('producto_id', 0) or 0)
+    cantidad_nueva = float(data.get('cantidad', 1) or 0)
+    costo_nuevo = float(data.get('costo_unitario', 0) or 0)
+    total_nuevo = float(data.get('total', 0) or 0)
+    fecha_nueva = data.get('fecha', datetime.now().strftime('%Y-%m-%d'))
+
+    if producto_anterior > 0 and cantidad_anterior > 0:
+        stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_anterior,)).fetchone()
+        if stock:
+            c.execute(
+                "UPDATE stock SET stock_actual=? WHERE producto_id=?",
+                (float(stock['stock_actual'] or 0) - cantidad_anterior, producto_anterior)
+            )
+
+    if producto_nuevo > 0 and cantidad_nueva > 0:
+        stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_nuevo,)).fetchone()
+        if stock:
+            c.execute(
+                "UPDATE stock SET stock_actual=?, ultimo_ingreso=? WHERE producto_id=?",
+                (float(stock['stock_actual'] or 0) + cantidad_nueva, fecha_nueva, producto_nuevo)
+            )
+        if costo_nuevo > 0:
+            c.execute("UPDATE productos SET costo=? WHERE id=?", (costo_nuevo, producto_nuevo))
+
+    c.execute(
         """UPDATE compras SET fecha=?,numero_remito=?,proveedor_id=?,proveedor_nombre=?,producto_id=?,codigo_interno=?,descripcion=?,cantidad=?,costo_unitario=?,total=?,observaciones=? WHERE id=?""",
-        (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('numero_remito', ''),
-         data.get('proveedor_id', 0), data.get('proveedor_nombre', ''), data.get('producto_id', 0),
-         data.get('codigo_interno', ''), data.get('descripcion', ''), float(data.get('cantidad', 1)),
-         float(data.get('costo_unitario', 0)), float(data.get('total', 0)), data.get('observaciones', ''), cid),
-        fetchall=False, commit=True
+        (fecha_nueva, data.get('numero_remito', ''),
+         proveedor_nuevo, data.get('proveedor_nombre', ''), producto_nuevo,
+         data.get('codigo_interno', ''), data.get('descripcion', ''), cantidad_nueva,
+         costo_nuevo, total_nuevo, data.get('observaciones', ''), cid)
     )
+    conn.commit()
+    conn.close()
 
 
 def delete_compra(cid):
     """Elimina una compra."""
-    q("DELETE FROM compras WHERE id=?", (cid,), fetchall=False, commit=True)
+    compra_actual = get_compra(cid)
+    if not compra_actual:
+        return
+
+    conn = get_conn()
+    c = conn.cursor()
+    producto_id = int(compra_actual['producto_id'] or 0)
+    cantidad = float(compra_actual['cantidad'] or 0)
+    if producto_id > 0 and cantidad > 0:
+        stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
+        if stock:
+            c.execute(
+                "UPDATE stock SET stock_actual=? WHERE producto_id=?",
+                (float(stock['stock_actual'] or 0) - cantidad, producto_id)
+            )
+    c.execute("DELETE FROM compras WHERE id=?", (cid,))
+    conn.commit()
+    conn.close()
 
 
 def incrementar_stock_compra(producto_id, cantidad, compra_id=None):
@@ -2421,15 +2473,15 @@ def get_dashboard_stats():
 
 def buscar_productos_pos(search):
     """Busca productos para POS por nombre/código/categoría."""
-    sql = """SELECT p.id, p.codigo_interno, p.descripcion, p.categoria, p.unidad,
-                    p.precio_venta, s.stock_actual
+    sql = """SELECT p.id, p.codigo_interno, p.codigo_barras, p.descripcion, p.categoria, p.unidad,
+                    p.por_peso, p.precio_venta, s.stock_actual
              FROM productos p
              JOIN stock s ON s.producto_id = p.id
              WHERE p.activo=1""" 
     params = []
     if search:
-        sql += " AND (p.descripcion LIKE ? OR p.categoria LIKE ? OR p.codigo_interno LIKE ?)"
-        params += [f'%{search}%'] * 3
+        sql += " AND (p.descripcion LIKE ? OR p.categoria LIKE ? OR p.codigo_interno LIKE ? OR p.codigo_barras LIKE ?)"
+        params += [f'%{search}%'] * 4
     sql += " ORDER BY p.descripcion LIMIT 50"
     
     # DEBUG: Descomenta las siguientes líneas para ver la consulta SQL y los parámetros

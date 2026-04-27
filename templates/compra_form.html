@@ -15,53 +15,73 @@
     </div>
 
     <div class="row">
-        <div class="col-md-8 mx-auto">
+        <div class="col-md-9 mx-auto">
             <div class="card">
                 <div class="card-body">
-                    <form method="POST">
+                    <form method="POST" id="compraForm">
                         <div class="mb-3">
                             <label class="form-label">Fecha</label>
-                            <input type="date" class="form-control" name="fecha" value="{{ compra.fecha if compra else '' }}" required>
+                            <input type="date" class="form-control" name="fecha" value="{{ draft.fecha if draft else (compra.fecha if compra else '') }}" required>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">N° Remito</label>
-                            <input type="text" class="form-control" name="numero_remito" value="{{ compra.numero_remito if compra else '' }}">
+                            <input type="text" class="form-control" name="numero_remito" value="{{ draft.numero_remito if draft else (compra.numero_remito if compra else '') }}">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Proveedor</label>
                             <select class="form-select" name="proveedor_id" required>
                                 <option value="">Seleccionar proveedor</option>
                                 {% for proveedor in proveedores %}
-                                <option value="{{ proveedor.id }}" {% if compra and compra.proveedor_id == proveedor.id %}selected{% endif %}>{{ proveedor.nombre }}</option>
+                                <option value="{{ proveedor.id }}" {% if (draft and draft.proveedor_id == (proveedor.id|string)) or (compra and compra.proveedor_id == proveedor.id) %}selected{% endif %}>{{ proveedor.nombre }}</option>
                                 {% endfor %}
                             </select>
                         </div>
+
                         <div class="mb-3">
-                            <label class="form-label">Producto</label>
-                            <select class="form-select" name="producto_id" required>
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                <label class="form-label mb-0">Producto</label>
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="btnCrearProducto">
+                                    <i class="fas fa-plus me-1"></i>Crear producto
+                                </button>
+                            </div>
+                            <select class="form-select" name="producto_id" id="producto_id" required>
                                 <option value="">Seleccionar producto</option>
                                 {% for producto in productos %}
-                                <option value="{{ producto.id }}" {% if compra and compra.producto_id == producto.id %}selected{% endif %}>{{ producto.descripcion }} - {{ producto.codigo_interno }}</option>
+                                <option value="{{ producto.id }}" {% if (draft and draft.producto_id == (producto.id|string)) or (compra and compra.producto_id == producto.id) %}selected{% endif %}>{{ producto.descripcion }} - {{ producto.codigo_interno }}</option>
                                 {% endfor %}
                             </select>
+                            <div class="form-text">Si no existe, podés crearlo y volver directo a esta compra con el producto ya seleccionado.</div>
                         </div>
+
                         <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label">Descripción para producto nuevo</label>
+                                <input type="text" class="form-control" name="producto_descripcion" id="producto_descripcion" value="{{ draft.producto_descripcion if draft else '' }}" placeholder="Ej: Yerba mate 500g">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Código de barras</label>
+                                <input type="text" class="form-control" name="codigo_barras" id="codigo_barras" value="{{ draft.codigo_barras if draft else '' }}" placeholder="Opcional">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1">
                             <div class="col-md-4">
                                 <label class="form-label">Cantidad</label>
-                                <input type="number" step="0.01" min="0" class="form-control" name="cantidad" value="{{ compra.cantidad if compra else '1' }}" required>
+                                <input type="number" step="0.01" min="0" class="form-control" name="cantidad" id="cantidad" value="{{ draft.cantidad if draft else (compra.cantidad if compra else '1') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Costo Unitario</label>
-                                <input type="number" step="0.01" min="0" class="form-control" name="costo_unitario" value="{{ compra.costo_unitario if compra else '0.00' }}" required>
+                                <input type="number" step="0.01" min="0" class="form-control" name="costo_unitario" id="costo_unitario" value="{{ draft.costo_unitario if draft else (compra.costo_unitario if compra else '0.00') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Total</label>
-                                <input type="text" class="form-control" value="{{ ((compra.cantidad if compra else 0) * (compra.costo_unitario if compra else 0)) | float }}" disabled>
+                                <input type="text" class="form-control" id="total_preview" disabled>
                             </div>
                         </div>
+
                         <div class="mb-3 mt-3">
                             <label class="form-label">Observaciones</label>
-                            <textarea class="form-control" name="observaciones" rows="3">{{ compra.observaciones if compra else '' }}</textarea>
+                            <textarea class="form-control" name="observaciones" id="observaciones" rows="3">{{ draft.observaciones if draft else (compra.observaciones if compra else '') }}</textarea>
                         </div>
 
                         <div class="text-end">
@@ -74,4 +94,64 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('compraForm');
+    const cantidad = document.getElementById('cantidad');
+    const costo = document.getElementById('costo_unitario');
+    const totalPreview = document.getElementById('total_preview');
+    const crearProductoBtn = document.getElementById('btnCrearProducto');
+
+    function updateTotal() {
+        const cantidadValue = parseFloat(cantidad.value || 0);
+        const costoValue = parseFloat(costo.value || 0);
+        totalPreview.value = (cantidadValue * costoValue).toFixed(2);
+    }
+
+    function buildProductoUrl() {
+        const params = new URLSearchParams();
+        params.set('return_to', 'compra_nueva');
+        ['fecha', 'numero_remito', 'proveedor_id', 'producto_id', 'cantidad', 'costo_unitario', 'observaciones', 'producto_descripcion', 'codigo_barras'].forEach((field) => {
+            const input = form.elements.namedItem(field);
+            if (input && input.value) {
+                params.set(field, input.value);
+            }
+        });
+        params.set('prefill_descripcion', form.elements.namedItem('producto_descripcion').value || '');
+        params.set('prefill_codigo_barras', form.elements.namedItem('codigo_barras').value || '');
+        params.set('prefill_costo', form.elements.namedItem('costo_unitario').value || '');
+        return `{{ url_for('producto_nuevo') }}?${params.toString()}`;
+    }
+
+    cantidad.addEventListener('input', updateTotal);
+    costo.addEventListener('input', updateTotal);
+    updateTotal();
+
+    crearProductoBtn.addEventListener('click', function () {
+        const descripcion = (form.elements.namedItem('producto_descripcion').value || '').trim();
+        if (!descripcion) {
+            Swal.fire({
+                title: 'Falta la descripción',
+                text: 'Completá la descripción del producto nuevo antes de crearlo desde compra.',
+                icon: 'info',
+                confirmButtonColor: '#1e3a5f'
+            });
+            return;
+        }
+        window.location.href = buildProductoUrl();
+    });
+
+    {% if created_product %}
+    Swal.fire({
+        title: 'Producto listo',
+        text: 'El producto se creó y quedó seleccionado para continuar la compra.',
+        icon: 'success',
+        confirmButtonColor: '#1e3a5f'
+    });
+    {% endif %}
+});
+</script>
 {% endblock %}

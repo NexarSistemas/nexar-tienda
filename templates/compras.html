@@ -1,112 +1,279 @@
 {% extends "base.html" %}
-
 {% block title %}Compras - Nexar Tienda{% endblock %}
-{% block page_title %}<i class="fas fa-shopping-cart me-2"></i>Gestión de Compras{% endblock %}
-
+{% block page_title %}<i class="fas fa-shopping-cart me-2" style="color:var(--accent)"></i>Registro de Compras{% endblock %}
 {% block topbar_actions %}
-<a href="{{ url_for('compra_nueva') }}" class="btn btn-sm btn-primary">
-    <i class="fas fa-plus me-2"></i>Nueva Compra
-</a>
+<button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#compraModal">
+  <i class="fas fa-plus me-1"></i>Nueva Compra
+</button>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.table-card{background:var(--white);border-radius:14px;box-shadow:var(--shadow-md);overflow:hidden}
+.tc-header{display:flex;align-items:center;gap:1rem;padding:1rem 1.25rem;background:linear-gradient(135deg,var(--sidebar-bg),var(--sidebar-hover));color:var(--white)}
+.tc-header h6{margin:0;font-weight:700}
+.empty-state{text-align:center;color:var(--text-muted);padding:2rem}
+.empty-state i{font-size:2rem;display:block;margin-bottom:.5rem;color:#cbd5e1}
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <form method="GET" class="row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label">Buscar</label>
-                            <input type="text" class="form-control" name="q" value="{{ buscar }}" placeholder="Proveedor, producto, remito...">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Fecha desde</label>
-                            <input type="date" class="form-control" name="fecha_desde" value="{{ fecha_desde }}">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Fecha hasta</label>
-                            <input type="date" class="form-control" name="fecha_hasta" value="{{ fecha_hasta }}">
-                        </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button class="btn btn-outline-primary w-100" type="submit"><i class="fas fa-search me-1"></i>Filtrar</button>
-                        </div>
-                    </form>
-                </div>
+<div class="table-card mb-3">
+  <div class="tc-header">
+    <h6>Compras registradas ({{ compras|length }})</h6>
+    <form class="ms-auto d-flex gap-2" method="get">
+      <input type="text" name="q" value="{{ buscar }}" class="form-control form-control-sm" placeholder="Buscar..." style="width:220px">
+      <input type="date" name="fecha_desde" value="{{ fecha_desde }}" class="form-control form-control-sm">
+      <input type="date" name="fecha_hasta" value="{{ fecha_hasta }}" class="form-control form-control-sm">
+      <button class="btn btn-sm btn-light"><i class="fas fa-search"></i></button>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>Fecha</th><th>Remito/Fact.</th><th>Proveedor</th><th>Producto</th><th>Cant.</th><th>Costo Unit.</th><th>Total</th><th>Obs.</th><th>Acciones</th></tr>
+      </thead>
+      <tbody>
+      {% for c in compras %}
+        <tr>
+          <td>{{ c.fecha }}</td>
+          <td><code>{{ c.numero_remito or '—' }}</code></td>
+          <td>{{ c.proveedor_nombre or '-' }}</td>
+          <td>
+            <strong>{{ c.descripcion }}</strong>
+            <br><small class="text-muted"><code>{{ c.codigo_interno }}</code></small>
+          </td>
+          <td>{{ c.cantidad }}</td>
+          <td>{{ c.costo_unitario|fmt_ars }}</td>
+          <td class="fw-bold">{{ c.total|fmt_ars }}</td>
+          <td><small>{{ c.observaciones or '' }}</small></td>
+          <td class="text-center">
+            <div class="btn-group" role="group">
+              <a href="{{ url_for('compra_detalle', cid=c.id) }}" class="btn btn-sm btn-outline-primary" title="Ver detalle"><i class="fas fa-eye"></i></a>
+              <a href="{{ url_for('compra_editar', cid=c.id) }}" class="btn btn-sm btn-outline-secondary" title="Editar"><i class="fas fa-edit"></i></a>
+              <form method="POST" action="{{ url_for('compra_eliminar', cid=c.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar compra #{{ c.id }}?')">
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="fas fa-trash"></i></button>
+              </form>
             </div>
-        </div>
-    </div>
-
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card border-primary">
-                <div class="card-body text-center">
-                    <i class="fas fa-shopping-bag fa-2x text-primary mb-2"></i>
-                    <h4 class="mb-0">{{ compras|length }}</h4>
-                    <small class="text-muted">Compras totales</small>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Lista de Compras</h5>
-                </div>
-                <div class="card-body">
-                    {% if compras %}
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Fecha</th>
-                                    <th>Proveedor</th>
-                                    <th>Remito</th>
-                                    <th>Producto</th>
-                                    <th class="text-center">Cant.</th>
-                                    <th class="text-end">Costo unit.</th>
-                                    <th class="text-end">Total</th>
-                                    <th class="text-center">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for compra in compras %}
-                                <tr>
-                                    <td>{{ compra.id }}</td>
-                                    <td>{{ compra.fecha }}</td>
-                                    <td>{{ compra.proveedor_nombre or '-' }}</td>
-                                    <td>{{ compra.numero_remito or '-' }}</td>
-                                    <td>{{ compra.descripcion or '-' }}</td>
-                                    <td class="text-center">{{ compra.cantidad }}</td>
-                                    <td class="text-end">$ {{ "%.2f"|format(compra.costo_unitario) }}</td>
-                                    <td class="text-end fw-bold">$ {{ "%.2f"|format(compra.total) }}</td>
-                                    <td class="text-center">
-                                        <div class="btn-group" role="group">
-                                            <a href="{{ url_for('compra_detalle', cid=compra.id) }}" class="btn btn-sm btn-outline-primary" title="Ver detalle"><i class="fas fa-eye"></i></a>
-                                            <form method="POST" action="{{ url_for('compra_eliminar', cid=compra.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar compra #{{ compra.id }}?')">
-                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="fas fa-trash"></i></button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <div class="text-center py-5">
-                        <i class="fas fa-shopping-cart fa-3x text-muted mb-3"></i>
-                        <h5 class="text-muted">No se encontraron compras</h5>
-                        <p class="text-muted">Registra tu primera compra para comenzar a actualizar stock.</p>
-                        <a href="{{ url_for('compra_nueva') }}" class="btn btn-primary">Crear compra</a>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9" class="empty-state"><i class="fas fa-shopping-cart"></i>Sin compras registradas</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+
+<div class="modal fade" id="compraModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="background:var(--sidebar-bg);color:#fff">
+        <h6 class="modal-title"><i class="fas fa-shopping-cart me-2"></i>Registrar Compra / Ingreso de Mercadería</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('compra_nueva') }}" id="compraForm">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Fecha <span class="text-danger">*</span></label>
+              <input type="date" name="fecha" class="form-control" required value="{{ draft.fecha or hoy }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">N° Remito / Factura</label>
+              <input type="text" name="numero_remito" class="form-control" placeholder="FAC-0001" value="{{ draft.numero_remito }}">
+            </div>
+            <div class="col-md-4">
+              <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <label class="form-label fw-bold mb-0">Proveedor</label>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnCrearProveedor">
+                  <i class="fas fa-industry me-1"></i>Crear proveedor
+                </button>
+              </div>
+              <select name="proveedor_id" class="form-select" id="proveedor_id">
+                <option value="0">— Sin proveedor —</option>
+                {% for p in proveedores %}
+                <option value="{{ p.id }}" {% if draft.proveedor_id == (p.id|string) %}selected{% endif %}>{{ p.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-8">
+              <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <label class="form-label fw-bold mb-0">Producto <span class="text-danger">*</span></label>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnCrearProducto">
+                  <i class="fas fa-plus me-1"></i>Crear producto
+                </button>
+              </div>
+              <select name="producto_id" class="form-select" id="producto_id" required>
+                <option value="">— Seleccionar producto —</option>
+                {% for p in productos %}
+                <option value="{{ p.id }}" {% if draft.producto_id == (p.id|string) %}selected{% endif %}>{{ p.descripcion }} ({{ p.codigo_interno }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Código de barras</label>
+              <input type="text" name="codigo_barras" id="codigo_barras" class="form-control" value="{{ draft.codigo_barras }}" placeholder="Opcional">
+            </div>
+            <div class="col-md-8">
+              <label class="form-label fw-bold">Descripción para producto nuevo</label>
+              <input type="text" name="producto_descripcion" id="producto_descripcion" class="form-control" value="{{ draft.producto_descripcion }}" placeholder="Ej: Yerba mate 500g">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-bold">Cantidad <span class="text-danger">*</span></label>
+              <input type="number" name="cantidad" id="cantidad" class="form-control" min="0.001" step="0.001" value="{{ draft.cantidad or '1' }}" required>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-bold">Costo Unitario ($) <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input type="number" name="costo_unitario" id="costo_unitario" class="form-control" min="0" step="0.01" value="{{ draft.costo_unitario }}" required>
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Observaciones</label>
+              <input type="text" name="observaciones" id="observaciones" class="form-control" placeholder="Nota opcional" value="{{ draft.observaciones }}">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save me-1"></i>Registrar Compra y Actualizar Stock
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="proveedorModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="background:var(--sidebar-bg);color:#fff">
+        <h6 class="modal-title"><i class="fas fa-industry me-2"></i>Nuevo Proveedor</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('proveedor_nuevo') }}" id="proveedorForm">
+        <input type="hidden" name="return_to" value="compras">
+        <div id="proveedorDraftFields"></div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Nombre *</label>
+              <input type="text" name="nombre" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">CUIT</label>
+              <input type="text" name="cuit" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Teléfono</label>
+              <input type="text" name="telefono" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Email</label>
+              <input type="email" name="email" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Días de crédito</label>
+              <input type="number" name="dias_credito" class="form-control" min="0" value="30">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Crear proveedor</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const compraForm = document.getElementById('compraForm');
+    const proveedorForm = document.getElementById('proveedorForm');
+    const proveedorDraftFields = document.getElementById('proveedorDraftFields');
+    const crearProductoBtn = document.getElementById('btnCrearProducto');
+    const crearProveedorBtn = document.getElementById('btnCrearProveedor');
+    const compraModalEl = document.getElementById('compraModal');
+    const proveedorModalEl = document.getElementById('proveedorModal');
+
+    function buildCompraDraft() {
+        const data = {};
+        ['fecha', 'numero_remito', 'proveedor_id', 'producto_id', 'cantidad', 'costo_unitario', 'observaciones', 'producto_descripcion', 'codigo_barras'].forEach((field) => {
+            const input = compraForm.elements.namedItem(field);
+            if (input && input.value) {
+                data[field] = input.value;
+            }
+        });
+        return data;
+    }
+
+    function syncProviderDraftFields() {
+        const draft = buildCompraDraft();
+        proveedorDraftFields.innerHTML = '';
+        Object.entries(draft).forEach(([key, value]) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = key;
+            input.value = value;
+            proveedorDraftFields.appendChild(input);
+        });
+    }
+
+    function buildProductoUrl() {
+        const params = new URLSearchParams(buildCompraDraft());
+        params.set('return_to', 'compra_nueva');
+        params.set('prefill_descripcion', compraForm.elements.namedItem('producto_descripcion').value || '');
+        params.set('prefill_codigo_barras', compraForm.elements.namedItem('codigo_barras').value || '');
+        params.set('prefill_costo', compraForm.elements.namedItem('costo_unitario').value || '');
+        return `{{ url_for('producto_nuevo') }}?${params.toString()}`;
+    }
+
+    crearProductoBtn.addEventListener('click', function () {
+        const descripcion = (compraForm.elements.namedItem('producto_descripcion').value || '').trim();
+        if (!descripcion) {
+            Swal.fire({
+                title: 'Falta la descripción',
+                text: 'Completá la descripción del producto nuevo antes de crearlo desde compra.',
+                icon: 'info',
+                confirmButtonColor: '#1e3a5f'
+            });
+            return;
+        }
+        window.location.href = buildProductoUrl();
+    });
+
+    crearProveedorBtn.addEventListener('click', function () {
+        syncProviderDraftFields();
+        bootstrap.Modal.getOrCreateInstance(proveedorModalEl).show();
+    });
+
+    proveedorForm.addEventListener('submit', syncProviderDraftFields);
+
+    {% if open_compra %}
+    bootstrap.Modal.getOrCreateInstance(compraModalEl).show();
+    {% endif %}
+
+    {% if created_product %}
+    Swal.fire({
+        title: 'Producto listo',
+        text: 'El producto se creó y quedó seleccionado para continuar la compra.',
+        icon: 'success',
+        confirmButtonColor: '#1e3a5f'
+    });
+    {% elif created_provider %}
+    Swal.fire({
+        title: 'Proveedor listo',
+        text: 'El proveedor se creó y quedó seleccionado para continuar la compra.',
+        icon: 'success',
+        confirmButtonColor: '#1e3a5f'
+    });
+    {% endif %}
+});
+</script>
 {% endblock %}
