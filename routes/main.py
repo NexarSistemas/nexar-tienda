@@ -15,6 +15,7 @@ from pathlib import Path
 
 import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from licensing.planes import PLANES, get_modulos_activos, get_plan_activo
 from licensing.permisos import require_modulo
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.license_sdk import get_current_hwid, get_license_product, validate_license_key
@@ -1282,6 +1283,20 @@ def config():
         db.set_config(data)
         return redirect(url_for("config"))
     return render_template("config.html", cfg=db.get_config(), categorias=db.get_categorias(), categorias_gastos=db.get_gasto_categorias())
+
+
+@main_bp.route("/mi-plan")
+@login_required
+def mi_plan():
+    modulos_activos = sorted(get_modulos_activos())
+    todos_los_modulos = sorted(set().union(*PLANES.values()))
+    modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
+    return render_template(
+        "mi_plan.html",
+        plan_activo=get_plan_activo(),
+        modulos_activos=modulos_activos,
+        modulos_bloqueados=modulos_bloqueados,
+    )
 
 
 @main_bp.route("/config/categoria", methods=["POST"])

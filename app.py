@@ -263,6 +263,7 @@ def create_app() -> Flask:
         "rentabilidad_detallada",
         "perfil",
         "config",
+        "mi_plan",
         "config_categoria",
         "config_categoria_eliminar",
         "config_gasto_categoria",
