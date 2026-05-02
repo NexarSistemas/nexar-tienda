@@ -4,7 +4,7 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, abort, redirect, request, session
+from flask import Flask, abort, redirect, render_template, request, session
 
 from services.runtime_config import load_runtime_env
 
@@ -114,6 +114,10 @@ def create_app() -> Flask:
             except ValueError:
                 continue
         return text
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        return render_template("403.html"), 403
 
     @app.before_request
     def global_middleware():
