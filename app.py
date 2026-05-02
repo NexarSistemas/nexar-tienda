@@ -13,6 +13,7 @@ load_runtime_env()
 import database as db
 from routes.licencia import licencia_bp
 from routes.main import main_bp
+from licensing.permisos import modulo_activo
 from services.license_storage import cargar_licencia
 from services.license_sdk import validate_saved_license
 from services.update_checker import get_cached_update_info
@@ -77,6 +78,7 @@ def create_app() -> Flask:
             "get_config_valor": get_config_valor,
             "get_licencia_status": get_licencia_status,
             "app_version": app_version,
+            "modulo_activo": modulo_activo,
             "update_info": (
                 get_cached_update_info(app, app_version)
                 if lic_status and lic_status.get("updates")
