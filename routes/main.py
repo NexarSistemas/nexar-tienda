@@ -15,8 +15,8 @@ from pathlib import Path
 
 import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
-from licensing.planes import PLANES, get_modulos_activos, get_plan_activo
-from licensing.permisos import require_modulo
+from licensing.planes import PLANES, get_plan_activo
+from licensing.permisos import get_modulos_activos, require_modulo
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.license_sdk import get_current_hwid, get_license_product, validate_license_key
 from services.runtime_config import app_data_dir
