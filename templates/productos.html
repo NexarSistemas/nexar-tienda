@@ -5,6 +5,7 @@
 
 {% block topbar_actions %}
 <div class="d-flex gap-2">
+    {% if modulo_activo("export") %}
     <div class="dropdown">
         <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
             <i class="fas fa-file-export me-1"></i> Exportar
@@ -22,6 +23,7 @@
             </li>
         </ul>
     </div>
+    {% endif %}
     <a href="{{ url_for('producto_nuevo') }}" class="btn btn-sm btn-primary">
         <i class="fas fa-plus me-1"></i> Nuevo Producto
     </a>
