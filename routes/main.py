@@ -38,6 +38,18 @@ DESKTOP_STATE = {
     "close_warning_requested": False,
 }
 
+PURCHASE_DRAFT_FIELDS = (
+    "fecha",
+    "numero_remito",
+    "proveedor_id",
+    "producto_id",
+    "cantidad",
+    "costo_unitario",
+    "observaciones",
+    "producto_descripcion",
+    "codigo_barras",
+)
+
 
 def _as_bool(value) -> bool:
     return str(value).strip().lower() in {"1", "true", "on", "yes", "si"}
@@ -80,6 +92,22 @@ def _validate_security_recovery(question: str, answer: str) -> tuple[bool, str]:
     if len((answer or "").strip()) < 2:
         return False, "La respuesta secreta debe tener al menos 2 caracteres."
     return True, ""
+
+
+def _purchase_draft_from_source(source) -> dict[str, str]:
+    draft: dict[str, str] = {}
+    for field in PURCHASE_DRAFT_FIELDS:
+        value = source.get(field, "")
+        draft[field] = str(value or "").strip()
+    return draft
+
+
+def _purchase_draft_query(draft: dict[str, str], **extra: str) -> dict[str, str]:
+    query = {key: value for key, value in draft.items() if str(value or "").strip()}
+    for key, value in extra.items():
+        if str(value or "").strip():
+            query[key] = str(value).strip()
+    return query
 
 
 def _limit_allows(kind: str) -> bool:
@@ -525,13 +553,35 @@ def productos():
 @main_bp.route("/productos/nuevo", methods=["GET", "POST"])
 @login_required
 def producto_nuevo():
+    draft_compra = _purchase_draft_from_source(request.form if request.method == "POST" else request.args)
+    desde_compra = request.values.get("return_to") == "compra_nueva"
+    prefill = {
+        "descripcion": (request.values.get("prefill_descripcion", "") or "").strip(),
+        "codigo_barras": (request.values.get("prefill_codigo_barras", "") or "").strip(),
+        "costo": (request.values.get("prefill_costo", "") or "").strip(),
+    }
     if request.method == "POST":
         if not _limit_allows("productos"):
+            if desde_compra:
+                return redirect(url_for("compra_nueva", **_purchase_draft_query(draft_compra)))
             return redirect(url_for("productos"))
-        db.add_producto(request.form.to_dict())
+        data = request.form.to_dict()
+        if desde_compra:
+            data["stock_actual"] = "0"
+        nuevo_id = db.add_producto(data)
         flash("✅ Producto creado.", "success")
+        if desde_compra:
+            draft_compra["producto_id"] = str(nuevo_id)
+            if not draft_compra.get("producto_descripcion"):
+                draft_compra["producto_descripcion"] = request.form.get("descripcion", "")
+            if not draft_compra.get("codigo_barras"):
+                draft_compra["codigo_barras"] = request.form.get("codigo_barras", "")
+            if not draft_compra.get("costo_unitario"):
+                draft_compra["costo_unitario"] = request.form.get("costo", "")
+            return redirect(url_for("compra_nueva", **_purchase_draft_query(draft_compra, created_product="1")))
         return redirect(url_for("productos"))
-    return render_template("producto_form.html", producto=None, stock=None, categorias=db.get_categorias(), accion="Nuevo")
+    cancel_url = url_for("compra_nueva", **_purchase_draft_query(draft_compra)) if desde_compra else url_for("productos")
+    return render_template("producto_form.html", producto=None, stock=None, categorias=db.get_categorias(), accion="Nuevo", prefill=prefill, from_compra=desde_compra, draft_compra=draft_compra, cancel_url=cancel_url)
 
 
 @main_bp.route("/productos/<int:pid>/editar", methods=["GET", "POST"])
@@ -645,6 +695,21 @@ def punto_venta():
 @login_required
 def api_buscar_productos():
     return jsonify({"ok": True, "productos": [dict(r) for r in db.buscar_productos_pos(request.args.get("q", ""))]})
+
+
+@main_bp.route("/api/producto/buscar")
+@login_required
+def api_producto_buscar():
+    codigo = (request.args.get("codigo", "") or "").strip()
+    if not codigo:
+        return jsonify({"ok": False, "msg": "Código vacío."}), 400
+    producto = db.get_producto_by_codigo(codigo)
+    if not producto:
+        return jsonify({"ok": False, "msg": "Producto no encontrado."}), 404
+    stock_row = db.q("SELECT stock_actual FROM stock WHERE producto_id=?", (producto["id"],), fetchone=True)
+    payload = dict(producto)
+    payload["stock_actual"] = float(stock_row["stock_actual"] or 0) if stock_row else 0
+    return jsonify({"ok": True, "producto": payload})
 
 
 @main_bp.route("/api/carrito/agregar", methods=["POST"])
@@ -812,12 +877,15 @@ def historial_eliminar(vid):
 @main_bp.route("/compras")
 @login_required
 def compras():
-    return render_template("compras.html", compras=db.get_compras(request.args.get("q", ""), request.args.get("fecha_desde", ""), request.args.get("fecha_hasta", "")), buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""))
+    draft = _purchase_draft_from_source(request.args)
+    return render_template("compras.html", compras=db.get_compras(request.args.get("q", ""), request.args.get("fecha_desde", ""), request.args.get("fecha_hasta", "")), buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), proveedores=db.get_proveedores(), productos=db.get_productos(), draft=draft, open_compra=_as_bool(request.args.get("open_compra")), created_product=_as_bool(request.args.get("created_product")), created_provider=_as_bool(request.args.get("created_provider")), hoy=date.today().isoformat())
 
 
 @main_bp.route("/compras/nueva", methods=["GET", "POST"])
 @login_required
 def compra_nueva():
+    if request.method == "GET":
+        return redirect(url_for("compras", **_purchase_draft_query(_purchase_draft_from_source(request.args), open_compra="1", created_product=request.args.get("created_product", ""), created_provider=request.args.get("created_provider", ""))))
     if request.method == "POST":
         data = request.form.to_dict()
         producto = db.get_producto(int(data.get("producto_id", 0) or 0))
@@ -830,13 +898,35 @@ def compra_nueva():
         db.add_compra(data)
         flash("✅ Compra registrada.", "success")
         return redirect(url_for("compras"))
-    return render_template("compra_form.html", compra=None, proveedores=db.get_proveedores(), productos=db.get_productos(), accion="Nueva")
+    return redirect(url_for("compras"))
 
 
 @main_bp.route("/compras/<int:cid>")
 @login_required
 def compra_detalle(cid):
     return render_template("compra_detalle.html", compra=db.get_compra(cid))
+
+
+@main_bp.route("/compras/<int:cid>/editar", methods=["GET", "POST"])
+@login_required
+def compra_editar(cid):
+    compra = db.get_compra(cid)
+    if not compra:
+        flash("❌ Compra inexistente.", "danger")
+        return redirect(url_for("compras"))
+    if request.method == "POST":
+        data = request.form.to_dict()
+        producto = db.get_producto(int(data.get("producto_id", 0) or 0))
+        proveedor = db.get_proveedor(int(data.get("proveedor_id", 0) or 0))
+        if producto:
+            data["codigo_interno"], data["descripcion"] = producto["codigo_interno"], producto["descripcion"]
+        if proveedor:
+            data["proveedor_nombre"] = proveedor["nombre"]
+        data["total"] = float(data.get("cantidad", 0) or 0) * float(data.get("costo_unitario", 0) or 0)
+        db.update_compra(cid, data)
+        flash("✅ Compra actualizada.", "success")
+        return redirect(url_for("compra_detalle", cid=cid))
+    return render_template("compra_form.html", compra=compra, proveedores=db.get_proveedores(), productos=db.get_productos(), accion="Editar", draft=None, created_product=False)
 
 
 @main_bp.route("/compras/<int:cid>/eliminar", methods=["POST"])
@@ -858,7 +948,8 @@ def caja():
 @login_required
 def caja_abrir():
     if not _caja_abierta():
-        db.q("INSERT INTO caja (usuario_id,fecha_apertura,saldo_inicial,estado) VALUES (?,?,?,1)", (session["user"]["id"], datetime.now().isoformat(sep=" "), float(request.form.get("saldo_inicial", 0) or 0)), commit=True)
+        marca_tiempo = datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+        db.q("INSERT INTO caja (usuario_id,fecha_apertura,saldo_inicial,estado) VALUES (?,?,?,1)", (session["user"]["id"], marca_tiempo, float(request.form.get("saldo_inicial", 0) or 0)), commit=True)
     return redirect(url_for("caja"))
 
 
@@ -876,7 +967,8 @@ def caja_movimiento():
 def caja_cerrar():
     caja_actual = _caja_abierta()
     if caja_actual:
-        db.q("UPDATE caja SET fecha_cierre=?,saldo_final_real=?,estado=0 WHERE id=?", (datetime.now().isoformat(sep=" "), float(request.form.get("saldo_real", 0) or 0), caja_actual["id"]), commit=True)
+        marca_tiempo = datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+        db.q("UPDATE caja SET fecha_cierre=?,saldo_final_real=?,estado=0 WHERE id=?", (marca_tiempo, float(request.form.get("saldo_real", 0) or 0), caja_actual["id"]), commit=True)
     return redirect(url_for("caja"))
 
 
@@ -1017,8 +1109,14 @@ def proveedores():
 def proveedor_nuevo():
     if request.method == "POST":
         if not _limit_allows("proveedores"):
+            if request.form.get("return_to") == "compras":
+                return redirect(url_for("compras", **_purchase_draft_query(_purchase_draft_from_source(request.form), open_compra="1")))
             return redirect(url_for("proveedores"))
-        db.add_proveedor(request.form.to_dict())
+        nuevo_id = db.add_proveedor(request.form.to_dict())
+        if request.form.get("return_to") == "compras":
+            draft = _purchase_draft_from_source(request.form)
+            draft["proveedor_id"] = str(nuevo_id)
+            return redirect(url_for("compras", **_purchase_draft_query(draft, open_compra="1", created_provider="1")))
         return redirect(url_for("proveedores"))
     return render_template("proveedor_form.html", proveedor=None, accion="Crear")
 
