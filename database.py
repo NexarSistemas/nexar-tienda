@@ -526,6 +526,7 @@ def init_db():
         ('license_plan', 'DEMO'),           # Plan del token
         ('license_support', '0'),           # 1 = incluye soporte
         ('license_updates', '0'),           # 1 = incluye actualizaciones
+        ('license_modules', '[]'),          # Modulos remotos sincronizados desde SDK
     ]
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO config VALUES (?,?)", (k, v))
@@ -935,6 +936,40 @@ def get_modulos_from_tier(tier: str = None) -> set[str]:
     return set(TIER_MODULES_MAP.get(tier, TIER_MODULES_MAP['DEMO']))
 
 
+def _extract_license_modules(license_data: dict | None) -> list[str]:
+    """Extrae módulos remotos canónicos desde payloads del SDK."""
+    if not isinstance(license_data, dict):
+        return []
+
+    raw_modules = (
+        license_data.get('modules')
+        or license_data.get('features')
+        or license_data.get('modulos')
+    )
+    if not raw_modules:
+        return []
+
+    if isinstance(raw_modules, str):
+        raw_modules = raw_modules.strip()
+        if raw_modules.startswith('['):
+            try:
+                raw_modules = json.loads(raw_modules)
+            except Exception:
+                raw_modules = []
+        else:
+            raw_modules = [module.strip() for module in raw_modules.split(',') if module.strip()]
+
+    if isinstance(raw_modules, str):
+        modules = [raw_modules.strip().lower()] if raw_modules.strip() else []
+    else:
+        try:
+            modules = [str(module).strip().lower() for module in raw_modules if str(module).strip()]
+        except TypeError:
+            return []
+
+    return sorted(set(modules))
+
+
 def get_license_info() -> dict:
     """Devuelve informacion completa de la licencia actual."""
     cfg = get_config()
@@ -954,6 +989,7 @@ def get_license_info() -> dict:
             pass
 
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["DEMO"])
+    modules = _extract_license_modules({'modules': cfg.get('license_modules', '[]')})
 
     return {
         'type':        cfg.get('license_type', 'TDA_BASICA'),
@@ -968,6 +1004,7 @@ def get_license_info() -> dict:
         'max_machines': int(cfg.get('license_max_machines', '1')),
         'drive_index_id': cfg.get('license_drive_index_id', ''),
         'limits':      limits,
+        'modules':     modules,
         'demo_mode':   cfg.get('demo_mode', '1'),
         'support':     bool(limits.get('support')),
         'updates':     bool(limits.get('updates')),
@@ -1006,6 +1043,9 @@ def sync_license_from_remote(license_data: dict):
         'license_support': '1' if TIER_LIMITS[plan].get('support') else '0',
         'license_updates': '1' if TIER_LIMITS[plan].get('updates') else '0',
     }
+    modules = _extract_license_modules(license_data)
+    if modules:
+        updates['license_modules'] = json.dumps(modules)
     if plan == 'BASICA':
         updates['basica_activada'] = '1'
     set_config(updates)

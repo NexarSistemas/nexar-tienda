@@ -1,4 +1,5 @@
 import importlib
+import json
 import logging
 import os
 import sys
@@ -31,7 +32,14 @@ def _normalize_modules(value: Any) -> set[str]:
     if not value:
         return set()
     if isinstance(value, str):
-        return {module.strip().lower() for module in value.split(",") if module.strip()}
+        raw = value.strip()
+        if raw.startswith("["):
+            try:
+                value = json.loads(raw)
+            except Exception:
+                value = []
+        else:
+            return {module.strip().lower() for module in raw.split(",") if module.strip()}
     if isinstance(value, dict):
         value = value.get("modules") or value.get("modulos") or value.get("modulos_activos")
     try:
@@ -60,6 +68,17 @@ def _get_tier_from_db() -> str:
         return db_get_tier()
     except Exception:
         return 'DEMO'
+
+
+def _get_modulos_from_db_config() -> set[str]:
+    """Lee módulos remotos persistidos localmente."""
+    try:
+        from database import get_config
+
+        cfg = get_config()
+        return _normalize_modules(cfg.get("license_modules", "[]"))
+    except Exception:
+        return set()
 
 
 def _import_sdk():
@@ -120,6 +139,11 @@ def get_modulos_activos() -> set[str]:
     if modules:
         _log_source("sdk", "PROD mode: usando módulos desde SDK")
         return modules
+
+    modules_from_config = _get_modulos_from_db_config()
+    if modules_from_config:
+        _log_source("db_modules", "PROD mode: usando módulos persistidos en DB")
+        return modules_from_config
 
     # Leer tier desde DB y mapear a módulos
     try:

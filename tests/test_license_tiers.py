@@ -30,11 +30,18 @@ FULL_MODULES = {
     'multinegocio',
     'multiusuario',
 }
+REMOTE_MODULES = ['clientes', 'core']
 
 
 def _reset_license_env():
     for key in ('NEXAR_LICENSE_MODE', 'NEXAR_PLAN', 'NEXAR_MODULES'):
         os.environ.pop(key, None)
+
+
+def _init_temp_database(database, temp_dir):
+    database.DB_PATH = str(Path(temp_dir.name) / 'test_tienda.db')
+    database._db_initialized = False
+    database.init_db()
 
 
 def test_tier_modules_mapping():
@@ -108,8 +115,7 @@ def test_database_tier_functions():
     original_db_path = database.DB_PATH
     temp_dir = tempfile.TemporaryDirectory()
     try:
-        database.DB_PATH = str(Path(temp_dir.name) / 'test_tienda.db')
-        database.init_db()
+        _init_temp_database(database, temp_dir)
         database.q(
             "UPDATE config SET valor=? WHERE clave='license_tier'",
             ('TDA_PRO',),
@@ -129,6 +135,105 @@ def test_database_tier_functions():
         database.DB_PATH = original_db_path
         temp_dir.cleanup()
         _reset_license_env()
+
+
+def test_sync_license_modules_from_remote():
+    """Verifica que sync_license_from_remote persista módulos remotos."""
+    import database
+
+    original_db_path = database.DB_PATH
+    temp_dir = tempfile.TemporaryDirectory()
+    try:
+        _init_temp_database(database, temp_dir)
+        database.sync_license_from_remote({
+            'license_key': 'TEST-001',
+            'plan': 'PRO',
+            'modules': ['clientes', 'core'],
+        })
+
+        cfg = database.get_config()
+        info = database.get_license_info()
+
+        assert cfg['license_tier'] == 'MENSUAL_FULL', f"Tier incorrecto: {cfg['license_tier']}"
+        assert cfg['license_plan'] == 'MENSUAL_FULL', f"Plan incorrecto: {cfg['license_plan']}"
+        assert cfg['license_modules'] == '["clientes", "core"]', f"license_modules incorrecto: {cfg['license_modules']}"
+        assert info['modules'] == REMOTE_MODULES, f"Módulos en get_license_info incorrectos: {info['modules']}"
+
+        print("✓ sync_license_from_remote guarda módulos remotos")
+    finally:
+        database.DB_PATH = original_db_path
+        temp_dir.cleanup()
+
+
+def test_prod_prioritizes_persisted_modules():
+    """Verifica que PROD use license_modules antes que el tier local."""
+    import database
+    from licensing.permisos import get_modulos_activos
+
+    _reset_license_env()
+    os.environ['NEXAR_LICENSE_MODE'] = 'prod'
+
+    original_db_path = database.DB_PATH
+    temp_dir = tempfile.TemporaryDirectory()
+    try:
+        _init_temp_database(database, temp_dir)
+        database.q("UPDATE config SET valor=? WHERE clave='license_tier'", ('DEMO',), commit=True)
+        database.q("UPDATE config SET valor=? WHERE clave='license_modules'", ('[\"core\", \"clientes\"]',), commit=True)
+
+        active_modules = get_modulos_activos()
+        assert active_modules == {'core', 'clientes'}, f"Debe priorizar módulos persistidos, obtuvo: {active_modules}"
+
+        print("✓ PROD prioriza license_modules persistido")
+    finally:
+        database.DB_PATH = original_db_path
+        temp_dir.cleanup()
+        _reset_license_env()
+
+
+def test_sync_accepts_features_alias():
+    """Verifica compatibilidad con alias remoto 'features'."""
+    import database
+
+    original_db_path = database.DB_PATH
+    temp_dir = tempfile.TemporaryDirectory()
+    try:
+        _init_temp_database(database, temp_dir)
+        database.sync_license_from_remote({
+            'license_key': 'TEST-002',
+            'plan': 'BASICA',
+            'features': ['core', 'clientes'],
+        })
+
+        cfg = database.get_config()
+        assert cfg['license_modules'] == '["clientes", "core"]', f"Alias features no persistido correctamente: {cfg['license_modules']}"
+
+        print("✓ sync_license_from_remote acepta alias features")
+    finally:
+        database.DB_PATH = original_db_path
+        temp_dir.cleanup()
+
+
+def test_sync_accepts_modulos_alias():
+    """Verifica compatibilidad con alias remoto 'modulos'."""
+    import database
+
+    original_db_path = database.DB_PATH
+    temp_dir = tempfile.TemporaryDirectory()
+    try:
+        _init_temp_database(database, temp_dir)
+        database.sync_license_from_remote({
+            'license_key': 'TEST-003',
+            'plan': 'BASICA',
+            'modulos': ['core', 'clientes'],
+        })
+
+        cfg = database.get_config()
+        assert cfg['license_modules'] == '["clientes", "core"]', f"Alias modulos no persistido correctamente: {cfg['license_modules']}"
+
+        print("✓ sync_license_from_remote acepta alias modulos")
+    finally:
+        database.DB_PATH = original_db_path
+        temp_dir.cleanup()
 
 
 def test_permisos_dev_mode():
@@ -187,6 +292,10 @@ def run_all_tests():
         test_basica_includes_clientes,
         test_full_includes_all,
         test_database_tier_functions,
+        test_sync_license_modules_from_remote,
+        test_prod_prioritizes_persisted_modules,
+        test_sync_accepts_features_alias,
+        test_sync_accepts_modulos_alias,
         test_permisos_dev_mode,
     ]
 
