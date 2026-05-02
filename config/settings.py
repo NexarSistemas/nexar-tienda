@@ -1,6 +1,8 @@
 import os
 from dotenv import load_dotenv
 
+from licensing.planes import PLANES, TIER_ALIASES
+
 # Cargar .env automáticamente
 load_dotenv()
 
@@ -39,6 +41,16 @@ class Settings:
     # DEBUG
     # =========================
     DEBUG = ENV == "development"
+
+    # =========================
+    # LICENCIAS - INTEGRACIÓN MODULAR
+    # =========================
+    LICENSE_MODE = os.getenv("NEXAR_LICENSE_MODE", "dev")  # "dev" o "prod"
+    LICENSE_PLAN = os.getenv("NEXAR_PLAN", "DEMO")  # DEMO, BASICA, MENSUAL_FULL (dev mode)
+    LICENSE_MODULES = os.getenv("NEXAR_MODULES", "")  # módulos extra (dev mode)
+
+    TIER_ALIASES = TIER_ALIASES
+    TIER_TO_MODULES = {tier: sorted(modules) for tier, modules in PLANES.items()}
 
     # =========================
     # VALIDACIÓN

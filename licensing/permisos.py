@@ -7,13 +7,16 @@ from typing import Any
 
 from flask import abort
 
-from licensing.planes import get_modulos_activos as get_modulos_activos_env
+from licensing.planes import (
+    PLANES as TIER_MODULES_MAP,
+    get_modulos_activos as get_modulos_activos_env,
+    normalize_plan,
+)
 
 
 logger = logging.getLogger(__name__)
 SDK_REPO_PATH = Path(__file__).resolve().parent.parent.parent / "nexar_licencias"
 _last_logged_source: str | None = None
-
 
 def _log_source(source: str, message: str) -> None:
     global _last_logged_source
@@ -24,6 +27,7 @@ def _log_source(source: str, message: str) -> None:
 
 
 def _normalize_modules(value: Any) -> set[str]:
+    """Normaliza un valor a conjunto de módulos en minúsculas."""
     if not value:
         return set()
     if isinstance(value, str):
@@ -34,6 +38,28 @@ def _normalize_modules(value: Any) -> set[str]:
         return {str(module).strip().lower() for module in value if str(module).strip()}
     except TypeError:
         return set()
+
+
+def _normalize_tier(tier: str) -> str:
+    """Normaliza alias de tier a canonical form."""
+    return normalize_plan(tier, default="DEMO")
+
+
+def _get_modulos_from_tier(tier: str = None) -> set[str]:
+    """Obtiene módulos asociados a un tier."""
+    if not tier:
+        return set()
+    tier_normalized = _normalize_tier(tier)
+    return TIER_MODULES_MAP.get(tier_normalized, TIER_MODULES_MAP['DEMO']).copy()
+
+
+def _get_tier_from_db() -> str:
+    """Lee license_tier desde la base de datos."""
+    try:
+        from database import get_license_tier_from_db as db_get_tier
+        return db_get_tier()
+    except Exception:
+        return 'DEMO'
 
 
 def _import_sdk():
@@ -71,16 +97,41 @@ def _get_modulos_sdk() -> set[str]:
 
 
 def get_modulos_activos() -> set[str]:
-    if os.getenv("NEXAR_LICENSE_MODE", "dev").strip().lower() == "dev":
-        _log_source("env", "Usando módulos desde .env")
+    """
+    Obtiene módulos activos en el siguiente orden de prioridad:
+
+    DEV mode (NEXAR_LICENSE_MODE=dev):
+      1. NEXAR_MODULES env var si está definida
+      2. Mapeo de NEXAR_PLAN a módulos si está definida
+
+    PROD mode (NEXAR_LICENSE_MODE=prod):
+      1. SDK nexar_licencias si devuelve módulos explícitamente
+      2. Módulos mapeados desde license_tier en DB (config table)
+      3. Fallback a env vars
+    """
+    mode = os.getenv("NEXAR_LICENSE_MODE", "dev").strip().lower()
+
+    if mode == "dev":
+        _log_source("env", "DEV mode: usando módulos desde .env")
         return get_modulos_activos_env()
 
+    # Modo PROD: intentar SDK primero, luego DB
     modules = _get_modulos_sdk()
     if modules:
-        _log_source("sdk", "Usando módulos desde SDK")
+        _log_source("sdk", "PROD mode: usando módulos desde SDK")
         return modules
 
-    _log_source("env", "Usando módulos desde .env")
+    # Leer tier desde DB y mapear a módulos
+    try:
+        tier = _get_tier_from_db()
+        modules_from_tier = _get_modulos_from_tier(tier)
+        if modules_from_tier:
+            _log_source("db", f"PROD mode: usando módulos desde DB tier '{tier}'")
+            return modules_from_tier
+    except Exception as e:
+        logger.debug(f"Error leyendo tier desde DB: {e}")
+
+    _log_source("env", "Fallback: usando módulos desde .env")
     return get_modulos_activos_env()
 
 

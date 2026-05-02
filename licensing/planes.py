@@ -1,11 +1,21 @@
 import os
 
 
+TIER_ALIASES = {
+    "BASIC": "BASICA",
+    "BASICO": "BASICA",
+    "TDA_BASICA": "BASICA",
+    "FULL": "MENSUAL_FULL",
+    "MENSUAL": "MENSUAL_FULL",
+    "PRO": "MENSUAL_FULL",
+    "TDA_PRO": "MENSUAL_FULL",
+}
+
+
 PLANES = {
     "DEMO": {"core"},
     "BASICA": {"core", "clientes"},
-    "PRO": {"core", "clientes", "reportes", "export", "temporadas"},
-    "FULL": {
+    "MENSUAL_FULL": {
         "core",
         "clientes",
         "reportes",
@@ -18,13 +28,18 @@ PLANES = {
 }
 
 
+def normalize_plan(plan: str | None = None, default: str = "DEMO") -> str:
+    raw = (plan or default).strip().upper().replace("-", "_").replace(" ", "_")
+    normalized = TIER_ALIASES.get(raw, raw)
+    return normalized if normalized in PLANES else default
+
+
 def get_plan_activo() -> str:
-    plan = os.getenv("NEXAR_PLAN", "DEMO").strip().upper()
-    return plan if plan in PLANES else "DEMO"
+    return normalize_plan(os.getenv("NEXAR_PLAN", "DEMO"))
 
 
 def get_modulos_plan(plan: str | None = None) -> set[str]:
-    plan_key = (plan or get_plan_activo()).strip().upper()
+    plan_key = normalize_plan(plan or get_plan_activo())
     return set(PLANES.get(plan_key, PLANES["DEMO"]))
 
 

@@ -17,6 +17,8 @@ import json
 from datetime import datetime, date, timedelta
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from licensing.planes import PLANES as TIER_MODULES_MAP, normalize_plan
+
 # ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
 # Define limites de productos, clientes y proveedores por tipo de licencia
 TIER_LIMITS = {
@@ -52,17 +54,7 @@ TIER_LIMITS["PRO"] = TIER_LIMITS["MENSUAL_FULL"]
 
 
 def normalize_license_plan(plan: str = None) -> str:
-    raw = (plan or "BASICA").strip().upper().replace("-", "_").replace(" ", "_")
-    aliases = {
-        "BASIC": "BASICA",
-        "BASICO": "BASICA",
-        "TDA_BASICA": "BASICA",
-        "FULL": "MENSUAL_FULL",
-        "MENSUAL": "MENSUAL_FULL",
-        "PRO": "MENSUAL_FULL",
-        "TDA_PRO": "MENSUAL_FULL",
-    }
-    return aliases.get(raw, raw if raw in TIER_LIMITS else "BASICA")
+    return normalize_plan(plan, default="BASICA")
 
 DEFAULT_GASTO_CATEGORIAS = [
     {'nombre': 'Servicios (Luz/Agua/Internet)', 'tipo': 'Necesario'},
@@ -437,6 +429,14 @@ def init_db():
             permiso_id INTEGER REFERENCES permisos(id) ON DELETE CASCADE,
             PRIMARY KEY (rol_id, permiso_id)
         );
+
+        CREATE TABLE IF NOT EXISTS license_module_map (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            license_tier TEXT UNIQUE NOT NULL,
+            modules TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
     # ─── MIGRACIONES MANUALES (Para bases de datos existentes) ───────────────
@@ -578,7 +578,7 @@ def init_db():
         for p_clave in permisos_vendedor:
             p_id = c.execute("SELECT id FROM permisos WHERE clave=?", (p_clave,)).fetchone()
             if p_id:
-                c.execute("INSERT OR IGNORE INTO roles_permisos (rol_id, permiso_id) VALUES (?,?)", 
+                c.execute("INSERT OR IGNORE INTO roles_permisos (rol_id, permiso_id) VALUES (?,?)",
                           (vendedor_rol['id'], p_id['id']))
 
     # ─── Categorías iniciales de tienda ──────────────────────────────────────
@@ -608,6 +608,17 @@ def init_db():
         c.execute(
             "INSERT OR IGNORE INTO temporadas (nombre,descripcion,fecha_inicio,fecha_fin) VALUES (?,?,?,?)",
             (nombre, desc, inicio, fin)
+        )
+
+    # ─── Mapeo de Tiers a Módulos (para integración modular) ─────────────────
+    tier_modules_map = [
+        (tier, json.dumps(sorted(modules)))
+        for tier, modules in TIER_MODULES_MAP.items()
+    ]
+    for tier, modules_json in tier_modules_map:
+        c.execute(
+            "INSERT OR IGNORE INTO license_module_map (license_tier, modules) VALUES (?,?)",
+            (tier, modules_json)
         )
 
     _seed_changelog(c)
@@ -883,19 +894,60 @@ def get_demo_status() -> dict:
     }
 
 
+def get_license_tier_from_db() -> str:
+    """
+    Obtiene el tier de licencia desde la tabla config.
+    Normaliza aliases y retorna el tier canónico.
+    """
+    try:
+        cfg = get_config()
+        tier = cfg.get('license_tier', 'DEMO').strip().upper()
+        return normalize_license_plan(tier)
+    except Exception:
+        return 'DEMO'
+
+
+def get_modulos_from_tier(tier: str = None) -> set[str]:
+    """
+    Obtiene el conjunto de módulos asociados a un tier de licencia.
+    Si no encuentra el tier, devuelve módulos para DEMO.
+    """
+    if not tier:
+        tier = get_license_tier_from_db()
+
+    tier = tier.strip().upper()
+    tier = normalize_license_plan(tier)
+
+    try:
+        row = q(
+            "SELECT modules FROM license_module_map WHERE license_tier=?",
+            (tier,),
+            fetchone=True
+        )
+        if row:
+            modules_json = row['modules']
+            if isinstance(modules_json, str):
+                return set(json.loads(modules_json))
+            return set(modules_json) if modules_json else {'core'}
+    except Exception:
+        pass
+
+    return set(TIER_MODULES_MAP.get(tier, TIER_MODULES_MAP['DEMO']))
+
+
 def get_license_info() -> dict:
     """Devuelve informacion completa de la licencia actual."""
     cfg = get_config()
     tier = normalize_license_plan(cfg.get('license_tier', 'DEMO'))
     expires_at_str = cfg.get('license_expires_at', '')
-    
+
     # ── Calcular días restantes y alertas para el Plan Mensual Full ──────────
     full_days = None
     if tier == 'MENSUAL_FULL' and expires_at_str:
         try:
             expires_date = date.fromisoformat(expires_at_str)
             full_days = (expires_date - date.today()).days
-            
+
             if full_days < 0:
                 tier = 'BASICA' if cfg.get('basica_activada', '0') == '1' else 'DEMO'
         except Exception:
@@ -1123,19 +1175,19 @@ def activate_license_token(payload: dict, token: str):
 
 def check_license_limits(limit_key: str, current_count: int = None) -> dict:
     """Verifica si se excedio un limite de licencia.
-    
+
     Retorna: {'ok': bool, 'current': int, 'limit': int, 'message': str}
     """
     lic = get_license_info()
     tier = lic['tier']
     limits = lic['limits']
-    
+
     limit = limits.get(limit_key)
-    
+
     # Si no hay limite (None), no hay restriccion
     if limit is None:
         return {'ok': True, 'current': current_count or 0, 'limit': None, 'message': 'Ilimitado'}
-    
+
     # Si hay un limite, verificar
     if current_count is None:
         # Contar desde BD segun el tipo de limite
@@ -1147,7 +1199,7 @@ def check_license_limits(limit_key: str, current_count: int = None) -> dict:
             current_count = q("SELECT COUNT(*) FROM proveedores WHERE activo=1", fetchone=True)[0]
         else:
             current_count = 0
-    
+
     if current_count > limit:
         return {
             'ok': False,
@@ -1155,7 +1207,7 @@ def check_license_limits(limit_key: str, current_count: int = None) -> dict:
             'limit': limit,
             'message': f"Limite de {limit_key} ({limit}) excedido. Actual: {current_count}"
         }
-    
+
     return {
         'ok': True,
         'current': current_count,
@@ -1461,19 +1513,19 @@ def update_perfil(uid, data):
     """Actualiza datos del perfil del propio usuario."""
     sets = ["nombre_completo=?"]
     params = [data.get('nombre_completo', '')]
-    
+
     if data.get('password'):
         sets.append("password_hash=?")
         params.append(generate_password_hash(data['password']))
-        
+
     if data.get('security_question'):
         sets.append("security_question=?")
         params.append(data['security_question'])
-        
+
     if data.get('security_answer'):
         sets.append("security_answer_hash=?")
         params.append(hash_security_answer(data['security_answer']))
-        
+
     params.append(uid)
     q(f"UPDATE usuarios SET {','.join(sets)} WHERE id=?", params, commit=True)
 
@@ -1493,7 +1545,7 @@ def has_permission(role_name, perm_key):
     # El Administrador (en cualquiera de sus nombres) tiene acceso total
     if role_name in ['Administrador', 'admin']:
         return True
-    
+
     res = q("""
         SELECT 1 FROM roles_permisos rp
         JOIN roles r ON r.id = rp.rol_id
@@ -1648,7 +1700,7 @@ def get_alertas_count():
 def get_stock_movimientos(pid):
     """Obtiene historial de movimientos de un producto."""
     return q(
-        """SELECT * FROM stock_movimientos WHERE producto_id=? 
+        """SELECT * FROM stock_movimientos WHERE producto_id=?
            ORDER BY created_at DESC LIMIT 50""",
         (pid,)
     )
@@ -1658,18 +1710,18 @@ def get_stock_movimientos_all(start_date='', end_date=''):
     """Obtiene todos los movimientos con filtro opcional por fecha."""
     sql = "SELECT m.*, p.descripcion, p.codigo_interno FROM stock_movimientos m JOIN productos p ON p.id=m.producto_id"
     params = []
-    
+
     if start_date:
         sql += " WHERE m.created_at >= ?"
         params.append(start_date)
-    
+
     if end_date:
         if start_date:
             sql += " AND m.created_at <= ?"
         else:
             sql += " WHERE m.created_at <= ?"
         params.append(end_date)
-    
+
     sql += " ORDER BY m.created_at DESC"
     return q(sql, params)
 
@@ -1680,9 +1732,9 @@ def get_clientes(search='', with_debt_only=False, activo_only=True):
     """Devuelve clientes filtrables con soporte para búsqueda y deuda."""
     # 1. Base de la consulta: Incluimos un subquery para calcular el saldo al vuelo
     sql = """
-        SELECT *, 
-        (SELECT COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0) 
-         FROM cc_clientes_mov WHERE cliente_id = clientes.id) as saldo 
+        SELECT *,
+        (SELECT COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0)
+         FROM cc_clientes_mov WHERE cliente_id = clientes.id) as saldo
         FROM clientes
     """
     conds = []
@@ -1701,7 +1753,7 @@ def get_clientes(search='', with_debt_only=False, activo_only=True):
     if with_debt_only:
         # Usamos comillas triples para que Python permita varias líneas
         query_saldo = """
-            (SELECT COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0) 
+            (SELECT COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0)
              FROM cc_clientes_mov WHERE cliente_id = clientes.id)
         """
         conds.append(f"{query_saldo} > 0")
@@ -1709,9 +1761,9 @@ def get_clientes(search='', with_debt_only=False, activo_only=True):
     # 5. Construcción final
     if conds:
         sql += " WHERE " + " AND ".join(conds)
-    
+
     sql += " ORDER BY nombre"
-    
+
     return q(sql, params)
 
 
@@ -1760,9 +1812,9 @@ def get_saldo_cliente(cid):
 def get_movimientos_cliente(cid, limit=50):
     """Obtiene movimientos de cuenta corriente de un cliente."""
     return q(
-        """SELECT * FROM cc_clientes_mov 
-        WHERE cliente_id=? 
-        ORDER BY fecha DESC, id DESC 
+        """SELECT * FROM cc_clientes_mov
+        WHERE cliente_id=?
+        ORDER BY fecha DESC, id DESC
         LIMIT ?""",
         (cid, limit)
     )
@@ -1773,7 +1825,7 @@ def agregar_movimiento_cliente(cid, tipo, numero_comprobante, debe=0, haber=0, v
     if not fecha:
         fecha = datetime.now().strftime('%Y-%m-%d')
     q(
-        """INSERT INTO cc_clientes_mov 
+        """INSERT INTO cc_clientes_mov
         (cliente_id, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones, venta_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (cid, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones, venta_id),
@@ -1810,8 +1862,8 @@ def reconciliar_cc_clientes_desde_ventas():
 def get_historial_ventas_cliente(cid, limit=20):
     """Obtiene historial de ventas de un cliente (una fila por venta con resumen)."""
     return q("""
-        SELECT v.*, 
-               (SELECT GROUP_CONCAT(descripcion || ' (x' || CAST(cantidad AS INTEGER) || ')', ', ') 
+        SELECT v.*,
+               (SELECT GROUP_CONCAT(descripcion || ' (x' || CAST(cantidad AS INTEGER) || ')', ', ')
                 FROM ventas_detalle WHERE venta_id = v.id) as resumen_articulos
         FROM ventas v
         WHERE v.cliente_id = ?
@@ -1827,13 +1879,13 @@ def get_estadisticas_cliente(cid):
         "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM ventas WHERE cliente_id=?",
         (cid,), fetchone=True
     )
-    
+
     # Última compra
     ultima_compra = q(
         "SELECT fecha, total FROM ventas WHERE cliente_id=? ORDER BY fecha DESC LIMIT 1",
         (cid,), fetchone=True
     )
-    
+
     return {
         'total_compras': total_compras['total'],
         'monto_total': total_compras['monto'],
@@ -1904,9 +1956,9 @@ def get_saldo_proveedor(pid):
 def get_movimientos_proveedor(pid, limit=50):
     """Obtiene movimientos de cuenta corriente del proveedor."""
     return q(
-        """SELECT * FROM cc_proveedores_mov 
-        WHERE proveedor_id=? 
-        ORDER BY fecha DESC, id DESC 
+        """SELECT * FROM cc_proveedores_mov
+        WHERE proveedor_id=?
+        ORDER BY fecha DESC, id DESC
         LIMIT ?""",
         (pid, limit)
     )
@@ -1916,7 +1968,7 @@ def agregar_movimiento_proveedor(pid, tipo, numero_comprobante, debe=0, haber=0,
     """Agrega un movimiento a la cuenta corriente del proveedor."""
     fecha = datetime.now().strftime('%Y-%m-%d')
     q(
-        """INSERT INTO cc_proveedores_mov 
+        """INSERT INTO cc_proveedores_mov
         (proveedor_id, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (pid, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones),
@@ -1927,9 +1979,9 @@ def agregar_movimiento_proveedor(pid, tipo, numero_comprobante, debe=0, haber=0,
 def get_historial_compras_proveedor(pid, limit=20):
     """Obtiene historial de compras del proveedor."""
     return q(
-        """SELECT c.* FROM compras c 
-        WHERE c.proveedor_id = ? 
-        ORDER BY c.fecha DESC, c.id DESC 
+        """SELECT c.* FROM compras c
+        WHERE c.proveedor_id = ?
+        ORDER BY c.fecha DESC, c.id DESC
         LIMIT ?""",
         (pid, limit)
     )
@@ -2393,8 +2445,8 @@ def get_proxima_temporada():
     """Retorna la próxima temporada programada."""
     hoy = date.today().isoformat()
     return q(
-        """SELECT * FROM temporadas 
-        WHERE activa=1 AND fecha_inicio > ? 
+        """SELECT * FROM temporadas
+        WHERE activa=1 AND fecha_inicio > ?
         ORDER BY fecha_inicio LIMIT 1""",
         (hoy,), fetchone=True
     )
@@ -2420,14 +2472,14 @@ def add_temporada(data):
     return q("""
         INSERT INTO temporadas (nombre, descripcion, fecha_inicio, fecha_fin, activa)
         VALUES (?, ?, ?, ?, ?)
-    """, (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio'), 
+    """, (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio'),
           data.get('fecha_fin'), int(data.get('activa', 1))), commit=True)
 
 def update_temporada(tid, data):
     """Actualiza una temporada."""
     q("""UPDATE temporadas SET nombre=?, descripcion=?, fecha_inicio=?, fecha_fin=?, activa=?
          WHERE id=?""",
-      (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio'), 
+      (data['nombre'], data.get('descripcion', ''), data.get('fecha_inicio'),
        data.get('fecha_fin'), int(data.get('activa', 1)), tid), commit=True)
 
 def delete_temporada(tid):
@@ -2477,19 +2529,19 @@ def buscar_productos_pos(search):
                     p.por_peso, p.precio_venta, s.stock_actual
              FROM productos p
              JOIN stock s ON s.producto_id = p.id
-             WHERE p.activo=1""" 
+             WHERE p.activo=1"""
     params = []
     if search:
         sql += " AND (p.descripcion LIKE ? OR p.categoria LIKE ? OR p.codigo_interno LIKE ? OR p.codigo_barras LIKE ?)"
         params += [f'%{search}%'] * 4
     sql += " ORDER BY p.descripcion LIMIT 50"
-    
+
     # DEBUG: Descomenta las siguientes líneas para ver la consulta SQL y los parámetros
     # import os
     # if os.environ.get('FLASK_DEBUG') == '1': # Solo imprime si Flask está en modo debug
     #     print(f"DEBUG SQL (buscar_productos_pos): {sql}")
     #     print(f"DEBUG Params (buscar_productos_pos): {params}")
-    
+
     return q(sql, params)
 
 
@@ -2528,10 +2580,10 @@ def get_stats_rentabilidad(mes_actual=None):
     """Calcula ganancia bruta y operativa simple del mes."""
     if not mes_actual:
         mes_actual = datetime.now().strftime('%Y-%m')
-    
+
     # Total ventas.
     ventas = q("SELECT COALESCE(SUM(total), 0) as total FROM ventas WHERE fecha LIKE ?", (f"{mes_actual}%",), fetchone=True)['total']
-    
+
     # Costo de lo vendido: usa el costo guardado al vender y cae al costo actual en ventas viejas.
     costo_ventas = q("""
         SELECT COALESCE(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 0) as total_costo
@@ -2540,7 +2592,7 @@ def get_stats_rentabilidad(mes_actual=None):
         LEFT JOIN productos p ON p.id = vd.producto_id
         WHERE v.fecha LIKE ?
     """, (f"{mes_actual}%",), fetchone=True)['total_costo']
-    
+
     gastos_rows = q(
         """SELECT COALESCE(clasificacion, 'Operativo') as clasificacion,
                   COALESCE(SUM(monto), 0) as total
@@ -2557,12 +2609,12 @@ def get_stats_rentabilidad(mes_actual=None):
     impuestos = gastos_por_clasificacion.get("Impuesto", 0)
     gastos_financieros = gastos_por_clasificacion.get("Financiero", 0)
     total_gastos = gastos_operativos + impuestos + gastos_financieros
-    
+
     ganancia_bruta = ventas - costo_ventas
     ganancia_operativa = ganancia_bruta - gastos_operativos
     ganancia_neta_estimada = ganancia_operativa - impuestos - gastos_financieros
     margen_bruto = round((ganancia_bruta / ventas) * 100, 1) if ventas else 0
-    
+
     return {
         'ingresos': ventas,
         'costo_mercaderia': costo_ventas,

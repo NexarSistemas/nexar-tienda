@@ -1,0 +1,220 @@
+"""
+Tests para integración de licencias modulares en Nexar Tienda.
+
+Verifica que los tiers se mapeen correctamente a módulos:
+- DEMO -> {core}
+- BASICA -> {core, clientes}
+- MENSUAL_FULL/PRO/FULL -> {core, clientes, reportes, export, temporadas, ia, multinegocio, multiusuario}
+"""
+
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+# Agregar raíz del proyecto al path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+
+from licensing.planes import PLANES, normalize_plan
+
+
+FULL_MODULES = {
+    'core',
+    'clientes',
+    'reportes',
+    'export',
+    'temporadas',
+    'ia',
+    'multinegocio',
+    'multiusuario',
+}
+
+
+def _reset_license_env():
+    for key in ('NEXAR_LICENSE_MODE', 'NEXAR_PLAN', 'NEXAR_MODULES'):
+        os.environ.pop(key, None)
+
+
+def test_tier_modules_mapping():
+    """Verifica que el mapeo de tiers a módulos sea consistente."""
+    from database import TIER_LIMITS
+
+    # Verificar que existan los tiers esperados
+    expected_tiers = {'DEMO', 'BASICA', 'MENSUAL_FULL'}
+    assert set(PLANES.keys()) == expected_tiers, \
+        f"Tiers esperados: {expected_tiers}, obtenido: {set(PLANES.keys())}"
+
+    # Verificar que BASICA esté en TIER_LIMITS
+    assert 'BASICA' in TIER_LIMITS, "BASICA debe estar en TIER_LIMITS"
+    assert 'DEMO' in TIER_LIMITS, "DEMO debe estar en TIER_LIMITS"
+    assert 'MENSUAL_FULL' in TIER_LIMITS, "MENSUAL_FULL debe estar en TIER_LIMITS"
+
+    print("✓ Mapeo de tiers a módulos es consistente")
+
+
+def test_normalize_tier():
+    """Verifica que los aliases de tier se normalicen correctamente."""
+    test_cases = {
+        'BASIC': 'BASICA',
+        'BASICO': 'BASICA',
+        'TDA_BASICA': 'BASICA',
+        'PRO': 'MENSUAL_FULL',
+        'FULL': 'MENSUAL_FULL',
+        'MENSUAL': 'MENSUAL_FULL',
+        'TDA_PRO': 'MENSUAL_FULL',
+        'DEMO': 'DEMO',
+        'BASICA': 'BASICA',
+    }
+
+    for input_tier, expected in test_cases.items():
+        result = normalize_plan(input_tier)
+        assert result == expected, \
+            f"Normalizar '{input_tier}': esperado '{expected}', obtenido '{result}'"
+
+    print("✓ Normalización de aliases de tier funciona correctamente")
+
+
+def test_get_modulos_from_tier():
+    """Verifica que se obtienen los módulos correctos para cada tier."""
+    test_cases = {
+        'DEMO': {'core'},
+        'BASICA': {'core', 'clientes'},
+        'MENSUAL_FULL': FULL_MODULES,
+        'PRO': FULL_MODULES,
+        'FULL': FULL_MODULES,
+        'TDA_PRO': FULL_MODULES,
+    }
+
+    for tier, expected_modules in test_cases.items():
+        from licensing.permisos import _get_modulos_from_tier
+
+        result = _get_modulos_from_tier(tier)
+        assert result == expected_modules, \
+            f"Tier '{tier}': esperados {expected_modules}, obtenido {result}"
+
+    print("✓ Obtención de módulos por tier funciona correctamente")
+
+
+def test_database_tier_functions():
+    """Verifica que PROD mode resuelva módulos desde DB."""
+    import database
+    from licensing.permisos import get_modulos_activos
+
+    _reset_license_env()
+    os.environ['NEXAR_LICENSE_MODE'] = 'prod'
+
+    original_db_path = database.DB_PATH
+    temp_dir = tempfile.TemporaryDirectory()
+    try:
+        database.DB_PATH = str(Path(temp_dir.name) / 'test_tienda.db')
+        database.init_db()
+        database.q(
+            "UPDATE config SET valor=? WHERE clave='license_tier'",
+            ('TDA_PRO',),
+            commit=True,
+        )
+
+        tier = database.get_license_tier_from_db()
+        modules = database.get_modulos_from_tier(tier)
+        active_modules = get_modulos_activos()
+
+        assert tier == 'MENSUAL_FULL', f"Tier esperado MENSUAL_FULL, obtenido: {tier}"
+        assert modules == FULL_MODULES, f"Módulos desde DB incorrectos: {modules}"
+        assert active_modules == FULL_MODULES, f"Modo prod no tomó módulos desde DB: {active_modules}"
+
+        print("✓ PROD mode usa correctamente license_tier desde DB")
+    finally:
+        database.DB_PATH = original_db_path
+        temp_dir.cleanup()
+        _reset_license_env()
+
+
+def test_permisos_dev_mode():
+    """Verifica que en DEV mode se use .env vars."""
+    _reset_license_env()
+    os.environ['NEXAR_LICENSE_MODE'] = 'dev'
+    os.environ['NEXAR_PLAN'] = 'BASICA'
+    os.environ['NEXAR_MODULES'] = 'reportes, export'
+
+    from licensing.permisos import get_modulos_activos
+
+    modules = get_modulos_activos()
+    assert 'core' in modules, "DEV mode con NEXAR_PLAN=BASICA debe incluir 'core'"
+    assert 'clientes' in modules, "DEV mode con NEXAR_PLAN=BASICA debe incluir 'clientes'"
+    assert 'reportes' in modules, "DEV mode debe sumar módulos extra desde NEXAR_MODULES"
+    assert 'export' in modules, "DEV mode debe sumar módulos extra desde NEXAR_MODULES"
+
+    print("✓ DEV mode usa correctamente NEXAR_PLAN desde .env")
+    _reset_license_env()
+
+
+def test_tier_core_module():
+    """Verifica que todos los tiers incluyan el módulo 'core'."""
+    for tier, modules in PLANES.items():
+        assert 'core' in modules, \
+            f"Tier '{tier}' debe incluir el módulo 'core', tiene: {modules}"
+
+    print("✓ Todos los tiers incluyen el módulo 'core'")
+
+
+def test_basica_includes_clientes():
+    """Verifica que BASICA incluya los módulos esperados."""
+    basica_modules = PLANES['BASICA']
+    assert 'clientes' in basica_modules, "BASICA debe incluir 'clientes'"
+    assert len(basica_modules) == 2, "BASICA debe tener exactamente 2 módulos (core, clientes)"
+
+    print("✓ BASICA tiene mapeo correcto")
+
+
+def test_full_includes_all():
+    """Verifica que MENSUAL_FULL incluya todos los módulos esperados."""
+    full_modules = PLANES['MENSUAL_FULL']
+    assert full_modules == FULL_MODULES, \
+        f"MENSUAL_FULL: esperados {FULL_MODULES}, obtenido {full_modules}"
+
+    print("✓ MENSUAL_FULL tiene mapeo completo")
+
+
+def run_all_tests():
+    """Ejecuta todos los tests."""
+    tests = [
+        test_tier_modules_mapping,
+        test_normalize_tier,
+        test_get_modulos_from_tier,
+        test_tier_core_module,
+        test_basica_includes_clientes,
+        test_full_includes_all,
+        test_database_tier_functions,
+        test_permisos_dev_mode,
+    ]
+
+    print("\n" + "="*70)
+    print("TESTS DE INTEGRACIÓN DE LICENCIAS MODULARES - NEXAR TIENDA")
+    print("="*70 + "\n")
+
+    passed = 0
+    failed = 0
+
+    for test in tests:
+        try:
+            test()
+            passed += 1
+        except AssertionError as e:
+            print(f"✗ {test.__name__}: {e}")
+            failed += 1
+        except Exception as e:
+            print(f"✗ {test.__name__}: Error inesperado: {e}")
+            failed += 1
+
+    print("\n" + "="*70)
+    print(f"Resultados: {passed} pasaron, {failed} fallaron")
+    print("="*70 + "\n")
+
+    return failed == 0
+
+
+if __name__ == '__main__':
+    success = run_all_tests()
+    sys.exit(0 if success else 1)
