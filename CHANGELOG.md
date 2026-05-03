@@ -4,6 +4,18 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.26.0] - 03 Mayo 2026 - Licencias Modulares BASICA PRO FULL
+
+### Mejoras
+- Se consolida la integracion modular de licencias con soporte para `BASICA`, `PRO` y `MENSUAL_FULL`.
+- La app persiste `license_tier`, `license_plan` y `license_modules` sincronizados desde el SDK.
+- Los permisos por modulo priorizan modulos remotos persistidos y mantienen fallback por tier local.
+
+### Documentacion
+- El README se actualiza para reflejar los planes `BASICA`, `PRO` y `MENSUAL FULL` y la version actual del release.
+
+---
+
 ## [1.25.24] - 25 Abril 2026 - Rentabilidad Simple y Precio Sugerido
 
 ### Mejoras

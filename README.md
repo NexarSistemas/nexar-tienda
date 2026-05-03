@@ -1,4 +1,4 @@
-# 🎁 Nexar Tienda v1.25.13
+# 🎁 Nexar Tienda v1.26.0
 
 Sistema Integral de Gestión Comercial diseñado para tiendas de regalos, bijouterie, marroquinería y productos estacionales. Optimizado para un funcionamiento fluido, seguro y con una interfaz estética de alto nivel.
 
@@ -104,8 +104,9 @@ Tambien se puede usar el helper del repo:
 - **Licenciamiento Supabase + SDK Nexar**: Activación online mediante `nexar_licencias`, vinculación por HWID y cache offline para continuidad operativa.
 - **Tiers de Licencia**:
     - **DEMO**: 30 días de prueba con funcionalidad completa.
-    - **BÁSICA**: Pago único, límites de catálogo estándar.
-    - **MENSUAL FULL**: Suscripción mensual con uso completo, actualizaciones y soporte. Al vencer, el sistema degrada automáticamente a BÁSICA sin pérdida de datos si existe activación básica.
+    - **BÁSICA**: Incluye `core`, `clientes`, `proveedores`, `pos`, `stock` y `caja`.
+    - **PRO**: Suma `compras`, `gastos`, `historial`, `reportes`, `export` y `multiusuario` básico.
+    - **MENSUAL FULL**: Mantiene el plan completo mensual y agrega módulos avanzados como `temporadas`, `multinegocio` e `ia`, con actualizaciones y soporte.
     - **Anti-Reinstalación**: El contador de la demo no se reinicia al reinstalar la aplicación.
 - **Multi-PC**: Las licencias soportan `max_devices` y lista de equipos autorizados.
 - **Recuperación Obligatoria**: Los usuarios creados por el administrador deben configurar pregunta y respuesta secreta al primer inicio.
