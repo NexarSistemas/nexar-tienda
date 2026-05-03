@@ -4,7 +4,7 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, abort, redirect, request, session
+from flask import Flask, abort, redirect, render_template, request, session
 
 from services.runtime_config import load_runtime_env
 
@@ -13,6 +13,7 @@ load_runtime_env()
 import database as db
 from routes.licencia import licencia_bp
 from routes.main import main_bp
+from licensing.permisos import modulo_activo
 from services.license_storage import cargar_licencia
 from services.license_sdk import validate_saved_license
 from services.update_checker import get_cached_update_info
@@ -77,6 +78,7 @@ def create_app() -> Flask:
             "get_config_valor": get_config_valor,
             "get_licencia_status": get_licencia_status,
             "app_version": app_version,
+            "modulo_activo": modulo_activo,
             "update_info": (
                 get_cached_update_info(app, app_version)
                 if lic_status and lic_status.get("updates")
@@ -112,6 +114,10 @@ def create_app() -> Flask:
             except ValueError:
                 continue
         return text
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        return render_template("403.html"), 403
 
     @app.before_request
     def global_middleware():
@@ -257,6 +263,7 @@ def create_app() -> Flask:
         "rentabilidad_detallada",
         "perfil",
         "config",
+        "mi_plan",
         "config_categoria",
         "config_categoria_eliminar",
         "config_gasto_categoria",

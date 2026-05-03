@@ -4,7 +4,12 @@ license_verifier.py — Nexar Tienda
 Verifica la licencia online contra Supabase usando el SDK nexar_licencias.
 """
 
-from services.license_sdk import get_license_product, import_validar_licencia, load_public_key
+from services.license_sdk import (
+    get_license_product,
+    import_validar_licencia,
+    import_validar_licencia_detalle,
+    load_public_key,
+)
 
 # ── Configuracion ─────────────────────────────────────────────────────────────
 DIAS_GRACIA = 7
@@ -32,16 +37,29 @@ def verificar_licencia_online(db_module) -> dict:
     except:
         licencia = {"license_key": cfg.get('license_key', ''), "public_signature": cfg.get('license_signature', '')}
 
+    validar_detalle = import_validar_licencia_detalle()
     validar_licencia = import_validar_licencia()
-    if validar_licencia is None:
+    if validar_detalle is None and validar_licencia is None:
         _revocar(db_module)
         return {'ok': False, 'modo': 'revocada', 'mensaje': 'No se pudo cargar el SDK de licencias.'}
 
-    ok = validar_licencia(licencia, load_public_key(), get_license_product(), debug=True)
+    license_data = {}
+    if validar_detalle is not None:
+        result = validar_detalle(licencia, load_public_key(), get_license_product(), debug=True)
+        ok = bool(result.get("ok"))
+        license_data = result.get("license") or {}
+    else:
+        ok = validar_licencia(licencia, load_public_key(), get_license_product(), debug=True)
 
     if not ok:
         _revocar(db_module)
         return {'ok': False, 'modo': 'revocada', 'mensaje': 'Licencia inválida o revocada.'}
+
+    if license_data:
+        try:
+            db_module.sync_license_from_remote(license_data)
+        except Exception:
+            pass
 
     return {'ok': True, 'modo': 'online_ok', 'mensaje': 'Verificación exitosa.'}
 

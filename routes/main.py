@@ -15,6 +15,8 @@ from pathlib import Path
 
 import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from licensing.planes import PLANES, get_plan_activo
+from licensing.permisos import get_modulos_activos, require_modulo
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.license_sdk import get_current_hwid, get_license_product, validate_license_key
 from services.runtime_config import app_data_dir
@@ -649,12 +651,14 @@ def stock_ajustar(pid):
 @main_bp.route("/temporadas")
 @login_required
 def temporadas():
+    require_modulo("temporadas")
     return render_template("temporadas.html", temporadas=db.get_temporadas())
 
 
 @main_bp.route("/temporadas/nueva", methods=["GET", "POST"])
 @login_required
 def temporada_nueva():
+    require_modulo("temporadas")
     if request.method == "POST":
         data = request.form.to_dict()
         data["activa"] = 1 if _as_bool(data.get("activa")) else 0
@@ -667,6 +671,7 @@ def temporada_nueva():
 @main_bp.route("/temporadas/<int:tid>/editar", methods=["GET", "POST"])
 @login_required
 def temporada_editar(tid):
+    require_modulo("temporadas")
     temporada = db.get_temporada(tid)
     if request.method == "POST":
         data = request.form.to_dict()
@@ -680,6 +685,7 @@ def temporada_editar(tid):
 @main_bp.route("/temporadas/<int:tid>/eliminar", methods=["POST"])
 @login_required
 def temporada_eliminar(tid):
+    require_modulo("temporadas")
     db.delete_temporada(tid)
     flash("✅ Temporada eliminada.", "success")
     return redirect(url_for("temporadas"))
@@ -1154,6 +1160,7 @@ def proveedor_eliminar(pid):
 @main_bp.route("/reportes")
 @login_required
 def reportes():
+    require_modulo("reportes")
     rent = db.get_stats_rentabilidad()
     pagos = [{"medio_pago": r["medio_pago"], "monto": r["total"]} for r in db.get_ventas_por_medio_pago(date.today().year, date.today().month)]
     ventas_7 = db.q("SELECT fecha as dia, ROUND(SUM(total),2) as monto FROM ventas WHERE fecha >= date('now','-6 days') GROUP BY fecha ORDER BY fecha")
@@ -1167,6 +1174,7 @@ def reportes():
 @main_bp.route("/estadisticas")
 @login_required
 def estadisticas():
+    require_modulo("reportes")
     year = int(request.args.get("year", date.today().year))
     ventas_mes = db.get_ventas_por_mes(year)
     meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
@@ -1179,6 +1187,7 @@ def estadisticas():
 @main_bp.route("/analisis")
 @login_required
 def analisis():
+    require_modulo("ia")
     desde = request.args.get("desde", (date.today() - timedelta(days=30)).isoformat())
     hasta = request.args.get("hasta", date.today().isoformat())
     top = db.get_top_productos_analisis(15, desde, hasta)
@@ -1201,6 +1210,7 @@ def analisis():
 @main_bp.route("/rentabilidad-detallada")
 @admin_required
 def rentabilidad_detallada():
+    require_modulo("reportes")
     hoy = date.today()
     semana_desde = hoy - timedelta(days=hoy.weekday())
     mes_desde = date(hoy.year, hoy.month, 1)
@@ -1273,6 +1283,20 @@ def config():
         db.set_config(data)
         return redirect(url_for("config"))
     return render_template("config.html", cfg=db.get_config(), categorias=db.get_categorias(), categorias_gastos=db.get_gasto_categorias())
+
+
+@main_bp.route("/mi-plan")
+@login_required
+def mi_plan():
+    modulos_activos = sorted(get_modulos_activos())
+    todos_los_modulos = sorted(set().union(*PLANES.values()))
+    modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
+    return render_template(
+        "mi_plan.html",
+        plan_activo=get_plan_activo(),
+        modulos_activos=modulos_activos,
+        modulos_bloqueados=modulos_bloqueados,
+    )
 
 
 @main_bp.route("/config/categoria", methods=["POST"])
@@ -1361,12 +1385,14 @@ def licencia_solicitar():
 @main_bp.route("/usuarios")
 @admin_required
 def usuarios():
+    require_modulo("multiusuario")
     return render_template("usuarios.html", usuarios=db.get_usuarios())
 
 
 @main_bp.route("/usuarios/nuevo", methods=["GET", "POST"])
 @admin_required
 def usuario_nuevo():
+    require_modulo("multiusuario")
     if request.method == "POST":
         ok, msg = _validate_password_confirmation(
             request.form.get("password", ""),
@@ -1383,6 +1409,7 @@ def usuario_nuevo():
 @main_bp.route("/usuarios/<int:uid>/editar", methods=["GET", "POST"])
 @admin_required
 def usuario_editar(uid):
+    require_modulo("multiusuario")
     usuario = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
     if not usuario:
         flash("❌ Usuario inexistente.", "danger")
@@ -1407,6 +1434,7 @@ def usuario_editar(uid):
 @main_bp.route("/usuarios/<int:uid>/toggle-activo", methods=["POST"])
 @admin_required
 def usuario_toggle_activo(uid):
+    require_modulo("multiusuario")
     user = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
     if not user:
         flash("❌ Usuario inexistente.", "danger")
@@ -1428,6 +1456,7 @@ def usuario_toggle_activo(uid):
 @main_bp.route("/usuarios/<int:uid>/eliminar", methods=["POST"])
 @admin_required
 def usuario_eliminar(uid):
+    require_modulo("multiusuario")
     user = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
     if not user:
         flash("❌ Usuario inexistente.", "danger")
@@ -1673,6 +1702,7 @@ def actualizacion_limpiar_estado():
 @main_bp.route("/productos/exportar/excel")
 @admin_required
 def exportar_excel():
+    require_modulo("export")
     rows = db.get_catalogo_export()
     try:
         import openpyxl
@@ -1693,6 +1723,7 @@ def exportar_excel():
 @main_bp.route("/productos/exportar/pdf")
 @admin_required
 def exportar_pdf():
+    require_modulo("export")
     rows = db.get_catalogo_export()
     text = "\n".join(f'{r["codigo"]} - {r["descripcion"]} - $ {float(r["precio_venta"] or 0):.2f}' for r in rows)
     return Response(text, headers={"Content-Disposition": "attachment; filename=lista_precios.txt"}, mimetype="text/plain")
