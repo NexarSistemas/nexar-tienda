@@ -12,8 +12,24 @@
                     <h5 class="mb-0">Plan activo</h5>
                 </div>
                 <div class="card-body">
-                    <div class="display-6 fw-bold text-primary mb-2">{{ plan_activo }}</div>
-                    <p class="text-muted mb-0">Los módulos disponibles dependen del plan configurado para esta instalación.</p>
+                    {% set plan_label = 'FULL' if plan_activo == 'MENSUAL_FULL' else plan_activo %}
+                    <div class="display-6 fw-bold text-primary mb-2">{{ plan_label }}</div>
+                    <p class="text-muted mb-3">Los módulos disponibles dependen del plan configurado para esta instalación.</p>
+                    {% if plan_activo == 'BASICA' %}
+                    <div class="alert alert-info mb-0">
+                        <div class="fw-semibold">Actualizar a PRO</div>
+                        <div class="small">Agregá compras, gastos, reportes y exportaciones.</div>
+                    </div>
+                    {% elif plan_activo == 'PRO' %}
+                    <div class="alert alert-primary mb-0">
+                        <div class="fw-semibold">Actualizar a FULL</div>
+                        <div class="small">Accedé a funciones premium, multinegocio y soporte prioritario.</div>
+                    </div>
+                    {% elif plan_activo == 'MENSUAL_FULL' %}
+                    <div class="alert alert-success mb-0">
+                        <div class="fw-semibold">Plan completo activo</div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

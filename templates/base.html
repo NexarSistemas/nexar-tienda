@@ -156,6 +156,10 @@
                         <div class="fw-bold">
                             <i class="fas fa-store me-1"></i>{{ get_config_valor('nombre_negocio', 'Nexar Tienda') }}
                             {% set lic = get_licencia_status() %}
+                            {% set plan_info = get_license_info() %}
+                            {% set plan_tier = plan_info.get('tier', 'DEMO') %}
+                            {% set plan_label = 'FULL' if plan_tier == 'MENSUAL_FULL' else plan_tier %}
+                            {% set plan_modules = plan_info.get('modules', []) %}
                             {% if lic %}
                                 <span class="ms-2 ps-2 border-start">
                                     {% if lic.es_demo and not lic.vencido %}
@@ -163,9 +167,25 @@
                                     {% elif lic.vencido %}
                                         <span class="text-danger"><i class="fas fa-lock"></i> VENCIDA</span>
                                     {% else %}
-                                        <span class="text-success"><i class="fas fa-check-circle"></i> {{ lic.tier }}</span>
+                                        <span class="text-success"><i class="fas fa-check-circle"></i> Plan actual: {{ plan_label }}</span>
                                     {% endif %}
                                 </span>
+                            {% endif %}
+                        </div>
+                        <div style="font-size: 0.72rem;">
+                            {% if plan_modules %}
+                                {{ plan_modules[:4] | join(', ') }}{% if plan_modules|length > 4 %} +{{ plan_modules|length - 4 }} más{% endif %}
+                            {% endif %}
+                        </div>
+                        <div style="font-size: 0.72rem;">
+                            {% if plan_tier == 'BASICA' %}
+                                <a href="{{ url_for('mi_plan') }}" class="text-decoration-none">Actualizar a PRO</a>
+                                · Agregá compras, gastos, reportes y exportaciones.
+                            {% elif plan_tier == 'PRO' %}
+                                <a href="{{ url_for('mi_plan') }}" class="text-decoration-none">Actualizar a FULL</a>
+                                · Accedé a funciones premium, multinegocio y soporte prioritario.
+                            {% elif plan_tier == 'MENSUAL_FULL' %}
+                                Plan completo activo
                             {% endif %}
                         </div>
                         <div id="current-time" style="font-size: 0.7rem;"></div>

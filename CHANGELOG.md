@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.26.1] - 03 Mayo 2026 - UI Comercial de Planes
+
+### Added
+- Visualización del plan actual en la interfaz.
+- Llamadas de upgrade BASICA -> PRO y PRO -> FULL.
+
+### Changed
+- MENSUAL_FULL se muestra comercialmente como FULL.
+
+---
+
 ## [1.26.0] - 03 Mayo 2026 - Licencias Modulares BASICA PRO FULL
 
 ### Mejoras

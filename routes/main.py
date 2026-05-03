@@ -1291,9 +1291,11 @@ def mi_plan():
     modulos_activos = sorted(get_modulos_activos())
     todos_los_modulos = sorted(set().union(*PLANES.values()))
     modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
+    license_info = db.get_license_info()
     return render_template(
         "mi_plan.html",
         plan_activo=get_plan_activo(),
+        license_info=license_info,
         modulos_activos=modulos_activos,
         modulos_bloqueados=modulos_bloqueados,
     )
