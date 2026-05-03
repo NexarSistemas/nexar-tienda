@@ -3,8 +3,9 @@ Tests para integración de licencias modulares en Nexar Tienda.
 
 Verifica que los tiers se mapeen correctamente a módulos:
 - DEMO -> {core}
-- BASICA -> {core, clientes}
-- MENSUAL_FULL/PRO/FULL -> {core, clientes, reportes, export, temporadas, ia, multinegocio, multiusuario}
+- BASICA -> {core, clientes, proveedores, pos, stock, caja}
+- PRO -> {BASICA + compras, gastos, historial, reportes, export, multiusuario}
+- MENSUAL_FULL/FULL -> {PRO + temporadas, multinegocio, ia}
 """
 
 import os
@@ -20,15 +21,26 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from licensing.planes import PLANES, normalize_plan
 
 
-FULL_MODULES = {
+PRO_MODULES = {
     'core',
     'clientes',
+    'proveedores',
+    'pos',
+    'stock',
+    'caja',
+    'compras',
+    'gastos',
+    'historial',
     'reportes',
     'export',
+    'multiusuario',
+}
+
+FULL_MODULES = {
+    *PRO_MODULES,
     'temporadas',
     'ia',
     'multinegocio',
-    'multiusuario',
 }
 REMOTE_MODULES = ['clientes', 'core']
 
@@ -49,7 +61,7 @@ def test_tier_modules_mapping():
     from database import TIER_LIMITS
 
     # Verificar que existan los tiers esperados
-    expected_tiers = {'DEMO', 'BASICA', 'MENSUAL_FULL'}
+    expected_tiers = {'DEMO', 'BASICA', 'PRO', 'MENSUAL_FULL'}
     assert set(PLANES.keys()) == expected_tiers, \
         f"Tiers esperados: {expected_tiers}, obtenido: {set(PLANES.keys())}"
 
@@ -67,7 +79,7 @@ def test_normalize_tier():
         'BASIC': 'BASICA',
         'BASICO': 'BASICA',
         'TDA_BASICA': 'BASICA',
-        'PRO': 'MENSUAL_FULL',
+        'PRO': 'PRO',
         'FULL': 'MENSUAL_FULL',
         'MENSUAL': 'MENSUAL_FULL',
         'TDA_PRO': 'MENSUAL_FULL',
@@ -87,9 +99,9 @@ def test_get_modulos_from_tier():
     """Verifica que se obtienen los módulos correctos para cada tier."""
     test_cases = {
         'DEMO': {'core'},
-        'BASICA': {'core', 'clientes'},
+        'BASICA': {'core', 'clientes', 'proveedores', 'pos', 'stock', 'caja'},
+        'PRO': PRO_MODULES,
         'MENSUAL_FULL': FULL_MODULES,
-        'PRO': FULL_MODULES,
         'FULL': FULL_MODULES,
         'TDA_PRO': FULL_MODULES,
     }
@@ -118,7 +130,7 @@ def test_database_tier_functions():
         _init_temp_database(database, temp_dir)
         database.q(
             "UPDATE config SET valor=? WHERE clave='license_tier'",
-            ('TDA_PRO',),
+            ('PRO',),
             commit=True,
         )
 
@@ -126,9 +138,9 @@ def test_database_tier_functions():
         modules = database.get_modulos_from_tier(tier)
         active_modules = get_modulos_activos()
 
-        assert tier == 'MENSUAL_FULL', f"Tier esperado MENSUAL_FULL, obtenido: {tier}"
-        assert modules == FULL_MODULES, f"Módulos desde DB incorrectos: {modules}"
-        assert active_modules == FULL_MODULES, f"Modo prod no tomó módulos desde DB: {active_modules}"
+        assert tier == 'PRO', f"Tier esperado PRO, obtenido: {tier}"
+        assert modules == PRO_MODULES, f"Módulos desde DB incorrectos: {modules}"
+        assert active_modules == PRO_MODULES, f"Modo prod no tomó módulos desde DB: {active_modules}"
 
         print("✓ PROD mode usa correctamente license_tier desde DB")
     finally:
@@ -154,8 +166,8 @@ def test_sync_license_modules_from_remote():
         cfg = database.get_config()
         info = database.get_license_info()
 
-        assert cfg['license_tier'] == 'MENSUAL_FULL', f"Tier incorrecto: {cfg['license_tier']}"
-        assert cfg['license_plan'] == 'MENSUAL_FULL', f"Plan incorrecto: {cfg['license_plan']}"
+        assert cfg['license_tier'] == 'PRO', f"Tier incorrecto: {cfg['license_tier']}"
+        assert cfg['license_plan'] == 'PRO', f"Plan incorrecto: {cfg['license_plan']}"
         assert cfg['license_modules'] == '["clientes", "core"]', f"license_modules incorrecto: {cfg['license_modules']}"
         assert info['modules'] == REMOTE_MODULES, f"Módulos en get_license_info incorrectos: {info['modules']}"
 
@@ -268,9 +280,19 @@ def test_basica_includes_clientes():
     """Verifica que BASICA incluya los módulos esperados."""
     basica_modules = PLANES['BASICA']
     assert 'clientes' in basica_modules, "BASICA debe incluir 'clientes'"
-    assert len(basica_modules) == 2, "BASICA debe tener exactamente 2 módulos (core, clientes)"
+    expected = {'core', 'clientes', 'proveedores', 'pos', 'stock', 'caja'}
+    assert basica_modules == expected, f"BASICA debe tener {expected}, tiene: {basica_modules}"
 
     print("✓ BASICA tiene mapeo correcto")
+
+
+def test_pro_modules():
+    """Verifica que PRO incluya los módulos esperados."""
+    pro_modules = PLANES['PRO']
+    assert pro_modules == PRO_MODULES, \
+        f"PRO: esperados {PRO_MODULES}, obtenido {pro_modules}"
+
+    print("✓ PRO tiene mapeo correcto")
 
 
 def test_full_includes_all():
@@ -290,6 +312,7 @@ def run_all_tests():
         test_get_modulos_from_tier,
         test_tier_core_module,
         test_basica_includes_clientes,
+        test_pro_modules,
         test_full_includes_all,
         test_database_tier_functions,
         test_sync_license_modules_from_remote,

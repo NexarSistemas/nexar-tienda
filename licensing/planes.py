@@ -7,17 +7,25 @@ TIER_ALIASES = {
     "TDA_BASICA": "BASICA",
     "FULL": "MENSUAL_FULL",
     "MENSUAL": "MENSUAL_FULL",
-    "PRO": "MENSUAL_FULL",
+    "PRO": "PRO",
     "TDA_PRO": "MENSUAL_FULL",
 }
 
 
 PLANES = {
     "DEMO": {"core"},
-    "BASICA": {"core", "clientes"},
+    "BASICA": {"core", "clientes", "proveedores", "pos", "stock", "caja"},
+    "PRO": {"core", "clientes", "proveedores", "pos", "stock", "caja", "compras", "gastos", "historial", "reportes", "export", "multiusuario"},
     "MENSUAL_FULL": {
         "core",
         "clientes",
+        "proveedores",
+        "pos",
+        "stock",
+        "caja",
+        "compras",
+        "gastos",
+        "historial",
         "reportes",
         "export",
         "temporadas",

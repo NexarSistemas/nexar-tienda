@@ -9,12 +9,12 @@ from typing import Any
 import requests
 
 PRODUCTO_DEFAULT = os.getenv("LICENSE_PRODUCT", "nexar-tienda")
-PLANES_VALIDOS = {"DEMO", "BASICA", "MENSUAL_FULL"}
+PLANES_VALIDOS = {"DEMO", "BASICA", "PRO", "MENSUAL_FULL"}
 
 
 def normalize_plan(plan: str = "") -> str:
     raw = (plan or "BASICA").strip().upper().replace("-", "_").replace(" ", "_")
-    aliases = {"PRO": "MENSUAL_FULL", "FULL": "MENSUAL_FULL", "BASIC": "BASICA"}
+    aliases = {"PRO": "PRO", "FULL": "MENSUAL_FULL", "MENSUAL": "MENSUAL_FULL", "TDA_PRO": "MENSUAL_FULL", "BASIC": "BASICA"}
     normalized = aliases.get(raw, raw)
     return normalized if normalized in PLANES_VALIDOS else "BASICA"
 

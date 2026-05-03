@@ -40,6 +40,15 @@ TIER_LIMITS = {
         "updates": False,
         "descripcion": "Licencia Basica permanente"
     },
+    "PRO": {
+        "productos": None,      # ilimitado
+        "clientes": None,
+        "proveedores": None,
+        "dias_prueba": None,
+        "support": True,
+        "updates": True,
+        "descripcion": "Licencia Pro"
+    },
     "MENSUAL_FULL": {
         "productos": None,      # ilimitado
         "clientes": None,
@@ -50,7 +59,6 @@ TIER_LIMITS = {
         "descripcion": "Mensual Full (actualizaciones y soporte)"
     },
 }
-TIER_LIMITS["PRO"] = TIER_LIMITS["MENSUAL_FULL"]
 
 
 def normalize_license_plan(plan: str = None) -> str:
