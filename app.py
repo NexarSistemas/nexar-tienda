@@ -77,6 +77,7 @@ def create_app() -> Flask:
         return {
             "get_config_valor": get_config_valor,
             "get_licencia_status": get_licencia_status,
+            "get_license_info": db.get_license_info,
             "app_version": app_version,
             "modulo_activo": modulo_activo,
             "update_info": (

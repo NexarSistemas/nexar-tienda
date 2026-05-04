@@ -4,6 +4,17 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.26.2] - 03 Mayo 2026 - Ajuste Visual y Global de Planes
+
+### Fixed
+- Se registra `get_license_info` como global de Jinja para evitar errores de render en los templates.
+- La barra comercial del plan se reubica debajo del header para evitar superposición o compresión en el topbar.
+
+### Changed
+- El topbar vuelve a mostrar solo el estado breve de licencia, mientras la información comercial del plan queda en una franja horizontal separada.
+
+---
+
 ## [1.26.1] - 03 Mayo 2026 - UI Comercial de Planes
 
 ### Added
