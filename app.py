@@ -182,7 +182,7 @@ def create_app() -> Flask:
                 return None
             return redirect("/licencia")
 
-        ok, _ = validate_saved_license(debug=True)
+        ok, _ = validate_saved_license(debug=False)
         if not ok:
             cfg = db.get_config()
             if cfg.get("basica_activada", "0") == "1":

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import getpass
 import hashlib
+import logging
 import os
 import platform
 from typing import Any
@@ -10,6 +11,7 @@ import requests
 
 PRODUCTO_DEFAULT = os.getenv("LICENSE_PRODUCT", "nexar-tienda")
 PLANES_VALIDOS = {"DEMO", "BASICA", "PRO", "MENSUAL_FULL"}
+logger = logging.getLogger(__name__)
 
 
 def normalize_plan(plan: str = "") -> str:
@@ -134,7 +136,11 @@ def create_license_request(
         "machine_details": machine_details or {},
     }
     headers = {**_headers(), "Prefer": "return=minimal"}
-    resp = requests.post(_requests_table_url(), headers=headers, json=payload, timeout=12)
+    try:
+        resp = requests.post(_requests_table_url(), headers=headers, json=payload, timeout=12)
+    except requests.RequestException as exc:
+        logger.warning("Error de conexion enviando solicitud de licencia: %s", exc)
+        return False, "No se pudo conectar con Supabase para enviar la solicitud.", None
     if resp.status_code >= 300:
         return False, f"Error al registrar solicitud en Supabase ({resp.status_code}): {resp.text[:240]}", None
 
@@ -186,7 +192,11 @@ def create_support_request(
         "technical_details": technical_details or {},
     }
     headers = {**_headers(), "Prefer": "return=minimal"}
-    resp = requests.post(_support_requests_table_url(), headers=headers, json=payload, timeout=12)
+    try:
+        resp = requests.post(_support_requests_table_url(), headers=headers, json=payload, timeout=12)
+    except requests.RequestException as exc:
+        logger.warning("Error de conexion enviando solicitud de soporte: %s", exc)
+        return False, "No se pudo conectar con Supabase para enviar la solicitud de soporte.", None
     if resp.status_code >= 300:
         return False, f"Error al registrar solicitud de soporte ({resp.status_code}): {resp.text[:240]}", None
 
@@ -203,11 +213,19 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
         return False, "La clave y el ID de maquina son obligatorios.", None
 
     params = {"license_key": f"eq.{key}", "producto": f"eq.{producto}", "select": "*"}
-    resp = requests.get(_table_url(), headers=_headers(), params=params, timeout=12)
+    try:
+        resp = requests.get(_table_url(), headers=_headers(), params=params, timeout=12)
+    except requests.RequestException as exc:
+        logger.warning("Error de conexion consultando licencia en Supabase: %s", exc)
+        return False, "No se pudo conectar con Supabase para validar la licencia.", None
     if resp.status_code >= 300:
         return False, f"Error consultando licencia ({resp.status_code}): {resp.text[:240]}", None
 
-    rows = resp.json() if resp.text else []
+    try:
+        rows = resp.json() if resp.text else []
+    except ValueError:
+        logger.warning("Respuesta invalida de Supabase al consultar licencia")
+        return False, "Supabase devolvió una respuesta inválida al validar la licencia.", None
     if not rows:
         return False, "No existe esa licencia para este producto.", None
 
@@ -228,13 +246,17 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
     else:
         return False, "La licencia alcanzo el limite de dispositivos.", row
 
-    upd = requests.patch(
-        _table_url(),
-        headers={**_headers(), "Prefer": "return=representation"},
-        params={"id": f"eq.{row['id']}"},
-        json={"hwid": db_hwid or machine_id, "hwids": update_hwids},
-        timeout=12,
-    )
+    try:
+        upd = requests.patch(
+            _table_url(),
+            headers={**_headers(), "Prefer": "return=representation"},
+            params={"id": f"eq.{row['id']}"},
+            json={"hwid": db_hwid or machine_id, "hwids": update_hwids},
+            timeout=12,
+        )
+    except requests.RequestException as exc:
+        logger.warning("Error de conexion actualizando HWID en Supabase: %s", exc)
+        return False, "Licencia encontrada, pero no se pudo conectar a Supabase para vincular este equipo.", row
     if upd.status_code >= 300:
         return False, f"Licencia encontrada, pero no se pudo actualizar HWID ({upd.status_code}).", row
 

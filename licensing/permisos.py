@@ -11,6 +11,7 @@ from flask import abort
 from licensing.planes import (
     PLANES as TIER_MODULES_MAP,
     get_modulos_activos as get_modulos_activos_env,
+    get_modulos_extra,
     normalize_plan,
 )
 
@@ -18,9 +19,11 @@ from licensing.planes import (
 logger = logging.getLogger(__name__)
 SDK_REPO_PATH = Path(__file__).resolve().parent.parent.parent / "nexar_licencias"
 _last_logged_source: str | None = None
+_last_modules_source: str | None = None
 
 def _log_source(source: str, message: str) -> None:
-    global _last_logged_source
+    global _last_logged_source, _last_modules_source
+    _last_modules_source = source
     if _last_logged_source == source:
         return
     logger.info(message)
@@ -157,6 +160,26 @@ def get_modulos_activos() -> set[str]:
 
     _log_source("env", "Fallback: usando módulos desde .env")
     return get_modulos_activos_env()
+
+
+def get_modulos_debug_info() -> dict[str, object]:
+    mode = os.getenv("NEXAR_LICENSE_MODE", "dev").strip().lower()
+    persisted = _get_modulos_from_db_config()
+    tier = _get_tier_from_db() if mode != "dev" else normalize_plan(os.getenv("NEXAR_PLAN", "DEMO"), default="DEMO")
+    tier_modules = _get_modulos_from_tier(tier)
+    env_modules = get_modulos_extra()
+    sdk_modules = _get_modulos_sdk() if mode != "dev" else set()
+    final_modules = get_modulos_activos()
+    return {
+        "mode": mode,
+        "tier": tier,
+        "sdk_modules": sorted(sdk_modules),
+        "persisted_modules": sorted(persisted),
+        "tier_modules": sorted(tier_modules),
+        "env_modules": sorted(env_modules),
+        "final_modules": sorted(final_modules),
+        "final_source": _last_modules_source or "unknown",
+    }
 
 
 def modulo_activo(nombre: str) -> bool:

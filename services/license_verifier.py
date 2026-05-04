@@ -4,7 +4,10 @@ license_verifier.py — Nexar Tienda
 Verifica la licencia online contra Supabase usando el SDK nexar_licencias.
 """
 
+import logging
+
 from services.license_sdk import (
+    get_license_debug_state,
     get_license_product,
     import_validar_licencia,
     import_validar_licencia_detalle,
@@ -13,6 +16,7 @@ from services.license_sdk import (
 
 # ── Configuracion ─────────────────────────────────────────────────────────────
 DIAS_GRACIA = 7
+logger = logging.getLogger(__name__)
 # ── Logica principal ──────────────────────────────────────────────────────────
 
 def verificar_licencia_online(db_module) -> dict:
@@ -41,19 +45,26 @@ def verificar_licencia_online(db_module) -> dict:
     validar_licencia = import_validar_licencia()
     if validar_detalle is None and validar_licencia is None:
         _revocar(db_module)
+        logger.error("No se pudo cargar el SDK de licencias para verificacion online")
         return {'ok': False, 'modo': 'revocada', 'mensaje': 'No se pudo cargar el SDK de licencias.'}
 
     license_data = {}
     if validar_detalle is not None:
-        result = validar_detalle(licencia, load_public_key(), get_license_product(), debug=True)
+        result = validar_detalle(licencia, load_public_key(), get_license_product(), debug=False)
         ok = bool(result.get("ok"))
         license_data = result.get("license") or {}
     else:
-        ok = validar_licencia(licencia, load_public_key(), get_license_product(), debug=True)
+        ok = validar_licencia(licencia, load_public_key(), get_license_product(), debug=False)
 
     if not ok:
         _revocar(db_module)
-        return {'ok': False, 'modo': 'revocada', 'mensaje': 'Licencia inválida o revocada.'}
+        debug_state = get_license_debug_state()
+        return {
+            'ok': False,
+            'modo': 'revocada',
+            'estado': debug_state.get('status', 'online_error'),
+            'mensaje': 'Licencia inválida o revocada.',
+        }
 
     if license_data:
         try:
@@ -61,7 +72,13 @@ def verificar_licencia_online(db_module) -> dict:
         except Exception:
             pass
 
-    return {'ok': True, 'modo': 'online_ok', 'mensaje': 'Verificación exitosa.'}
+    debug_state = get_license_debug_state()
+    return {
+        'ok': True,
+        'modo': 'online_ok',
+        'estado': debug_state.get('status', 'online_ok'),
+        'mensaje': 'Verificación exitosa.',
+    }
 
 
 def _revocar(db_module):

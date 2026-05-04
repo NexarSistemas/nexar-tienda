@@ -16,9 +16,9 @@ from pathlib import Path
 import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from licensing.planes import PLANES, get_plan_activo
-from licensing.permisos import get_modulos_activos, require_modulo
+from licensing.permisos import get_modulos_activos, get_modulos_debug_info, require_modulo
 from services.license_storage import cargar_licencia, guardar_licencia
-from services.license_sdk import get_current_hwid, get_license_product, validate_license_key
+from services.license_sdk import get_current_hwid, get_license_debug_state, get_license_product, validate_license_key
 from services.runtime_config import app_data_dir
 from services.supabase_license_api import (
     create_license_request,
@@ -55,6 +55,14 @@ PURCHASE_DRAFT_FIELDS = (
 
 def _as_bool(value) -> bool:
     return str(value).strip().lower() in {"1", "true", "on", "yes", "si"}
+
+
+def _debug_license_enabled() -> bool:
+    return (
+        current_app.debug
+        or os.getenv("ENV", "").strip().lower() == "development"
+        or os.getenv("FLASK_ENV", "").strip().lower() == "development"
+    )
 
 
 def _is_same_origin_local_request() -> bool:
@@ -1294,7 +1302,7 @@ def mi_plan():
     license_info = db.get_license_info()
     return render_template(
         "mi_plan.html",
-        plan_activo=get_plan_activo(),
+        plan_activo=license_info.get("tier", "DEMO"),
         license_info=license_info,
         modulos_activos=modulos_activos,
         modulos_bloqueados=modulos_bloqueados,
@@ -1357,7 +1365,7 @@ def licencia():
 @admin_required
 def licencia_activar():
     license_key = request.form.get("license_key", "")
-    ok, msg = validate_license_key(request.form.get("license_key", ""), debug=True)
+    ok, msg = validate_license_key(request.form.get("license_key", ""), debug=False)
     if ok:
         guardar_licencia(license_key, db.get_license_info())
         flash(f"✅ {msg} La licencia quedó vinculada a este equipo.", "success")
@@ -1785,6 +1793,44 @@ def ayuda():
         negocio=negocio,
         licencia=licencia,
     )
+
+
+@main_bp.route("/debug/licencia")
+@admin_required
+def debug_licencia():
+    if not _debug_license_enabled():
+        abort(404)
+
+    cfg = db.get_config()
+    license_info = db.get_license_info()
+    debug_state = get_license_debug_state()
+    modulos_debug = get_modulos_debug_info()
+    return jsonify({
+        "product": get_license_product(),
+        "license_mode": os.getenv("NEXAR_LICENSE_MODE", "prod").strip().lower(),
+        "plan": license_info.get("plan"),
+        "tier": license_info.get("tier"),
+        "modules": license_info.get("modules", []),
+        "license_modules_persisted": cfg.get("license_modules", "[]"),
+        "resolved_modules": modulos_debug.get("final_modules", []),
+        "modules_source": modulos_debug.get("final_source"),
+        "supabase": {
+            "configured": supabase_configured(),
+            "status": debug_state.get("status", ""),
+        },
+        "last_license_error": debug_state.get("last_error", ""),
+        "validation_mode": debug_state.get("validation_mode", ""),
+        "masked_license_key": debug_state.get("masked_license_key", ""),
+    })
+
+
+@main_bp.route("/debug/modulos")
+@admin_required
+def debug_modulos():
+    if not _debug_license_enabled():
+        abort(404)
+
+    return jsonify(get_modulos_debug_info())
 
 
 @main_bp.route("/changelog")

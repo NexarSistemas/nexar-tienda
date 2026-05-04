@@ -4,6 +4,22 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.26.3] - 03 Mayo 2026 - Debug y Robustez de Licencias
+
+### Added
+- Endpoints de debug `/debug/licencia` y `/debug/modulos` para inspeccionar plan, tier, módulos, origen y estado de validación.
+- Logging técnico de validación de licencia con producto, modo, fuente, plan, tier y módulos detectados.
+
+### Fixed
+- Manejo más robusto de errores de conexión y respuestas inválidas al interactuar con Supabase.
+- La vista `Mi plan` ahora refleja el tier real guardado en la licencia y no el plan de entorno.
+- El formulario de solicitud de licencia muestra correctamente `BASICA`, `PRO` y `FULL`.
+
+### Changed
+- La validación de licencia evita salidas `debug=True` del SDK y consolida el diagnóstico en logs y rutas debug.
+
+---
+
 ## [1.26.2] - 03 Mayo 2026 - Ajuste Visual y Global de Planes
 
 ### Fixed
