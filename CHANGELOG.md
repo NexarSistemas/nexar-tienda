@@ -4,6 +4,19 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.27.0] - 04 Mayo 2026 - Upgrades, Licencias y Ajuste de Planes
+
+### Added
+- Solicitudes de upgrade de plan desde `Mi plan` para los flujos `BASICA -> PRO` y `PRO -> FULL`.
+
+### Fixed
+- Mayor robustez en validación de licencias, manejo de errores Supabase y rutas de debug para diagnóstico seguro.
+- Corrección del flujo de solicitud de upgrade para usar la ruta real del backend y aceptar email opcional.
+
+### Changed
+- El plan `BASICA` ahora incluye el módulo `gastos` para registrar y consultar gastos básicos.
+- `PRO` y `MENSUAL_FULL` conservan su diferencial comercial en reportes, exportación, historial, análisis y capacidades mensuales avanzadas.
+
 ## [1.26.3] - 03 Mayo 2026 - Debug y Robustez de Licencias
 
 ### Added
