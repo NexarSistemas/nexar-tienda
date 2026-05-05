@@ -18,7 +18,7 @@
                     {% if plan_activo == 'BASICA' %}
                     <div class="alert alert-info mb-0">
                         <div class="fw-semibold">Actualizar a PRO</div>
-                        <div class="small">Agregá compras, gastos, reportes y exportaciones.</div>
+                        <div class="small">Agregá compras, historial, reportes y exportaciones.</div>
                     </div>
                     {% elif plan_activo == 'PRO' %}
                     <div class="alert alert-primary mb-0">
@@ -29,6 +29,28 @@
                     <div class="alert alert-success mb-0">
                         <div class="fw-semibold">Plan completo activo</div>
                     </div>
+                    {% endif %}
+                    <hr>
+                    {% if session['user']['rol'] in ['Administrador', 'admin'] %}
+                        {% if plan_activo in ['BASICA', 'PRO'] %}
+                        <form method="POST" action="{{ url_for('main.mi_plan_solicitar_upgrade') }}" data-upgrade-form>
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button class="btn btn-primary w-100" type="submit" {% if not supabase_ok %}disabled{% endif %}>
+                                {% if plan_activo == 'BASICA' %}
+                                Solicitar actualización a PRO
+                                {% else %}
+                                Solicitar actualización a FULL
+                                {% endif %}
+                            </button>
+                        </form>
+                        {% if not supabase_ok %}
+                        <p class="small text-muted mb-0 mt-2">Falta configurar Supabase para enviar la solicitud online.</p>
+                        {% endif %}
+                        {% else %}
+                        <p class="text-success fw-semibold mb-0">Plan completo activo</p>
+                        {% endif %}
+                    {% else %}
+                    <p class="small text-muted mb-0">Solo un usuario administrador puede solicitar una actualización de plan.</p>
                     {% endif %}
                 </div>
             </div>
@@ -70,4 +92,16 @@
         </div>
     </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.querySelector('[data-upgrade-form]');
+    if (!form) return;
+    form.addEventListener('submit', function () {
+        const button = form.querySelector('button[type="submit"]');
+        if (!button || button.disabled) return;
+        button.disabled = true;
+        button.innerHTML = 'Enviando solicitud...';
+    });
+});
+</script>
 {% endblock %}

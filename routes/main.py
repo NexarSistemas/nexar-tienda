@@ -23,7 +23,9 @@ from services.runtime_config import app_data_dir
 from services.supabase_license_api import (
     create_license_request,
     create_support_request,
+    create_upgrade_request,
     generate_activation_id,
+    get_supabase_debug_state,
     is_configured as supabase_configured,
 )
 from services.update_checker import download_release_asset, get_cached_update_info
@@ -132,6 +134,13 @@ def _limit_allows(kind: str) -> bool:
         flash(f"⚠️ {check['message']}", "warning")
         return False
     return True
+
+
+def _first_non_empty(*values) -> str:
+    for value in values:
+        if str(value or "").strip():
+            return str(value).strip()
+    return ""
 
 
 def login_required(view):
@@ -1300,13 +1309,74 @@ def mi_plan():
     todos_los_modulos = sorted(set().union(*PLANES.values()))
     modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
     license_info = db.get_license_info()
+    next_upgrade_plan = ""
+    if license_info.get("tier") == "BASICA":
+        next_upgrade_plan = "PRO"
+    elif license_info.get("tier") == "PRO":
+        next_upgrade_plan = "MENSUAL_FULL"
     return render_template(
         "mi_plan.html",
         plan_activo=license_info.get("tier", "DEMO"),
         license_info=license_info,
         modulos_activos=modulos_activos,
         modulos_bloqueados=modulos_bloqueados,
+        next_upgrade_plan=next_upgrade_plan,
+        supabase_ok=supabase_configured(),
     )
+
+
+@main_bp.route("/mi-plan/solicitar-upgrade", methods=["POST"])
+@admin_required
+def mi_plan_solicitar_upgrade():
+    license_info = db.get_license_info()
+    plan_actual = license_info.get("tier", "DEMO")
+
+    if plan_actual == "BASICA":
+        plan_solicitado = "PRO"
+    elif plan_actual == "PRO":
+        plan_solicitado = "MENSUAL_FULL"
+    else:
+        flash("Tu plan actual ya está completo o no admite actualización.", "info")
+        return redirect(url_for("mi_plan"))
+
+    cfg = db.get_config()
+    usuario = session.get("user", {})
+    machine_id, machine_details = generate_activation_id(usuario.get("username", ""))
+    activation_id = get_current_hwid() or machine_id
+    payload = {
+        "producto": get_license_product(),
+        "license_key": license_info.get("key", ""),
+        "activation_id": activation_id,
+        "nombre": _first_non_empty(
+            usuario.get("nombre_completo"),
+            usuario.get("username"),
+            cfg.get("nombre_negocio", ""),
+            license_info.get("owner_name", ""),
+            "Administrador",
+        ),
+        "email": _first_non_empty(
+            usuario.get("email"),
+            usuario.get("correo"),
+            cfg.get("email_contacto", ""),
+            license_info.get("owner_email", ""),
+        ).lower(),
+        "whatsapp": _first_non_empty(
+            usuario.get("whatsapp"),
+            usuario.get("telefono"),
+            cfg.get("telefono", ""),
+        ),
+        "plan_actual": plan_actual,
+        "plan_solicitado": plan_solicitado,
+        "estado": "pendiente",
+        "machine_details": machine_details,
+    }
+
+    result = create_upgrade_request(payload)
+    if result.get("ok"):
+        flash("Solicitud de actualización enviada.", "success")
+    else:
+        flash(result.get("message", "No se pudo enviar la solicitud de actualización."), "danger")
+    return redirect(url_for("mi_plan"))
 
 
 @main_bp.route("/config/categoria", methods=["POST"])
@@ -1805,21 +1875,26 @@ def debug_licencia():
     license_info = db.get_license_info()
     debug_state = get_license_debug_state()
     modulos_debug = get_modulos_debug_info()
+    persisted_modules = []
+    try:
+        persisted_modules = json.loads(cfg.get("license_modules", "[]") or "[]")
+    except Exception:
+        persisted_modules = []
     return jsonify({
         "product": get_license_product(),
         "license_mode": os.getenv("NEXAR_LICENSE_MODE", "prod").strip().lower(),
+        "validation_mode": debug_state.get("validation_mode", ""),
         "plan": license_info.get("plan"),
         "tier": license_info.get("tier"),
-        "modules": license_info.get("modules", []),
-        "license_modules_persisted": cfg.get("license_modules", "[]"),
+        "modules_detected": debug_state.get("modules", []),
+        "active_modules": sorted(license_info.get("modules", [])),
+        "license_modules_persisted": sorted(str(module).strip().lower() for module in persisted_modules if str(module).strip()),
         "resolved_modules": modulos_debug.get("final_modules", []),
         "modules_source": modulos_debug.get("final_source"),
         "supabase": {
-            "configured": supabase_configured(),
-            "status": debug_state.get("status", ""),
+            **get_supabase_debug_state(),
         },
         "last_license_error": debug_state.get("last_error", ""),
-        "validation_mode": debug_state.get("validation_mode", ""),
         "masked_license_key": debug_state.get("masked_license_key", ""),
     })
 
@@ -1829,8 +1904,17 @@ def debug_licencia():
 def debug_modulos():
     if not _debug_license_enabled():
         abort(404)
-
-    return jsonify(get_modulos_debug_info())
+    modulos_debug = get_modulos_debug_info()
+    return jsonify({
+        "active_modules_final": modulos_debug.get("final_modules", []),
+        "modules_by_tier_or_plan": modulos_debug.get("tier_modules", []),
+        "persisted_modules": modulos_debug.get("persisted_modules", []),
+        "extras_from_env": modulos_debug.get("env_modules", []),
+        "sdk_modules": modulos_debug.get("sdk_modules", []),
+        "tier": modulos_debug.get("tier", ""),
+        "mode": modulos_debug.get("mode", ""),
+        "final_source": modulos_debug.get("final_source", "unknown"),
+    })
 
 
 @main_bp.route("/changelog")

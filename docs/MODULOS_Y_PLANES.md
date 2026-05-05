@@ -24,8 +24,9 @@ Nexar Tienda soporta los siguientes tiers (con soporte para aliases):
 | Tier Canónico | Aliases | Módulos |
 |---|---|---|
 | `DEMO` | - | `core` |
-| `BASICA` | `BASIC`, `BASICO`, `TDA_BASICA` | `core`, `clientes` |
-| `MENSUAL_FULL` | `FULL`, `PRO`, `MENSUAL`, `TDA_PRO` | `core`, `clientes`, `reportes`, `export`, `temporadas`, `ia`, `multinegocio`, `multiusuario` |
+| `BASICA` | `BASIC`, `BASICO`, `TDA_BASICA` | `core`, `clientes`, `proveedores`, `pos`, `stock`, `caja`, `gastos` |
+| `PRO` | `PRO` | `core`, `clientes`, `proveedores`, `pos`, `stock`, `caja`, `gastos`, `compras`, `historial`, `reportes`, `export`, `multiusuario` |
+| `MENSUAL_FULL` | `FULL`, `MENSUAL`, `TDA_PRO` | `core`, `clientes`, `proveedores`, `pos`, `stock`, `caja`, `gastos`, `compras`, `historial`, `reportes`, `export`, `temporadas`, `ia`, `multinegocio`, `multiusuario` |
 
 **Notas:**
 - La base de datos almacena el tier en `config.license_tier`
@@ -127,8 +128,9 @@ Ejemplo de registros:
 ```sql
 INSERT INTO license_module_map (license_tier, modules) VALUES
     ('DEMO', '["core"]'),
-    ('BASICA', '["core", "clientes"]'),
-    ('MENSUAL_FULL', '["core", "clientes", "reportes", "export", "temporadas", "ia", "multinegocio", "multiusuario"]');
+    ('BASICA', '["core", "clientes", "proveedores", "pos", "stock", "caja", "gastos"]'),
+    ('PRO', '["core", "clientes", "proveedores", "pos", "stock", "caja", "gastos", "compras", "historial", "reportes", "export", "multiusuario"]'),
+    ('MENSUAL_FULL', '["core", "clientes", "proveedores", "pos", "stock", "caja", "gastos", "compras", "historial", "reportes", "export", "temporadas", "ia", "multinegocio", "multiusuario"]');
 ```
 
 ### 4. Funciones Disponibles

@@ -156,9 +156,9 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
             license_data = {"license_key": license_key}
             source = "fallback"
     except Exception as ex:
-        logger.exception("Error validando licencia producto=%s modo=%s", product, license_mode)
-        _set_license_debug(status="online_error", validation_mode="online", last_error=str(ex))
-        return False, f"Error validando licencia: {ex}"
+        logger.warning("Error validando licencia producto=%s modo=%s: %s", product, license_mode, ex)
+        _set_license_debug(status="online_error", validation_mode="online", last_error=ex.__class__.__name__)
+        return False, "No se pudo validar la licencia en este momento."
 
     if not ok:
         reason = result.get("reason") if validar_detalle is not None else ""
@@ -191,9 +191,9 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
                     _set_license_debug(status="online_error", validation_mode="fallback", last_error=fallback_msg)
                     return False, fallback_msg
             except Exception as ex:
-                logger.exception("Error en fallback online producto=%s", product)
-                _set_license_debug(status="online_error", validation_mode="fallback", last_error=str(ex))
-                return False, f"No se pudo validar online: {ex}"
+                logger.warning("Error en fallback online producto=%s: %s", product, ex)
+                _set_license_debug(status="online_error", validation_mode="fallback", last_error=ex.__class__.__name__)
+                return False, "No se pudo validar la licencia en este momento."
 
     if not ok:
         reason = result.get("reason") if validar_detalle is not None else ""

@@ -104,8 +104,8 @@ Tambien se puede usar el helper del repo:
 - **Licenciamiento Supabase + SDK Nexar**: Activación online mediante `nexar_licencias`, vinculación por HWID y cache offline para continuidad operativa.
 - **Tiers de Licencia**:
     - **DEMO**: 30 días de prueba con funcionalidad completa.
-    - **BÁSICA**: Incluye `core`, `clientes`, `proveedores`, `pos`, `stock` y `caja`.
-    - **PRO**: Suma `compras`, `gastos`, `historial`, `reportes`, `export` y `multiusuario` básico.
+    - **BÁSICA**: Incluye `core`, `clientes`, `proveedores`, `pos`, `stock`, `caja` y `gastos`.
+    - **PRO**: Suma `compras`, `historial`, `reportes`, `export` y `multiusuario` básico.
     - **MENSUAL FULL**: Mantiene el plan completo mensual y agrega módulos avanzados como `temporadas`, `multinegocio` e `ia`, con actualizaciones y soporte.
     - **Anti-Reinstalación**: El contador de la demo no se reinicia al reinstalar la aplicación.
 - **Multi-PC**: Las licencias soportan `max_devices` y lista de equipos autorizados.
