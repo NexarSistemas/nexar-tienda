@@ -998,6 +998,8 @@ def get_license_info() -> dict:
 
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["DEMO"])
     modules = _extract_license_modules({'modules': cfg.get('license_modules', '[]')})
+    if not modules:
+        modules = sorted(TIER_MODULES_MAP.get(tier, TIER_MODULES_MAP["DEMO"]).copy())
 
     return {
         'type':        cfg.get('license_type', 'TDA_BASICA'),
@@ -1052,8 +1054,9 @@ def sync_license_from_remote(license_data: dict):
         'license_updates': '1' if TIER_LIMITS[plan].get('updates') else '0',
     }
     modules = _extract_license_modules(license_data)
-    if modules:
-        updates['license_modules'] = json.dumps(modules)
+    if not modules:
+        modules = sorted(TIER_MODULES_MAP.get(plan, TIER_MODULES_MAP["DEMO"]).copy())
+    updates['license_modules'] = json.dumps(modules)
     if plan == 'BASICA':
         updates['basica_activada'] = '1'
     set_config(updates)

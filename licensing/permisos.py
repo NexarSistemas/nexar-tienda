@@ -30,6 +30,11 @@ def _log_source(source: str, message: str) -> None:
     _last_logged_source = source
 
 
+def _set_source(source: str) -> None:
+    global _last_modules_source
+    _last_modules_source = source
+
+
 def _normalize_modules(value: Any) -> set[str]:
     """Normaliza un valor a conjunto de módulos en minúsculas."""
     if not value:
@@ -128,16 +133,16 @@ def get_modulos_activos() -> set[str]:
 
     PROD mode (NEXAR_LICENSE_MODE=prod):
       1. SDK nexar_licencias si devuelve módulos explícitamente
-      2. Módulos mapeados desde license_tier en DB (config table)
-      3. Fallback a env vars
+      2. Módulos persistidos en SQLite/config
+      3. Mapping central por plan normalizado
     """
-    mode = os.getenv("NEXAR_LICENSE_MODE", "dev").strip().lower()
+    mode = os.getenv("NEXAR_LICENSE_MODE", "prod").strip().lower()
 
     if mode == "dev":
         _log_source("env", "DEV mode: usando módulos desde .env")
         return get_modulos_activos_env()
 
-    # Modo PROD: intentar SDK primero, luego DB
+    # Modo PROD: SDK -> módulos persistidos -> mapping por plan
     modules = _get_modulos_sdk()
     if modules:
         _log_source("sdk", "PROD mode: usando módulos desde SDK")
@@ -158,12 +163,13 @@ def get_modulos_activos() -> set[str]:
     except Exception as e:
         logger.debug(f"Error leyendo tier desde DB: {e}")
 
-    _log_source("env", "Fallback: usando módulos desde .env")
-    return get_modulos_activos_env()
+    _set_source("fallback")
+    logger.info("PROD mode: sin módulos remotos ni persistidos, usando fallback core")
+    return {"core"}
 
 
 def get_modulos_debug_info() -> dict[str, object]:
-    mode = os.getenv("NEXAR_LICENSE_MODE", "dev").strip().lower()
+    mode = os.getenv("NEXAR_LICENSE_MODE", "prod").strip().lower()
     persisted = _get_modulos_from_db_config()
     tier = _get_tier_from_db() if mode != "dev" else normalize_plan(os.getenv("NEXAR_PLAN", "DEMO"), default="DEMO")
     tier_modules = _get_modulos_from_tier(tier)
