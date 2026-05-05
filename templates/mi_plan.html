@@ -12,7 +12,7 @@
                     <h5 class="mb-0">Plan activo</h5>
                 </div>
                 <div class="card-body">
-                    {% set plan_label = 'FULL' if plan_activo == 'MENSUAL_FULL' else plan_activo %}
+                    {% set plan_label = plan_display or ('FULL' if plan_activo == 'MENSUAL_FULL' else plan_activo) %}
                     <div class="display-6 fw-bold text-primary mb-2">{{ plan_label }}</div>
                     <p class="text-muted mb-3">Los módulos disponibles dependen del plan configurado para esta instalación.</p>
                     {% if plan_activo == 'BASICA' %}
@@ -32,6 +32,17 @@
                     {% endif %}
                     <hr>
                     {% if session['user']['rol'] in ['Administrador', 'admin'] %}
+                        <form method="POST" action="{{ url_for('main.mi_plan_actualizar_licencia') }}" class="mb-3">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button class="btn btn-outline-secondary w-100" type="submit">
+                                Actualizar estado de licencia
+                            </button>
+                        </form>
+                        {% if license_refresh_ok %}
+                        <p class="small text-success mb-3">{{ license_refresh_message }}</p>
+                        {% else %}
+                        <p class="small text-muted mb-3">Si aprobaste un upgrade en Nexar Admin, podés forzar la sincronización desde acá.</p>
+                        {% endif %}
                         {% if plan_activo in ['BASICA', 'PRO'] %}
                         <form method="POST" action="{{ url_for('main.mi_plan_solicitar_upgrade') }}" data-upgrade-form>
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

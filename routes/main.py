@@ -15,10 +15,16 @@ from pathlib import Path
 
 import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
-from licensing.planes import PLANES, get_plan_activo
+from licensing.planes import PLANES, get_plan_activo, get_plan_display_name, normalize_plan
 from licensing.permisos import get_modulos_activos, get_modulos_debug_info, require_modulo
 from services.license_storage import cargar_licencia, guardar_licencia
-from services.license_sdk import get_current_hwid, get_license_debug_state, get_license_product, validate_license_key
+from services.license_sdk import (
+    get_current_hwid,
+    get_license_debug_state,
+    get_license_product,
+    refresh_saved_license_online,
+    validate_license_key,
+)
 from services.runtime_config import app_data_dir
 from services.supabase_license_api import (
     create_license_request,
@@ -1305,10 +1311,11 @@ def config():
 @main_bp.route("/mi-plan")
 @login_required
 def mi_plan():
+    refresh_ok, refresh_msg, refreshed_info = refresh_saved_license_online(debug=False)
     modulos_activos = sorted(get_modulos_activos())
     todos_los_modulos = sorted(set().union(*PLANES.values()))
     modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
-    license_info = db.get_license_info()
+    license_info = refreshed_info or db.get_license_info()
     next_upgrade_plan = ""
     if license_info.get("tier") == "BASICA":
         next_upgrade_plan = "PRO"
@@ -1317,12 +1324,31 @@ def mi_plan():
     return render_template(
         "mi_plan.html",
         plan_activo=license_info.get("tier", "DEMO"),
+        plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
         license_info=license_info,
         modulos_activos=modulos_activos,
         modulos_bloqueados=modulos_bloqueados,
         next_upgrade_plan=next_upgrade_plan,
         supabase_ok=supabase_configured(),
+        license_refresh_ok=refresh_ok,
+        license_refresh_message=refresh_msg,
     )
+
+
+@main_bp.route("/mi-plan/actualizar-licencia", methods=["POST"])
+@admin_required
+def mi_plan_actualizar_licencia():
+    ok, _msg, refreshed_info = refresh_saved_license_online(debug=False)
+    if ok:
+        plan = (refreshed_info or db.get_license_info()).get("tier", "DEMO")
+        plan_label = "FULL" if plan == "MENSUAL_FULL" else plan
+        flash(f"Estado de licencia actualizado. Plan actual: {plan_label}.", "success")
+    else:
+        flash(
+            "No se pudo actualizar online el estado de la licencia. Se mantiene el estado local actual.",
+            "warning",
+        )
+    return redirect(url_for("main.mi_plan"))
 
 
 @main_bp.route("/mi-plan/solicitar-upgrade", methods=["POST"])
@@ -1458,7 +1484,7 @@ def licencia_solicitar():
         plan=request.form.get("plan", "BASICA"),
         machine_details=machine_details,
     )
-    flash(f"Solicitud enviada: {msg}" if ok else f"No se pudo enviar la solicitud: {msg}", "success" if ok else "danger")
+    flash(f"Solicitud enviada: {msg}" if ok else msg, "success" if ok else "danger")
     return redirect(url_for("licencia"))
 
 
@@ -1884,12 +1910,16 @@ def debug_licencia():
         "product": get_license_product(),
         "license_mode": os.getenv("NEXAR_LICENSE_MODE", "prod").strip().lower(),
         "validation_mode": debug_state.get("validation_mode", ""),
+        "plan_display": get_plan_display_name(license_info.get("plan")),
         "plan": license_info.get("plan"),
+        "plan_normalized": normalize_plan(license_info.get("plan"), default="DEMO"),
         "tier": license_info.get("tier"),
+        "tier_normalized": normalize_plan(license_info.get("tier"), default="DEMO"),
         "modules_detected": debug_state.get("modules", []),
         "active_modules": sorted(license_info.get("modules", [])),
         "license_modules_persisted": sorted(str(module).strip().lower() for module in persisted_modules if str(module).strip()),
         "resolved_modules": modulos_debug.get("final_modules", []),
+        "modules_by_tier_or_plan": modulos_debug.get("tier_modules", []),
         "modules_source": modulos_debug.get("final_source"),
         "supabase": {
             **get_supabase_debug_state(),

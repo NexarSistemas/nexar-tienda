@@ -221,10 +221,10 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
 
     try:
         import database as db
+        from licensing.permisos import get_modulos_debug_info
 
-        plan = db.normalize_license_plan(
-            license_data.get("plan") or license_data.get("tier") or license_data.get("license_plan")
-        )
+        raw_plan = license_data.get("plan") or license_data.get("tier") or license_data.get("license_plan")
+        plan = db.normalize_license_plan(raw_plan)
         if plan == "MENSUAL_FULL" and db.get_config().get("basica_activada", "0") != "1":
             _set_license_debug(
                 status="online_error",
@@ -236,6 +236,18 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
             )
             return False, "Para activar Mensual Full primero tenés que activar una licencia Básica en esta instalación."
         db.sync_license_from_remote(license_data)
+        modulos_debug = get_modulos_debug_info()
+        logger.info(
+            "Diagnostico licencia producto=%s fuente=%s plan_supabase=%s plan_normalizado=%s sdk_modules=%s persisted_modules=%s final_modules=%s modules_source=%s",
+            product,
+            source,
+            raw_plan,
+            plan,
+            modules,
+            modulos_debug.get("persisted_modules", []),
+            modulos_debug.get("final_modules", []),
+            modulos_debug.get("final_source", "unknown"),
+        )
     except Exception:
         pass
 
@@ -296,3 +308,126 @@ def validate_saved_license(debug: bool = False) -> tuple[bool, str]:
         return False, "No hay licencia guardada."
 
     return validate_license_key(stored.get("license_key", ""), debug=debug)
+
+
+def refresh_saved_license_online(debug: bool = False) -> tuple[bool, str, dict[str, object] | None]:
+    """
+    Fuerza una sincronizacion online de la licencia guardada contra Supabase.
+
+    Si la consulta online falla, conserva el estado local existente y no lo pisa
+    con cache vieja del SDK.
+    """
+    from services.license_storage import cargar_licencia, guardar_licencia
+    from services.supabase_license_api import activate_license, generate_activation_id
+    import database as db
+
+    stored = cargar_licencia()
+    if not stored:
+        _set_license_debug(
+            product=get_license_product(),
+            license_mode=os.getenv("NEXAR_LICENSE_MODE", "prod").strip().lower(),
+            validation_mode="supabase_refresh",
+            status="missing_local_license",
+            masked_license_key="",
+            last_error="stored_license_missing",
+            plan="",
+            tier="",
+            modules=[],
+        )
+        return False, "No hay licencia guardada.", None
+
+    license_key = (stored.get("license_key", "") or "").strip()
+    masked_key = _mask_license_key(license_key)
+    if not license_key:
+        _set_license_debug(
+            product=get_license_product(),
+            license_mode=os.getenv("NEXAR_LICENSE_MODE", "prod").strip().lower(),
+            validation_mode="supabase_refresh",
+            status="missing_local_license_key",
+            masked_license_key="",
+            last_error="stored_license_key_missing",
+            plan="",
+            tier="",
+            modules=[],
+        )
+        return False, "La licencia guardada no tiene una clave valida.", None
+
+    previous_info = db.get_license_info()
+    previous_tier = previous_info.get("tier", "DEMO")
+    previous_plan = previous_info.get("plan", previous_tier)
+    hwid = get_current_hwid()
+    if not hwid:
+        hwid, _machine_details = generate_activation_id()
+
+    logger.info(
+        "Refresco online licencia inicio clave=%s tier_anterior=%s plan_anterior=%s",
+        masked_key,
+        previous_tier,
+        previous_plan,
+    )
+
+    ok, message, remote_license = activate_license(
+        license_key,
+        hwid,
+        get_license_product(),
+    )
+    if not ok or not remote_license:
+        logger.warning(
+            "Refresco online licencia fallo clave=%s tier_local=%s plan_local=%s error=%s",
+            masked_key,
+            previous_tier,
+            previous_plan,
+            message,
+        )
+        _set_license_debug(
+            product=get_license_product(),
+            license_mode=os.getenv("NEXAR_LICENSE_MODE", "prod").strip().lower(),
+            validation_mode="supabase_refresh",
+            status="online_error",
+            masked_license_key=masked_key,
+            last_error=message,
+            plan=previous_plan,
+            tier=previous_tier,
+            modules=previous_info.get("modules", []),
+        )
+        return False, message, previous_info
+
+    from licensing.permisos import get_modulos_debug_info
+
+    remote_plan = remote_license.get("plan") or remote_license.get("tier") or remote_license.get("license_plan") or ""
+    normalized_plan = db.normalize_license_plan(remote_plan)
+    remote_modules = remote_license.get("modules") or remote_license.get("features") or remote_license.get("modulos") or []
+
+    db.sync_license_from_remote(remote_license)
+    refreshed_info = db.get_license_info()
+    merged_license = dict(stored)
+    merged_license.update(remote_license)
+    guardar_licencia(license_key, merged_license)
+    _save_sdk_cache(remote_license)
+    modulos_debug = get_modulos_debug_info()
+
+    logger.info(
+        "Refresco online licencia ok clave=%s tier_anterior=%s plan_anterior=%s plan_supabase=%s plan_normalizado=%s sdk_modules=%s persisted_modules=%s final_modules=%s modules_source=%s sqlite_actualizado=%s",
+        masked_key,
+        previous_tier,
+        previous_plan,
+        remote_plan,
+        normalized_plan,
+        remote_modules,
+        modulos_debug.get("persisted_modules", []),
+        modulos_debug.get("final_modules", []),
+        modulos_debug.get("final_source", "unknown"),
+        "si",
+    )
+    _set_license_debug(
+        product=get_license_product(),
+        license_mode=os.getenv("NEXAR_LICENSE_MODE", "prod").strip().lower(),
+        validation_mode="supabase_refresh",
+        status="online_ok",
+        masked_license_key=masked_key,
+        last_error="",
+        plan=refreshed_info.get("plan", normalized_plan),
+        tier=refreshed_info.get("tier", normalized_plan),
+        modules=remote_modules,
+    )
+    return True, "Licencia actualizada desde Supabase.", refreshed_info

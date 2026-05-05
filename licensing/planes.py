@@ -1,22 +1,26 @@
 import os
 
 
+TECHNICAL_FULL_PLAN = "MENSUAL_FULL"
+COMMERCIAL_FULL_LABEL = "FULL"
+
 TIER_ALIASES = {
     "BASIC": "BASICA",
     "BASICO": "BASICA",
-    "TDA_BASICA": "BASICA",
-    "FULL": "MENSUAL_FULL",
-    "MENSUAL": "MENSUAL_FULL",
+    "BASICA": "BASICA",
     "PRO": "PRO",
-    "TDA_PRO": "MENSUAL_FULL",
+    "FULL": TECHNICAL_FULL_PLAN,
+    "MENSUAL": TECHNICAL_FULL_PLAN,
+    "MENSUAL_FULL": TECHNICAL_FULL_PLAN,
+    "TDA_BASICA": "BASICA",
+    "TDA_PRO": TECHNICAL_FULL_PLAN,
 }
 
 
 PLANES = {
     "DEMO": {"core"},
-    "BASICA": {"core", "clientes", "proveedores", "pos", "stock", "caja", "gastos"},
-    "PRO": {"core", "clientes", "proveedores", "pos", "stock", "caja", "compras", "gastos", "historial", "reportes", "export", "multiusuario"},
-    "MENSUAL_FULL": {
+    "BASICA": {"core", "clientes", "proveedores", "pos", "stock", "caja"},
+    "PRO": {
         "core",
         "clientes",
         "proveedores",
@@ -28,10 +32,23 @@ PLANES = {
         "historial",
         "reportes",
         "export",
-        "temporadas",
-        "ia",
-        "multinegocio",
         "multiusuario",
+    },
+    TECHNICAL_FULL_PLAN: {
+        "core",
+        "clientes",
+        "proveedores",
+        "pos",
+        "stock",
+        "caja",
+        "compras",
+        "gastos",
+        "historial",
+        "reportes",
+        "export",
+        "multiusuario",
+        "temporadas",
+        "multinegocio",
     },
 }
 
@@ -40,6 +57,15 @@ def normalize_plan(plan: str | None = None, default: str = "DEMO") -> str:
     raw = (plan or default).strip().upper().replace("-", "_").replace(" ", "_")
     normalized = TIER_ALIASES.get(raw, raw)
     return normalized if normalized in PLANES else default
+
+
+def normalizar_plan(valor: str | None = None, default: str = "DEMO") -> str:
+    return normalize_plan(valor, default=default)
+
+
+def get_plan_display_name(plan: str | None = None) -> str:
+    normalized = normalize_plan(plan, default="DEMO")
+    return COMMERCIAL_FULL_LABEL if normalized == TECHNICAL_FULL_PLAN else normalized
 
 
 def get_plan_activo() -> str:

@@ -8,9 +8,9 @@ import platform
 from typing import Any
 
 import requests
+from licensing.planes import normalize_plan
 
 PRODUCTO_DEFAULT = os.getenv("LICENSE_PRODUCT", "nexar-tienda")
-PLANES_VALIDOS = {"DEMO", "BASICA", "PRO", "MENSUAL_FULL"}
 logger = logging.getLogger(__name__)
 _LAST_SUPABASE_DEBUG: dict[str, Any] = {
     "configured": False,
@@ -19,37 +19,38 @@ _LAST_SUPABASE_DEBUG: dict[str, Any] = {
     "status_code": None,
     "last_error": "",
 }
-
-
-def normalize_plan(plan: str = "") -> str:
-    raw = (plan or "BASICA").strip().upper().replace("-", "_").replace(" ", "_")
-    aliases = {"PRO": "PRO", "FULL": "MENSUAL_FULL", "MENSUAL": "MENSUAL_FULL", "TDA_PRO": "MENSUAL_FULL", "BASIC": "BASICA"}
-    normalized = aliases.get(raw, raw)
-    return normalized if normalized in PLANES_VALIDOS else "BASICA"
-
-
 def _clean_base_url(url: str) -> str:
     return url.rstrip("/")
 
 
+def build_supabase_rest_url(table_name: str) -> str:
+    raw_base = (os.getenv("SUPABASE_URL", "") or "").strip()
+    table = (table_name or "").strip().strip("/")
+    if not raw_base or not table:
+        return ""
+
+    base = _clean_base_url(raw_base)
+    lower_base = base.lower()
+    if lower_base.endswith("/rest/v1"):
+        base = _clean_base_url(base[:-8])
+
+    return f"{base}/rest/v1/{table}" if base else ""
+
+
 def _table_url() -> str:
-    base = _clean_base_url(os.getenv("SUPABASE_URL", ""))
-    return f"{base}/rest/v1/licencias" if base else ""
+    return build_supabase_rest_url("licencias")
 
 
 def _requests_table_url() -> str:
-    base = _clean_base_url(os.getenv("SUPABASE_URL", ""))
-    return f"{base}/rest/v1/solicitudes_licencia" if base else ""
+    return build_supabase_rest_url("solicitudes_licencia")
 
 
 def _support_requests_table_url() -> str:
-    base = _clean_base_url(os.getenv("SUPABASE_URL", ""))
-    return f"{base}/rest/v1/solicitudes_soporte" if base else ""
+    return build_supabase_rest_url("solicitudes_soporte")
 
 
 def _upgrade_requests_table_url() -> str:
-    base = _clean_base_url(os.getenv("SUPABASE_URL", ""))
-    return f"{base}/rest/v1/solicitudes_upgrade" if base else ""
+    return build_supabase_rest_url("solicitudes_upgrade")
 
 
 def _anon_key() -> str:
@@ -100,6 +101,16 @@ def _response_error_message(operation: str, response: requests.Response) -> tupl
         return "Supabase rechazó la operación por permisos o autenticación.", "auth_or_rls"
     logger.warning("Supabase devolvio error en %s status=%s", operation, status_code)
     return f"Error en Supabase ({status_code}). {body}".strip(), "http_error"
+
+
+def _log_supabase_http_error(operation: str, url: str, response: requests.Response) -> None:
+    logger.warning(
+        "Supabase error en %s status=%s url=%s body=%s",
+        operation,
+        response.status_code,
+        url,
+        (response.text or "").strip()[:500],
+    )
 
 
 def build_machine_id(raw: str) -> str:
@@ -157,14 +168,22 @@ def create_license_request(
     plan: str = "BASICA",
     machine_details: dict[str, Any] | None = None,
 ) -> tuple[bool, str, dict[str, Any] | None]:
+    operation = "create_license_request"
     if not is_configured():
+        _set_supabase_debug(
+            operation=operation,
+            status="not_configured",
+            status_code=None,
+            last_error="not_configured",
+            url=_requests_table_url(),
+        )
         return False, "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY para enviar solicitudes.", None
 
     nombre = (nombre or "").strip()
     email = (email or "").strip().lower()
     whatsapp = (whatsapp or "").strip()
     activation_id = build_machine_id(activation_id)
-    plan = normalize_plan(plan)
+    plan = normalize_plan(plan, default="BASICA")
 
     if not nombre or not email or not activation_id:
         return False, "Nombre, email e ID del equipo son obligatorios.", None
@@ -180,14 +199,37 @@ def create_license_request(
         "machine_details": machine_details or {},
     }
     headers = {**_headers(), "Prefer": "return=minimal"}
+    request_url = _requests_table_url()
     try:
-        resp = requests.post(_requests_table_url(), headers=headers, json=payload, timeout=12)
+        resp = requests.post(request_url, headers=headers, json=payload, timeout=12)
     except requests.RequestException as exc:
-        logger.warning("Error de conexion enviando solicitud de licencia: %s", exc)
-        return False, "No se pudo conectar con Supabase para enviar la solicitud.", None
+        logger.warning("Error de conexion enviando solicitud de licencia a url=%s: %s", request_url, exc)
+        _set_supabase_debug(
+            operation=operation,
+            status="network_error",
+            status_code=None,
+            last_error=exc.__class__.__name__,
+            url=request_url,
+        )
+        return False, "No se pudo enviar la solicitud. Revisá la conexión o intentá nuevamente.", None
     if resp.status_code >= 300:
-        return False, f"Error al registrar solicitud en Supabase ({resp.status_code}): {resp.text[:240]}", None
+        _log_supabase_http_error(operation, request_url, resp)
+        _set_supabase_debug(
+            operation=operation,
+            status="http_error",
+            status_code=resp.status_code,
+            last_error=(resp.text or "").strip()[:240],
+            url=request_url,
+        )
+        return False, "No se pudo enviar la solicitud. Revisá la conexión o intentá nuevamente.", None
 
+    _set_supabase_debug(
+        operation=operation,
+        status="ok",
+        status_code=resp.status_code,
+        last_error="",
+        url=request_url,
+    )
     return True, "Solicitud enviada correctamente. El administrador debe aprobarla.", None
 
 
@@ -264,8 +306,8 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
     payload["nombre"] = str(payload.get("nombre") or "").strip() or "Administrador"
     payload["email"] = str(payload.get("email") or "").strip().lower()
     payload["whatsapp"] = str(payload.get("whatsapp") or "").strip()
-    payload["plan_actual"] = normalize_plan(payload.get("plan_actual") or "")
-    payload["plan_solicitado"] = normalize_plan(payload.get("plan_solicitado") or "")
+    payload["plan_actual"] = normalize_plan(payload.get("plan_actual") or "", default="BASICA")
+    payload["plan_solicitado"] = normalize_plan(payload.get("plan_solicitado") or "", default="BASICA")
     payload["estado"] = "pendiente"
     payload["machine_details"] = payload.get("machine_details") or {}
 
