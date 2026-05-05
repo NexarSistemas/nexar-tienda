@@ -159,11 +159,11 @@
                             {% if lic %}
                                 <span class="ms-2 ps-2 border-start">
                                     {% if lic.es_demo and not lic.vencido %}
-                                        <span class="text-warning">DEMO {{ lic.dias_restantes }}d</span>
+                                        <span class="text-warning">PRUEBA {{ lic.dias_restantes }}d</span>
                                     {% elif lic.vencido %}
                                         <span class="text-danger"><i class="fas fa-lock"></i> VENCIDA</span>
                                     {% else %}
-                                        <span class="text-success"><i class="fas fa-check-circle"></i> {{ lic.tier }}</span>
+                                        <span class="text-success"><i class="fas fa-check-circle"></i> {{ lic.tier_label }}</span>
                                     {% endif %}
                                 </span>
                             {% endif %}
@@ -176,7 +176,7 @@
         {% set plan_info = get_license_info() if 'user' in session else None %}
         {% if plan_info %}
         {% set plan_tier = plan_info.get('tier', 'DEMO') %}
-        {% set plan_label = 'FULL' if plan_tier == 'MENSUAL_FULL' else plan_tier %}
+        {% set plan_label = 'Período de prueba' if plan_tier == 'DEMO' else get_plan_display_name(plan_tier) %}
         {% set plan_modules = plan_info.get('modules', []) %}
         <div class="container-fluid px-4 py-2 border-bottom bg-light">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 small text-muted">
@@ -216,12 +216,12 @@
             {% set lic_alert = get_licencia_status() if 'user' in session else None %}
             {% if lic_alert and lic_alert.tier == 'MENSUAL_FULL' and lic_alert.full_expires_soon %}
                 <div class="alert alert-warning shadow-sm" role="alert">
-                    <strong>Tu licencia Mensual Full vence en 5 días.</strong>
+                    <strong>Tu licencia FULL vence en 5 días.</strong>
                     Si renovás antes del vencimiento, mantenés actualizaciones y soporte sin interrupciones.
                 </div>
             {% elif lic_alert and lic_alert.tier == 'MENSUAL_FULL' and lic_alert.full_expires_tomorrow %}
                 <div class="alert alert-danger shadow-sm" role="alert">
-                    <strong>Tu licencia Mensual Full vence mañana.</strong>
+                    <strong>Tu licencia FULL vence mañana.</strong>
                     Al vencer, el sistema vuelve automáticamente a Básica si ya tenés esa licencia activada.
                 </div>
             {% endif %}

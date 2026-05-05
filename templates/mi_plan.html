@@ -12,7 +12,7 @@
                     <h5 class="mb-0">Plan activo</h5>
                 </div>
                 <div class="card-body">
-                    {% set plan_label = plan_display or ('FULL' if plan_activo == 'MENSUAL_FULL' else plan_activo) %}
+                    {% set plan_label = 'Período de prueba' if plan_activo == 'DEMO' else (plan_display or ('FULL' if plan_activo == 'MENSUAL_FULL' else plan_activo)) %}
                     <div class="display-6 fw-bold text-primary mb-2">{{ plan_label }}</div>
                     <p class="text-muted mb-3">Los módulos disponibles dependen del plan configurado para esta instalación.</p>
                     {% if plan_activo == 'BASICA' %}
@@ -28,6 +28,11 @@
                     {% elif plan_activo == 'MENSUAL_FULL' %}
                     <div class="alert alert-success mb-0">
                         <div class="fw-semibold">Plan completo activo</div>
+                    </div>
+                    {% elif plan_activo == 'DEMO' %}
+                    <div class="alert alert-warning mb-0">
+                        <div class="fw-semibold">Período de prueba activo</div>
+                        <div class="small">Los planes comerciales disponibles son BASICA, PRO y FULL.</div>
                     </div>
                     {% endif %}
                     <hr>

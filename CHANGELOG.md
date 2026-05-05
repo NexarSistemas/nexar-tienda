@@ -4,6 +4,13 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.27.2] - 2026-05-05
+
+### Changed
+- Eliminación de `DEMO` como plan comercial visible en la UI.
+- Normalización visual de planes `BASICA`, `PRO` y `FULL`.
+- El plan `FULL` se muestra como `FULL` al usuario aunque internamente siga usando `MENSUAL_FULL`.
+
 ## [1.27.1] - 2026-05-05
 
 ### Fixes

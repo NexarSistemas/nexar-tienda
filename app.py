@@ -11,6 +11,7 @@ from services.runtime_config import load_runtime_env
 load_runtime_env()
 
 import database as db
+from licensing.planes import get_plan_display_name
 from routes.licencia import licencia_bp
 from routes.main import main_bp
 from licensing.permisos import modulo_activo
@@ -71,6 +72,7 @@ def create_app() -> Flask:
                 "es_demo": not has_license,
                 "vencido": demo.get("vencido", False) if not has_license else license_expired,
                 "tier": info.get("tier", "DEMO") if has_license else "DEMO",
+                "tier_label": get_plan_display_name(info.get("tier", "DEMO")) if has_license else "PRUEBA",
                 "dias_restantes": 0 if has_license else demo.get("dias_restantes", 0),
                 "support": info.get("support", False),
                 "updates": info.get("updates", False),
@@ -85,6 +87,7 @@ def create_app() -> Flask:
             "get_config_valor": get_config_valor,
             "get_licencia_status": get_licencia_status,
             "get_license_info": db.get_license_info,
+            "get_plan_display_name": get_plan_display_name,
             "app_version": app_version,
             "modulo_activo": modulo_activo,
             "update_info": (

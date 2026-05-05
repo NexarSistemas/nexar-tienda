@@ -1644,7 +1644,7 @@ def respaldo_restaurar(nombre):
 def actualizacion_descargar():
     license_info = db.get_license_info()
     if license_info.get("tier") != "MENSUAL_FULL" or not license_info.get("updates"):
-        flash("Las actualizaciones estan disponibles solo para el plan Mensual Full.", "warning")
+        flash("Las actualizaciones estan disponibles solo para el plan FULL.", "warning")
         return redirect(url_for("respaldo"))
 
     update_info = get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
@@ -1694,7 +1694,7 @@ def actualizacion_abrir_carpeta():
 def actualizacion_instalar(nombre):
     license_info = db.get_license_info()
     if license_info.get("tier") != "MENSUAL_FULL" or not license_info.get("updates"):
-        flash("Las actualizaciones estan disponibles solo para el plan Mensual Full.", "warning")
+        flash("Las actualizaciones estan disponibles solo para el plan FULL.", "warning")
         return redirect(url_for("respaldo"))
 
     installer = _update_file(nombre)
