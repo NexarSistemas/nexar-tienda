@@ -12,6 +12,13 @@ import requests
 PRODUCTO_DEFAULT = os.getenv("LICENSE_PRODUCT", "nexar-tienda")
 PLANES_VALIDOS = {"DEMO", "BASICA", "PRO", "MENSUAL_FULL"}
 logger = logging.getLogger(__name__)
+_LAST_SUPABASE_DEBUG: dict[str, Any] = {
+    "configured": False,
+    "operation": "",
+    "status": "",
+    "status_code": None,
+    "last_error": "",
+}
 
 
 def normalize_plan(plan: str = "") -> str:
@@ -40,8 +47,13 @@ def _support_requests_table_url() -> str:
     return f"{base}/rest/v1/solicitudes_soporte" if base else ""
 
 
+def _upgrade_requests_table_url() -> str:
+    base = _clean_base_url(os.getenv("SUPABASE_URL", ""))
+    return f"{base}/rest/v1/solicitudes_upgrade" if base else ""
+
+
 def _anon_key() -> str:
-    return os.getenv("SUPABASE_ANON_KEY", "") or os.getenv("SUPABASE_KEY", "")
+    return os.getenv("SUPABASE_ANON_KEY", "")
 
 
 def _headers() -> dict[str, str]:
@@ -56,6 +68,38 @@ def _headers() -> dict[str, str]:
 
 def is_configured() -> bool:
     return bool(os.getenv("SUPABASE_URL") and _anon_key())
+
+
+def _set_supabase_debug(**values: Any) -> None:
+    _LAST_SUPABASE_DEBUG.update(values)
+    _LAST_SUPABASE_DEBUG["configured"] = is_configured()
+
+
+def get_supabase_debug_state() -> dict[str, Any]:
+    state = dict(_LAST_SUPABASE_DEBUG)
+    state["configured"] = is_configured()
+    return state
+
+
+def _request_error_message(operation: str, exc: Exception) -> tuple[str, str | None]:
+    if isinstance(exc, requests.Timeout):
+        logger.warning("Timeout en Supabase durante %s", operation)
+        return "No se pudo conectar con Supabase a tiempo.", "timeout"
+    if isinstance(exc, requests.ConnectionError):
+        logger.warning("Conexion caida en Supabase durante %s", operation)
+        return "No se pudo conectar con Supabase.", "connection_error"
+    logger.warning("Error de red en Supabase durante %s: %s", operation, exc)
+    return "No se pudo completar la operacion con Supabase.", exc.__class__.__name__
+
+
+def _response_error_message(operation: str, response: requests.Response) -> tuple[str, str]:
+    status_code = response.status_code
+    body = (response.text or "").strip().replace("\n", " ")[:240]
+    if status_code in {401, 403}:
+        logger.warning("Supabase rechazo %s con status=%s", operation, status_code)
+        return "Supabase rechazó la operación por permisos o autenticación.", "auth_or_rls"
+    logger.warning("Supabase devolvio error en %s status=%s", operation, status_code)
+    return f"Error en Supabase ({status_code}). {body}".strip(), "http_error"
 
 
 def build_machine_id(raw: str) -> str:
@@ -203,34 +247,115 @@ def create_support_request(
     return True, "Solicitud de soporte enviada correctamente.", None
 
 
-def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO_DEFAULT) -> tuple[bool, str, dict[str, Any] | None]:
+def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
+    operation = "create_upgrade_request"
     if not is_configured():
+        _set_supabase_debug(operation=operation, status="not_configured", status_code=None, last_error="not_configured")
+        return {
+            "ok": False,
+            "message": "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY para enviar solicitudes.",
+            "error": "not_configured",
+        }
+
+    payload = dict(data or {})
+    payload["producto"] = str(payload.get("producto") or PRODUCTO_DEFAULT).strip() or PRODUCTO_DEFAULT
+    payload["license_key"] = str(payload.get("license_key") or "").strip()
+    payload["activation_id"] = build_machine_id(payload.get("activation_id") or "")
+    payload["nombre"] = str(payload.get("nombre") or "").strip() or "Administrador"
+    payload["email"] = str(payload.get("email") or "").strip().lower()
+    payload["whatsapp"] = str(payload.get("whatsapp") or "").strip()
+    payload["plan_actual"] = normalize_plan(payload.get("plan_actual") or "")
+    payload["plan_solicitado"] = normalize_plan(payload.get("plan_solicitado") or "")
+    payload["estado"] = "pendiente"
+    payload["machine_details"] = payload.get("machine_details") or {}
+
+    if not payload["producto"] or not payload["plan_actual"] or not payload["plan_solicitado"]:
+        _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_required_fields")
+        return {
+            "ok": False,
+            "message": "La solicitud de actualización no tiene los datos mínimos requeridos.",
+            "error": "missing_required_fields",
+        }
+
+    if payload["plan_actual"] not in {"BASICA", "PRO"}:
+        _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="invalid_current_plan")
+        return {
+            "ok": False,
+            "message": "El plan actual no admite solicitudes de actualización.",
+            "error": "invalid_current_plan",
+        }
+
+    expected_target = "PRO" if payload["plan_actual"] == "BASICA" else "MENSUAL_FULL"
+    if payload["plan_solicitado"] != expected_target:
+        _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="invalid_target_plan")
+        return {
+            "ok": False,
+            "message": "La actualización solicitada no es válida para el plan actual.",
+            "error": "invalid_target_plan",
+        }
+
+    if not payload["activation_id"] and not payload["license_key"]:
+        _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_activation_id_and_license_key")
+        return {
+            "ok": False,
+            "message": "La solicitud requiere al menos un ID de equipo o una licencia asociada.",
+            "error": "missing_activation_id_and_license_key",
+        }
+
+    headers = {**_headers(), "Prefer": "return=minimal"}
+    try:
+        resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=payload, timeout=12)
+    except requests.RequestException as exc:
+        message, error = _request_error_message(operation, exc)
+        _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
+        return {"ok": False, "message": message, "error": error or "network_error"}
+
+    if resp.status_code >= 300:
+        message, error = _response_error_message(operation, resp)
+        _set_supabase_debug(operation=operation, status="http_error", status_code=resp.status_code, last_error=error)
+        return {"ok": False, "message": message, "status_code": resp.status_code, "error": error}
+
+    _set_supabase_debug(operation=operation, status="ok", status_code=resp.status_code, last_error="")
+    return {"ok": True, "message": "Solicitud de actualización enviada.", "status_code": resp.status_code}
+
+
+def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO_DEFAULT) -> tuple[bool, str, dict[str, Any] | None]:
+    operation = "activate_license"
+    if not is_configured():
+        _set_supabase_debug(operation=operation, status="not_configured", status_code=None, last_error="not_configured")
         return False, "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY.", None
 
     key = (license_key or "").strip()
     machine_id = build_machine_id(machine_id)
     if not key or not machine_id:
+        _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_license_key_or_machine_id")
         return False, "La clave y el ID de maquina son obligatorios.", None
 
     params = {"license_key": f"eq.{key}", "producto": f"eq.{producto}", "select": "*"}
     try:
         resp = requests.get(_table_url(), headers=_headers(), params=params, timeout=12)
     except requests.RequestException as exc:
-        logger.warning("Error de conexion consultando licencia en Supabase: %s", exc)
-        return False, "No se pudo conectar con Supabase para validar la licencia.", None
+        message, error = _request_error_message(operation, exc)
+        _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
+        return False, message, None
     if resp.status_code >= 300:
-        return False, f"Error consultando licencia ({resp.status_code}): {resp.text[:240]}", None
+        message, error = _response_error_message(operation, resp)
+        _set_supabase_debug(operation=operation, status="http_error", status_code=resp.status_code, last_error=error)
+        return False, message, None
 
     try:
         rows = resp.json() if resp.text else []
     except ValueError:
         logger.warning("Respuesta invalida de Supabase al consultar licencia")
+        _set_supabase_debug(operation=operation, status="invalid_response", status_code=resp.status_code, last_error="invalid_json")
         return False, "Supabase devolvió una respuesta inválida al validar la licencia.", None
     if not rows:
+        _set_supabase_debug(operation=operation, status="not_found", status_code=resp.status_code, last_error="license_not_found")
         return False, "No existe esa licencia para este producto.", None
 
     row = rows[0]
     if not row.get("activa", True):
+        _set_supabase_debug(operation=operation, status="inactive", status_code=resp.status_code, last_error="license_inactive")
         return False, "La licencia esta desactivada/revocada.", row
 
     db_hwid = row.get("hwid") or ""
@@ -255,11 +380,20 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
             timeout=12,
         )
     except requests.RequestException as exc:
-        logger.warning("Error de conexion actualizando HWID en Supabase: %s", exc)
-        return False, "Licencia encontrada, pero no se pudo conectar a Supabase para vincular este equipo.", row
+        message, error = _request_error_message(operation, exc)
+        _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
+        return False, f"Licencia encontrada, pero {message.lower()}", row
     if upd.status_code >= 300:
-        return False, f"Licencia encontrada, pero no se pudo actualizar HWID ({upd.status_code}).", row
+        message, error = _response_error_message(operation, upd)
+        _set_supabase_debug(operation=operation, status="http_error", status_code=upd.status_code, last_error=error)
+        return False, f"Licencia encontrada, pero {message.lower()}", row
 
-    updated_rows = upd.json() if upd.text else [row]
+    try:
+        updated_rows = upd.json() if upd.text else [row]
+    except ValueError:
+        logger.warning("Respuesta invalida de Supabase al actualizar HWID")
+        _set_supabase_debug(operation=operation, status="invalid_response", status_code=upd.status_code, last_error="invalid_json")
+        return False, "Licencia encontrada, pero Supabase devolvió una respuesta inválida al vincular este equipo.", row
     updated = updated_rows[0] if updated_rows else row
+    _set_supabase_debug(operation=operation, status="ok", status_code=upd.status_code, last_error="")
     return True, "Licencia activada correctamente para esta maquina.", updated

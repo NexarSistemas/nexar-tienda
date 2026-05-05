@@ -65,5 +65,5 @@ static/js/      → pos.js (punto de venta), utils.js (helpers)
 | Sin licencias | Sin licencias (uso propio) |
 
 ### Estado actual del proyecto
-- v1.15.3: Corrección de flujo de apagado desde login ✅
-- Próximo paso: database.py con tablas adaptadas para tienda
+- v1.27.0: Solicitudes de upgrade, mejoras de licencias/debug y ajuste comercial de planes ✅
+- Próximo paso: integrar la aprobación de upgrades desde nexar-admin y continuar refinando licencias modulares

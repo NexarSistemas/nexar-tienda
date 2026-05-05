@@ -3,8 +3,8 @@ Tests para integración de licencias modulares en Nexar Tienda.
 
 Verifica que los tiers se mapeen correctamente a módulos:
 - DEMO -> {core}
-- BASICA -> {core, clientes, proveedores, pos, stock, caja}
-- PRO -> {BASICA + compras, gastos, historial, reportes, export, multiusuario}
+- BASICA -> {core, clientes, proveedores, pos, stock, caja, gastos}
+- PRO -> {BASICA + compras, historial, reportes, export, multiusuario}
 - MENSUAL_FULL/FULL -> {PRO + temporadas, multinegocio, ia}
 """
 
@@ -99,7 +99,7 @@ def test_get_modulos_from_tier():
     """Verifica que se obtienen los módulos correctos para cada tier."""
     test_cases = {
         'DEMO': {'core'},
-        'BASICA': {'core', 'clientes', 'proveedores', 'pos', 'stock', 'caja'},
+        'BASICA': {'core', 'clientes', 'proveedores', 'pos', 'stock', 'caja', 'gastos'},
         'PRO': PRO_MODULES,
         'MENSUAL_FULL': FULL_MODULES,
         'FULL': FULL_MODULES,
@@ -280,10 +280,26 @@ def test_basica_includes_clientes():
     """Verifica que BASICA incluya los módulos esperados."""
     basica_modules = PLANES['BASICA']
     assert 'clientes' in basica_modules, "BASICA debe incluir 'clientes'"
-    expected = {'core', 'clientes', 'proveedores', 'pos', 'stock', 'caja'}
+    expected = {'core', 'clientes', 'proveedores', 'pos', 'stock', 'caja', 'gastos'}
     assert basica_modules == expected, f"BASICA debe tener {expected}, tiene: {basica_modules}"
 
     print("✓ BASICA tiene mapeo correcto")
+
+
+def test_basica_keeps_gastos_without_pro_features():
+    """Verifica que BASICA tenga gastos sin desbloquear módulos PRO."""
+    basica_modules = PLANES['BASICA']
+    assert 'gastos' in basica_modules, "BASICA debe incluir 'gastos'"
+    assert 'reportes' not in basica_modules, "BASICA no debe incluir 'reportes'"
+    assert 'export' not in basica_modules, "BASICA no debe incluir 'export'"
+    assert 'historial' not in basica_modules, "BASICA no debe incluir 'historial'"
+    assert 'multiusuario' not in basica_modules, "BASICA no debe incluir 'multiusuario'"
+
+    pro_modules = PLANES['PRO']
+    assert {'reportes', 'export', 'multiusuario'}.issubset(pro_modules), "PRO debe conservar reportes/export/multiusuario"
+    assert FULL_MODULES.issuperset(pro_modules), "FULL debe seguir incluyendo todo lo de PRO"
+
+    print("✓ BASICA habilita gastos sin perder el diferencial de PRO")
 
 
 def test_pro_modules():
@@ -312,6 +328,7 @@ def run_all_tests():
         test_get_modulos_from_tier,
         test_tier_core_module,
         test_basica_includes_clientes,
+        test_basica_keeps_gastos_without_pro_features,
         test_pro_modules,
         test_full_includes_all,
         test_database_tier_functions,
