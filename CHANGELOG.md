@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.27.1] - 2026-05-05
+
+### Fixes
+- Corrección en URL de Supabase para solicitudes de licencia (error 404 PGRST125)
+- Corrección de refresh de licencia después de upgrade
+- Normalización de planes (BASICA, PRO, FULL)
+- Corrección de módulos no habilitados en FULL
+
 ## [1.27.0] - 04 Mayo 2026 - Upgrades, Licencias y Ajuste de Planes
 
 ### Added
