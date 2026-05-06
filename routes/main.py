@@ -1446,6 +1446,8 @@ def config_gasto_categoria_editar():
 def licencia():
     machine_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
     local_lic = cargar_licencia() or {}
+    license_info = db.get_license_info()
+    demo_status = db.get_demo_status()
     return render_template(
         "licencia.html",
         supabase_ok=supabase_configured(),
@@ -1454,6 +1456,9 @@ def licencia():
         machine_details=machine_details,
         producto=get_license_product(),
         license_key_local=local_lic.get("license_key", ""),
+        license_info=license_info,
+        demo_status=demo_status,
+        plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
     )
 
 
@@ -1644,7 +1649,7 @@ def respaldo_restaurar(nombre):
 def actualizacion_descargar():
     license_info = db.get_license_info()
     if license_info.get("tier") != "MENSUAL_FULL" or not license_info.get("updates"):
-        flash("Las actualizaciones estan disponibles solo para el plan Mensual Full.", "warning")
+        flash("Las actualizaciones estan disponibles solo para el plan FULL.", "warning")
         return redirect(url_for("respaldo"))
 
     update_info = get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
@@ -1694,7 +1699,7 @@ def actualizacion_abrir_carpeta():
 def actualizacion_instalar(nombre):
     license_info = db.get_license_info()
     if license_info.get("tier") != "MENSUAL_FULL" or not license_info.get("updates"):
-        flash("Las actualizaciones estan disponibles solo para el plan Mensual Full.", "warning")
+        flash("Las actualizaciones estan disponibles solo para el plan FULL.", "warning")
         return redirect(url_for("respaldo"))
 
     installer = _update_file(nombre)
@@ -1912,9 +1917,16 @@ def debug_licencia():
         "validation_mode": debug_state.get("validation_mode", ""),
         "plan_display": get_plan_display_name(license_info.get("plan")),
         "plan": license_info.get("plan"),
+        "plan_original": license_info.get("plan_original", license_info.get("plan")),
+        "plan_efectivo": license_info.get("plan_efectivo", license_info.get("tier")),
+        "effective_plan": license_info.get("effective_plan", license_info.get("tier")),
         "plan_normalized": normalize_plan(license_info.get("plan"), default="DEMO"),
         "tier": license_info.get("tier"),
         "tier_normalized": normalize_plan(license_info.get("tier"), default="DEMO"),
+        "estado": license_info.get("estado", ""),
+        "fallback_aplicado": bool(license_info.get("fallback_aplicado")),
+        "plan_base_permanente": bool(license_info.get("plan_base_permanente")),
+        "expirada": bool(license_info.get("expirada")),
         "modules_detected": debug_state.get("modules", []),
         "active_modules": sorted(license_info.get("modules", [])),
         "license_modules_persisted": sorted(str(module).strip().lower() for module in persisted_modules if str(module).strip()),

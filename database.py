@@ -64,6 +64,84 @@ TIER_LIMITS = {
 def normalize_license_plan(plan: str = None) -> str:
     return normalize_plan(plan, default="BASICA")
 
+
+def _as_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value or "").strip().lower() in {"1", "true", "yes", "si", "on"}
+
+
+def _normalize_effective_plan(plan: str | None = None) -> str:
+    raw = (plan or "").strip().upper().replace("-", "_").replace(" ", "_")
+    if raw == "SIN_PLAN":
+        return "SIN_PLAN"
+    return normalize_license_plan(raw or "BASICA")
+
+
+def _is_subscription_plan(plan: str) -> bool:
+    return plan in {"PRO", "MENSUAL_FULL"}
+
+
+def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
+    cfg = cfg or get_config()
+    original_plan = normalize_license_plan(
+        cfg.get("license_plan_original")
+        or cfg.get("license_plan")
+        or cfg.get("license_tier")
+        or "DEMO"
+    )
+    expires_at = cfg.get("license_expires_at", "") or ""
+    plan_base_permanente = (
+        original_plan == "BASICA"
+        or _as_bool(cfg.get("license_plan_base_permanente"))
+        or cfg.get("basica_activada", "0") == "1"
+    )
+    expired = False
+    remaining_days = None
+    if _is_subscription_plan(original_plan) and expires_at:
+        try:
+            expires_date = date.fromisoformat(expires_at)
+            remaining_days = (expires_date - date.today()).days
+            expired = remaining_days < 0
+        except Exception:
+            remaining_days = None
+            expired = False
+
+    status = cfg.get("license_status", "").strip()
+    fallback_aplicado = _as_bool(cfg.get("license_fallback_aplicado"))
+    effective_plan = _normalize_effective_plan(
+        cfg.get("license_effective_plan") or cfg.get("license_tier") or original_plan
+    )
+
+    if status == "revocada":
+        effective_plan = "SIN_PLAN"
+        fallback_aplicado = False
+    elif expired:
+        if plan_base_permanente:
+            effective_plan = "BASICA"
+            status = "vencida_con_fallback_basica"
+            fallback_aplicado = True
+        else:
+            effective_plan = "SIN_PLAN"
+            status = "vencida_sin_plan"
+            fallback_aplicado = False
+    elif not status:
+        status = "activa"
+
+    return {
+        "plan_original": original_plan,
+        "plan_efectivo": effective_plan,
+        "effective_plan": effective_plan,
+        "estado": status,
+        "fallback_aplicado": fallback_aplicado,
+        "plan_base_permanente": plan_base_permanente,
+        "expirada": expired,
+        "expires_at": expires_at,
+        "remaining_days": remaining_days,
+    }
+
 DEFAULT_GASTO_CATEGORIAS = [
     {'nombre': 'Servicios (Luz/Agua/Internet)', 'tipo': 'Necesario'},
     {'nombre': 'Alquiler', 'tipo': 'Necesario'},
@@ -981,24 +1059,16 @@ def _extract_license_modules(license_data: dict | None) -> list[str]:
 def get_license_info() -> dict:
     """Devuelve informacion completa de la licencia actual."""
     cfg = get_config()
-    tier = normalize_license_plan(cfg.get('license_tier', 'DEMO'))
-    expires_at_str = cfg.get('license_expires_at', '')
-
-    # ── Calcular días restantes y alertas para el Plan Mensual Full ──────────
-    full_days = None
-    if tier == 'MENSUAL_FULL' and expires_at_str:
-        try:
-            expires_date = date.fromisoformat(expires_at_str)
-            full_days = (expires_date - date.today()).days
-
-            if full_days < 0:
-                tier = 'BASICA' if cfg.get('basica_activada', '0') == '1' else 'DEMO'
-        except Exception:
-            pass
+    snapshot = _resolve_license_snapshot(cfg)
+    tier = snapshot["plan_efectivo"]
+    expires_at_str = snapshot["expires_at"]
+    full_days = snapshot["remaining_days"] if snapshot["plan_original"] == "MENSUAL_FULL" else None
 
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["DEMO"])
     modules = _extract_license_modules({'modules': cfg.get('license_modules', '[]')})
-    if not modules:
+    if tier == "SIN_PLAN":
+        modules = []
+    elif not modules:
         modules = sorted(TIER_MODULES_MAP.get(tier, TIER_MODULES_MAP["DEMO"]).copy())
 
     return {
@@ -1007,7 +1077,14 @@ def get_license_info() -> dict:
         'key':         cfg.get('license_key', ''),
         'owner_name':  cfg.get('license_owner_name', ''),
         'owner_email': cfg.get('license_owner_email', ''),
-        'plan':        normalize_license_plan(cfg.get('license_plan', tier)),
+        'plan':        snapshot["plan_original"],
+        'plan_original': snapshot["plan_original"],
+        'plan_efectivo': snapshot["plan_efectivo"],
+        'effective_plan': snapshot["effective_plan"],
+        'estado': snapshot["estado"],
+        'fallback_aplicado': snapshot["fallback_aplicado"],
+        'plan_base_permanente': snapshot["plan_base_permanente"],
+        'expirada': snapshot["expirada"],
         'activated_at': cfg.get('license_activated_at', ''),
         'expires_at':  expires_at_str,
         'last_check':  cfg.get('license_last_check', ''),
@@ -1016,15 +1093,15 @@ def get_license_info() -> dict:
         'limits':      limits,
         'modules':     modules,
         'demo_mode':   cfg.get('demo_mode', '1'),
-        'support':     bool(limits.get('support')),
-        'updates':     bool(limits.get('updates')),
+        'support':     bool(limits.get('support')) if tier != "SIN_PLAN" else False,
+        'updates':     bool(limits.get('updates')) if tier != "SIN_PLAN" else False,
         # Campos de notificación de vencimiento
         'pro_days':    full_days,
-        'pro_vencido': full_days is not None and full_days < 0,
+        'pro_vencido': snapshot["plan_original"] == "PRO" and snapshot["expirada"],
         'pro_expires_soon':     full_days == 5,
         'pro_expires_tomorrow': full_days == 1,
         'full_days': full_days,
-        'full_vencido': full_days is not None and full_days < 0,
+        'full_vencido': snapshot["plan_original"] == "MENSUAL_FULL" and snapshot["expirada"],
     }
 
 
@@ -1033,31 +1110,51 @@ def sync_license_from_remote(license_data: dict):
     if not license_data:
         return
 
-    plan = normalize_license_plan(
-        license_data.get('plan') or license_data.get('tier') or license_data.get('license_plan')
+    original_plan = normalize_license_plan(
+        license_data.get('plan_original') or license_data.get('plan') or license_data.get('tier') or license_data.get('license_plan')
     )
+    effective_raw = license_data.get("plan_efectivo") or license_data.get("effective_plan") or original_plan
+    effective_plan = _normalize_effective_plan(effective_raw)
     expira = license_data.get('expira') or license_data.get('expires_at') or ''
-    if plan == 'BASICA':
+    if original_plan == 'BASICA':
         expira = ''
+    plan_base_permanente = original_plan == "BASICA" or _as_bool(license_data.get("plan_base_permanente"))
 
     updates = {
-        'demo_mode': '0' if plan != 'DEMO' else '1',
-        'license_type': license_data.get('type', plan),
-        'license_tier': plan,
-        'license_plan': plan,
+        'demo_mode': '0' if original_plan != 'DEMO' else '1',
+        'license_type': license_data.get('type', original_plan),
+        'license_tier': effective_plan if effective_plan != "SIN_PLAN" else original_plan,
+        'license_plan': original_plan,
+        'license_plan_original': original_plan,
+        'license_effective_plan': effective_plan,
+        'license_status': str(license_data.get("estado", "") or "").strip() or "activa",
+        'license_fallback_aplicado': '1' if _as_bool(license_data.get("fallback_aplicado")) else '0',
+        'license_plan_base_permanente': '1' if plan_base_permanente else '0',
         'license_key': license_data.get('license_key', ''),
         'license_activated_at': datetime.now().isoformat(),
         'license_expires_at': expira,
         'license_last_check': datetime.now().date().isoformat(),
         'license_max_machines': str(license_data.get('max_devices') or license_data.get('max_machines') or 1),
-        'license_support': '1' if TIER_LIMITS[plan].get('support') else '0',
-        'license_updates': '1' if TIER_LIMITS[plan].get('updates') else '0',
+        'license_support': '1' if effective_plan != "SIN_PLAN" and TIER_LIMITS.get(effective_plan, TIER_LIMITS["DEMO"]).get('support') else '0',
+        'license_updates': '1' if effective_plan != "SIN_PLAN" and TIER_LIMITS.get(effective_plan, TIER_LIMITS["DEMO"]).get('updates') else '0',
     }
-    modules = _extract_license_modules(license_data)
-    if not modules:
-        modules = sorted(TIER_MODULES_MAP.get(plan, TIER_MODULES_MAP["DEMO"]).copy())
+    if effective_plan == "SIN_PLAN":
+        modules = []
+    else:
+        modules = _extract_license_modules({
+            "modules": (
+                license_data.get("modules_effective")
+                or license_data.get("modulos_efectivos")
+                or license_data.get("modules")
+                or license_data.get("features_effective")
+                or license_data.get("features")
+                or license_data.get("modulos")
+            )
+        })
+        if not modules:
+            modules = sorted(TIER_MODULES_MAP.get(effective_plan, TIER_MODULES_MAP["DEMO"]).copy())
     updates['license_modules'] = json.dumps(modules)
-    if plan == 'BASICA':
+    if plan_base_permanente:
         updates['basica_activada'] = '1'
     set_config(updates)
 

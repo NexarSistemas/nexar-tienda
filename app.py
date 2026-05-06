@@ -11,6 +11,7 @@ from services.runtime_config import load_runtime_env
 load_runtime_env()
 
 import database as db
+from licensing.planes import get_plan_display_name
 from routes.licencia import licencia_bp
 from routes.main import main_bp
 from licensing.permisos import modulo_activo
@@ -64,13 +65,12 @@ def create_app() -> Flask:
             info = db.get_license_info()
             demo = db.get_demo_status()
             has_license = bool(cargar_licencia()) and info.get("tier") != "DEMO"
-            license_expired = info.get("tier") == "DEMO" or (
-                info.get("tier") == "MENSUAL_FULL" and bool(info.get("full_vencido"))
-            )
+            license_expired = info.get("tier") in {"DEMO", "SIN_PLAN"} or bool(info.get("expirada"))
             return {
                 "es_demo": not has_license,
                 "vencido": demo.get("vencido", False) if not has_license else license_expired,
                 "tier": info.get("tier", "DEMO") if has_license else "DEMO",
+                "tier_label": get_plan_display_name(info.get("tier", "DEMO")) if has_license else "PRUEBA",
                 "dias_restantes": 0 if has_license else demo.get("dias_restantes", 0),
                 "support": info.get("support", False),
                 "updates": info.get("updates", False),
@@ -85,6 +85,7 @@ def create_app() -> Flask:
             "get_config_valor": get_config_valor,
             "get_licencia_status": get_licencia_status,
             "get_license_info": db.get_license_info,
+            "get_plan_display_name": get_plan_display_name,
             "app_version": app_version,
             "modulo_activo": modulo_activo,
             "update_info": (
@@ -200,7 +201,10 @@ def create_app() -> Flask:
         ok, _ = validate_saved_license(debug=False)
         if not ok:
             cfg = db.get_config()
-            if cfg.get("basica_activada", "0") == "1":
+            if (
+                cfg.get("basica_activada", "0") == "1"
+                and db.get_license_info().get("plan_base_permanente")
+            ):
                 db.set_config({
                     "demo_mode": "0",
                     "license_tier": "BASICA",

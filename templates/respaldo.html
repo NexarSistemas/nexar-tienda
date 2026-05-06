@@ -39,7 +39,7 @@
         <div class="card-header bg-white"><strong>Actualizaciones</strong></div>
         <div class="card-body">
           {% if not can_use_updates %}
-            <p class="small text-muted mb-0">Las actualizaciones estan disponibles solo para el plan Mensual Full.</p>
+            <p class="small text-muted mb-0">Las actualizaciones estan disponibles solo para el plan FULL.</p>
           {% elif update_state and update_state.status == 'installed' %}
             <div class="alert alert-success small mb-3">
               <strong>Actualizacion instalada.</strong><br>
@@ -156,7 +156,7 @@
                   {% if can_use_updates %}
                     Todavia no hay instaladores descargados.
                   {% else %}
-                    Disponible solo para el plan Mensual Full.
+                    Disponible solo para el plan FULL.
                   {% endif %}
                 </td>
               </tr>
