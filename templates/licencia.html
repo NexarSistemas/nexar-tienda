@@ -77,6 +77,37 @@
   </div>
 
   <div class="col-lg-7">
+    {% if license_info and license_info.tier != 'DEMO' %}
+    <div class="card mb-3">
+      <div class="card-header bg-white"><strong>Estado actual de la licencia</strong></div>
+      <div class="card-body">
+        <div class="row g-3 text-center">
+          <div class="col-6 col-md-3">
+            <div class="small text-muted text-uppercase">Estado</div>
+            <div class="fw-semibold">{{ license_info.estado or 'activa' }}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted text-uppercase">Plan original</div>
+            <div class="fw-semibold">{{ 'FULL' if license_info.plan_original == 'MENSUAL_FULL' else license_info.plan_original }}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted text-uppercase">Plan efectivo</div>
+            <div class="fw-semibold">{{ plan_display if license_info.plan_efectivo != 'SIN_PLAN' else 'SIN PLAN' }}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted text-uppercase">Fallback</div>
+            <div class="fw-semibold">{{ 'SI' if license_info.fallback_aplicado else 'NO' }}</div>
+          </div>
+        </div>
+        {% if license_info.tier == 'SIN_PLAN' %}
+        <div class="alert alert-danger mt-3 mb-0">
+          La suscripción venció y esta instalación no tiene BASICA permanente para aplicar fallback.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     <div class="card">
       <div class="card-header bg-light"><strong>Activar licencia</strong></div>
       <div class="card-body">

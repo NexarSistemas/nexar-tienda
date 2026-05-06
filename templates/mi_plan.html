@@ -15,6 +15,14 @@
                     {% set plan_label = 'Período de prueba' if plan_activo == 'DEMO' else (plan_display or ('FULL' if plan_activo == 'MENSUAL_FULL' else plan_activo)) %}
                     <div class="display-6 fw-bold text-primary mb-2">{{ plan_label }}</div>
                     <p class="text-muted mb-3">Los módulos disponibles dependen del plan configurado para esta instalación.</p>
+                    {% if license_info and license_info.tier != 'DEMO' %}
+                    <div class="small text-muted mb-3">
+                        Estado: <strong>{{ license_info.estado or 'activa' }}</strong> ·
+                        Plan original: <strong>{{ 'FULL' if license_info.plan_original == 'MENSUAL_FULL' else license_info.plan_original }}</strong> ·
+                        Plan efectivo: <strong>{{ 'FULL' if license_info.plan_efectivo == 'MENSUAL_FULL' else license_info.plan_efectivo }}</strong> ·
+                        Fallback: <strong>{{ 'SI' if license_info.fallback_aplicado else 'NO' }}</strong>
+                    </div>
+                    {% endif %}
                     {% if plan_activo == 'BASICA' %}
                     <div class="alert alert-info mb-0">
                         <div class="fw-semibold">Actualizar a PRO</div>
@@ -33,6 +41,11 @@
                     <div class="alert alert-warning mb-0">
                         <div class="fw-semibold">Período de prueba activo</div>
                         <div class="small">Los planes comerciales disponibles son BASICA, PRO y FULL.</div>
+                    </div>
+                    {% elif plan_activo == 'SIN_PLAN' %}
+                    <div class="alert alert-danger mb-0">
+                        <div class="fw-semibold">Suscripción vencida</div>
+                        <div class="small">No hay BASICA permanente para aplicar fallback en esta instalación.</div>
                     </div>
                     {% endif %}
                     <hr>

@@ -142,23 +142,37 @@ def get_modulos_activos() -> set[str]:
         _log_source("env", "DEV mode: usando módulos desde .env")
         return get_modulos_activos_env()
 
-    # Modo PROD: SDK -> módulos persistidos -> mapping por plan
+    # Modo PROD: SDK -> módulos persistidos filtrados por plan efectivo -> mapping por plan
     modules = _get_modulos_sdk()
     if modules:
         _log_source("sdk", "PROD mode: usando módulos desde SDK")
         return modules
 
+    try:
+        from database import get_license_info
+
+        license_info = get_license_info()
+        effective_tier = _normalize_tier(license_info.get("tier", "DEMO"))
+        if str(license_info.get("tier", "")).strip().upper() == "SIN_PLAN":
+            _set_source("db_effective_none")
+            return set()
+    except Exception:
+        effective_tier = _get_tier_from_db()
+
+    tier_modules = _get_modulos_from_tier(effective_tier)
     modules_from_config = _get_modulos_from_db_config()
     if modules_from_config:
-        _log_source("db_modules", "PROD mode: usando módulos persistidos en DB")
-        return modules_from_config
+        filtered_modules = modules_from_config & tier_modules
+        if filtered_modules:
+            source = "db_modules" if filtered_modules == modules_from_config else "db_modules_filtered"
+            _log_source(source, "PROD mode: usando módulos persistidos en DB")
+            return filtered_modules
 
     # Leer tier desde DB y mapear a módulos
     try:
-        tier = _get_tier_from_db()
-        modules_from_tier = _get_modulos_from_tier(tier)
+        modules_from_tier = _get_modulos_from_tier(effective_tier)
         if modules_from_tier:
-            _log_source("db", f"PROD mode: usando módulos desde DB tier '{tier}'")
+            _log_source("db", f"PROD mode: usando módulos desde DB tier '{effective_tier}'")
             return modules_from_tier
     except Exception as e:
         logger.debug(f"Error leyendo tier desde DB: {e}")

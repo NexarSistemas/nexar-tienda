@@ -176,8 +176,8 @@ def test_sync_license_modules_from_remote():
         temp_dir.cleanup()
 
 
-def test_prod_prioritizes_persisted_modules():
-    """Verifica que PROD use license_modules antes que el tier local."""
+def test_prod_filters_persisted_modules_by_effective_tier():
+    """Verifica que PROD no mantenga módulos persistidos fuera del plan efectivo."""
     import database
     from licensing.permisos import get_modulos_activos
 
@@ -192,9 +192,9 @@ def test_prod_prioritizes_persisted_modules():
         database.q("UPDATE config SET valor=? WHERE clave='license_modules'", ('[\"core\", \"clientes\"]',), commit=True)
 
         active_modules = get_modulos_activos()
-        assert active_modules == {'core', 'clientes'}, f"Debe priorizar módulos persistidos, obtuvo: {active_modules}"
+        assert active_modules == {'core'}, f"Debe filtrar módulos persistidos según el plan efectivo, obtuvo: {active_modules}"
 
-        print("✓ PROD prioriza license_modules persistido")
+        print("✓ PROD filtra license_modules persistidos por plan efectivo")
     finally:
         database.DB_PATH = original_db_path
         temp_dir.cleanup()
@@ -332,7 +332,7 @@ def run_all_tests():
         test_full_includes_all,
         test_database_tier_functions,
         test_sync_license_modules_from_remote,
-        test_prod_prioritizes_persisted_modules,
+        test_prod_filters_persisted_modules_by_effective_tier,
         test_sync_accepts_features_alias,
         test_sync_accepts_modulos_alias,
         test_permisos_dev_mode,

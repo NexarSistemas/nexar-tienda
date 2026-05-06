@@ -65,9 +65,7 @@ def create_app() -> Flask:
             info = db.get_license_info()
             demo = db.get_demo_status()
             has_license = bool(cargar_licencia()) and info.get("tier") != "DEMO"
-            license_expired = info.get("tier") == "DEMO" or (
-                info.get("tier") == "MENSUAL_FULL" and bool(info.get("full_vencido"))
-            )
+            license_expired = info.get("tier") in {"DEMO", "SIN_PLAN"} or bool(info.get("expirada"))
             return {
                 "es_demo": not has_license,
                 "vencido": demo.get("vencido", False) if not has_license else license_expired,
@@ -203,7 +201,10 @@ def create_app() -> Flask:
         ok, _ = validate_saved_license(debug=False)
         if not ok:
             cfg = db.get_config()
-            if cfg.get("basica_activada", "0") == "1":
+            if (
+                cfg.get("basica_activada", "0") == "1"
+                and db.get_license_info().get("plan_base_permanente")
+            ):
                 db.set_config({
                     "demo_mode": "0",
                     "license_tier": "BASICA",
