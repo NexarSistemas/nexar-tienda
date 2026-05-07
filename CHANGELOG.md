@@ -4,6 +4,16 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.28.0] - 2026-05-07
+
+### Added
+- Refresh automatico suave de licencia en background con sincronizacion visual en la UI sin reiniciar la app.
+- Perfil local del titular de licencia con nombre, email, telefono y palabra de recuperacion.
+
+### Changed
+- La vista `Mi plan` ahora reutiliza el refresh manual y automatico para reflejar cambios de plan, tier y modulos con menor friccion.
+- Los formularios de soporte, upgrade y solicitud de licencia reutilizan automaticamente los datos guardados del titular.
+
 ## [1.27.2] - 2026-05-05
 
 ### Changed

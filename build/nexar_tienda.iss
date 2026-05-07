@@ -8,7 +8,7 @@
 ; ════════════════════════════════════════════════════════════
 
 #ifndef AppVersion
-  #define AppVersion "1.27.2"
+  #define AppVersion "1.28.0"
 #endif
 
 #define AppName      "Nexar Tienda"
