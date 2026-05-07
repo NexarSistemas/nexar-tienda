@@ -163,7 +163,7 @@
                                     {% elif lic.vencido %}
                                         <span class="text-danger"><i class="fas fa-lock"></i> VENCIDA</span>
                                     {% else %}
-                                        <span class="text-success"><i class="fas fa-check-circle"></i> {{ lic.tier_label }}</span>
+                                        <span class="text-success" id="topbar-license-label" data-license-plan="{{ lic.tier }}"><i class="fas fa-check-circle"></i> {{ lic.tier_label }}</span>
                                     {% endif %}
                                 </span>
                             {% endif %}
@@ -181,7 +181,7 @@
         <div class="container-fluid px-4 py-2 border-bottom bg-light">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 small text-muted">
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <span class="fw-semibold text-dark">Plan actual: {{ plan_label }}</span>
+                    <span class="fw-semibold text-dark" id="current-plan-banner" data-license-plan="{{ plan_tier }}">Plan actual: {{ plan_label }}</span>
                     {% if plan_modules %}
                     <span>· {{ plan_modules[:4] | join(', ') }}{% if plan_modules|length > 4 %} +{{ plan_modules|length - 4 }} más{% endif %}</span>
                     {% endif %}
@@ -201,7 +201,7 @@
         </div>
         {% endif %}
         <!-- ─── ALERTS ─── -->
-        <div class="container-fluid pt-2">
+        <div class="container-fluid pt-2" id="global-alerts-container">
             {% if update_info and update_info.available %}
                 <div class="alert alert-info shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2" role="alert">
                     <div>
@@ -351,6 +351,83 @@
 
         {% if 'user' in session %}
         programarRevisionCierreDesktop(5000);
+        {% endif %}
+
+        {% if 'user' in session %}
+        (function () {
+            const licenseStateUrl = '{{ url_for("main.api_licencia_estado") }}';
+            const topbarLicenseLabel = document.getElementById('topbar-license-label');
+            const currentPlanBanner = document.getElementById('current-plan-banner');
+            const alertsContainer = document.getElementById('global-alerts-container');
+            const refreshFlagPrefix = 'license-auto-refresh-reloaded:';
+            let currentPlan = '{{ (plan_info.get("tier", "DEMO") if plan_info else "DEMO") }}';
+            let pollingInProgress = false;
+
+            function renderPlanLabel(tier, fallback) {
+                if (!tier) return fallback || '';
+                if (tier === 'MENSUAL_FULL') return 'FULL';
+                if (tier === 'DEMO') return 'PRUEBA';
+                return fallback || tier;
+            }
+
+            function showLicenseUpdateNotice(planLabel) {
+                if (!alertsContainer) return;
+                const existing = document.getElementById('license-auto-refresh-notice');
+                if (existing) existing.remove();
+                const notice = document.createElement('div');
+                notice.id = 'license-auto-refresh-notice';
+                notice.className = 'alert alert-success shadow-sm';
+                notice.setAttribute('role', 'alert');
+                notice.textContent = 'Tu licencia fue actualizada a ' + planLabel;
+                alertsContainer.prepend(notice);
+            }
+
+            async function pollLicenseState() {
+                if (pollingInProgress) return;
+                pollingInProgress = true;
+                try {
+                    const response = await fetch(licenseStateUrl, {
+                        method: 'GET',
+                        credentials: 'same-origin',
+                        headers: {
+                            'X-Requested-With': 'fetch'
+                        }
+                    });
+                    if (!response.ok) return;
+
+                    const data = await response.json();
+                    if (!data.ok || !data.tier || data.tier === currentPlan) return;
+
+                    const newPlan = String(data.tier);
+                    const newPlanLabel = renderPlanLabel(newPlan, data.plan_display);
+                    showLicenseUpdateNotice(newPlanLabel);
+
+                    if (topbarLicenseLabel) {
+                        topbarLicenseLabel.dataset.licensePlan = newPlan;
+                        topbarLicenseLabel.innerHTML = '<i class="fas fa-check-circle"></i> ' + newPlanLabel;
+                    }
+                    if (currentPlanBanner) {
+                        currentPlanBanner.dataset.licensePlan = newPlan;
+                        currentPlanBanner.textContent = 'Plan actual: ' + newPlanLabel;
+                    }
+
+                    const reloadKey = refreshFlagPrefix + currentPlan + '->' + newPlan;
+                    currentPlan = newPlan;
+                    if (!sessionStorage.getItem(reloadKey)) {
+                        sessionStorage.setItem(reloadKey, '1');
+                        window.setTimeout(function () {
+                            window.location.reload();
+                        }, 1500);
+                    }
+                } catch (error) {
+                    // Mantener compatibilidad offline y evitar ruido en UI.
+                } finally {
+                    pollingInProgress = false;
+                }
+            }
+
+            window.setInterval(pollLicenseState, 60000);
+        })();
         {% endif %}
     </script>
     {% block extra_js %}{% endblock %}

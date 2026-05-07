@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
 import re
 import shutil
 import subprocess
@@ -37,6 +39,7 @@ from services.supabase_license_api import (
 from services.update_checker import download_release_asset, get_cached_update_info
 
 main_bp = Blueprint("main", __name__)
+logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = app_data_dir()
 BACKUP_DIR = DATA_DIR / "respaldo"
@@ -47,6 +50,16 @@ DESKTOP_STATE = {
     "user_logged_in": False,
     "close_warning_requested": False,
 }
+
+LICENSE_AUTO_REFRESH_INTERVAL_SECONDS = 300
+_LICENSE_REFRESH_LOCK = threading.Lock()
+_LICENSE_REFRESH_THREAD_LOCK = threading.Lock()
+_LICENSE_REFRESH_LAST_RESULT: dict[str, object] = {
+    "ok": False,
+    "changed": False,
+    "message": "",
+}
+_LICENSE_REFRESH_LAST_RUN = 0.0
 
 PURCHASE_DRAFT_FIELDS = (
     "fecha",
@@ -147,6 +160,192 @@ def _first_non_empty(*values) -> str:
         if str(value or "").strip():
             return str(value).strip()
     return ""
+
+
+def _license_snapshot(license_info: dict | None) -> tuple[str, str, tuple[str, ...]]:
+    info = license_info or {}
+    modules = tuple(sorted(str(module).strip().lower() for module in (info.get("modules") or []) if str(module).strip()))
+    return (
+        str(info.get("plan", info.get("tier", "DEMO"))).strip().upper(),
+        str(info.get("tier", "DEMO")).strip().upper(),
+        modules,
+    )
+
+
+def _run_license_refresh(*, trigger: str, force: bool = False) -> dict[str, object]:
+    global _LICENSE_REFRESH_LAST_RUN
+    global _LICENSE_REFRESH_LAST_RESULT
+
+    local_before = db.get_license_info()
+    local_before_snapshot = _license_snapshot(local_before)
+    now = time.monotonic()
+
+    if not cargar_licencia():
+        result = {
+            "ok": False,
+            "changed": False,
+            "message": "No hay licencia guardada.",
+            "license_info": local_before,
+            "modules": sorted(get_modulos_activos()),
+            "used_fallback": True,
+            "skipped": True,
+        }
+        if trigger == "auto_background":
+            logger.warning("Auto-refresh licencia: error no hay licencia guardada")
+        _LICENSE_REFRESH_LAST_RESULT = result
+        return result
+
+    if not force and _LICENSE_REFRESH_LAST_RUN and (now - _LICENSE_REFRESH_LAST_RUN) < LICENSE_AUTO_REFRESH_INTERVAL_SECONDS:
+        result = {
+            "ok": True,
+            "changed": False,
+            "message": "",
+            "license_info": local_before,
+            "modules": sorted(get_modulos_activos()),
+            "used_fallback": False,
+            "skipped": True,
+        }
+        _LICENSE_REFRESH_LAST_RESULT = result
+        return result
+
+    if not _LICENSE_REFRESH_LOCK.acquire(blocking=False):
+        result = {
+            "ok": True,
+            "changed": False,
+            "message": "",
+            "license_info": db.get_license_info(),
+            "modules": sorted(get_modulos_activos()),
+            "used_fallback": False,
+            "skipped": True,
+        }
+        if trigger == "auto_background":
+            logger.info("Auto-refresh licencia omitido/fallo: refresh en curso")
+        _LICENSE_REFRESH_LAST_RESULT = result
+        return result
+
+    try:
+        if trigger == "auto_background":
+            logger.info("Auto-refresh licencia: ejecutando validacion")
+        elif trigger == "mi_plan":
+            logger.info("Refrescando licencia al abrir /mi-plan")
+        else:
+            logger.info("Refrescando licencia manualmente")
+
+        ok, msg, refreshed_info = refresh_saved_license_online(debug=False)
+        _LICENSE_REFRESH_LAST_RUN = time.monotonic()
+        license_info = refreshed_info or db.get_license_info()
+        changed = _license_snapshot(license_info) != local_before_snapshot
+        modules = sorted(get_modulos_activos())
+
+        if ok and changed:
+            plan = str(license_info.get("tier", "DEMO")).strip().upper()
+            if trigger == "auto_background":
+                logger.info("Auto-refresh licencia: actualizada a %s", plan)
+            else:
+                logger.info("Licencia actualizada: plan=%s tier=%s modules=%s", license_info.get("plan"), license_info.get("tier"), modules)
+        elif ok:
+            if trigger == "auto_background":
+                logger.info("Auto-refresh licencia: sin cambios")
+            else:
+                logger.info("Auto-refresh licencia sin cambios")
+        else:
+            if trigger == "auto_background":
+                logger.warning("Auto-refresh licencia: error %s", msg)
+            else:
+                logger.warning("Auto-refresh licencia omitido/fallo: %s", msg)
+            logger.info("Fallback local usado durante refresh de licencia")
+
+        result = {
+            "ok": ok,
+            "changed": changed,
+            "message": msg,
+            "license_info": license_info,
+            "modules": modules,
+            "used_fallback": not ok,
+            "skipped": False,
+        }
+        _LICENSE_REFRESH_LAST_RESULT = result
+        return result
+    except Exception as exc:
+        if trigger == "auto_background":
+            logger.exception("Auto-refresh licencia: error %s", exc)
+        else:
+            logger.exception("Auto-refresh licencia omitido/fallo")
+        result = {
+            "ok": False,
+            "changed": False,
+            "message": str(exc),
+            "license_info": db.get_license_info(),
+            "modules": sorted(get_modulos_activos()),
+            "used_fallback": True,
+            "skipped": False,
+        }
+        _LICENSE_REFRESH_LAST_RESULT = result
+        return result
+    finally:
+        _LICENSE_REFRESH_LOCK.release()
+
+
+def _build_mi_plan_context(license_info: dict | None = None) -> dict[str, object]:
+    license_info = license_info or db.get_license_info()
+    modulos_activos = sorted(get_modulos_activos())
+    todos_los_modulos = sorted(set().union(*PLANES.values()))
+    modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
+    next_upgrade_plan = ""
+    if license_info.get("tier") == "BASICA":
+        next_upgrade_plan = "PRO"
+    elif license_info.get("tier") == "PRO":
+        next_upgrade_plan = "MENSUAL_FULL"
+    return {
+        "plan_activo": license_info.get("tier", "DEMO"),
+        "plan_display": get_plan_display_name(license_info.get("tier", "DEMO")),
+        "license_info": license_info,
+        "modulos_activos": modulos_activos,
+        "modulos_bloqueados": modulos_bloqueados,
+        "next_upgrade_plan": next_upgrade_plan,
+        "supabase_ok": supabase_configured(),
+        "license_refresh_ok": None,
+        "license_refresh_message": "",
+    }
+
+
+def _refresh_license_response() -> tuple[dict[str, object], bool]:
+    result = _run_license_refresh(trigger="manual", force=True)
+    license_info = result["license_info"]
+    response = {
+        "ok": bool(result["ok"]),
+        "changed": bool(result["changed"]),
+        "message": str(result["message"]),
+        "plan": license_info.get("plan", license_info.get("tier", "DEMO")),
+        "tier": license_info.get("tier", "DEMO"),
+        "modules": result["modules"],
+    }
+    return response, bool(result["ok"])
+
+
+def _license_auto_refresh_loop(app) -> None:
+    while True:
+        time.sleep(LICENSE_AUTO_REFRESH_INTERVAL_SECONDS)
+        try:
+            with app.app_context():
+                _run_license_refresh(trigger="auto_background", force=True)
+        except Exception:
+            logger.exception("Auto-refresh licencia: error en scheduler")
+
+
+def ensure_license_auto_refresh_thread(app) -> None:
+    with _LICENSE_REFRESH_THREAD_LOCK:
+        if app.extensions.get("license_auto_refresh_thread_started"):
+            return
+        thread = threading.Thread(
+            target=_license_auto_refresh_loop,
+            args=(app,),
+            daemon=True,
+            name="license-auto-refresh",
+        )
+        thread.start()
+        app.extensions["license_auto_refresh_thread_started"] = True
+        logger.info("Auto-refresh licencia: scheduler iniciado")
 
 
 def login_required(view):
@@ -1311,36 +1510,48 @@ def config():
 @main_bp.route("/mi-plan")
 @login_required
 def mi_plan():
-    refresh_ok, refresh_msg, refreshed_info = refresh_saved_license_online(debug=False)
-    modulos_activos = sorted(get_modulos_activos())
-    todos_los_modulos = sorted(set().union(*PLANES.values()))
-    modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
-    license_info = refreshed_info or db.get_license_info()
-    next_upgrade_plan = ""
-    if license_info.get("tier") == "BASICA":
-        next_upgrade_plan = "PRO"
-    elif license_info.get("tier") == "PRO":
-        next_upgrade_plan = "MENSUAL_FULL"
-    return render_template(
-        "mi_plan.html",
-        plan_activo=license_info.get("tier", "DEMO"),
-        plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
-        license_info=license_info,
-        modulos_activos=modulos_activos,
-        modulos_bloqueados=modulos_bloqueados,
-        next_upgrade_plan=next_upgrade_plan,
-        supabase_ok=supabase_configured(),
-        license_refresh_ok=refresh_ok,
-        license_refresh_message=refresh_msg,
-    )
+    refresh_result = _run_license_refresh(trigger="mi_plan", force=True)
+    license_info = refresh_result["license_info"]
+    context = _build_mi_plan_context(license_info)
+
+    if refresh_result["ok"] and refresh_result["changed"]:
+        plan = str(license_info.get("tier", "DEMO")).strip().upper()
+        plan_label = "FULL" if plan == "MENSUAL_FULL" else plan
+        context["license_refresh_ok"] = True
+        context["license_refresh_message"] = f"Tu licencia fue actualizada a {plan_label}"
+    else:
+        context["license_refresh_ok"] = None
+        context["license_refresh_message"] = ""
+
+    return render_template("mi_plan.html", **context)
+
+
+@main_bp.route("/licencia/refrescar", methods=["GET", "POST"])
+@admin_required
+def licencia_refrescar():
+    response, _ok = _refresh_license_response()
+    return jsonify(response)
+
+
+@main_bp.route("/api/licencia/estado")
+@login_required
+def api_licencia_estado():
+    license_info = db.get_license_info()
+    return jsonify({
+        "ok": True,
+        "plan": license_info.get("plan", license_info.get("tier", "DEMO")),
+        "plan_display": get_plan_display_name(license_info.get("tier", "DEMO")),
+        "tier": license_info.get("tier", "DEMO"),
+        "modules": sorted(license_info.get("modules", [])),
+    })
 
 
 @main_bp.route("/mi-plan/actualizar-licencia", methods=["POST"])
 @admin_required
 def mi_plan_actualizar_licencia():
-    ok, _msg, refreshed_info = refresh_saved_license_online(debug=False)
+    response, ok = _refresh_license_response()
     if ok:
-        plan = (refreshed_info or db.get_license_info()).get("tier", "DEMO")
+        plan = str(response.get("tier", "DEMO"))
         plan_label = "FULL" if plan == "MENSUAL_FULL" else plan
         flash(f"Estado de licencia actualizado. Plan actual: {plan_label}.", "success")
     else:
