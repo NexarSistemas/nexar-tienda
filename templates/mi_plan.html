@@ -108,6 +108,39 @@
                 </div>
             </div>
 
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Datos del titular</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('main.mi_plan_guardar_titular') }}" class="row g-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="col-md-6">
+                            <label class="form-label">Nombre</label>
+                            <input type="text" class="form-control" name="titular_nombre" value="{{ license_holder.nombre }}">
+                            <div class="form-text">Opcional, pero recomendado.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" name="titular_email" value="{{ license_holder.email }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Telefono</label>
+                            <input type="text" class="form-control" name="titular_telefono" value="{{ license_holder.telefono }}">
+                            <div class="form-text">Opcional.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Palabra de recuperacion</label>
+                            <input type="text" class="form-control" name="titular_palabra_recuperacion" value="{{ license_holder.palabra_recuperacion }}">
+                            <div class="form-text">Si se completa, debe tener al menos 4 caracteres.</div>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-outline-primary" type="submit">Guardar datos del titular</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <div class="card shadow-sm">
                 <div class="card-header bg-white">
                     <h5 class="mb-0">Modulos bloqueados</h5>

@@ -43,17 +43,17 @@
 
           <div class="col-12">
             <label class="form-label">Nombre del titular</label>
-            <input name="nombre" class="form-control" required placeholder="Nombre y apellido o comercio">
+            <input name="nombre" class="form-control" required placeholder="Nombre y apellido o comercio" value="{{ license_holder.nombre }}">
           </div>
 
           <div class="col-12">
             <label class="form-label">Email</label>
-            <input name="email" type="email" class="form-control" required placeholder="cliente@email.com">
+            <input name="email" type="email" class="form-control" required placeholder="cliente@email.com" value="{{ license_holder.email }}">
           </div>
 
           <div class="col-12">
             <label class="form-label">WhatsApp <span class="text-muted small">(opcional)</span></label>
-            <input name="whatsapp" class="form-control" placeholder="Ej: 5492645858874">
+            <input name="whatsapp" class="form-control" placeholder="Ej: 5492645858874" value="{{ license_holder.telefono }}">
             <div class="form-text">Usar codigo de pais y area para poder abrir WhatsApp directo.</div>
           </div>
 

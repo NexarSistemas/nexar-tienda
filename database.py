@@ -609,6 +609,8 @@ def init_db():
         ('license_drive_index_id', ''),     # ID del index_tienda.json en Google Drive
         ('license_owner_name', ''),         # Nombre titular
         ('license_owner_email', ''),        # Email titular
+        ('license_owner_phone', ''),        # Telefono titular
+        ('license_recovery_word', ''),      # Palabra de recuperacion local
         ('license_plan', 'DEMO'),           # Plan del token
         ('license_support', '0'),           # 1 = incluye soporte
         ('license_updates', '0'),           # 1 = incluye actualizaciones
@@ -1077,6 +1079,8 @@ def get_license_info() -> dict:
         'key':         cfg.get('license_key', ''),
         'owner_name':  cfg.get('license_owner_name', ''),
         'owner_email': cfg.get('license_owner_email', ''),
+        'owner_phone': cfg.get('license_owner_phone', ''),
+        'recovery_word': cfg.get('license_recovery_word', ''),
         'plan':        snapshot["plan_original"],
         'plan_original': snapshot["plan_original"],
         'plan_efectivo': snapshot["plan_efectivo"],

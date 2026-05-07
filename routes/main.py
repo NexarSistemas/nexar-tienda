@@ -162,6 +162,27 @@ def _first_non_empty(*values) -> str:
     return ""
 
 
+def _get_license_holder_profile() -> dict[str, str]:
+    cfg = db.get_config()
+    return {
+        "nombre": str(cfg.get("license_owner_name", "")).strip(),
+        "email": str(cfg.get("license_owner_email", "")).strip(),
+        "telefono": str(cfg.get("license_owner_phone", "")).strip(),
+        "palabra_recuperacion": str(cfg.get("license_recovery_word", "")).strip(),
+    }
+
+
+def _validate_license_holder_profile(data: dict[str, str]) -> tuple[bool, str]:
+    email = data.get("email", "").strip()
+    recovery_word = data.get("palabra_recuperacion", "").strip()
+
+    if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return False, "Ingresa un email valido."
+    if recovery_word and len(recovery_word) < 4:
+        return False, "La palabra de recuperacion debe tener al menos 4 caracteres."
+    return True, ""
+
+
 def _license_snapshot(license_info: dict | None) -> tuple[str, str, tuple[str, ...]]:
     info = license_info or {}
     modules = tuple(sorted(str(module).strip().lower() for module in (info.get("modules") or []) if str(module).strip()))
@@ -306,6 +327,7 @@ def _build_mi_plan_context(license_info: dict | None = None) -> dict[str, object
         "supabase_ok": supabase_configured(),
         "license_refresh_ok": None,
         "license_refresh_message": "",
+        "license_holder": _get_license_holder_profile(),
     }
 
 
@@ -1546,6 +1568,30 @@ def api_licencia_estado():
     })
 
 
+@main_bp.route("/mi-plan/titular", methods=["POST"])
+@admin_required
+def mi_plan_guardar_titular():
+    payload = {
+        "nombre": request.form.get("titular_nombre", "").strip(),
+        "email": request.form.get("titular_email", "").strip().lower(),
+        "telefono": request.form.get("titular_telefono", "").strip(),
+        "palabra_recuperacion": request.form.get("titular_palabra_recuperacion", "").strip(),
+    }
+    ok, msg = _validate_license_holder_profile(payload)
+    if not ok:
+        flash(msg, "warning")
+        return redirect(url_for("main.mi_plan"))
+
+    db.set_config({
+        "license_owner_name": payload["nombre"],
+        "license_owner_email": payload["email"],
+        "license_owner_phone": payload["telefono"],
+        "license_recovery_word": payload["palabra_recuperacion"],
+    })
+    flash("Datos del titular guardados correctamente", "success")
+    return redirect(url_for("main.mi_plan"))
+
+
 @main_bp.route("/mi-plan/actualizar-licencia", methods=["POST"])
 @admin_required
 def mi_plan_actualizar_licencia():
@@ -1585,19 +1631,20 @@ def mi_plan_solicitar_upgrade():
         "license_key": license_info.get("key", ""),
         "activation_id": activation_id,
         "nombre": _first_non_empty(
+            license_info.get("owner_name", ""),
             usuario.get("nombre_completo"),
             usuario.get("username"),
             cfg.get("nombre_negocio", ""),
-            license_info.get("owner_name", ""),
             "Administrador",
         ),
         "email": _first_non_empty(
+            license_info.get("owner_email", ""),
             usuario.get("email"),
             usuario.get("correo"),
             cfg.get("email_contacto", ""),
-            license_info.get("owner_email", ""),
         ).lower(),
         "whatsapp": _first_non_empty(
+            license_info.get("owner_phone", ""),
             usuario.get("whatsapp"),
             usuario.get("telefono"),
             cfg.get("telefono", ""),
@@ -1670,6 +1717,7 @@ def licencia():
         license_info=license_info,
         demo_status=demo_status,
         plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+        license_holder=_get_license_holder_profile(),
     )
 
 
@@ -1691,10 +1739,27 @@ def licencia_activar():
 def licencia_solicitar():
     machine_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
     activation_id = request.form.get("activation_id") or get_current_hwid() or machine_id
+    holder_profile = {
+        "nombre": request.form.get("nombre", "").strip(),
+        "email": request.form.get("email", "").strip().lower(),
+        "telefono": request.form.get("whatsapp", "").strip(),
+        "palabra_recuperacion": _get_license_holder_profile().get("palabra_recuperacion", ""),
+    }
+    ok_profile, msg_profile = _validate_license_holder_profile(holder_profile)
+    if not ok_profile:
+        flash(msg_profile, "warning")
+        return redirect(url_for("licencia"))
+
+    db.set_config({
+        "license_owner_name": holder_profile["nombre"],
+        "license_owner_email": holder_profile["email"],
+        "license_owner_phone": holder_profile["telefono"],
+    })
+
     ok, msg, _ = create_license_request(
-        nombre=request.form.get("nombre", ""),
-        email=request.form.get("email", ""),
-        whatsapp=request.form.get("whatsapp", ""),
+        nombre=holder_profile["nombre"],
+        email=holder_profile["email"],
+        whatsapp=holder_profile["telefono"],
         activation_id=activation_id,
         producto=get_license_product(),
         plan=request.form.get("plan", "BASICA"),
@@ -2059,9 +2124,19 @@ def ayuda():
     usuario = session.get("user", {})
     negocio = cfg.get("nombre_negocio", "Nexar Tienda")
     support_defaults = {
-        "nombre": usuario.get("nombre_completo") or usuario.get("username") or "",
-        "email": cfg.get("email_contacto", ""),
-        "whatsapp": cfg.get("telefono", ""),
+        "nombre": _first_non_empty(
+            licencia.get("owner_name", ""),
+            usuario.get("nombre_completo"),
+            usuario.get("username"),
+        ),
+        "email": _first_non_empty(
+            licencia.get("owner_email", ""),
+            cfg.get("email_contacto", ""),
+        ),
+        "whatsapp": _first_non_empty(
+            licencia.get("owner_phone", ""),
+            cfg.get("telefono", ""),
+        ),
         "motivo": request.args.get("motivo", "consulta"),
         "mensaje": "",
     }
