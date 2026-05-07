@@ -1,5 +1,6 @@
 import os
 import hmac
+import logging
 import secrets
 from pathlib import Path
 from typing import Any
@@ -9,14 +10,15 @@ from flask import Flask, abort, redirect, render_template, request, session
 from services.runtime_config import load_runtime_env
 
 load_runtime_env()
+logging.basicConfig(level=logging.INFO)
 
 import database as db
 from licensing.planes import get_plan_display_name
 from routes.licencia import licencia_bp
-from routes.main import main_bp
+from routes.main import ensure_license_auto_refresh_thread, main_bp
 from licensing.permisos import modulo_activo
 from services.license_storage import cargar_licencia
-from services.license_sdk import refresh_saved_license_online, validate_saved_license
+from services.license_sdk import validate_saved_license
 from services.update_checker import get_cached_update_info
 
 
@@ -34,13 +36,6 @@ def create_app() -> Flask:
     except Exception:
         pass
     app.config["APP_VERSION"] = app_version
-
-    try:
-        local_license = cargar_licencia()
-        if local_license and db.get_license_info().get("tier") != "DEMO":
-            refresh_saved_license_online(debug=False)
-    except Exception:
-        pass
 
     def csrf_token() -> str:
         token = session.get("_csrf_token")
@@ -190,11 +185,7 @@ def create_app() -> Flask:
                 return None
             return redirect("/licencia")
 
-        refreshed_ok, _refresh_msg, refreshed_info = refresh_saved_license_online(debug=False)
-        if refreshed_ok:
-            return None
-
-        local_info = refreshed_info or db.get_license_info()
+        local_info = db.get_license_info()
         if local_info.get("tier") in {"BASICA", "PRO", "MENSUAL_FULL"}:
             return None
 
@@ -332,6 +323,7 @@ def create_app() -> Flask:
                 methods=methods,
             )
 
+    ensure_license_auto_refresh_thread(app)
     return app
 
 
