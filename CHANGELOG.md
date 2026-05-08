@@ -4,6 +4,11 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.28.2] - 2026-05-08
+
+### Changed
+- Se publica el release estable `v1.28.2` con endpoint de estado de licencia, refresh post-pago, seleccion directa de planes y solicitudes de cambio de plan ya integrados en `main`.
+
 ## [1.28.1] - 2026-05-08
 
 ### Added
