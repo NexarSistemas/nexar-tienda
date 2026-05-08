@@ -1590,6 +1590,51 @@ def mi_plan_actualizar_licencia():
     return redirect(url_for("main.mi_plan"))
 
 
+@main_bp.route("/api/licencia/estado", methods=["GET"])
+@login_required
+def api_licencia_estado():
+    try:
+        stored_license = cargar_licencia() or {}
+        license_info = db.get_license_info()
+        license_key = str(license_info.get("key", "") or stored_license.get("license_key", "") or "").strip()
+
+        if not license_key:
+            return jsonify({
+                "ok": False,
+                "estado": "sin_licencia",
+                "message": "No hay licencia activa",
+            })
+
+        last_refresh = ""
+        if _LICENSE_REFRESH_LAST_RUN:
+            last_refresh = datetime.fromtimestamp(_LICENSE_REFRESH_LAST_RUN).isoformat(timespec="seconds")
+        elif str(license_info.get("last_check", "") or "").strip():
+            last_refresh = str(license_info.get("last_check", "") or "").strip()
+
+        needs_refresh = False
+        if _LICENSE_REFRESH_LAST_RUN:
+            needs_refresh = (time.time() - _LICENSE_REFRESH_LAST_RUN) >= LICENSE_AUTO_REFRESH_INTERVAL_SECONDS
+
+        return jsonify({
+            "ok": True,
+            "license_key": _mask_license_key(license_key),
+            "plan": str(license_info.get("plan", "") or ""),
+            "plan_display": get_plan_display_name(license_info.get("tier", "DEMO")),
+            "tier": str(license_info.get("tier", "DEMO") or "DEMO"),
+            "estado": str(license_info.get("estado", "") or "activa"),
+            "modules": sorted(license_info.get("modules", []) or []),
+            "last_refresh": last_refresh,
+            "needs_refresh": needs_refresh,
+        })
+    except Exception:
+        logger.exception("No se pudo exponer el estado de licencia por API")
+        return jsonify({
+            "ok": False,
+            "estado": "error",
+            "message": "No se pudo obtener el estado de la licencia",
+        }), 500
+
+
 @main_bp.route("/mi-plan/titular", methods=["POST"])
 @admin_required
 def mi_plan_guardar_titular():
