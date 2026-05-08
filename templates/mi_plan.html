@@ -71,19 +71,26 @@
                             {% endif %}
                         </div>
                         {% if plan_activo in ['BASICA', 'PRO'] %}
-                        <form method="POST" action="{{ url_for('main.mi_plan_solicitar_upgrade') }}" data-upgrade-form>
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button class="btn btn-primary w-100" type="submit" {% if not supabase_ok %}disabled{% endif %}>
-                                {% if plan_activo == 'BASICA' %}
-                                Solicitar actualizacion a PRO
-                                {% else %}
-                                Solicitar actualizacion a FULL
-                                {% endif %}
-                            </button>
-                        </form>
-                        {% if not supabase_ok %}
-                        <p class="small text-muted mb-0 mt-2">Falta configurar Supabase para enviar la solicitud online.</p>
-                        {% endif %}
+                        <button
+                            class="btn btn-primary w-100"
+                            type="button"
+                            id="checkout-upgrade-button"
+                            data-checkout-url="{{ url_for('main.mi_plan_checkout') }}"
+                            data-checkout-open-url="{{ url_for('main.mi_plan_checkout_open') }}"
+                            data-target-plan="{{ next_upgrade_plan }}"
+                            data-target-plan-display="{{ next_upgrade_plan_display }}"
+                            data-csrf-token="{{ csrf_token() }}"
+                            {% if not checkout_enabled %}disabled{% endif %}
+                        >
+                            {% if plan_activo == 'BASICA' %}
+                            Actualizar a PRO
+                            {% else %}
+                            Actualizar a FULL
+                            {% endif %}
+                        </button>
+                        <div class="small text-muted mt-2" id="checkout-upgrade-message">
+                            El checkout se abre en Mercado Pago y la licencia se refresca al volver a la app.
+                        </div>
                         {% else %}
                         <p class="text-success fw-semibold mb-0">Plan completo activo</p>
                         {% endif %}
@@ -165,22 +172,14 @@
 </div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const upgradeForm = document.querySelector('[data-upgrade-form]');
-    if (upgradeForm) {
-        upgradeForm.addEventListener('submit', function () {
-            const button = upgradeForm.querySelector('button[type="submit"]');
-            if (!button || button.disabled) return;
-            button.disabled = true;
-            button.innerHTML = 'Enviando solicitud...';
-        });
-    }
-
     const refreshButton = document.getElementById('refresh-license-button');
     const refreshMessage = document.getElementById('refresh-license-message');
     const planLabel = document.getElementById('license-plan-label');
     const statusSummary = document.getElementById('license-status-summary');
     const activeModules = document.getElementById('license-modules-active');
     const fallbackForm = document.getElementById('refresh-license-fallback-form');
+    const checkoutButton = document.getElementById('checkout-upgrade-button');
+    const checkoutMessage = document.getElementById('checkout-upgrade-message');
 
     if (!refreshButton || !refreshMessage) return;
 
@@ -275,6 +274,66 @@ document.addEventListener('DOMContentLoaded', function () {
             useFallbackForm: true
         });
     });
+
+    if (checkoutButton && checkoutMessage) {
+        checkoutButton.addEventListener('click', async function () {
+            const checkoutUrl = checkoutButton.dataset.checkoutUrl;
+            const checkoutOpenUrl = checkoutButton.dataset.checkoutOpenUrl;
+            const csrfToken = checkoutButton.dataset.csrfToken;
+            const targetPlan = checkoutButton.dataset.targetPlanDisplay || checkoutButton.dataset.targetPlan || 'el nuevo plan';
+            const isDesktopWebview = Boolean(window.pywebview && window.pywebview.api);
+            const requestUrl = isDesktopWebview ? checkoutOpenUrl : checkoutUrl;
+
+            if (!requestUrl || checkoutButton.disabled) return;
+
+            checkoutButton.disabled = true;
+            checkoutButton.textContent = 'Creando checkout...';
+            checkoutMessage.className = 'small text-muted mt-2';
+            checkoutMessage.textContent = 'Preparando el enlace seguro de Mercado Pago...';
+
+            try {
+                const response = await fetch(requestUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'fetch'
+                    },
+                    body: JSON.stringify({})
+                });
+
+                const data = await response.json().catch(function () { return {}; });
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.message || 'No se pudo crear el checkout.');
+                }
+
+                if (isDesktopWebview) {
+                    checkoutButton.disabled = false;
+                    checkoutButton.textContent = targetPlan === 'FULL'
+                        ? 'Actualizar a FULL'
+                        : 'Actualizar a ' + targetPlan;
+                    checkoutMessage.className = 'small text-success mt-2';
+                    checkoutMessage.textContent = 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar.';
+                    return;
+                }
+
+                if (!data.init_point) {
+                    throw new Error(data.message || 'No se pudo crear el checkout.');
+                }
+
+                checkoutMessage.className = 'small text-muted mt-2';
+                checkoutMessage.textContent = 'Redirigiendo a Mercado Pago para activar ' + targetPlan + '...';
+                window.location.href = data.init_point;
+            } catch (error) {
+                checkoutButton.disabled = false;
+                checkoutButton.textContent = targetPlan === 'FULL'
+                    ? 'Actualizar a FULL'
+                    : 'Actualizar a ' + targetPlan;
+                checkoutMessage.className = 'small text-danger mt-2';
+                checkoutMessage.textContent = error.message || 'No se pudo iniciar el checkout en este momento.';
+            }
+        });
+    }
 
     window.setInterval(function () {
         runLicenseRefresh({
