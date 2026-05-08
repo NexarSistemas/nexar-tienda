@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.28.1] - 2026-05-08
+
+### Added
+- Checkout de Mercado Pago integrado en `Mi plan` para iniciar upgrades online desde la app.
+
+### Changed
+- Se alinea el versionado del release estable `v1.28.1` en archivos de app, instalacion y documentacion.
+
 ## [1.28.0] - 2026-05-07
 
 ### Added
