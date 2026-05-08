@@ -306,10 +306,22 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
     payload["nombre"] = str(payload.get("nombre") or "").strip() or "Administrador"
     payload["email"] = str(payload.get("email") or "").strip().lower()
     payload["whatsapp"] = str(payload.get("whatsapp") or "").strip()
+    payload["tipo_solicitud"] = str(payload.get("tipo_solicitud") or "").strip().lower()
+    payload["origen"] = str(payload.get("origen") or "").strip().lower()
     payload["plan_actual"] = normalize_plan(payload.get("plan_actual") or "", default="BASICA")
-    payload["plan_solicitado"] = normalize_plan(payload.get("plan_solicitado") or "", default="BASICA")
+    payload["plan_destino"] = normalize_plan(
+        payload.get("plan_destino") or payload.get("plan_solicitado") or "",
+        default="BASICA",
+    )
+    payload["plan_solicitado"] = payload["plan_destino"]
     payload["estado"] = "pendiente"
-    payload["machine_details"] = payload.get("machine_details") or {}
+    payload["machine_details"] = dict(payload.get("machine_details") or {})
+    payload["machine_details"]["request_context"] = {
+        "tipo_solicitud": payload["tipo_solicitud"] or "upgrade",
+        "origen": payload["origen"] or "desconocido",
+        "plan_actual": payload["plan_actual"],
+        "plan_destino": payload["plan_destino"],
+    }
 
     if not payload["producto"] or not payload["plan_actual"] or not payload["plan_solicitado"]:
         _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_required_fields")
@@ -318,6 +330,63 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
             "message": "La solicitud de actualización no tiene los datos mínimos requeridos.",
             "error": "missing_required_fields",
         }
+
+    if payload["tipo_solicitud"] == "cambio_plan":
+        valid_manual_changes = {
+            "BASICA": {"PRO", "MENSUAL_FULL"},
+            "PRO": {"BASICA", "MENSUAL_FULL"},
+            "MENSUAL_FULL": {"BASICA", "PRO"},
+        }
+        allowed_targets = valid_manual_changes.get(payload["plan_actual"], set())
+        if payload["plan_actual"] not in valid_manual_changes:
+            _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="invalid_current_plan")
+            return {
+                "ok": False,
+                "message": "El plan actual no admite solicitudes de cambio.",
+                "error": "invalid_current_plan",
+            }
+        if payload["plan_destino"] not in allowed_targets:
+            _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="invalid_target_plan")
+            return {
+                "ok": False,
+                "message": "El cambio de plan solicitado no es vÃ¡lido para la licencia actual.",
+                "error": "invalid_target_plan",
+            }
+        if not payload["license_key"]:
+            _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_license_key")
+            return {
+                "ok": False,
+                "message": "La solicitud de cambio requiere una licencia existente.",
+                "error": "missing_license_key",
+            }
+
+        headers = {**_headers(), "Prefer": "return=minimal"}
+        try:
+            resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=payload, timeout=12)
+        except requests.RequestException as exc:
+            message, error = _request_error_message(operation, exc)
+            _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
+            return {"ok": False, "message": message, "error": error or "network_error"}
+
+        if resp.status_code >= 300 and any(payload.get(field) for field in ("tipo_solicitud", "origen", "plan_destino")):
+            fallback_payload = dict(payload)
+            fallback_payload.pop("tipo_solicitud", None)
+            fallback_payload.pop("origen", None)
+            fallback_payload.pop("plan_destino", None)
+            try:
+                resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=fallback_payload, timeout=12)
+            except requests.RequestException as exc:
+                message, error = _request_error_message(operation, exc)
+                _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
+                return {"ok": False, "message": message, "error": error or "network_error"}
+
+        if resp.status_code >= 300:
+            message, error = _response_error_message(operation, resp)
+            _set_supabase_debug(operation=operation, status="http_error", status_code=resp.status_code, last_error=error)
+            return {"ok": False, "message": message, "status_code": resp.status_code, "error": error}
+
+        _set_supabase_debug(operation=operation, status="ok", status_code=resp.status_code, last_error="")
+        return {"ok": True, "message": "Solicitud de cambio de plan enviada.", "status_code": resp.status_code}
 
     if payload["plan_actual"] not in {"BASICA", "PRO"}:
         _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="invalid_current_plan")

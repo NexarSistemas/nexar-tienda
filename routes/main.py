@@ -179,11 +179,39 @@ def _mask_license_key(value: str) -> str:
 
 
 def _resolve_next_upgrade_plan(license_info: dict[str, object] | None) -> str:
+    available = _get_available_checkout_plans(license_info)
+    return available[0] if available else ""
+
+
+def _get_available_checkout_plans(license_info: dict[str, object] | None) -> list[str]:
     current_plan = normalize_plan(str((license_info or {}).get("tier", "DEMO")), default="DEMO")
     if current_plan == "BASICA":
-        return "PRO"
+        return ["PRO", "MENSUAL_FULL"]
     if current_plan == "PRO":
-        return "MENSUAL_FULL"
+        return ["MENSUAL_FULL"]
+    return []
+
+
+def _resolve_requested_checkout_plan(license_info: dict[str, object] | None) -> str:
+    available_plans = _get_available_checkout_plans(license_info)
+    if not available_plans:
+        return ""
+
+    requested_plan = ""
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        requested_plan = str(body.get("plan_destino", "") or body.get("plan", "")).strip()
+    if not requested_plan:
+        requested_plan = str(
+            request.form.get("plan_destino", "") or request.args.get("plan_destino", "")
+        ).strip()
+
+    if not requested_plan:
+        return _resolve_next_upgrade_plan(license_info)
+
+    normalized_plan = normalize_plan(requested_plan, default="")
+    if normalized_plan in available_plans:
+        return normalized_plan
     return ""
 
 
@@ -272,7 +300,26 @@ def ensure_license_auto_refresh_thread(app) -> None:
 
 def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response, int] | None]:
     license_info = db.get_license_info()
-    plan_destino = _resolve_next_upgrade_plan(license_info)
+    available_plans = _get_available_checkout_plans(license_info)
+    plan_destino = _resolve_requested_checkout_plan(license_info)
+    requested_plan = ""
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        requested_plan = str(body.get("plan_destino", "") or body.get("plan", "")).strip()
+    if not requested_plan:
+        requested_plan = str(
+            request.form.get("plan_destino", "") or request.args.get("plan_destino", "")
+        ).strip()
+
+    if requested_plan and not plan_destino:
+        return None, (
+            jsonify({
+                "ok": False,
+                "message": "El plan seleccionado no admite checkout directo para tu licencia actual.",
+            }),
+            400,
+        )
+
     if not plan_destino:
         return None, (
             jsonify({
@@ -308,6 +355,7 @@ def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response,
     external_reference = build_external_reference(license_key, producto, plan_destino)
     return {
         "license_info": license_info,
+        "available_plans": available_plans,
         "plan_destino": plan_destino,
         "license_key": license_key,
         "holder_profile": holder_profile,
@@ -544,6 +592,11 @@ def _requires_manual_reopen(installer_name: str) -> bool:
 
 
 def _update_install_state(current_version: str | None = None) -> dict:
+    license_key = str(license_info.get("key", "") or "").strip()
+    if not license_key:
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
+        return redirect(url_for("main.mi_plan"))
+
     cfg = db.get_config()
     target_version = cfg.get("update_target_version", "")
     status = cfg.get("update_install_status", "")
@@ -993,7 +1046,7 @@ def api_carrito_agregar():
     if existing:
         existing["cantidad"] += cantidad
         existing["subtotal"] = round(existing["cantidad"] * existing["precio_unitario"], 2)
-    else:
+    elif not plan_solicitado:
         precio = float(producto["precio_venta"] or 0)
         cart.append({
             "producto_id": pid,
@@ -1056,6 +1109,11 @@ def venta_finalizar():
 def ticket(vid):
     venta = db.q("SELECT * FROM ventas WHERE id=?", (vid,), fetchone=True)
     detalle = db.get_venta_detalle(vid)
+    license_key = str(license_info.get("key", "") or "").strip()
+    if not license_key:
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
+        return redirect(url_for("main.mi_plan"))
+
     cfg = db.get_config()
     iva_items = []
     iva_totales = {}
@@ -1549,6 +1607,7 @@ def mi_plan():
     todos_los_modulos = sorted(set().union(*PLANES.values()))
     modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
     license_info = refreshed_info or db.get_license_info()
+    available_checkout_plans = _get_available_checkout_plans(license_info)
     next_upgrade_plan = _resolve_next_upgrade_plan(license_info)
     return render_template(
         "mi_plan.html",
@@ -1559,11 +1618,12 @@ def mi_plan():
         modulos_bloqueados=modulos_bloqueados,
         next_upgrade_plan=next_upgrade_plan,
         next_upgrade_plan_display=get_plan_display_name(next_upgrade_plan) if next_upgrade_plan else "",
+        available_checkout_plans=available_checkout_plans,
         supabase_ok=supabase_configured(),
         license_refresh_ok=refresh_ok,
         license_refresh_message=refresh_msg,
         license_holder=_get_license_holder_profile(),
-        checkout_enabled=bool(next_upgrade_plan),
+        checkout_enabled=bool(available_checkout_plans),
     )
 
 
@@ -1582,7 +1642,7 @@ def mi_plan_actualizar_licencia():
         plan = str(response.get("tier", "DEMO"))
         plan_label = "FULL" if plan == "MENSUAL_FULL" else plan
         flash(f"Estado de licencia actualizado. Plan actual: {plan_label}.", "success")
-    else:
+    elif not plan_solicitado:
         flash(
             "No se pudo actualizar online el estado de la licencia. Se mantiene el estado local actual.",
             "warning",
@@ -1717,14 +1777,34 @@ def mi_plan_checkout_open():
 @admin_required
 def mi_plan_solicitar_upgrade():
     license_info = db.get_license_info()
-    plan_actual = license_info.get("tier", "DEMO")
+    plan_actual = normalize_plan(license_info.get("tier", "DEMO"), default="DEMO")
+    plan_solicitado = normalize_plan(
+        request.form.get("plan_destino", "") or request.form.get("plan_solicitado", ""),
+        default="",
+    )
 
-    if plan_actual == "BASICA":
+    if plan_solicitado:
+        valid_manual_changes = {
+            "BASICA": {"PRO", "MENSUAL_FULL"},
+            "PRO": {"BASICA", "MENSUAL_FULL"},
+            "MENSUAL_FULL": {"BASICA", "PRO"},
+        }
+        allowed_targets = valid_manual_changes.get(plan_actual, set())
+        if plan_solicitado not in allowed_targets:
+            flash("El cambio de plan solicitado no estÃ¡ disponible para tu licencia actual.", "info")
+            return redirect(url_for("main.mi_plan"))
+
+    if not plan_solicitado and plan_actual == "BASICA":
         plan_solicitado = "PRO"
-    elif plan_actual == "PRO":
+    elif not plan_solicitado and plan_actual == "PRO":
         plan_solicitado = "MENSUAL_FULL"
-    else:
+    elif not plan_solicitado:
         flash("Tu plan actual ya está completo o no admite actualización.", "info")
+        return redirect(url_for("main.mi_plan"))
+
+    license_key = str(license_info.get("key", "") or "").strip()
+    if not license_key:
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
         return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
@@ -1733,7 +1813,7 @@ def mi_plan_solicitar_upgrade():
     activation_id = get_current_hwid() or machine_id
     payload = {
         "producto": get_license_product(),
-        "license_key": license_info.get("key", ""),
+        "license_key": license_key,
         "activation_id": activation_id,
         "nombre": _first_non_empty(
             license_info.get("owner_name", ""),
@@ -1754,13 +1834,19 @@ def mi_plan_solicitar_upgrade():
             usuario.get("telefono"),
             cfg.get("telefono", ""),
         ),
+        "tipo_solicitud": "cambio_plan",
+        "origen": "mi_plan",
         "plan_actual": plan_actual,
+        "plan_destino": plan_solicitado,
         "plan_solicitado": plan_solicitado,
         "estado": "pendiente",
         "machine_details": machine_details,
     }
 
     result = create_upgrade_request(payload)
+    if result.get("ok"):
+        flash("Solicitud de cambio de plan enviada.", "success")
+        return redirect(url_for("main.mi_plan"))
     if result.get("ok"):
         flash("Solicitud de actualización enviada.", "success")
     else:
@@ -1967,6 +2053,11 @@ def usuario_eliminar(uid):
 @main_bp.route("/respaldo")
 @admin_required
 def respaldo():
+    license_key = str(license_info.get("key", "") or "").strip()
+    if not license_key:
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
+        return redirect(url_for("main.mi_plan"))
+
     cfg = db.get_config()
     license_info = db.get_license_info()
     can_use_updates = license_info.get("tier") == "MENSUAL_FULL" and license_info.get("updates")
@@ -2224,6 +2315,11 @@ def exportar_pdf():
 @main_bp.route("/ayuda", methods=["GET", "POST"])
 @login_required
 def ayuda():
+    license_key = str(license_info.get("key", "") or "").strip()
+    if not license_key:
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
+        return redirect(url_for("main.mi_plan"))
+
     cfg = db.get_config()
     licencia = db.get_license_info()
     usuario = session.get("user", {})
@@ -2292,6 +2388,11 @@ def ayuda():
 def debug_licencia():
     if not _debug_license_enabled():
         abort(404)
+
+    license_key = str(license_info.get("key", "") or "").strip()
+    if not license_key:
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
+        return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
     license_info = db.get_license_info()
@@ -2408,3 +2509,5 @@ def shutdown():
         return ("", 204)
     current_app.logger.info("Shutdown solicitado, pero no disponible en este servidor.")
     return ("", 202)
+
+

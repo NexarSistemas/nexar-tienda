@@ -23,15 +23,16 @@
                         Fallback: <strong>{{ 'SI' if license_info.fallback_aplicado else 'NO' }}</strong>
                     </div>
                     {% endif %}
+
                     {% if plan_activo == 'BASICA' %}
                     <div class="alert alert-info mb-0">
-                        <div class="fw-semibold">Actualizar a PRO</div>
-                        <div class="small">Agrega compras, historial, reportes y exportaciones.</div>
+                        <div class="fw-semibold">Elegí tu upgrade</div>
+                        <div class="small">Podés pasar directo a PRO o FULL desde esta pantalla.</div>
                     </div>
                     {% elif plan_activo == 'PRO' %}
                     <div class="alert alert-primary mb-0">
                         <div class="fw-semibold">Actualizar a FULL</div>
-                        <div class="small">Accede a funciones premium, multinegocio y soporte prioritario.</div>
+                        <div class="small">Accedé a funciones premium, multinegocio y soporte prioritario.</div>
                     </div>
                     {% elif plan_activo == 'MENSUAL_FULL' %}
                     <div class="alert alert-success mb-0">
@@ -70,27 +71,97 @@
                             Si aprobaste un upgrade en Nexar Admin, podes forzar la sincronizacion desde aca.
                             {% endif %}
                         </div>
-                        {% if plan_activo in ['BASICA', 'PRO'] %}
-                        <button
-                            class="btn btn-primary w-100"
-                            type="button"
-                            id="checkout-upgrade-button"
-                            data-checkout-url="{{ url_for('main.mi_plan_checkout') }}"
-                            data-checkout-open-url="{{ url_for('main.mi_plan_checkout_open') }}"
-                            data-target-plan="{{ next_upgrade_plan }}"
-                            data-target-plan-display="{{ next_upgrade_plan_display }}"
-                            data-csrf-token="{{ csrf_token() }}"
-                            {% if not checkout_enabled %}disabled{% endif %}
-                        >
-                            {% if plan_activo == 'BASICA' %}
-                            Actualizar a PRO
-                            {% else %}
-                            Actualizar a FULL
-                            {% endif %}
-                        </button>
+
+                        {% if plan_activo == 'BASICA' %}
+                        <div class="d-grid gap-2">
+                            <button
+                                class="btn btn-primary checkout-upgrade-button"
+                                type="button"
+                                data-checkout-url="{{ url_for('main.mi_plan_checkout') }}"
+                                data-checkout-open-url="{{ url_for('main.mi_plan_checkout_open') }}"
+                                data-target-plan="PRO"
+                                data-target-plan-display="PRO"
+                                data-csrf-token="{{ csrf_token() }}"
+                                {% if not checkout_enabled %}disabled{% endif %}
+                            >
+                                Actualizar a PRO
+                            </button>
+                            <button
+                                class="btn btn-outline-primary checkout-upgrade-button"
+                                type="button"
+                                data-checkout-url="{{ url_for('main.mi_plan_checkout') }}"
+                                data-checkout-open-url="{{ url_for('main.mi_plan_checkout_open') }}"
+                                data-target-plan="MENSUAL_FULL"
+                                data-target-plan-display="FULL"
+                                data-csrf-token="{{ csrf_token() }}"
+                                {% if not checkout_enabled %}disabled{% endif %}
+                            >
+                                Actualizar a FULL
+                            </button>
+                        </div>
+                        <div class="small text-muted mt-2" id="checkout-upgrade-message">
+                            Podés elegir PRO o FULL. El checkout se abre en Mercado Pago y la licencia se refresca al volver a la app.
+                        </div>
+                        {% elif plan_activo == 'PRO' %}
+                        <div class="d-grid gap-2">
+                            <button
+                                class="btn btn-primary checkout-upgrade-button"
+                                type="button"
+                                data-checkout-url="{{ url_for('main.mi_plan_checkout') }}"
+                                data-checkout-open-url="{{ url_for('main.mi_plan_checkout_open') }}"
+                                data-target-plan="MENSUAL_FULL"
+                                data-target-plan-display="FULL"
+                                data-csrf-token="{{ csrf_token() }}"
+                                {% if not checkout_enabled %}disabled{% endif %}
+                            >
+                                Actualizar a FULL
+                            </button>
+                            <form method="POST" action="{{ url_for('main.mi_plan_solicitar_upgrade') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="plan_destino" value="BASICA">
+                                <button class="btn btn-outline-secondary w-100" type="submit">
+                                    Solicitar volver a BASICA, manual
+                                </button>
+                            </form>
+                        </div>
                         <div class="small text-muted mt-2" id="checkout-upgrade-message">
                             El checkout se abre en Mercado Pago y la licencia se refresca al volver a la app.
                         </div>
+                        {% elif plan_activo == 'MENSUAL_FULL' %}
+                        <p class="text-success fw-semibold mb-2">Plan completo activo</p>
+                        <div class="d-grid gap-2">
+                            <form method="POST" action="{{ url_for('main.mi_plan_solicitar_upgrade') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="plan_destino" value="PRO">
+                                <button class="btn btn-outline-secondary w-100" type="submit">
+                                    Solicitar bajar a PRO, manual
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('main.mi_plan_solicitar_upgrade') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="plan_destino" value="BASICA">
+                                <button class="btn btn-outline-secondary w-100" type="submit">
+                                    Solicitar bajar a BASICA, manual
+                                </button>
+                            </form>
+                        </div>
+                        <div class="small text-muted mt-2" id="checkout-upgrade-message">
+                            Los cambios hacia planes inferiores se manejan manualmente por ahora.
+                        </div>
+                        {% elif plan_activo == 'DEMO' %}
+                        <a class="btn btn-outline-primary w-100" href="{{ url_for('licencia') }}">
+                            Comprar o solicitar plan desde Licencia
+                        </a>
+                        <div class="small text-muted mt-2" id="checkout-upgrade-message">
+                            El checkout directo todavia no esta disponible para DEMO.
+                        </div>
+                        {% else %}
+                        <p class="text-success fw-semibold mb-0">No hay upgrades directos disponibles para este plan.</p>
+                        <div class="small text-muted mt-2" id="checkout-upgrade-message">
+                            Si necesitás un cambio de plan, gestionarlo desde Licencia o Soporte.
+                        </div>
+                        {% endif %}
+
                         <div class="alert alert-light border mt-3 d-none" id="post-payment-refresh-panel">
                             <div class="fw-semibold mb-2">Seguimiento post-pago</div>
                             <div class="small text-muted mb-3" id="post-payment-refresh-message">
@@ -100,9 +171,6 @@
                                 Ya pagué, actualizar licencia
                             </button>
                         </div>
-                        {% else %}
-                        <p class="text-success fw-semibold mb-0">Plan completo activo</p>
-                        {% endif %}
                     {% else %}
                     <p class="small text-muted mb-0">Solo un usuario administrador puede solicitar una actualizacion de plan.</p>
                     {% endif %}
@@ -187,7 +255,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const statusSummary = document.getElementById('license-status-summary');
     const activeModules = document.getElementById('license-modules-active');
     const fallbackForm = document.getElementById('refresh-license-fallback-form');
-    const checkoutButton = document.getElementById('checkout-upgrade-button');
+    const checkoutButtons = Array.from(document.querySelectorAll('.checkout-upgrade-button'));
     const checkoutMessage = document.getElementById('checkout-upgrade-message');
     const postPaymentPanel = document.getElementById('post-payment-refresh-panel');
     const postPaymentMessage = document.getElementById('post-payment-refresh-message');
@@ -431,6 +499,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    function resetCheckoutButtons() {
+        checkoutButtons.forEach(function (button) {
+            button.disabled = false;
+            button.textContent = button.dataset.defaultLabel || button.textContent;
+        });
+    }
+
     refreshButton.addEventListener('click', function () {
         runLicenseRefresh({
             showLoading: true,
@@ -440,70 +515,72 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    if (checkoutButton && checkoutMessage) {
-        checkoutButton.addEventListener('click', async function () {
-            const checkoutUrl = checkoutButton.dataset.checkoutUrl;
-            const checkoutOpenUrl = checkoutButton.dataset.checkoutOpenUrl;
-            const csrfToken = checkoutButton.dataset.csrfToken;
-            const targetPlan = checkoutButton.dataset.targetPlanDisplay || checkoutButton.dataset.targetPlan || 'el nuevo plan';
-            const isDesktopWebview = Boolean(window.pywebview && window.pywebview.api);
-            const requestUrl = isDesktopWebview ? checkoutOpenUrl : checkoutUrl;
+    if (checkoutButtons.length > 0 && checkoutMessage) {
+        checkoutButtons.forEach(function (checkoutButton) {
+            checkoutButton.dataset.defaultLabel = checkoutButton.textContent.trim();
+            checkoutButton.addEventListener('click', async function () {
+                const checkoutUrl = checkoutButton.dataset.checkoutUrl;
+                const checkoutOpenUrl = checkoutButton.dataset.checkoutOpenUrl;
+                const csrfToken = checkoutButton.dataset.csrfToken;
+                const targetPlan = checkoutButton.dataset.targetPlanDisplay || checkoutButton.dataset.targetPlan || 'el nuevo plan';
+                const targetPlanRaw = checkoutButton.dataset.targetPlan || targetPlan;
+                const isDesktopWebview = Boolean(window.pywebview && window.pywebview.api);
+                const requestUrl = isDesktopWebview ? checkoutOpenUrl : checkoutUrl;
 
-            if (!requestUrl || checkoutButton.disabled) return;
+                if (!requestUrl || checkoutButton.disabled) return;
 
-            checkoutButton.disabled = true;
-            checkoutButton.textContent = 'Creando checkout...';
-            checkoutMessage.className = 'small text-muted mt-2';
-            checkoutMessage.textContent = 'Preparando el enlace seguro de Mercado Pago...';
-
-            try {
-                const response = await fetch(requestUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken,
-                        'X-Requested-With': 'fetch'
-                    },
-                    body: JSON.stringify({})
+                checkoutButtons.forEach(function (button) {
+                    button.disabled = true;
                 });
-
-                const data = await response.json().catch(function () { return {}; });
-                if (!response.ok || !data.ok) {
-                    throw new Error(data.message || 'No se pudo crear el checkout.');
-                }
-
-                setPostPaymentStorage({
-                    initialPlanTier: initialPlanTier,
-                    startedAt: Date.now()
-                });
-                updatePostPaymentPanel('pending', 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar y tocá "Ya pagué, actualizar licencia".');
-                startPostPaymentPolling();
-
-                if (isDesktopWebview) {
-                    checkoutButton.disabled = false;
-                    checkoutButton.textContent = targetPlan === 'FULL'
-                        ? 'Actualizar a FULL'
-                        : 'Actualizar a ' + targetPlan;
-                    checkoutMessage.className = 'small text-success mt-2';
-                    checkoutMessage.textContent = 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar.';
-                    return;
-                }
-
-                if (!data.init_point) {
-                    throw new Error(data.message || 'No se pudo crear el checkout.');
-                }
-
+                checkoutButton.textContent = 'Creando checkout...';
                 checkoutMessage.className = 'small text-muted mt-2';
-                checkoutMessage.textContent = 'Redirigiendo a Mercado Pago para activar ' + targetPlan + '...';
-                window.location.href = data.init_point;
-            } catch (error) {
-                checkoutButton.disabled = false;
-                checkoutButton.textContent = targetPlan === 'FULL'
-                    ? 'Actualizar a FULL'
-                    : 'Actualizar a ' + targetPlan;
-                checkoutMessage.className = 'small text-danger mt-2';
-                checkoutMessage.textContent = error.message || 'No se pudo iniciar el checkout en este momento.';
-            }
+                checkoutMessage.textContent = 'Preparando el enlace seguro de Mercado Pago...';
+
+                try {
+                    const response = await fetch(requestUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken,
+                            'X-Requested-With': 'fetch'
+                        },
+                        body: JSON.stringify({
+                            plan_destino: targetPlanRaw
+                        })
+                    });
+
+                    const data = await response.json().catch(function () { return {}; });
+                    if (!response.ok || !data.ok) {
+                        throw new Error(data.message || 'No se pudo crear el checkout.');
+                    }
+
+                    setPostPaymentStorage({
+                        initialPlanTier: initialPlanTier,
+                        startedAt: Date.now()
+                    });
+                    updatePostPaymentPanel('pending', 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar y tocá "Ya pagué, actualizar licencia".');
+                    startPostPaymentPolling();
+
+                    if (isDesktopWebview) {
+                        resetCheckoutButtons();
+                        checkoutMessage.className = 'small text-success mt-2';
+                        checkoutMessage.textContent = 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar.';
+                        return;
+                    }
+
+                    if (!data.init_point) {
+                        throw new Error(data.message || 'No se pudo crear el checkout.');
+                    }
+
+                    checkoutMessage.className = 'small text-muted mt-2';
+                    checkoutMessage.textContent = 'Redirigiendo a Mercado Pago para activar ' + targetPlan + '...';
+                    window.location.href = data.init_point;
+                } catch (error) {
+                    resetCheckoutButtons();
+                    checkoutMessage.className = 'small text-danger mt-2';
+                    checkoutMessage.textContent = error.message || 'No se pudo iniciar el checkout en este momento.';
+                }
+            });
         });
     }
 
