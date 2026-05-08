@@ -91,6 +91,15 @@
                         <div class="small text-muted mt-2" id="checkout-upgrade-message">
                             El checkout se abre en Mercado Pago y la licencia se refresca al volver a la app.
                         </div>
+                        <div class="alert alert-light border mt-3 d-none" id="post-payment-refresh-panel">
+                            <div class="fw-semibold mb-2">Seguimiento post-pago</div>
+                            <div class="small text-muted mb-3" id="post-payment-refresh-message">
+                                Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar y tocá "Ya pagué, actualizar licencia".
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm" type="button" id="post-payment-refresh-button">
+                                Ya pagué, actualizar licencia
+                            </button>
+                        </div>
                         {% else %}
                         <p class="text-success fw-semibold mb-0">Plan completo activo</p>
                         {% endif %}
@@ -180,6 +189,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const fallbackForm = document.getElementById('refresh-license-fallback-form');
     const checkoutButton = document.getElementById('checkout-upgrade-button');
     const checkoutMessage = document.getElementById('checkout-upgrade-message');
+    const postPaymentPanel = document.getElementById('post-payment-refresh-panel');
+    const postPaymentMessage = document.getElementById('post-payment-refresh-message');
+    const postPaymentButton = document.getElementById('post-payment-refresh-button');
+    const licenseStateUrl = '{{ url_for("main.api_licencia_estado") }}';
+    const initialPlanTier = '{{ plan_activo }}';
+    const postPaymentStorageKey = 'nexar-post-payment-refresh';
+    let postPaymentPollTimer = null;
+    let postPaymentPollStartedAt = 0;
 
     if (!refreshButton || !refreshMessage) return;
 
@@ -199,6 +216,71 @@ document.addEventListener('DOMContentLoaded', function () {
             badge.textContent = moduleName;
             activeModules.appendChild(badge);
         });
+    }
+
+    function renderStatusSummary(planText) {
+        if (!statusSummary || !planText) return;
+        statusSummary.innerHTML = 'Estado: <strong>activa</strong> · Plan efectivo: <strong>' + planText + '</strong>';
+    }
+
+    function updatePostPaymentPanel(state, message) {
+        if (!postPaymentPanel || !postPaymentMessage) return;
+        postPaymentPanel.classList.remove('d-none', 'alert-light', 'alert-success', 'alert-warning', 'alert-danger');
+        if (state === 'success') {
+            postPaymentPanel.classList.add('alert-success');
+        } else if (state === 'pending') {
+            postPaymentPanel.classList.add('alert-warning');
+        } else if (state === 'error') {
+            postPaymentPanel.classList.add('alert-danger');
+        } else {
+            postPaymentPanel.classList.add('alert-light');
+        }
+        postPaymentMessage.textContent = message;
+    }
+
+    function setPostPaymentStorage(data) {
+        try {
+            sessionStorage.setItem(postPaymentStorageKey, JSON.stringify(data));
+        } catch (error) {
+            // Ignorar si sessionStorage no está disponible.
+        }
+    }
+
+    function getPostPaymentStorage() {
+        try {
+            const raw = sessionStorage.getItem(postPaymentStorageKey);
+            return raw ? JSON.parse(raw) : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function clearPostPaymentStorage() {
+        try {
+            sessionStorage.removeItem(postPaymentStorageKey);
+        } catch (error) {
+            // Ignorar si sessionStorage no está disponible.
+        }
+    }
+
+    function stopPostPaymentPolling() {
+        if (postPaymentPollTimer) {
+            window.clearInterval(postPaymentPollTimer);
+            postPaymentPollTimer = null;
+        }
+        postPaymentPollStartedAt = 0;
+    }
+
+    function applyUpdatedLicenseState(data, successMessage) {
+        const planText = renderPlanLabel(data.tier || data.plan_display || data.plan || '');
+        if (planLabel && planText) {
+            planLabel.textContent = planText;
+        }
+        renderStatusSummary(planText);
+        renderModules(data.modules || []);
+        refreshMessage.className = 'small text-success mb-3';
+        refreshMessage.textContent = successMessage || 'Licencia actualizada correctamente';
+        updatePostPaymentPanel('success', 'Licencia actualizada correctamente');
     }
 
     async function runLicenseRefresh(options) {
@@ -232,9 +314,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (planLabel && planText) {
                     planLabel.textContent = planText;
                 }
-                if (statusSummary && planText) {
-                    statusSummary.innerHTML = 'Estado: <strong>activa</strong> · Plan efectivo: <strong>' + planText + '</strong>';
-                }
+                renderStatusSummary(planText);
                 renderModules(data.modules || []);
                 refreshMessage.className = 'small text-success mb-3';
                 refreshMessage.textContent = planText
@@ -263,6 +343,91 @@ document.addEventListener('DOMContentLoaded', function () {
                 refreshButton.disabled = false;
                 refreshButton.textContent = 'Refrescar licencia';
             }
+        }
+    }
+
+    async function checkLicenseStatusForPostPayment() {
+        if (!licenseStateUrl) return false;
+
+        const response = await fetch(licenseStateUrl, {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: {
+                'X-Requested-With': 'fetch'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('status_check_failed');
+        }
+
+        const data = await response.json().catch(function () { return {}; });
+        if (!data.ok) {
+            return false;
+        }
+
+        if ((data.tier || '') && data.tier !== initialPlanTier) {
+            applyUpdatedLicenseState(data, 'Licencia actualizada correctamente');
+            clearPostPaymentStorage();
+            stopPostPaymentPolling();
+            window.setTimeout(function () {
+                window.location.reload();
+            }, 1200);
+            return true;
+        }
+
+        return false;
+    }
+
+    function startPostPaymentPolling() {
+        if (!postPaymentPanel || !postPaymentMessage) return;
+
+        stopPostPaymentPolling();
+        postPaymentPollStartedAt = Date.now();
+        updatePostPaymentPanel('loading', 'Verificando licencia...');
+
+        postPaymentPollTimer = window.setInterval(async function () {
+            const elapsed = Date.now() - postPaymentPollStartedAt;
+            if (elapsed >= 120000) {
+                stopPostPaymentPolling();
+                updatePostPaymentPanel('pending', 'Todavía no vemos el cambio. Podés tocar "Ya pagué, actualizar licencia".');
+                return;
+            }
+
+            try {
+                const updated = await checkLicenseStatusForPostPayment();
+                if (!updated) {
+                    updatePostPaymentPanel('pending', 'Pago pendiente de acreditación o licencia aún no actualizada');
+                }
+            } catch (error) {
+                updatePostPaymentPanel('error', 'No pudimos verificar la licencia ahora. Probá nuevamente en unos segundos.');
+            }
+        }, 10000);
+    }
+
+    async function runPostPaymentManualRefresh() {
+        if (!postPaymentButton) return;
+
+        postPaymentButton.disabled = true;
+        updatePostPaymentPanel('loading', 'Verificando licencia...');
+
+        try {
+            await runLicenseRefresh({
+                showLoading: false,
+                showNoChangeMessage: false,
+                showErrors: false,
+                useFallbackForm: false
+            });
+
+            const updated = await checkLicenseStatusForPostPayment();
+            if (!updated) {
+                updatePostPaymentPanel('pending', 'Pago pendiente de acreditación o licencia aún no actualizada');
+                startPostPaymentPolling();
+            }
+        } catch (error) {
+            updatePostPaymentPanel('error', 'No pudimos actualizar la licencia ahora. Probá nuevamente en unos segundos.');
+        } finally {
+            postPaymentButton.disabled = false;
         }
     }
 
@@ -307,6 +472,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     throw new Error(data.message || 'No se pudo crear el checkout.');
                 }
 
+                setPostPaymentStorage({
+                    initialPlanTier: initialPlanTier,
+                    startedAt: Date.now()
+                });
+                updatePostPaymentPanel('pending', 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar y tocá "Ya pagué, actualizar licencia".');
+                startPostPaymentPolling();
+
                 if (isDesktopWebview) {
                     checkoutButton.disabled = false;
                     checkoutButton.textContent = targetPlan === 'FULL'
@@ -333,6 +505,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 checkoutMessage.textContent = error.message || 'No se pudo iniciar el checkout en este momento.';
             }
         });
+    }
+
+    if (postPaymentButton) {
+        postPaymentButton.addEventListener('click', function () {
+            runPostPaymentManualRefresh();
+        });
+    }
+
+    const postPaymentState = getPostPaymentStorage();
+    if (postPaymentState && postPaymentState.initialPlanTier === initialPlanTier && postPaymentPanel) {
+        updatePostPaymentPanel('pending', 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar y tocá "Ya pagué, actualizar licencia".');
+        startPostPaymentPolling();
     }
 
     window.setInterval(function () {
