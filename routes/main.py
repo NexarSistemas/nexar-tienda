@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import platform
+import webbrowser
 from datetime import date, datetime, timedelta
 from functools import wraps
 from io import BytesIO
@@ -20,6 +21,12 @@ from flask import Blueprint, Response, abort, current_app, flash, jsonify, redir
 from licensing.planes import PLANES, get_plan_activo, get_plan_display_name, normalize_plan
 from licensing.permisos import get_modulos_activos, get_modulos_debug_info, require_modulo
 from services.license_storage import cargar_licencia, guardar_licencia
+from services.mercadopago_checkout import (
+    MercadoPagoCheckoutError,
+    build_external_reference,
+    create_checkout_preference,
+    get_price_for_plan,
+)
 from services.license_sdk import (
     get_current_hwid,
     get_license_debug_state,
@@ -160,6 +167,219 @@ def _first_non_empty(*values) -> str:
         if str(value or "").strip():
             return str(value).strip()
     return ""
+
+
+def _mask_license_key(value: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    if len(normalized) <= 6:
+        return f"{normalized[:1]}***{normalized[-1:]}"
+    return f"{normalized[:3]}***{normalized[-3:]}"
+
+
+def _resolve_next_upgrade_plan(license_info: dict[str, object] | None) -> str:
+    current_plan = normalize_plan(str((license_info or {}).get("tier", "DEMO")), default="DEMO")
+    if current_plan == "BASICA":
+        return "PRO"
+    if current_plan == "PRO":
+        return "MENSUAL_FULL"
+    return ""
+
+
+def _get_license_holder_profile() -> dict[str, str]:
+    cfg = db.get_config()
+    license_info = db.get_license_info()
+    return {
+        "nombre": _first_non_empty(cfg.get("license_owner_name", ""), license_info.get("owner_name", "")),
+        "email": _first_non_empty(cfg.get("license_owner_email", ""), license_info.get("owner_email", "")).lower(),
+        "telefono": _first_non_empty(cfg.get("license_owner_phone", ""), license_info.get("owner_phone", "")),
+        "palabra_recuperacion": str(cfg.get("license_recovery_word", "") or "").strip(),
+    }
+
+
+def _validate_license_holder_profile(holder_profile: dict[str, str]) -> tuple[bool, str]:
+    email = str(holder_profile.get("email", "") or "").strip().lower()
+    recovery_word = str(holder_profile.get("palabra_recuperacion", "") or "").strip()
+
+    if not email:
+        return False, "El email del titular es obligatorio."
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return False, "El email del titular no es válido."
+    if recovery_word and len(recovery_word) < 4:
+        return False, "La palabra de recuperación debe tener al menos 4 caracteres."
+    return True, ""
+
+
+def _refresh_license_response(force: bool = True) -> tuple[dict[str, object], bool]:
+    global _LICENSE_REFRESH_LAST_RUN, _LICENSE_REFRESH_LAST_RESULT
+
+    now = time.time()
+    with _LICENSE_REFRESH_LOCK:
+        if (
+            not force
+            and _LICENSE_REFRESH_LAST_RUN
+            and (now - _LICENSE_REFRESH_LAST_RUN) < LICENSE_AUTO_REFRESH_INTERVAL_SECONDS
+        ):
+            cached = dict(_LICENSE_REFRESH_LAST_RESULT)
+            return cached, bool(cached.get("ok"))
+
+        previous_info = db.get_license_info()
+        previous_tier = normalize_plan(previous_info.get("tier", "DEMO"), default="DEMO")
+        ok, message, refreshed_info = refresh_saved_license_online(debug=False)
+        current_info = refreshed_info or db.get_license_info()
+        current_tier = normalize_plan(current_info.get("tier", previous_tier), default=previous_tier)
+        changed = ok and current_tier != previous_tier
+        payload = {
+            "ok": ok,
+            "changed": changed,
+            "message": message,
+            "tier": current_info.get("tier", previous_tier),
+            "plan": current_info.get("plan", current_tier),
+            "modules": sorted(get_modulos_activos()),
+        }
+        _LICENSE_REFRESH_LAST_RESULT = dict(payload)
+        _LICENSE_REFRESH_LAST_RUN = now
+        return payload, ok
+
+
+def _license_auto_refresh_loop(app) -> None:
+    while True:
+        time.sleep(LICENSE_AUTO_REFRESH_INTERVAL_SECONDS)
+        try:
+            with app.app_context():
+                _refresh_license_response(force=True)
+        except Exception:
+            logger.exception("Auto refresh de licencia falló")
+
+
+def ensure_license_auto_refresh_thread(app) -> None:
+    with _LICENSE_REFRESH_THREAD_LOCK:
+        thread = app.extensions.get("license_auto_refresh_thread")
+        if thread and thread.is_alive():
+            return
+
+        worker = threading.Thread(
+            target=_license_auto_refresh_loop,
+            args=(app,),
+            daemon=True,
+            name="license-auto-refresh",
+        )
+        app.extensions["license_auto_refresh_thread"] = worker
+        worker.start()
+        logger.info("Auto refresh de licencia iniciado")
+
+
+def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response, int] | None]:
+    license_info = db.get_license_info()
+    plan_destino = _resolve_next_upgrade_plan(license_info)
+    if not plan_destino:
+        return None, (
+            jsonify({
+                "ok": False,
+                "message": "Tu plan actual ya no requiere actualización online.",
+            }),
+            400,
+        )
+
+    license_key = str(license_info.get("key", "") or "").strip()
+    if not license_key:
+        return None, (
+            jsonify({
+                "ok": False,
+                "message": "No se encontró una licencia activa para iniciar el checkout.",
+            }),
+            400,
+        )
+
+    holder_profile = _get_license_holder_profile()
+    ok_profile, msg_profile = _validate_license_holder_profile(holder_profile)
+    if not ok_profile:
+        return None, (
+            jsonify({
+                "ok": False,
+                "message": msg_profile,
+            }),
+            400,
+        )
+
+    producto = get_license_product()
+    precio = get_price_for_plan(plan_destino)
+    external_reference = build_external_reference(license_key, producto, plan_destino)
+    return {
+        "license_info": license_info,
+        "plan_destino": plan_destino,
+        "license_key": license_key,
+        "holder_profile": holder_profile,
+        "producto": producto,
+        "precio": precio,
+        "external_reference": external_reference,
+    }, None
+
+
+def _create_checkout_init_point() -> tuple[str | None, dict[str, object] | None, tuple[Response, int] | None]:
+    try:
+        checkout_context, error_response = _build_checkout_context()
+    except MercadoPagoCheckoutError as exc:
+        return None, None, (
+            jsonify({
+                "ok": False,
+                "message": str(exc),
+            }),
+            400,
+        )
+
+    if error_response:
+        return None, None, error_response
+
+    assert checkout_context is not None
+    license_key = str(checkout_context["license_key"])
+    plan_destino = str(checkout_context["plan_destino"])
+
+    try:
+        init_point = create_checkout_preference(
+            producto=str(checkout_context["producto"]),
+            plan_destino=plan_destino,
+            precio=int(checkout_context["precio"]),
+            external_reference=str(checkout_context["external_reference"]),
+            license_key=license_key,
+            email_titular=str(checkout_context["holder_profile"]["email"]),
+        )
+    except MercadoPagoCheckoutError as exc:
+        logger.warning(
+            "Checkout Mercado Pago rechazado licencia=%s plan_destino=%s error=%s",
+            _mask_license_key(license_key),
+            plan_destino,
+            exc,
+        )
+        return None, checkout_context, (
+            jsonify({
+                "ok": False,
+                "message": str(exc),
+            }),
+            502,
+        )
+    except Exception:
+        logger.exception(
+            "Checkout Mercado Pago fallo inesperado licencia=%s plan_destino=%s",
+            _mask_license_key(license_key),
+            plan_destino,
+        )
+        return None, checkout_context, (
+            jsonify({
+                "ok": False,
+                "message": "No se pudo iniciar el checkout en este momento.",
+            }),
+            500,
+        )
+
+    logger.info(
+        "Checkout Mercado Pago listo licencia=%s plan_actual=%s plan_destino=%s",
+        _mask_license_key(license_key),
+        checkout_context["license_info"].get("tier", "DEMO"),
+        plan_destino,
+    )
+    return init_point, checkout_context, None
 
 
 def login_required(view):
@@ -1329,11 +1549,7 @@ def mi_plan():
     todos_los_modulos = sorted(set().union(*PLANES.values()))
     modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
     license_info = refreshed_info or db.get_license_info()
-    next_upgrade_plan = ""
-    if license_info.get("tier") == "BASICA":
-        next_upgrade_plan = "PRO"
-    elif license_info.get("tier") == "PRO":
-        next_upgrade_plan = "MENSUAL_FULL"
+    next_upgrade_plan = _resolve_next_upgrade_plan(license_info)
     return render_template(
         "mi_plan.html",
         plan_activo=license_info.get("tier", "DEMO"),
@@ -1342,16 +1558,26 @@ def mi_plan():
         modulos_activos=modulos_activos,
         modulos_bloqueados=modulos_bloqueados,
         next_upgrade_plan=next_upgrade_plan,
+        next_upgrade_plan_display=get_plan_display_name(next_upgrade_plan) if next_upgrade_plan else "",
         supabase_ok=supabase_configured(),
         license_refresh_ok=refresh_ok,
         license_refresh_message=refresh_msg,
+        license_holder=_get_license_holder_profile(),
+        checkout_enabled=bool(next_upgrade_plan),
     )
+
+
+@main_bp.route("/mi-plan/refrescar", methods=["GET"])
+@admin_required
+def licencia_refrescar():
+    response, _ok = _refresh_license_response(force=True)
+    return jsonify(response)
 
 
 @main_bp.route("/mi-plan/actualizar-licencia", methods=["POST"])
 @admin_required
 def mi_plan_actualizar_licencia():
-    response, ok = _refresh_license_response()
+    response, ok = _refresh_license_response(force=True)
     if ok:
         plan = str(response.get("tier", "DEMO"))
         plan_label = "FULL" if plan == "MENSUAL_FULL" else plan
@@ -1362,6 +1588,84 @@ def mi_plan_actualizar_licencia():
             "warning",
         )
     return redirect(url_for("main.mi_plan"))
+
+
+@main_bp.route("/mi-plan/titular", methods=["POST"])
+@admin_required
+def mi_plan_guardar_titular():
+    holder_profile = {
+        "nombre": request.form.get("titular_nombre", "").strip(),
+        "email": request.form.get("titular_email", "").strip().lower(),
+        "telefono": request.form.get("titular_telefono", "").strip(),
+        "palabra_recuperacion": request.form.get("titular_palabra_recuperacion", "").strip(),
+    }
+    ok_profile, msg_profile = _validate_license_holder_profile(holder_profile)
+    if not ok_profile:
+        flash(msg_profile, "warning")
+        return redirect(url_for("main.mi_plan"))
+
+    db.set_config({
+        "license_owner_name": holder_profile["nombre"],
+        "license_owner_email": holder_profile["email"],
+        "license_owner_phone": holder_profile["telefono"],
+        "license_recovery_word": holder_profile["palabra_recuperacion"],
+    })
+    flash("Datos del titular actualizados.", "success")
+    return redirect(url_for("main.mi_plan"))
+
+
+@main_bp.route("/mi-plan/checkout", methods=["POST"])
+@admin_required
+def mi_plan_checkout():
+    init_point, _checkout_context, error_response = _create_checkout_init_point()
+    if error_response:
+        return error_response
+
+    return jsonify({
+        "ok": True,
+        "init_point": init_point,
+    })
+
+
+@main_bp.route("/mi-plan/checkout/open", methods=["POST"])
+@admin_required
+def mi_plan_checkout_open():
+    init_point, checkout_context, error_response = _create_checkout_init_point()
+    if error_response:
+        return error_response
+
+    assert init_point is not None
+    assert checkout_context is not None
+
+    try:
+        opened = webbrowser.open(init_point)
+    except Exception:
+        logger.exception(
+            "Checkout Mercado Pago no pudo abrir navegador externo licencia=%s plan_destino=%s",
+            _mask_license_key(str(checkout_context["license_key"])),
+            checkout_context["plan_destino"],
+        )
+        return jsonify({
+            "ok": False,
+            "message": "No se pudo abrir Mercado Pago en el navegador externo.",
+        }), 500
+
+    if not opened:
+        logger.warning(
+            "Checkout Mercado Pago navegador externo no confirmado licencia=%s plan_destino=%s",
+            _mask_license_key(str(checkout_context["license_key"])),
+            checkout_context["plan_destino"],
+        )
+
+    logger.info(
+        "Checkout Mercado Pago abierto en navegador externo licencia=%s plan_destino=%s",
+        _mask_license_key(str(checkout_context["license_key"])),
+        checkout_context["plan_destino"],
+    )
+    return jsonify({
+        "ok": True,
+        "message": "Checkout abierto en navegador externo",
+    })
 
 
 @main_bp.route("/mi-plan/solicitar-upgrade", methods=["POST"])
@@ -1376,7 +1680,7 @@ def mi_plan_solicitar_upgrade():
         plan_solicitado = "MENSUAL_FULL"
     else:
         flash("Tu plan actual ya está completo o no admite actualización.", "info")
-        return redirect(url_for("mi_plan"))
+        return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
     usuario = session.get("user", {})
@@ -1416,7 +1720,7 @@ def mi_plan_solicitar_upgrade():
         flash("Solicitud de actualización enviada.", "success")
     else:
         flash(result.get("message", "No se pudo enviar la solicitud de actualización."), "danger")
-    return redirect(url_for("mi_plan"))
+    return redirect(url_for("main.mi_plan"))
 
 
 @main_bp.route("/config/categoria", methods=["POST"])
