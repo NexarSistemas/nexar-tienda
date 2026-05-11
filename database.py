@@ -19,7 +19,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from licensing.planes import PLANES as TIER_MODULES_MAP, normalize_plan
 from services.cuentas_corrientes import (
+    calcular_estado_factura,
     calcular_deuda_proveedor_desde_facturas,
+    calcular_saldo_factura,
     calcular_saldo_cliente_desde_movimientos,
 )
 
@@ -474,7 +476,8 @@ def init_db():
             fecha_vencimiento TEXT,
             importe REAL DEFAULT 0,
             pagado REAL DEFAULT 0,
-            observaciones TEXT DEFAULT ''
+            observaciones TEXT DEFAULT '',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS temporadas (
@@ -534,6 +537,29 @@ def init_db():
     columnas_cc = [r['name'] for r in c.execute("PRAGMA table_info(cc_clientes_mov)").fetchall()]
     if 'venta_id' not in columnas_cc:
         c.execute("ALTER TABLE cc_clientes_mov ADD COLUMN venta_id INTEGER REFERENCES ventas(id) ON DELETE SET NULL")
+
+    columnas_facturas = [r['name'] for r in c.execute("PRAGMA table_info(facturas_proveedores)").fetchall()]
+    if 'proveedor_id' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN proveedor_id INTEGER")
+    if 'numero_factura' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN numero_factura TEXT DEFAULT ''")
+    if 'fecha' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN fecha TEXT")
+    if 'fecha_vencimiento' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN fecha_vencimiento TEXT")
+    if 'importe' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN importe REAL DEFAULT 0")
+    if 'pagado' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN pagado REAL DEFAULT 0")
+    if 'observaciones' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN observaciones TEXT DEFAULT ''")
+    if 'created_at' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN created_at TEXT DEFAULT ''")
+        c.execute(
+            """UPDATE facturas_proveedores
+            SET created_at = COALESCE(NULLIF(fecha, ''), DATE('now'))
+            WHERE COALESCE(created_at, '') = ''"""
+        )
 
     # Verificar y agregar columna 'interes_financiacion' en 'ventas' (Paso 15)
     columnas_v = [r['name'] for r in c.execute("PRAGMA table_info(ventas)").fetchall()]
@@ -2114,15 +2140,179 @@ def get_facturas_proveedor(proveedor_id):
     return q(
         """SELECT * FROM facturas_proveedores
         WHERE proveedor_id=?
-        ORDER BY COALESCE(fecha_vencimiento, ''), COALESCE(fecha, ''), id DESC""",
+        ORDER BY COALESCE(fecha, '') DESC, COALESCE(fecha_vencimiento, '') DESC, id DESC""",
         (proveedor_id,),
     )
+
+
+def get_factura_proveedor(factura_id):
+    """Devuelve una factura de proveedor por ID."""
+    return q(
+        "SELECT * FROM facturas_proveedores WHERE id=?",
+        (factura_id,),
+        fetchone=True,
+    )
+
+
+def crear_factura_proveedor(proveedor_id, numero_factura, fecha, fecha_vencimiento, importe, observaciones):
+    """Crea una factura de proveedor para deuda comercial."""
+    importe = float(importe or 0)
+    if importe <= 0:
+        raise ValueError("El importe de la factura debe ser mayor a cero.")
+    q(
+        """INSERT INTO facturas_proveedores
+        (proveedor_id, numero_factura, fecha, fecha_vencimiento, importe, pagado, observaciones, created_at)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?)""",
+        (
+            proveedor_id,
+            str(numero_factura or "").strip(),
+            str(fecha or "").strip(),
+            str(fecha_vencimiento or "").strip(),
+            importe,
+            str(observaciones or "").strip(),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+        commit=True,
+    )
+
+
+def actualizar_factura_proveedor(factura_id, numero_factura, fecha, fecha_vencimiento, importe, observaciones):
+    """Actualiza una factura de proveedor sin perder trazabilidad de pagos."""
+    factura = get_factura_proveedor(factura_id)
+    if not factura:
+        raise ValueError("La factura indicada no existe.")
+    importe = float(importe or 0)
+    pagado_actual = float(factura["pagado"] or 0)
+    if importe <= 0:
+        raise ValueError("El importe de la factura debe ser mayor a cero.")
+    if pagado_actual > importe:
+        raise ValueError("El importe no puede ser menor al total ya pagado.")
+    q(
+        """UPDATE facturas_proveedores
+        SET numero_factura=?, fecha=?, fecha_vencimiento=?, importe=?, observaciones=?
+        WHERE id=?""",
+        (
+            str(numero_factura or "").strip(),
+            str(fecha or "").strip(),
+            str(fecha_vencimiento or "").strip(),
+            importe,
+            str(observaciones or "").strip(),
+            factura_id,
+        ),
+        commit=True,
+    )
+
+
+def registrar_pago_factura_proveedor(factura_id, monto):
+    """Registra un pago parcial o total sobre una factura de proveedor."""
+    factura = get_factura_proveedor(factura_id)
+    if not factura:
+        raise ValueError("La factura indicada no existe.")
+    monto = float(monto or 0)
+    if monto <= 0:
+        raise ValueError("El monto del pago debe ser mayor a cero.")
+    importe = float(factura["importe"] or 0)
+    pagado_actual = float(factura["pagado"] or 0)
+    nuevo_pagado = pagado_actual + monto
+    if nuevo_pagado > importe:
+        raise ValueError("El pago no puede superar el importe pendiente de la factura.")
+    q(
+        "UPDATE facturas_proveedores SET pagado=? WHERE id=?",
+        (nuevo_pagado, factura_id),
+        commit=True,
+    )
+
+
+def eliminar_factura_proveedor(factura_id):
+    """
+    Elimina una factura solo si no tiene pagos registrados.
+
+    Con el esquema actual es la opcion mas segura sin agregar estados persistidos.
+    """
+    factura = get_factura_proveedor(factura_id)
+    if not factura:
+        raise ValueError("La factura indicada no existe.")
+    if float(factura["pagado"] or 0) > 0:
+        raise ValueError("No se puede eliminar una factura con pagos registrados.")
+    q("DELETE FROM facturas_proveedores WHERE id=?", (factura_id,), commit=True)
 
 
 def get_deuda_proveedor_desde_facturas(proveedor_id):
     """Calcula deuda comercial del proveedor desde facturas_proveedores."""
     facturas = get_facturas_proveedor(proveedor_id)
     return calcular_deuda_proveedor_desde_facturas(facturas)
+
+
+def get_resumen_facturas_proveedor(proveedor_id):
+    """Resume deuda, saldos y estados calculados de facturas del proveedor."""
+    facturas = get_facturas_proveedor(proveedor_id)
+    resumen = {
+        "total_facturas": 0,
+        "total_facturado": 0.0,
+        "total_pagado": 0.0,
+        "deuda_total": 0.0,
+        "facturas_pendientes": 0,
+        "facturas_pagadas": 0,
+        "facturas_vencidas": 0,
+        "facturas_por_vencer": 0,
+    }
+    for factura in facturas:
+        saldo = calcular_saldo_factura(factura)
+        estado = calcular_estado_factura(factura)
+        resumen["total_facturas"] += 1
+        resumen["total_facturado"] += float(factura["importe"] or 0)
+        resumen["total_pagado"] += float(factura["pagado"] or 0)
+        if saldo > 0:
+            resumen["deuda_total"] += saldo
+            resumen["facturas_pendientes"] += 1
+        else:
+            resumen["facturas_pagadas"] += 1
+        if estado == "VENCIDA":
+            resumen["facturas_vencidas"] += 1
+        elif estado == "POR VENCER":
+            resumen["facturas_por_vencer"] += 1
+    return resumen
+
+
+def get_facturas_proveedores_vencidas():
+    """Devuelve facturas vencidas pendientes de pago con nombre de proveedor."""
+    rows = q(
+        """SELECT fp.*, p.nombre as proveedor_nombre
+        FROM facturas_proveedores fp
+        JOIN proveedores p ON p.id = fp.proveedor_id
+        ORDER BY COALESCE(fp.fecha_vencimiento, '') ASC, fp.id DESC"""
+    )
+    return [row for row in rows if calcular_estado_factura(row) == "VENCIDA"]
+
+
+def get_facturas_proveedores_por_vencer(dias=7):
+    """Devuelve facturas pendientes cuyo vencimiento cae dentro de los proximos N dias."""
+    dias = int(dias or 0)
+    if dias <= 0:
+        dias = 7
+    hoy = date.today()
+    rows = q(
+        """SELECT fp.*, p.nombre as proveedor_nombre
+        FROM facturas_proveedores fp
+        JOIN proveedores p ON p.id = fp.proveedor_id
+        ORDER BY COALESCE(fp.fecha_vencimiento, '') ASC, fp.id DESC"""
+    )
+    resultado = []
+    for row in rows:
+        estado = calcular_estado_factura(row)
+        if estado == "PAGADA":
+            continue
+        fecha_vencimiento = str(row["fecha_vencimiento"] or "").strip()
+        if not fecha_vencimiento:
+            continue
+        try:
+            vencimiento = date.fromisoformat(fecha_vencimiento)
+        except ValueError:
+            continue
+        delta = (vencimiento - hoy).days
+        if 0 <= delta <= dias:
+            resultado.append(row)
+    return resultado
 
 
 def get_movimientos_proveedor(pid, limit=50):
