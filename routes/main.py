@@ -76,6 +76,11 @@ PURCHASE_DRAFT_FIELDS = (
     "producto_id",
     "cantidad",
     "costo_unitario",
+    "condicion_pago",
+    "numero_factura",
+    "fecha_factura",
+    "fecha_vencimiento",
+    "observaciones_factura",
     "observaciones",
     "producto_descripcion",
     "codigo_barras",
@@ -1240,7 +1245,27 @@ def compra_nueva():
         if proveedor:
             data["proveedor_nombre"] = proveedor["nombre"]
         data["total"] = float(data.get("cantidad", 0) or 0) * float(data.get("costo_unitario", 0) or 0)
-        db.add_compra(data)
+        condicion_pago = str(data.get("condicion_pago", "contado") or "contado").strip().lower()
+        factura_data = {
+            "condicion_pago": condicion_pago,
+            "numero_factura": data.get("numero_factura", ""),
+            "fecha_factura": data.get("fecha_factura", ""),
+            "fecha_vencimiento": data.get("fecha_vencimiento", ""),
+            "observaciones_factura": data.get("observaciones_factura", ""),
+        }
+        try:
+            if condicion_pago == "cuenta_corriente":
+                db.add_compra_con_factura(data, factura_data)
+                flash("Compra registrada y factura comercial creada.", "success")
+            else:
+                db.add_compra(data)
+                flash("Compra registrada.", "success")
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return redirect(url_for("compras", **_purchase_draft_query(_purchase_draft_from_source(request.form), open_compra="1")))
+        except Exception:
+            flash("No se pudo registrar la compra correctamente.", "danger")
+            return redirect(url_for("compras", **_purchase_draft_query(_purchase_draft_from_source(request.form), open_compra="1")))
         flash("✅ Compra registrada.", "success")
         return redirect(url_for("compras"))
     return redirect(url_for("compras"))
@@ -1277,7 +1302,13 @@ def compra_editar(cid):
 @main_bp.route("/compras/<int:cid>/eliminar", methods=["POST"])
 @login_required
 def compra_eliminar(cid):
-    db.delete_compra(cid)
+    try:
+        db.delete_compra(cid)
+        flash("Compra eliminada.", "success")
+        return redirect(url_for("compras"))
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("compras"))
     flash("✅ Compra eliminada.", "success")
     return redirect(url_for("compras"))
 

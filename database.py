@@ -471,6 +471,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS facturas_proveedores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             proveedor_id INTEGER REFERENCES proveedores(id),
+            compra_id INTEGER REFERENCES compras(id) ON DELETE SET NULL,
             numero_factura TEXT DEFAULT '',
             fecha TEXT,
             fecha_vencimiento TEXT,
@@ -541,6 +542,8 @@ def init_db():
     columnas_facturas = [r['name'] for r in c.execute("PRAGMA table_info(facturas_proveedores)").fetchall()]
     if 'proveedor_id' not in columnas_facturas:
         c.execute("ALTER TABLE facturas_proveedores ADD COLUMN proveedor_id INTEGER")
+    if 'compra_id' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN compra_id INTEGER")
     if 'numero_factura' not in columnas_facturas:
         c.execute("ALTER TABLE facturas_proveedores ADD COLUMN numero_factura TEXT DEFAULT ''")
     if 'fecha' not in columnas_facturas:
@@ -560,6 +563,7 @@ def init_db():
             SET created_at = COALESCE(NULLIF(fecha, ''), DATE('now'))
             WHERE COALESCE(created_at, '') = ''"""
         )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_facturas_proveedores_compra_id ON facturas_proveedores(compra_id)")
 
     # Verificar y agregar columna 'interes_financiacion' en 'ventas' (Paso 15)
     columnas_v = [r['name'] for r in c.execute("PRAGMA table_info(ventas)").fetchall()]
@@ -2154,26 +2158,46 @@ def get_factura_proveedor(factura_id):
     )
 
 
-def crear_factura_proveedor(proveedor_id, numero_factura, fecha, fecha_vencimiento, importe, observaciones):
+def get_factura_por_compra(compra_id):
+    """Busca la factura comercial asociada a una compra."""
+    return q(
+        "SELECT * FROM facturas_proveedores WHERE compra_id=? ORDER BY id DESC LIMIT 1",
+        (compra_id,),
+        fetchone=True,
+    )
+
+
+def compra_tiene_factura(compra_id):
+    """Indica si una compra ya genero factura comercial."""
+    return get_factura_por_compra(compra_id) is not None
+
+
+def crear_factura_proveedor(proveedor_id, numero_factura, fecha, fecha_vencimiento, importe, observaciones, compra_id=None, conn=None):
     """Crea una factura de proveedor para deuda comercial."""
     importe = float(importe or 0)
     if importe <= 0:
         raise ValueError("El importe de la factura debe ser mayor a cero.")
-    q(
-        """INSERT INTO facturas_proveedores
-        (proveedor_id, numero_factura, fecha, fecha_vencimiento, importe, pagado, observaciones, created_at)
-        VALUES (?, ?, ?, ?, ?, 0, ?, ?)""",
-        (
-            proveedor_id,
-            str(numero_factura or "").strip(),
-            str(fecha or "").strip(),
-            str(fecha_vencimiento or "").strip(),
-            importe,
-            str(observaciones or "").strip(),
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        ),
-        commit=True,
+    if compra_id and compra_tiene_factura(compra_id):
+        raise ValueError("La compra indicada ya tiene una factura comercial asociada.")
+
+    params = (
+        proveedor_id,
+        compra_id,
+        str(numero_factura or "").strip(),
+        str(fecha or "").strip(),
+        str(fecha_vencimiento or "").strip(),
+        importe,
+        str(observaciones or "").strip(),
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
+    sql = """INSERT INTO facturas_proveedores
+        (proveedor_id, compra_id, numero_factura, fecha, fecha_vencimiento, importe, pagado, observaciones, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)"""
+    if conn is not None:
+        c = conn.cursor()
+        c.execute(sql, params)
+        return c.lastrowid
+    return q(sql, params, commit=True)
 
 
 def actualizar_factura_proveedor(factura_id, numero_factura, fecha, fecha_vencimiento, importe, observaciones):
@@ -2235,6 +2259,35 @@ def eliminar_factura_proveedor(factura_id):
     if float(factura["pagado"] or 0) > 0:
         raise ValueError("No se puede eliminar una factura con pagos registrados.")
     q("DELETE FROM facturas_proveedores WHERE id=?", (factura_id,), commit=True)
+
+
+def crear_factura_desde_compra(compra_id, proveedor_id, total, numero_factura=None, fecha=None, fecha_vencimiento=None, observaciones=None, conn=None):
+    """Crea una factura comercial asociada a una compra, evitando duplicados."""
+    if not proveedor_id or int(proveedor_id) <= 0:
+        raise ValueError("La compra a cuenta corriente requiere un proveedor valido.")
+    if compra_tiene_factura(compra_id):
+        return get_factura_por_compra(compra_id)
+
+    fecha_factura = str(fecha or "").strip()
+    if not fecha_factura:
+        compra = get_compra(compra_id)
+        fecha_factura = str((compra["fecha"] if compra else "") or datetime.now().strftime("%Y-%m-%d")).strip()
+
+    numero = str(numero_factura or "").strip() or f"COMPRA-{compra_id}"
+    factura_id = crear_factura_proveedor(
+        proveedor_id,
+        numero,
+        fecha_factura,
+        fecha_vencimiento,
+        total,
+        observaciones,
+        compra_id=compra_id,
+        conn=conn,
+    )
+    if conn is not None:
+        c = conn.cursor()
+        return c.execute("SELECT * FROM facturas_proveedores WHERE id=?", (factura_id,)).fetchone()
+    return get_factura_proveedor(factura_id)
 
 
 def get_deuda_proveedor_desde_facturas(proveedor_id):
@@ -2511,25 +2564,63 @@ def delete_venta(venta_id):
 
 def get_compras(search='', fecha_desde='', fecha_hasta='', limit=200):
     """Devuelve compras filtrables."""
-    sql = "SELECT * FROM compras WHERE 1=1"
+    sql = """
+        SELECT compras.*,
+               (
+                   SELECT fp.id
+                   FROM facturas_proveedores fp
+                   WHERE fp.compra_id = compras.id
+                   ORDER BY fp.id DESC
+                   LIMIT 1
+               ) as factura_proveedor_id,
+               (
+                   SELECT fp.numero_factura
+                   FROM facturas_proveedores fp
+                   WHERE fp.compra_id = compras.id
+                   ORDER BY fp.id DESC
+                   LIMIT 1
+               ) as factura_proveedor_numero
+        FROM compras
+        WHERE 1=1
+    """
     params = []
     if search:
-        sql += " AND (descripcion LIKE ? OR numero_remito LIKE ? OR proveedor_nombre LIKE ?)"
+        sql += " AND (compras.descripcion LIKE ? OR compras.numero_remito LIKE ? OR compras.proveedor_nombre LIKE ?)"
         params += [f'%{search}%'] * 3
     if fecha_desde:
-        sql += " AND fecha >= ?"
+        sql += " AND compras.fecha >= ?"
         params.append(fecha_desde)
     if fecha_hasta:
-        sql += " AND fecha <= ?"
+        sql += " AND compras.fecha <= ?"
         params.append(fecha_hasta)
-    sql += " ORDER BY fecha DESC LIMIT ?"
+    sql += " ORDER BY compras.fecha DESC, compras.id DESC LIMIT ?"
     params.append(limit)
     return q(sql, params)
 
 
 def get_compra(cid):
     """Devuelve una compra por ID."""
-    return q("SELECT * FROM compras WHERE id=?", (cid,), fetchone=True)
+    return q(
+        """SELECT compras.*,
+               (
+                   SELECT fp.id
+                   FROM facturas_proveedores fp
+                   WHERE fp.compra_id = compras.id
+                   ORDER BY fp.id DESC
+                   LIMIT 1
+               ) as factura_proveedor_id,
+               (
+                   SELECT fp.numero_factura
+                   FROM facturas_proveedores fp
+                   WHERE fp.compra_id = compras.id
+                   ORDER BY fp.id DESC
+                   LIMIT 1
+               ) as factura_proveedor_numero
+        FROM compras
+        WHERE compras.id=?""",
+        (cid,),
+        fetchone=True,
+    )
 
 
 def update_compra(cid, data):
@@ -2585,6 +2676,12 @@ def delete_compra(cid):
     if not compra_actual:
         return
 
+    factura_asociada = get_factura_por_compra(cid)
+    if factura_asociada:
+        if float(factura_asociada["pagado"] or 0) > 0:
+            raise ValueError("No se puede eliminar una compra cuya factura asociada ya tiene pagos registrados.")
+        eliminar_factura_proveedor(int(factura_asociada["id"]))
+
     conn = get_conn()
     c = conn.cursor()
     producto_id = int(compra_actual['producto_id'] or 0)
@@ -2629,24 +2726,107 @@ def incrementar_stock_compra(producto_id, cantidad, compra_id=None):
     )
 
 
-def add_compra(data):
+def add_compra(data, conn=None):
     """Agrega una compra."""
+    params = (
+        data.get('fecha', datetime.now().strftime('%Y-%m-%d')),
+        data.get('numero_remito', ''),
+        data.get('proveedor_id', 0),
+        data.get('proveedor_nombre', ''),
+        data.get('producto_id', 0),
+        data.get('codigo_interno', ''),
+        data.get('descripcion', ''),
+        float(data.get('cantidad', 1)),
+        float(data.get('costo_unitario', 0)),
+        float(data.get('total', 0)),
+        data.get('observaciones', ''),
+    )
+
+    if conn is not None:
+        c = conn.cursor()
+        c.execute(
+            """INSERT INTO compras
+            (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            params,
+        )
+        compra_id = c.lastrowid
+        if data.get('producto_id') and float(data.get('cantidad', 1)) > 0:
+            _incrementar_stock_compra_tx(conn, int(data.get('producto_id')), float(data.get('cantidad', 1)), compra_id)
+        return compra_id
+
     compra_id = q(
         """INSERT INTO compras
         (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-        (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('numero_remito', ''),
-         data.get('proveedor_id', 0), data.get('proveedor_nombre', ''), data.get('producto_id', 0),
-         data.get('codigo_interno', ''), data.get('descripcion', ''), float(data.get('cantidad', 1)),
-         float(data.get('costo_unitario', 0)), float(data.get('total', 0)), data.get('observaciones', '')),
-        fetchall=False, commit=True
+        params,
+        fetchall=False,
+        commit=True
     )
 
-    # Actualizar stock y registrar movimiento de compra
     if data.get('producto_id') and float(data.get('cantidad', 1)) > 0:
         incrementar_stock_compra(int(data.get('producto_id')), float(data.get('cantidad', 1)), compra_id)
 
     return compra_id
+
+
+def _incrementar_stock_compra_tx(conn, producto_id, cantidad, compra_id=None):
+    """Version transaccional de incremento de stock para compras."""
+    if cantidad <= 0:
+        return
+
+    c = conn.cursor()
+    stock_actual = c.execute("SELECT * FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
+    if stock_actual:
+        nuevo = float(stock_actual['stock_actual'] or 0) + cantidad
+        c.execute("UPDATE stock SET stock_actual=? WHERE producto_id=?", (nuevo, producto_id))
+        stock_anterior = float(stock_actual['stock_actual'] or 0)
+    else:
+        c.execute(
+            "INSERT INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo, ultimo_ingreso, proveedor_habitual) VALUES (?,?,?,?,?,?)",
+            (producto_id, cantidad, 5, 50, datetime.now().strftime('%Y-%m-%d'), ''),
+        )
+        stock_anterior = 0.0
+        nuevo = cantidad
+
+    c.execute(
+        """INSERT INTO stock_movimientos
+        (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo)
+        VALUES (?,?,?,?,?,?)""",
+        (
+            producto_id,
+            'COMPRA',
+            cantidad,
+            stock_anterior,
+            nuevo,
+            f'Compra #{compra_id}' if compra_id else 'Compra',
+        ),
+    )
+
+
+def add_compra_con_factura(data, factura_data=None):
+    """Registra compra y factura comercial en una sola transaccion si corresponde."""
+    conn = get_conn()
+    try:
+        compra_id = add_compra(data, conn=conn)
+        if factura_data and str(factura_data.get("condicion_pago", "")).strip().lower() == "cuenta_corriente":
+            crear_factura_desde_compra(
+                compra_id=compra_id,
+                proveedor_id=int(data.get("proveedor_id", 0) or 0),
+                total=float(data.get("total", 0) or 0),
+                numero_factura=factura_data.get("numero_factura"),
+                fecha=factura_data.get("fecha_factura") or data.get("fecha"),
+                fecha_vencimiento=factura_data.get("fecha_vencimiento"),
+                observaciones=factura_data.get("observaciones_factura") or data.get("observaciones"),
+                conn=conn,
+            )
+        conn.commit()
+        return compra_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 # ─── CAJA ────────────────────────────────────────────────────────────────────
