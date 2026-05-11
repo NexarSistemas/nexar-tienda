@@ -22,6 +22,13 @@ from licensing.planes import PLANES, get_plan_activo, get_plan_display_name, nor
 from licensing.permisos import get_modulos_activos, get_modulos_debug_info, require_modulo
 from services.cuentas_corrientes import calcular_estado_factura, calcular_saldo_factura
 from services.license_storage import cargar_licencia, guardar_licencia
+from services.rubros import (
+    get_rubro_actual,
+    get_rubros_disponibles,
+    get_unidades_disponibles,
+    normalizar_rubro,
+    normalizar_unidad,
+)
 from services.mercadopago_checkout import (
     MercadoPagoCheckoutError,
     build_external_reference,
@@ -930,7 +937,27 @@ def producto_nuevo():
             return redirect(url_for("compra_nueva", **_purchase_draft_query(draft_compra, created_product="1")))
         return redirect(url_for("productos"))
     cancel_url = url_for("compra_nueva", **_purchase_draft_query(draft_compra)) if desde_compra else url_for("productos")
-    return render_template("producto_form.html", producto=None, stock=None, categorias=db.get_categorias(), accion="Nuevo", prefill=prefill, from_compra=desde_compra, draft_compra=draft_compra, cancel_url=cancel_url)
+    cfg = db.get_config()
+    rubro_actual = get_rubro_actual(cfg)
+    unidad_actual = normalizar_unidad(prefill.get("unidad", "unidad"), rubro_actual)
+    unidades_disponibles = get_unidades_disponibles(rubro_actual)
+    if unidad_actual not in unidades_disponibles:
+        unidades_disponibles = unidades_disponibles + [unidad_actual]
+    return render_template(
+        "producto_form.html",
+        producto=None,
+        stock=None,
+        categorias=db.get_categorias(),
+        accion="Nuevo",
+        prefill=prefill,
+        from_compra=desde_compra,
+        draft_compra=draft_compra,
+        cancel_url=cancel_url,
+        rubro_actual=rubro_actual,
+        rubros_disponibles=get_rubros_disponibles(),
+        unidades_disponibles=unidades_disponibles,
+        unidad_actual=unidad_actual,
+    )
 
 
 @main_bp.route("/productos/<int:pid>/editar", methods=["GET", "POST"])
@@ -948,7 +975,24 @@ def producto_editar(pid):
         db.update_stock_item(pid, float(data.get("stock_actual", stock["stock_actual"] if stock else 0)), float(data.get("stock_minimo", 5)), float(data.get("stock_maximo", 50)), data.get("proveedor_habitual", ""))
         flash("✅ Producto actualizado.", "success")
         return redirect(url_for("productos"))
-    return render_template("producto_form.html", producto=producto, stock=stock, categorias=db.get_categorias(), accion="Editar")
+    cfg = db.get_config()
+    rubro_actual = get_rubro_actual(cfg)
+    unidad_producto = producto["tipo_unidad"] if "tipo_unidad" in producto.keys() and producto["tipo_unidad"] else producto["unidad"]
+    unidad_actual = normalizar_unidad(unidad_producto, rubro_actual)
+    unidades_disponibles = get_unidades_disponibles(rubro_actual)
+    if unidad_actual not in unidades_disponibles:
+        unidades_disponibles = unidades_disponibles + [unidad_actual]
+    return render_template(
+        "producto_form.html",
+        producto=producto,
+        stock=stock,
+        categorias=db.get_categorias(),
+        accion="Editar",
+        rubro_actual=rubro_actual,
+        rubros_disponibles=get_rubros_disponibles(),
+        unidades_disponibles=unidades_disponibles,
+        unidad_actual=unidad_actual,
+    )
 
 
 @main_bp.route("/productos/<int:pid>/eliminar", methods=["POST"])
@@ -1781,9 +1825,20 @@ def config():
     if request.method == "POST":
         data = request.form.to_dict()
         data["ticket_mostrar_iva"] = "1" if _as_bool(data.get("ticket_mostrar_iva")) else "0"
+        data["rubro_negocio"] = normalizar_rubro(data.get("rubro_negocio"))
         db.set_config(data)
         return redirect(url_for("config"))
-    return render_template("config.html", cfg=db.get_config(), categorias=db.get_categorias(), categorias_gastos=db.get_gasto_categorias())
+    cfg = db.get_config()
+    rubro_actual = get_rubro_actual(cfg)
+    return render_template(
+        "config.html",
+        cfg=cfg,
+        categorias=db.get_categorias(),
+        categorias_gastos=db.get_gasto_categorias(),
+        rubro_actual=rubro_actual,
+        rubros_disponibles=get_rubros_disponibles(),
+        unidades_disponibles=get_unidades_disponibles(rubro_actual),
+    )
 
 
 @main_bp.route("/mi-plan")

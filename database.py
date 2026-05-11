@@ -24,6 +24,7 @@ from services.cuentas_corrientes import (
     calcular_saldo_factura,
     calcular_saldo_cliente_desde_movimientos,
 )
+from services.rubros import get_rubro_actual, get_unidad_label, normalizar_unidad
 
 # ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
 # Define limites de productos, clientes y proveedores por tipo de licencia
@@ -558,6 +559,14 @@ def init_db():
         c.execute("ALTER TABLE facturas_proveedores ADD COLUMN observaciones TEXT DEFAULT ''")
     if 'created_at' not in columnas_facturas:
         c.execute("ALTER TABLE facturas_proveedores ADD COLUMN created_at TEXT DEFAULT ''")
+
+    columnas_productos = [r['name'] for r in c.execute("PRAGMA table_info(productos)").fetchall()]
+    if 'tipo_unidad' not in columnas_productos:
+        c.execute("ALTER TABLE productos ADD COLUMN tipo_unidad TEXT DEFAULT 'unidad'")
+    if 'permite_fraccionado' not in columnas_productos:
+        c.execute("ALTER TABLE productos ADD COLUMN permite_fraccionado INTEGER DEFAULT 0")
+    if 'rubro' not in columnas_productos:
+        c.execute("ALTER TABLE productos ADD COLUMN rubro TEXT DEFAULT NULL")
         c.execute(
             """UPDATE facturas_proveedores
             SET created_at = COALESCE(NULLIF(fecha, ''), DATE('now'))
@@ -628,6 +637,7 @@ def init_db():
         ('backup_keep', '10'),
         ('backup_dir', ''),
         ('backup_ultimo', ''),
+        ('rubro_negocio', 'tienda'),
         ('gastos_categorias', json.dumps(DEFAULT_GASTO_CATEGORIAS, ensure_ascii=False)),
         # ─── SISTEMA DE LICENCIAS RSA ─────────────────────────────────────────
         ('demo_mode', '1'),                 # 1=demo, 0=licencia activa
@@ -1780,14 +1790,18 @@ def get_producto_by_codigo(codigo):
 def add_producto(data):
     """Agrega un nuevo producto."""
     codigo = next_codigo()
+    rubro_actual = get_rubro_actual(get_config())
+    tipo_unidad = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
+    unidad = get_unidad_label(tipo_unidad)
     conn = get_conn()
     c = conn.cursor()
     c.execute(
         """INSERT INTO productos
-        (codigo_interno,codigo_barras,descripcion,marca,categoria,unidad,por_peso,costo,precio_venta,iva,activo)
-        VALUES (?,?,?,?,?,?,?,?,?,?,1)""",
+        (codigo_interno,codigo_barras,descripcion,marca,categoria,unidad,tipo_unidad,permite_fraccionado,rubro,por_peso,costo,precio_venta,iva,activo)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)""",
         (codigo, data.get('codigo_barras', ''), data['descripcion'], data.get('marca', ''),
-         data.get('categoria', ''), data.get('unidad', 'Unidad'), int(data.get('por_peso', 0)),
+         data.get('categoria', ''), unidad, tipo_unidad, int(data.get('permite_fraccionado', 0)),
+         data.get('rubro') or rubro_actual, int(data.get('por_peso', 0)),
          float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'))
     )
     pid = c.lastrowid
@@ -1802,11 +1816,15 @@ def add_producto(data):
 
 def update_producto(pid, data):
     """Actualiza un producto."""
+    rubro_actual = get_rubro_actual(get_config())
+    tipo_unidad = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
+    unidad = get_unidad_label(tipo_unidad)
     q(
-        """UPDATE productos SET codigo_barras=?,descripcion=?,marca=?,categoria=?,unidad=?,por_peso=?,
-        costo=?,precio_venta=?,iva=?,activo=? WHERE id=?""",
+        """UPDATE productos SET codigo_barras=?,descripcion=?,marca=?,categoria=?,unidad=?,tipo_unidad=?,
+        permite_fraccionado=?,rubro=?,por_peso=?,costo=?,precio_venta=?,iva=?,activo=? WHERE id=?""",
         (data.get('codigo_barras', ''), data['descripcion'], data.get('marca', ''),
-         data.get('categoria', ''), data.get('unidad', 'Unidad'), int(data.get('por_peso', 0)),
+         data.get('categoria', ''), unidad, tipo_unidad, int(data.get('permite_fraccionado', 0)),
+         data.get('rubro') or rubro_actual, int(data.get('por_peso', 0)),
          float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'),
          int(data.get('activo', 1)), pid),
         fetchall=False, commit=True

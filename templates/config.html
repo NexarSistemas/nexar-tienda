@@ -56,6 +56,27 @@
                     </div>
                 </div>
 
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Rubro del Negocio</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Rubro operativo</label>
+                            <select name="rubro_negocio" class="form-select">
+                                {% for rubro in rubros_disponibles %}
+                                <option value="{{ rubro }}" {% if rubro_actual == rubro %}selected{% endif %}>{{ rubro|capitalize }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Cambiar el rubro puede afectar unidades, productos y reportes.</div>
+                        </div>
+                        <div class="small text-muted">
+                            Unidades disponibles hoy para {{ rubro_actual }}:
+                            {{ unidades_disponibles|join(', ') }}.
+                        </div>
+                    </div>
+                </div>
+
                 <div class="d-grid mb-5">
                     <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>Guardar Configuración General</button>
                 </div>
