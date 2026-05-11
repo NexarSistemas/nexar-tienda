@@ -254,7 +254,6 @@ def _resolve_requested_checkout_plan(license_info: dict[str, object] | None) -> 
 
 def _get_license_holder_profile() -> dict[str, str]:
     cfg = db.get_config()
-    license_info = db.get_license_info()
     return {
         "nombre": _first_non_empty(cfg.get("license_owner_name", ""), license_info.get("owner_name", "")),
         "email": _first_non_empty(cfg.get("license_owner_email", ""), license_info.get("owner_email", "")).lower(),
@@ -629,6 +628,7 @@ def _requires_manual_reopen(installer_name: str) -> bool:
 
 
 def _update_install_state(current_version: str | None = None) -> dict:
+    license_info = db.get_license_info()
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
         flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
@@ -924,8 +924,12 @@ def producto_nuevo():
         data = request.form.to_dict()
         if desde_compra:
             data["stock_actual"] = "0"
-        nuevo_id = db.add_producto(data)
-        flash("✅ Producto creado.", "success")
+        try:
+            nuevo_id = db.add_producto(data)
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return redirect(request.url)
+        flash("Producto creado.", "success")
         if desde_compra:
             draft_compra["producto_id"] = str(nuevo_id)
             if not draft_compra.get("producto_descripcion"):
@@ -966,14 +970,23 @@ def producto_editar(pid):
     producto = db.get_producto(pid)
     stock = db.q("SELECT * FROM stock WHERE producto_id=?", (pid,), fetchone=True)
     if not producto:
-        flash("❌ Producto inexistente.", "danger")
+        flash("Producto inexistente.", "danger")
         return redirect(url_for("productos"))
     if request.method == "POST":
         data = request.form.to_dict()
         data["activo"] = 1 if _as_bool(data.get("activo", "1")) else 0
-        db.update_producto(pid, data)
-        db.update_stock_item(pid, float(data.get("stock_actual", stock["stock_actual"] if stock else 0)), float(data.get("stock_minimo", 5)), float(data.get("stock_maximo", 50)), data.get("proveedor_habitual", ""))
-        flash("✅ Producto actualizado.", "success")
+        producto_validacion = dict(producto)
+        producto_validacion["permite_fraccionado"] = int(data.get("permite_fraccionado", 0) or 0)
+        producto_validacion["tipo_unidad"] = data.get("tipo_unidad") or data.get("unidad") or producto.get("tipo_unidad") or producto.get("unidad")
+        producto_validacion["por_peso"] = int(producto.get("por_peso", 0) or 0)
+        try:
+            nuevo_stock = db.validar_cantidad_producto(producto_validacion, data.get("stock_actual", stock["stock_actual"] if stock else 0), campo="stock")
+            db.update_producto(pid, data)
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return redirect(request.url)
+        db.update_stock_item(pid, nuevo_stock, float(data.get("stock_minimo", 5)), float(data.get("stock_maximo", 50)), data.get("proveedor_habitual", ""))
+        flash("Producto actualizado.", "success")
         return redirect(url_for("productos"))
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
@@ -995,14 +1008,6 @@ def producto_editar(pid):
     )
 
 
-@main_bp.route("/productos/<int:pid>/eliminar", methods=["POST"])
-@login_required
-def producto_eliminar(pid):
-    db.delete_producto(pid)
-    flash("✅ Producto desactivado.", "success")
-    return redirect(url_for("productos"))
-
-
 @main_bp.route("/stock")
 @login_required
 def stock():
@@ -1015,7 +1020,12 @@ def stock():
         rows.append(item)
     if estado:
         rows = [r for r in rows if r["estado"] == estado]
-    return render_template("stock.html", productos=rows, alertas=db.get_alertas_count(), total_stock_value=sum(float(r["valor_stock"] or 0) for r in rows))
+    return render_template(
+        "stock.html",
+        productos=rows,
+        alertas=db.get_alertas_count(),
+        total_stock_value=sum(float(r["valor_stock"] or 0) for r in rows),
+    )
 
 
 @main_bp.route("/stock/<int:pid>/ajustar", methods=["GET", "POST"])
@@ -1025,7 +1035,11 @@ def stock_ajustar(pid):
     stock_row = db.q("SELECT * FROM stock WHERE producto_id=?", (pid,), fetchone=True)
     if request.method == "POST":
         anterior = float(stock_row["stock_actual"] or 0)
-        nuevo = float(request.form.get("stock_actual", anterior) or anterior)
+        try:
+            nuevo = db.validar_cantidad_producto(producto, request.form.get("stock_actual", anterior) or anterior, campo="stock")
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return redirect(request.url)
         db.update_stock_item(pid, nuevo, float(request.form.get("stock_minimo", 5)), float(request.form.get("stock_maximo", 50)), request.form.get("proveedor_habitual", ""))
         db.q("INSERT INTO stock_movimientos (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo) VALUES (?,?,?,?,?,?)", (pid, "AJUSTE", nuevo - anterior, anterior, nuevo, request.form.get("motivo", "Ajuste manual")), commit=True)
         flash("✅ Stock actualizado.", "success")
@@ -1114,21 +1128,27 @@ def api_producto_buscar():
 def api_carrito_agregar():
     payload = request.get_json(silent=True) or {}
     pid = int(payload.get("producto_id", -1) or -1)
-    cantidad = float(payload.get("cantidad", 0) or 0)
     cart = _cart()
     if pid < 0:
         return jsonify({"ok": True, "carrito": cart})
     producto = db.get_producto(pid)
     stock_row = db.q("SELECT stock_actual FROM stock WHERE producto_id=?", (pid,), fetchone=True)
-    if not producto or not stock_row or cantidad <= 0:
-        return jsonify({"ok": False, "error": "Producto o cantidad inválida."}), 400
+    if not producto or not stock_row:
+        return jsonify({"ok": False, "error": "Producto o cantidad invalida."}), 400
+    try:
+        cantidad = db.validar_cantidad_producto(producto, payload.get("cantidad", 0), campo="cantidad")
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     if cantidad > float(stock_row["stock_actual"] or 0):
         return jsonify({"ok": False, "error": "Stock insuficiente."}), 400
     existing = next((i for i in cart if i["producto_id"] == pid), None)
     if existing:
-        existing["cantidad"] += cantidad
+        nueva_cantidad = db.validar_cantidad_producto(producto, float(existing["cantidad"] or 0) + cantidad, campo="cantidad")
+        if nueva_cantidad > float(stock_row["stock_actual"] or 0):
+            return jsonify({"ok": False, "error": "Stock insuficiente."}), 400
+        existing["cantidad"] = nueva_cantidad
         existing["subtotal"] = round(existing["cantidad"] * existing["precio_unitario"], 2)
-    elif not plan_solicitado:
+    else:
         precio = float(producto["precio_venta"] or 0)
         cart.append({
             "producto_id": pid,
@@ -1167,13 +1187,22 @@ def api_carrito_vaciar():
 def venta_finalizar():
     cart = _cart()
     if not cart:
-        flash("⚠️ El carrito está vacío.", "warning")
+        flash("El carrito esta vacio.", "warning")
+        return redirect(url_for("punto_venta"))
+    try:
+        for item in cart:
+            producto = db.get_producto(int(item.get("producto_id", 0) or 0))
+            if not producto:
+                raise ValueError("Hay un producto del carrito que ya no existe.")
+            db.validar_cantidad_producto(producto, item.get("cantidad", 0), campo="cantidad")
+    except ValueError as exc:
+        flash(str(exc), "warning")
         return redirect(url_for("punto_venta"))
     cliente_id = int(request.form.get("cliente_id", 0) or 0)
     cliente_nombre = request.form.get("cliente_nombre", "") or "Mostrador"
     medio_pago = request.form.get("medio_pago", "Efectivo")
     if medio_pago == "Cuenta Corriente" and cliente_id <= 0:
-        flash("⚠️ Para vender en cuenta corriente tenés que seleccionar un cliente.", "warning")
+        flash("Para vender en cuenta corriente tenes que seleccionar un cliente.", "warning")
         return redirect(url_for("punto_venta"))
     if cliente_id:
         cliente = db.get_cliente(cliente_id)
@@ -1182,7 +1211,7 @@ def venta_finalizar():
     db.reconciliar_cc_clientes_desde_ventas()
     db.decrementar_stock_venta(venta_id)
     _clear_cart()
-    flash("✅ Venta registrada.", "success")
+    flash("Venta registrada.", "success")
     return redirect(url_for("ticket", vid=venta_id))
 
 
@@ -1191,10 +1220,6 @@ def venta_finalizar():
 def ticket(vid):
     venta = db.q("SELECT * FROM ventas WHERE id=?", (vid,), fetchone=True)
     detalle = db.get_venta_detalle(vid)
-    license_key = str(license_info.get("key", "") or "").strip()
-    if not license_key:
-        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
-        return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
     iva_items = []
@@ -2295,6 +2320,7 @@ def usuario_eliminar(uid):
 @main_bp.route("/respaldo")
 @admin_required
 def respaldo():
+    license_info = db.get_license_info()
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
         flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
@@ -2557,6 +2583,7 @@ def exportar_pdf():
 @main_bp.route("/ayuda", methods=["GET", "POST"])
 @login_required
 def ayuda():
+    license_info = db.get_license_info()
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
         flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
@@ -2631,13 +2658,13 @@ def debug_licencia():
     if not _debug_license_enabled():
         abort(404)
 
+    license_info = db.get_license_info()
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
         flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
         return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
-    license_info = db.get_license_info()
     debug_state = get_license_debug_state()
     modulos_debug = get_modulos_debug_info()
     persisted_modules = []

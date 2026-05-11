@@ -240,6 +240,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const formVenta = document.getElementById('form-venta');
   const btnCancelarVenta = document.getElementById('btnCancelarVenta');
   const btnTemporada = document.getElementById('btn-temporada');
+  const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
 
   function formatNum(n) {
     return parseFloat(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -254,17 +255,26 @@ document.addEventListener('DOMContentLoaded', function () {
     setTimeout(() => div.remove(), 4000);
   }
 
+  function productoPermiteFraccionado(product) {
+    const tipoUnidad = String(product?.tipo_unidad || product?.unidad || '').toLowerCase();
+    return Boolean(parseInt(product?.permite_fraccionado || product?.por_peso || 0, 10)) || ['kg', 'litro', 'docena'].includes(tipoUnidad);
+  }
+
   async function fetchCart() {
-    const response = await fetch('/api/carrito/agregar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ producto_id: -1, cantidad: 0 })
-    });
-    const data = await response.json();
-    if (!data.ok) {
-      throw new Error(data.error || 'No se pudo cargar el carrito');
+    try {
+      const response = await fetch('/api/carrito/agregar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ producto_id: -1, cantidad: 0 })
+      });
+      if (!response.ok) {
+        throw new Error('No se pudo cargar el carrito');
+      }
+      const data = await response.json();
+      cart = Array.isArray(data?.carrito) ? data.carrito : [];
+    } catch (_error) {
+      cart = [];
     }
-    cart = data.carrito || [];
     renderCart();
     updateTotals();
   }
@@ -298,7 +308,7 @@ document.addEventListener('DOMContentLoaded', function () {
     searchDropdown.innerHTML = items.map((p, idx) => {
       const stock = parseFloat(p.stock_actual || 0);
       const stockColor = stock <= 0 ? '#c62828' : '#2563eb';
-      const badgePeso = p.por_peso ? '<span class="badge-peso ms-1" style="font-size:.65rem">× PESO</span>' : '';
+      const badgePeso = productoPermiteFraccionado(p) ? '<span class="badge-peso ms-1" style="font-size:.65rem">FRACC.</span>' : '';
       return `
         <div class="px-3 py-2 border-bottom search-result" data-idx="${idx}">
           <div class="d-flex justify-content-between align-items-center">
@@ -327,10 +337,11 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('sugUnidad').textContent = product.unidad || 'Unidad';
     document.getElementById('sugPrecio').textContent = formatNum(product.precio_venta);
     document.getElementById('sugStock').textContent = product.stock_actual || 0;
-    document.getElementById('cantLabel').textContent = product.por_peso ? 'Peso (kg):' : 'Cantidad:';
-    cantInput.step = product.por_peso ? '0.001' : '1';
-    cantInput.value = product.por_peso ? '' : '1';
-    document.getElementById('sugPeso').classList.toggle('d-none', !product.por_peso);
+    const permiteFraccionado = productoPermiteFraccionado(product);
+    document.getElementById('cantLabel').textContent = permiteFraccionado ? `Cantidad (${product.unidad || product.tipo_unidad || 'unidad'}):` : 'Cantidad:';
+    cantInput.step = permiteFraccionado ? '0.001' : '1';
+    cantInput.value = permiteFraccionado ? '' : '1';
+    document.getElementById('sugPeso').classList.toggle('d-none', !permiteFraccionado);
     prodSuggestion.classList.remove('d-none');
     searchDropdown.classList.add('d-none');
     cantInput.focus();
@@ -378,8 +389,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     const cantidad = parseFloat(cantInput.value);
     const stock = parseFloat(currentProduct.stock_actual || 0);
+    const permiteFraccionado = productoPermiteFraccionado(currentProduct);
     if (!cantidad || cantidad <= 0) {
       showAlert('Ingresá una cantidad válida.', 'warning');
+      return;
+    }
+    if (!permiteFraccionado && !Number.isInteger(cantidad)) {
+      showAlert('Este producto solo permite cantidades enteras.', 'warning');
       return;
     }
     if (cantidad > stock) {
@@ -390,7 +406,7 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       const response = await fetch('/api/carrito/agregar', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
         body: JSON.stringify({
           producto_id: currentProduct.id,
           cantidad: cantidad
@@ -430,7 +446,7 @@ document.addEventListener('DOMContentLoaded', function () {
       <tr class="item-row">
         <td><strong>${item.descripcion}</strong><br><small class="text-muted">${item.codigo_interno || ''}</small></td>
         <td><small>${item.categoria || '-'}</small></td>
-        <td>${item.cantidad} ${item.unidad || ''}</td>
+        <td>${formatNum(item.cantidad)} ${item.unidad || ''}</td>
         <td>$${formatNum(item.precio_unitario)}</td>
         <td><strong>$${formatNum(item.subtotal)}</strong></td>
         <td><button class="btn-remove" type="button" data-remove-idx="${idx}"><i class="fas fa-times"></i></button></td>
@@ -477,7 +493,10 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     try {
-      const response = await fetch('/api/carrito/quitar/' + item.producto_id, { method: 'POST' });
+      const response = await fetch('/api/carrito/quitar/' + item.producto_id, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken }
+      });
       const data = await response.json();
       if (!data.ok) {
         showAlert(data.error || 'No se pudo quitar el producto.', 'danger');
@@ -510,7 +529,10 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
     try {
-      const response = await fetch('/api/carrito/vaciar', { method: 'POST' });
+      const response = await fetch('/api/carrito/vaciar', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken }
+      });
       const data = await response.json();
       if (!data.ok) {
         showAlert(data.error || 'No se pudo vaciar el carrito.', 'danger');
