@@ -978,8 +978,13 @@ def producto_editar(pid):
         data["activo"] = 1 if _as_bool(data.get("activo", "1")) else 0
         producto_validacion = dict(producto)
         producto_validacion["permite_fraccionado"] = int(data.get("permite_fraccionado", 0) or 0)
-        producto_validacion["tipo_unidad"] = data.get("tipo_unidad") or data.get("unidad") or producto.get("tipo_unidad") or producto.get("unidad")
-        producto_validacion["por_peso"] = int(producto.get("por_peso", 0) or 0)
+        producto_validacion["tipo_unidad"] = (
+            data.get("tipo_unidad")
+            or data.get("unidad")
+            or producto_validacion.get("tipo_unidad")
+            or producto_validacion.get("unidad")
+        )
+        producto_validacion["por_peso"] = int(producto_validacion.get("por_peso", 0) or 0)
         try:
             nuevo_stock = db.validar_cantidad_producto(producto_validacion, data.get("stock_actual", stock["stock_actual"] if stock else 0), campo="stock")
             db.update_producto(pid, data)
@@ -1360,21 +1365,65 @@ def compra_detalle(cid):
 def compra_editar(cid):
     compra = db.get_compra(cid)
     if not compra:
-        flash("❌ Compra inexistente.", "danger")
-        return redirect(url_for("compras"))
+        abort(404)
+
+    factura = db.get_factura_por_compra(cid)
+    factura_tiene_pagos = bool(factura and float(factura["pagado"] or 0) > 0)
+    condicion_pago = "cuenta_corriente" if factura else "contado"
+
     if request.method == "POST":
-        data = request.form.to_dict()
-        producto = db.get_producto(int(data.get("producto_id", 0) or 0))
-        proveedor = db.get_proveedor(int(data.get("proveedor_id", 0) or 0))
-        if producto:
-            data["codigo_interno"], data["descripcion"] = producto["codigo_interno"], producto["descripcion"]
-        if proveedor:
-            data["proveedor_nombre"] = proveedor["nombre"]
-        data["total"] = float(data.get("cantidad", 0) or 0) * float(data.get("costo_unitario", 0) or 0)
-        db.update_compra(cid, data)
-        flash("✅ Compra actualizada.", "success")
+        proveedor_actual_id = int(compra["proveedor_id"] or 0)
+        proveedor_nuevo_id = int(request.form.get("proveedor_id", proveedor_actual_id) or 0)
+        proveedor_nuevo = db.get_proveedor(proveedor_nuevo_id) if proveedor_nuevo_id > 0 else None
+
+        if proveedor_nuevo_id > 0 and not proveedor_nuevo:
+            flash("El proveedor seleccionado no existe.", "warning")
+            return redirect(url_for("main.compra_editar", cid=cid))
+
+        if factura_tiene_pagos and proveedor_nuevo_id != proveedor_actual_id:
+            flash("No se puede cambiar el proveedor porque la factura asociada ya registra pagos.", "warning")
+            proveedor_nuevo_id = proveedor_actual_id
+            proveedor_nuevo = db.get_proveedor(proveedor_actual_id) if proveedor_actual_id > 0 else None
+
+        fecha = str(request.form.get("fecha", compra["fecha"] or "") or "").strip()
+        if not fecha:
+            flash("La fecha de la compra es obligatoria.", "warning")
+            return redirect(url_for("main.compra_editar", cid=cid))
+
+        try:
+            db.actualizar_compra_basica(
+                cid,
+                proveedor_nuevo_id,
+                fecha,
+                request.form.get("observaciones", compra["observaciones"] or ""),
+                condicion_pago=condicion_pago,
+                numero_remito=request.form.get("numero_remito", compra["numero_remito"] or ""),
+                proveedor_nombre=proveedor_nuevo["nombre"] if proveedor_nuevo else "",
+            )
+            if factura:
+                db.actualizar_factura_compra_basica(
+                    int(factura["id"]),
+                    request.form.get("numero_factura", factura["numero_factura"] or f"COMPRA-{cid}"),
+                    request.form.get("fecha_factura", factura["fecha"] or fecha),
+                    request.form.get("fecha_vencimiento", factura["fecha_vencimiento"] or ""),
+                    request.form.get("observaciones_factura", factura["observaciones"] or ""),
+                    proveedor_id=proveedor_nuevo_id or int(factura["proveedor_id"] or 0),
+                )
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return redirect(url_for("main.compra_editar", cid=cid))
+
+        flash("Compra actualizada sin recalcular stock ni modificar el detalle.", "success")
         return redirect(url_for("compra_detalle", cid=cid))
-    return render_template("compra_form.html", compra=compra, proveedores=db.get_proveedores(), productos=db.get_productos(), accion="Editar", draft=None, created_product=False)
+
+    return render_template(
+        "compra_editar.html",
+        compra=compra,
+        factura=factura,
+        proveedores=db.get_proveedores(),
+        condicion_pago=condicion_pago,
+        factura_tiene_pagos=factura_tiene_pagos,
+    )
 
 
 @main_bp.route("/compras/<int:cid>/eliminar", methods=["POST"])
@@ -2779,5 +2828,4 @@ def shutdown():
         return ("", 204)
     current_app.logger.info("Shutdown solicitado, pero no disponible en este servidor.")
     return ("", 202)
-
 

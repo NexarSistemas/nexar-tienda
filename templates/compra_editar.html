@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Compra #{{ compra.id }} - Nexar Tienda{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h3 mb-0"><i class="fas fa-edit text-primary me-2"></i>Editar compra #{{ compra.id }}</h1>
+                <p class="text-muted mb-0">Solo se pueden modificar datos generales. El detalle y el stock quedan bloqueados por seguridad.</p>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('compra_detalle', cid=compra.id) }}" class="btn btn-outline-primary">
+                    <i class="fas fa-eye me-1"></i>Ver detalle
+                </a>
+                <a href="{{ url_for('compras') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>Volver
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Datos editables</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Fecha</label>
+                                <input type="date" class="form-control" name="fecha" value="{{ compra.fecha or '' }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Condición de pago</label>
+                                <input type="text" class="form-control" value="{{ 'Cuenta corriente proveedor' if condicion_pago == 'cuenta_corriente' else 'Contado' }}" disabled>
+                                <div class="form-text">Se mantiene igual para no duplicar ni mover deuda.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Proveedor</label>
+                                <select class="form-select" name="proveedor_id" {% if factura_tiene_pagos %}disabled{% endif %}>
+                                    <option value="0">- Sin proveedor -</option>
+                                    {% for proveedor in proveedores %}
+                                    <option value="{{ proveedor.id }}" {% if compra.proveedor_id == proveedor.id %}selected{% endif %}>{{ proveedor.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% if factura_tiene_pagos %}
+                                <div class="form-text text-warning">Bloqueado porque la factura asociada ya registra pagos.</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Remito / referencia</label>
+                                <input type="text" class="form-control" name="numero_remito" value="{{ compra.numero_remito or '' }}">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Observaciones de compra</label>
+                                <textarea class="form-control" name="observaciones" rows="4">{{ compra.observaciones or '' }}</textarea>
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        {% if factura %}
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h6 class="mb-0">Factura comercial asociada</h6>
+                                <small class="text-muted">Se editan solo metadatos. El importe y los pagos no se tocan.</small>
+                            </div>
+                            <span class="badge bg-warning text-dark">CC proveedor</span>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Número de factura</label>
+                                <input type="text" class="form-control" name="numero_factura" value="{{ factura.numero_factura or ('COMPRA-' ~ compra.id) }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Fecha de factura</label>
+                                <input type="date" class="form-control" name="fecha_factura" value="{{ factura.fecha or compra.fecha or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Fecha de vencimiento</label>
+                                <input type="date" class="form-control" name="fecha_vencimiento" value="{{ factura.fecha_vencimiento or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Estado de pagos</label>
+                                <input type="text" class="form-control" value="Pagado {{ factura.pagado|fmt_ars }} de {{ factura.importe|fmt_ars }}" disabled>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Observaciones de factura</label>
+                                <textarea class="form-control" name="observaciones_factura" rows="3">{{ factura.observaciones or '' }}</textarea>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-light border mb-0">
+                            <strong>Compra contado.</strong> No tiene factura comercial asociada, por lo que editar esta compra no genera deuda nueva.
+                        </div>
+                        {% endif %}
+
+                        <div class="d-flex justify-content-end gap-2 mt-4">
+                            <a href="{{ url_for('compras') }}" class="btn btn-outline-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-1"></i>Guardar cambios
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Detalle bloqueado</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        Producto, cantidad, costo e importe quedan en solo lectura en esta versión para no recalcular stock ni deuda.
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Producto</label>
+                            <input type="text" class="form-control" value="{{ compra.descripcion or '-' }}" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Cantidad</label>
+                            <input type="text" class="form-control" value="{{ compra.cantidad }}" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Costo unitario</label>
+                            <input type="text" class="form-control" value="{{ compra.costo_unitario|fmt_ars }}" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Total</label>
+                            <input type="text" class="form-control" value="{{ compra.total|fmt_ars }}" disabled>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Código interno</label>
+                            <input type="text" class="form-control" value="{{ compra.codigo_interno or '-' }}" disabled>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

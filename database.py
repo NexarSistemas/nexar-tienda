@@ -2783,6 +2783,61 @@ def get_compra(cid):
     )
 
 
+def get_detalle_compra(compra_id):
+    """Alias seguro para obtener el detalle actual de una compra."""
+    return get_compra(compra_id)
+
+
+def actualizar_compra_basica(compra_id, proveedor_id, fecha, observaciones, condicion_pago=None, numero_remito=None, proveedor_nombre=None):
+    """Actualiza solo metadatos seguros de la compra, sin tocar stock ni detalle."""
+    compra = get_compra(compra_id)
+    if not compra:
+        raise ValueError("La compra indicada no existe.")
+
+    proveedor_id = int(proveedor_id or 0)
+    if proveedor_nombre is None:
+        proveedor = get_proveedor(proveedor_id) if proveedor_id > 0 else None
+        proveedor_nombre = proveedor["nombre"] if proveedor else ""
+
+    q(
+        """UPDATE compras
+        SET fecha=?, numero_remito=?, proveedor_id=?, proveedor_nombre=?, observaciones=?
+        WHERE id=?""",
+        (
+            str(fecha or compra["fecha"] or "").strip(),
+            str(compra["numero_remito"] if numero_remito is None else numero_remito or "").strip(),
+            proveedor_id,
+            str(proveedor_nombre or "").strip(),
+            str(observaciones or "").strip(),
+            compra_id,
+        ),
+        commit=True,
+    )
+
+
+def actualizar_factura_compra_basica(factura_id, numero_factura, fecha, fecha_vencimiento, observaciones, proveedor_id=None):
+    """Actualiza metadatos seguros de la factura asociada a una compra, sin tocar importe ni pagos."""
+    factura = get_factura_proveedor(factura_id)
+    if not factura:
+        raise ValueError("La factura indicada no existe.")
+
+    proveedor_final = int(proveedor_id or factura["proveedor_id"] or 0)
+    q(
+        """UPDATE facturas_proveedores
+        SET proveedor_id=?, numero_factura=?, fecha=?, fecha_vencimiento=?, observaciones=?
+        WHERE id=?""",
+        (
+            proveedor_final,
+            str(numero_factura or "").strip(),
+            str(fecha or "").strip(),
+            str(fecha_vencimiento or "").strip(),
+            str(observaciones or "").strip(),
+            factura_id,
+        ),
+        commit=True,
+    )
+
+
 def update_compra(cid, data):
     """Actualiza una compra."""
     compra_actual = get_compra(cid)
