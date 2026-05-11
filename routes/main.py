@@ -252,8 +252,9 @@ def _resolve_requested_checkout_plan(license_info: dict[str, object] | None) -> 
     return ""
 
 
-def _get_license_holder_profile() -> dict[str, str]:
+def _get_license_holder_profile(license_info: dict[str, object] | None = None) -> dict[str, str]:
     cfg = db.get_config()
+    license_info = license_info or {}
     return {
         "nombre": _first_non_empty(cfg.get("license_owner_name", ""), license_info.get("owner_name", "")),
         "email": _first_non_empty(cfg.get("license_owner_email", ""), license_info.get("owner_email", "")).lower(),
@@ -1889,7 +1890,7 @@ def mi_plan():
         supabase_ok=supabase_configured(),
         license_refresh_ok=refresh_ok,
         license_refresh_message=refresh_msg,
-        license_holder=_get_license_holder_profile(),
+        license_holder=_get_license_holder_profile(license_info),
         checkout_enabled=bool(available_checkout_plans),
     )
 
@@ -1909,7 +1910,7 @@ def mi_plan_actualizar_licencia():
         plan = str(response.get("tier", "DEMO"))
         plan_label = "FULL" if plan == "MENSUAL_FULL" else plan
         flash(f"Estado de licencia actualizado. Plan actual: {plan_label}.", "success")
-    elif not plan_solicitado:
+    else:
         flash(
             "No se pudo actualizar online el estado de la licencia. Se mantiene el estado local actual.",
             "warning",
@@ -2175,7 +2176,7 @@ def licencia():
         license_info=license_info,
         demo_status=demo_status,
         plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
-        license_holder=_get_license_holder_profile(),
+        license_holder=_get_license_holder_profile(license_info),
     )
 
 
