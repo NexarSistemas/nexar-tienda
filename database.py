@@ -2368,6 +2368,111 @@ def get_facturas_proveedores_por_vencer(dias=7):
     return resultado
 
 
+def get_total_deuda_proveedores():
+    """Suma la deuda comercial pendiente de todos los proveedores."""
+    rows = q("SELECT importe, pagado FROM facturas_proveedores")
+    return calcular_deuda_proveedor_desde_facturas(rows)
+
+
+def get_cantidad_facturas_proveedores_pendientes():
+    """Cuenta facturas de proveedores con saldo pendiente."""
+    rows = q("SELECT importe, pagado FROM facturas_proveedores")
+    return sum(1 for row in rows if calcular_saldo_factura(row) > 0)
+
+
+def get_cantidad_facturas_proveedores_vencidas():
+    return len(get_facturas_proveedores_vencidas())
+
+
+def get_cantidad_facturas_proveedores_por_vencer(dias=7):
+    return len(get_facturas_proveedores_por_vencer(dias=dias))
+
+
+def get_total_deuda_clientes():
+    """Suma la deuda actual de clientes desde cc_clientes_mov."""
+    row = q(
+        """SELECT COALESCE(SUM(saldo), 0) as total
+        FROM (
+            SELECT COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0) as saldo
+            FROM cc_clientes_mov
+            GROUP BY cliente_id
+            HAVING saldo > 0
+        )""",
+        fetchone=True,
+    )
+    return float(row["total"] or 0) if row else 0.0
+
+
+def get_cantidad_clientes_con_deuda():
+    """Cuenta clientes con saldo deudor."""
+    row = q(
+        """SELECT COUNT(*) as total
+        FROM (
+            SELECT cliente_id
+            FROM cc_clientes_mov
+            GROUP BY cliente_id
+            HAVING COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0) > 0
+        )""",
+        fetchone=True,
+    )
+    return int(row["total"] or 0) if row else 0
+
+
+def get_clientes_con_deuda(limit=5):
+    """Devuelve una lista corta de clientes con deuda ordenados por saldo."""
+    rows = q(
+        """SELECT clientes.id, clientes.nombre, clientes.codigo,
+                  COALESCE(SUM(cc_clientes_mov.debe),0) - COALESCE(SUM(cc_clientes_mov.haber),0) as saldo
+           FROM clientes
+           JOIN cc_clientes_mov ON cc_clientes_mov.cliente_id = clientes.id
+           WHERE clientes.activo = 1
+           GROUP BY clientes.id, clientes.nombre, clientes.codigo
+           HAVING saldo > 0
+           ORDER BY saldo DESC, clientes.nombre ASC
+           LIMIT ?""",
+        (limit,),
+    )
+    return rows or []
+
+
+def get_facturas_proveedores_vencidas_resumen(limit=5):
+    """Lista corta de facturas vencidas con saldo calculado."""
+    rows = get_facturas_proveedores_vencidas()
+    resultado = []
+    for row in rows[:limit]:
+        resultado.append({
+            **dict(row),
+            "saldo": calcular_saldo_factura(row),
+            "estado": calcular_estado_factura(row),
+        })
+    return resultado
+
+
+def get_facturas_proveedores_por_vencer_resumen(dias=7, limit=5):
+    """Lista corta de facturas por vencer con saldo calculado."""
+    rows = get_facturas_proveedores_por_vencer(dias=dias)
+    resultado = []
+    for row in rows[:limit]:
+        resultado.append({
+            **dict(row),
+            "saldo": calcular_saldo_factura(row),
+            "estado": calcular_estado_factura(row),
+        })
+    return resultado
+
+
+def get_resumen_dashboard_financiero(dias_por_vencer=7):
+    """Agrupa KPIs financieros seguros para el dashboard."""
+    return {
+        "deuda_proveedores": get_total_deuda_proveedores(),
+        "facturas_pendientes": get_cantidad_facturas_proveedores_pendientes(),
+        "facturas_vencidas": get_cantidad_facturas_proveedores_vencidas(),
+        "facturas_por_vencer": get_cantidad_facturas_proveedores_por_vencer(dias=dias_por_vencer),
+        "deuda_clientes": get_total_deuda_clientes(),
+        "clientes_con_deuda": get_cantidad_clientes_con_deuda(),
+    }
+
+
 def get_movimientos_proveedor(pid, limit=50):
     """Obtiene movimientos de cuenta corriente del proveedor."""
     return q(

@@ -880,7 +880,15 @@ def recuperar_password():
 @login_required
 def dashboard():
     show_welcome = bool(session.pop("show_welcome", False))
-    return render_template("dashboard.html", stats=db.get_dashboard_stats(), show_welcome=show_welcome)
+    return render_template(
+        "dashboard.html",
+        stats=db.get_dashboard_stats(),
+        show_welcome=show_welcome,
+        resumen_financiero=db.get_resumen_dashboard_financiero(),
+        facturas_vencidas=db.get_facturas_proveedores_vencidas_resumen(limit=5),
+        facturas_por_vencer=db.get_facturas_proveedores_por_vencer_resumen(dias=7, limit=5),
+        clientes_con_deuda=db.get_clientes_con_deuda(limit=5),
+    )
 
 
 @main_bp.route("/productos")
