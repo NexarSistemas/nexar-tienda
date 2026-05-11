@@ -1,16 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Nexar Tienda{% endblock %}
+{% block title %}Dashboard - Nexar Tienda{% endblock %}
 {% block page_title %}<i class="fas fa-tachometer-alt me-2"></i>Dashboard{% endblock %}
 
 {% block content %}
 
     {% if show_welcome %}
-    <!-- ─── BIENVENIDA ─── -->
     <div class="row mb-3">
         <div class="col-12">
             <div class="alert alert-success alert-dismissible fade show" role="alert">
                 <i class="fas fa-check-circle"></i>
-                <strong>¡Bienvenido, {{ session['user']['nombre_completo'] }}!</strong>
+                <strong>Bienvenido, {{ session['user']['nombre_completo'] }}!</strong>
                 {% if stats.temporada != 'Ninguna' %}
                     Actual: {{ stats.temporada }}
                 {% endif %}
@@ -20,7 +19,6 @@
     </div>
     {% endif %}
 <div class="dashboard">
-    <!-- ─── KPIs ─── -->
     <div class="row mb-4">
         <div class="col-md-3">
             <div class="card kpi-card">
@@ -55,7 +53,7 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
-                            <h6 class="card-title text-muted">Stock Crítico</h6>
+                            <h6 class="card-title text-muted">Stock Critico</h6>
                             <h3 class="text-danger">{{ stats.alertas.critico + stats.alertas.sin_stock }}</h3>
                         </div>
                         <i class="fas fa-exclamation-triangle fa-2x text-danger opacity-25"></i>
@@ -79,10 +77,151 @@
         </div>
     </div>
 
-    <!-- ─── ACCIONES RÁPIDAS ─── -->
     <div class="row mb-4">
         <div class="col-12">
-            <h5>Acciones Rápidas</h5>
+            <h5>Alertas Financieras</h5>
+        </div>
+        <div class="col-md-3">
+            <div class="card kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="card-title text-muted">Deuda Proveedores</h6>
+                            <h3 class="text-danger">{{ (resumen_financiero.deuda_proveedores or 0) | fmt_ars }}</h3>
+                        </div>
+                        <i class="fas fa-file-invoice-dollar fa-2x text-danger opacity-25"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="card-title text-muted">Facturas Vencidas</h6>
+                            <h3 class="text-danger">{{ resumen_financiero.facturas_vencidas or 0 }}</h3>
+                        </div>
+                        <i class="fas fa-triangle-exclamation fa-2x text-danger opacity-25"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="card-title text-muted">Facturas por Vencer</h6>
+                            <h3 class="text-warning">{{ resumen_financiero.facturas_por_vencer or 0 }}</h3>
+                        </div>
+                        <i class="fas fa-clock fa-2x text-warning opacity-25"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card kpi-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="card-title text-muted">Deuda Clientes</h6>
+                            <h3 class="text-info">{{ (resumen_financiero.deuda_clientes or 0) | fmt_ars }}</h3>
+                            <small class="text-muted">{{ resumen_financiero.clientes_con_deuda or 0 }} con deuda</small>
+                        </div>
+                        <i class="fas fa-users fa-2x text-info opacity-25"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <h5>Atencion Requerida</h5>
+        </div>
+        <div class="col-lg-4 mb-3">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-triangle-exclamation me-2 text-danger"></i>Facturas Vencidas</h6>
+                </div>
+                <div class="card-body">
+                    {% if facturas_vencidas %}
+                    <div class="list-group list-group-flush">
+                        {% for factura in facturas_vencidas %}
+                        <a href="{{ url_for('proveedor_detalle', pid=factura.proveedor_id) }}" class="list-group-item list-group-item-action px-0">
+                            <div class="d-flex justify-content-between">
+                                <strong>{{ factura.proveedor_nombre }}</strong>
+                                <span class="text-danger">{{ factura.saldo | fmt_ars }}</span>
+                            </div>
+                            <small class="text-muted">{{ factura.numero_factura or ('Factura #' ~ factura.id) }} · Vence {{ factura.fecha_vencimiento or '-' }}</small>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">No hay facturas vencidas.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 mb-3">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-clock me-2 text-warning"></i>Facturas por Vencer</h6>
+                </div>
+                <div class="card-body">
+                    {% if facturas_por_vencer %}
+                    <div class="list-group list-group-flush">
+                        {% for factura in facturas_por_vencer %}
+                        <a href="{{ url_for('proveedor_detalle', pid=factura.proveedor_id) }}" class="list-group-item list-group-item-action px-0">
+                            <div class="d-flex justify-content-between">
+                                <strong>{{ factura.proveedor_nombre }}</strong>
+                                <span class="text-warning">{{ factura.saldo | fmt_ars }}</span>
+                            </div>
+                            <small class="text-muted">{{ factura.numero_factura or ('Factura #' ~ factura.id) }} · Vence {{ factura.fecha_vencimiento or '-' }}</small>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">No hay facturas por vencer.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 mb-3">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-users me-2 text-info"></i>Clientes con Deuda</h6>
+                </div>
+                <div class="card-body">
+                    {% if clientes_con_deuda %}
+                    <div class="list-group list-group-flush">
+                        {% for cliente in clientes_con_deuda %}
+                        <a href="{{ url_for('cliente_detalle', cid=cliente.id) }}" class="list-group-item list-group-item-action px-0">
+                            <div class="d-flex justify-content-between">
+                                <strong>{{ cliente.nombre }}</strong>
+                                <span class="text-info">{{ cliente.saldo | fmt_ars }}</span>
+                            </div>
+                            <small class="text-muted">{{ cliente.codigo or 'Sin código' }}</small>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">No hay clientes con deuda.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <h5>Acciones Rapidas</h5>
             <div class="btn-group-custom">
                 <a href="#" class="btn btn-outline-primary">
                     <i class="fas fa-plus"></i> Nueva Venta
@@ -100,7 +239,6 @@
         </div>
     </div>
 
-    <!-- ─── ÚLTIMAS VENTAS ─── -->
     {% if stats.ultimas_ventas %}
     <div class="row">
         <div class="col-12">
@@ -108,7 +246,7 @@
                 <div class="card-header">
                     <h5 class="mb-0">
                         <i class="fas fa-history"></i>
-                        Últimas Ventas
+                        Ultimas Ventas
                     </h5>
                 </div>
                 <div class="table-responsive">
@@ -143,7 +281,7 @@
         <div class="col-12">
             <div class="alert alert-secondary">
                 <i class="fas fa-info-circle"></i>
-                No hay ventas registradas aún.
+                No hay ventas registradas aun.
             </div>
         </div>
     </div>
