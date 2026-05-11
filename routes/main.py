@@ -1454,7 +1454,15 @@ def proveedor_editar(pid):
 @main_bp.route("/proveedores/<int:pid>")
 @login_required
 def proveedor_detalle(pid):
-    return render_template("proveedor_detalle.html", proveedor=db.get_proveedor(pid), saldo=db.get_saldo_proveedor(pid), movimientos=db.get_movimientos_proveedor(pid), historial_compras=db.get_historial_compras_proveedor(pid), estadisticas=db.get_estadisticas_proveedor(pid))
+    return render_template(
+        "proveedor_detalle.html",
+        proveedor=db.get_proveedor(pid),
+        saldo=db.get_saldo_proveedor(pid),
+        deuda_comercial=db.get_deuda_proveedor_desde_facturas(pid),
+        movimientos=db.get_movimientos_proveedor(pid),
+        historial_compras=db.get_historial_compras_proveedor(pid),
+        estadisticas=db.get_estadisticas_proveedor(pid),
+    )
 
 
 @main_bp.route("/proveedores/<int:pid>/movimiento", methods=["POST"])
