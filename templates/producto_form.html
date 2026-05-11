@@ -100,12 +100,13 @@
                             <div class="col-md-6 mb-3">
                                 <label for="unidad" class="form-label">Unidad</label>
                                 <select class="form-select" id="unidad" name="unidad">
-                                    <option value="Unidad" {% if producto and producto['unidad'] == 'Unidad' %}selected{% endif %}>Unidad</option>
-                                    <option value="Kg" {% if producto and producto['unidad'] == 'Kg' %}selected{% endif %}>Kg</option>
-                                    <option value="Metro" {% if producto and producto['unidad'] == 'Metro' %}selected{% endif %}>Metro</option>
-                                    <option value="Litro" {% if producto and producto['unidad'] == 'Litro' %}selected{% endif %}>Litro</option>
-                                    <option value="Pack" {% if producto and producto['unidad'] == 'Pack' %}selected{% endif %}>Pack</option>
+                                    {% for unidad in unidades_disponibles %}
+                                    <option value="{{ unidad }}" {% if unidad_actual == unidad %}selected{% endif %}>
+                                        {{ unidad|capitalize if unidad not in ['kg', 'ml'] else unidad|upper }}
+                                    </option>
+                                    {% endfor %}
                                 </select>
+                                <small class="form-text text-muted">Rubro actual: {{ rubro_actual|capitalize }}. La venta fraccionada todavia no esta habilitada.</small>
                             </div>
                         </div>
 
