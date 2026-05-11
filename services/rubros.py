@@ -11,7 +11,7 @@ RUBROS_DISPONIBLES = (
 )
 
 UNIDADES_TIENDA = ("unidad", "paquete")
-UNIDADES_ALMACEN = ("unidad", "paquete", "kg", "gramo", "litro", "ml", "docena")
+UNIDADES_ALMACEN = ("unidad", "paquete", "kg", "litro", "docena")
 
 UNIDADES_POR_RUBRO = {
     "tienda": UNIDADES_TIENDA,

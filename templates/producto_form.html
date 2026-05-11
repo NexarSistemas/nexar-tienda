@@ -216,15 +216,16 @@
                                 <input 
                                     type="checkbox" 
                                     class="form-check-input" 
-                                    id="por_peso" 
-                                    name="por_peso"
+                                    id="permite_fraccionado" 
+                                    name="permite_fraccionado"
                                     value="1"
-                                    {% if producto and producto['por_peso'] %}checked{% endif %}
+                                    {% if producto and (producto['permite_fraccionado'] or producto['por_peso']) %}checked{% endif %}
                                 >
-                                <label class="form-check-label" for="por_peso">
-                                    Este producto se vende por peso
+                                <label class="form-check-label" for="permite_fraccionado">
+                                    Este producto permite cantidades decimales
                                 </label>
                             </div>
+                            <small class="form-text text-muted">Solo usalo para productos vendidos en fracciones, por ejemplo kg, litro o ml.</small>
                         </div>
 
                         <!-- ─── STOCK INICIAL (Solo en creación) ─── -->

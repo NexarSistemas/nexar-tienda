@@ -1787,12 +1787,47 @@ def get_producto_by_codigo(codigo):
     return r
 
 
+def producto_permite_fraccionado(producto) -> bool:
+    """Fraccionado por override explicito, unidad fraccionable o productos legacy."""
+    if not producto:
+        return False
+    try:
+        tipo_unidad = str(producto["tipo_unidad"] or producto["unidad"] or "").strip().lower()
+        return bool(
+            int(producto["permite_fraccionado"] or 0)
+            or tipo_unidad in {"kg", "litro", "docena"}
+            or int(producto["por_peso"] or 0)
+        )
+    except Exception:
+        return False
+
+
+def validar_cantidad_producto(producto, cantidad, *, campo="cantidad") -> float:
+    """Restringe decimales a productos fraccionados y exige cantidad positiva."""
+    try:
+        cantidad_num = float(cantidad or 0)
+    except (TypeError, ValueError):
+        raise ValueError(f"La {campo} es invalida.")
+    if cantidad_num <= 0:
+        raise ValueError(f"La {campo} debe ser mayor a 0.")
+    if not producto_permite_fraccionado(producto):
+        if not cantidad_num.is_integer():
+            raise ValueError(f"El producto {producto['descripcion']} solo permite cantidades enteras.")
+        return float(int(cantidad_num))
+    return round(cantidad_num, 3)
+
+
 def add_producto(data):
     """Agrega un nuevo producto."""
     codigo = next_codigo()
     rubro_actual = get_rubro_actual(get_config())
     tipo_unidad = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
     unidad = get_unidad_label(tipo_unidad)
+    permite_fraccionado = int(data.get('permite_fraccionado', 0) or 0)
+    es_fraccionable = producto_permite_fraccionado({"tipo_unidad": tipo_unidad, "permite_fraccionado": permite_fraccionado, "por_peso": data.get("por_peso", 0)})
+    stock_actual = float(data.get('stock_actual', 0) or 0)
+    if not es_fraccionable and not stock_actual.is_integer():
+        raise ValueError("El stock inicial solo puede tener decimales para productos fraccionados.")
     conn = get_conn()
     c = conn.cursor()
     c.execute(
@@ -1800,14 +1835,14 @@ def add_producto(data):
         (codigo_interno,codigo_barras,descripcion,marca,categoria,unidad,tipo_unidad,permite_fraccionado,rubro,por_peso,costo,precio_venta,iva,activo)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)""",
         (codigo, data.get('codigo_barras', ''), data['descripcion'], data.get('marca', ''),
-         data.get('categoria', ''), unidad, tipo_unidad, int(data.get('permite_fraccionado', 0)),
-         data.get('rubro') or rubro_actual, int(data.get('por_peso', 0)),
+         data.get('categoria', ''), unidad, tipo_unidad, permite_fraccionado,
+         data.get('rubro') or rubro_actual, 1 if es_fraccionable else int(data.get('por_peso', 0)),
          float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'))
     )
     pid = c.lastrowid
     c.execute(
         "INSERT INTO stock (producto_id,stock_actual,stock_minimo,stock_maximo) VALUES (?,?,?,?)",
-        (pid, float(data.get('stock_actual', 0)), float(data.get('stock_minimo', 5)), float(data.get('stock_maximo', 50)))
+        (pid, stock_actual, float(data.get('stock_minimo', 5)), float(data.get('stock_maximo', 50)))
     )
     conn.commit()
     conn.close()
@@ -1819,12 +1854,14 @@ def update_producto(pid, data):
     rubro_actual = get_rubro_actual(get_config())
     tipo_unidad = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
     unidad = get_unidad_label(tipo_unidad)
+    permite_fraccionado = int(data.get('permite_fraccionado', 0) or 0)
+    es_fraccionable = producto_permite_fraccionado({"tipo_unidad": tipo_unidad, "permite_fraccionado": permite_fraccionado, "por_peso": data.get("por_peso", 0)})
     q(
         """UPDATE productos SET codigo_barras=?,descripcion=?,marca=?,categoria=?,unidad=?,tipo_unidad=?,
         permite_fraccionado=?,rubro=?,por_peso=?,costo=?,precio_venta=?,iva=?,activo=? WHERE id=?""",
         (data.get('codigo_barras', ''), data['descripcion'], data.get('marca', ''),
-         data.get('categoria', ''), unidad, tipo_unidad, int(data.get('permite_fraccionado', 0)),
-         data.get('rubro') or rubro_actual, int(data.get('por_peso', 0)),
+         data.get('categoria', ''), unidad, tipo_unidad, permite_fraccionado,
+         data.get('rubro') or rubro_actual, 1 if es_fraccionable else int(data.get('por_peso', 0)),
          float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'),
          int(data.get('activo', 1)), pid),
         fetchall=False, commit=True
@@ -3191,7 +3228,7 @@ def get_dashboard_stats():
 def buscar_productos_pos(search):
     """Busca productos para POS por nombre/código/categoría."""
     sql = """SELECT p.id, p.codigo_interno, p.codigo_barras, p.descripcion, p.categoria, p.unidad,
-                    p.por_peso, p.precio_venta, s.stock_actual
+                    p.tipo_unidad, p.permite_fraccionado, p.por_peso, p.precio_venta, s.stock_actual
              FROM productos p
              JOIN stock s ON s.producto_id = p.id
              WHERE p.activo=1"""
