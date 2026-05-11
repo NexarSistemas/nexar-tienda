@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Facturas de {{ proveedor.nombre }}{% endblock %}
+{% block page_title %}<i class="fas fa-file-invoice-dollar me-2"></i>Facturas de Proveedor{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('proveedor_detalle', pid=proveedor.id) }}" class="btn btn-sm btn-outline-secondary me-2">
+    <i class="fas fa-arrow-left me-1"></i>Volver al detalle
+</a>
+<a href="{{ url_for('proveedor_factura_nueva', pid=proveedor.id) }}" class="btn btn-sm btn-primary">
+    <i class="fas fa-plus me-1"></i>Nueva factura
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-danger h-100">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block">Deuda total</small>
+                    <h3 class="mb-0 text-danger">{{ deuda_comercial | fmt_ars }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-primary h-100">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block">Total facturado</small>
+                    <h3 class="mb-0">{{ resumen_facturas.total_facturado | fmt_ars }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-success h-100">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block">Total pagado</small>
+                    <h3 class="mb-0 text-success">{{ resumen_facturas.total_pagado | fmt_ars }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-secondary h-100">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block">Facturas pendientes</small>
+                    <h3 class="mb-0">{{ resumen_facturas.facturas_pendientes }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-danger h-100">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block">Facturas vencidas</small>
+                    <h4 class="mb-0">{{ resumen_facturas.facturas_vencidas }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-warning h-100">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block">Por vencer</small>
+                    <h4 class="mb-0">{{ resumen_facturas.facturas_por_vencer }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-success h-100">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block">Pagadas</small>
+                    <h4 class="mb-0 text-success">{{ resumen_facturas.facturas_pagadas }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-info h-100">
+                <div class="card-body text-center">
+                    <small class="text-muted d-block">Total de facturas</small>
+                    <h4 class="mb-0">{{ resumen_facturas.total_facturas }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-list me-2"></i>Facturas comerciales de {{ proveedor.nombre }}</h5>
+            <a href="{{ url_for('proveedor_factura_nueva', pid=proveedor.id) }}" class="btn btn-sm btn-primary">
+                <i class="fas fa-plus me-1"></i>Nueva factura
+            </a>
+        </div>
+        <div class="card-body">
+            {% if facturas %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Numero</th>
+                            <th>Fecha</th>
+                            <th>Vencimiento</th>
+                            <th class="text-end">Importe</th>
+                            <th class="text-end">Pagado</th>
+                            <th class="text-end">Saldo</th>
+                            <th>Estado</th>
+                            <th class="text-end">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for factura in facturas %}
+                        <tr>
+                            <td>{{ factura.numero_factura or ('Factura #' ~ factura.id) }}</td>
+                            <td>{{ factura.fecha or '-' }}</td>
+                            <td>{{ factura.fecha_vencimiento or '-' }}</td>
+                            <td class="text-end">{{ factura.importe | fmt_ars }}</td>
+                            <td class="text-end">{{ factura.pagado | fmt_ars }}</td>
+                            <td class="text-end fw-bold {% if factura.saldo > 0 %}text-danger{% else %}text-success{% endif %}">{{ factura.saldo | fmt_ars }}</td>
+                            <td>
+                                <span class="badge {% if factura.estado == 'VENCIDA' %}bg-danger{% elif factura.estado == 'POR VENCER' %}bg-warning text-dark{% elif factura.estado == 'PAGADA' %}bg-success{% else %}bg-secondary{% endif %}">
+                                    {{ factura.estado }}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <div class="d-flex flex-column gap-2">
+                                    <div class="btn-group justify-content-end" role="group">
+                                        <a href="{{ url_for('proveedor_factura_editar', pid=proveedor.id, factura_id=factura.id) }}" class="btn btn-sm btn-outline-warning">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <form method="POST" action="{{ url_for('proveedor_factura_eliminar', pid=proveedor.id, factura_id=factura.id) }}" onsubmit="return confirm('Eliminar factura {{ factura.numero_factura or factura.id }}?')">
+                                            <input type="hidden" name="next" value="{{ url_for('proveedor_facturas', pid=proveedor.id) }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" {% if factura.pagado > 0 %}disabled title="No se puede eliminar una factura con pagos"{% endif %}>
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                    {% if factura.saldo > 0 %}
+                                    <form method="POST" action="{{ url_for('proveedor_factura_pagar', pid=proveedor.id, factura_id=factura.id) }}" class="d-flex gap-2 justify-content-end">
+                                        <input type="hidden" name="next" value="{{ url_for('proveedor_facturas', pid=proveedor.id) }}">
+                                        <input type="number" name="monto" min="0.01" step="0.01" max="{{ '%.2f'|format(factura.saldo) }}" class="form-control form-control-sm" style="max-width: 130px;" placeholder="Pago">
+                                        <button type="submit" class="btn btn-sm btn-outline-success">Pagar</button>
+                                    </form>
+                                    {% else %}
+                                    <small class="text-success text-end">Pago total registrado</small>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-file-invoice-dollar fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">No hay facturas cargadas</h5>
+                <p class="text-muted">Todavia no registraste deuda comercial para este proveedor.</p>
+                <a href="{{ url_for('proveedor_factura_nueva', pid=proveedor.id) }}" class="btn btn-primary">
+                    <i class="fas fa-plus me-1"></i>Crear primera factura
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

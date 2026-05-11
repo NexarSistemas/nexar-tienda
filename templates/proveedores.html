@@ -72,7 +72,7 @@
             <div class="card border-info">
                 <div class="card-body text-center">
                     <i class="fas fa-balance-scale fa-2x text-info mb-2"></i>
-                    <h4 class="mb-0">0</h4>
+                    <h4 class="mb-0">{{ proveedores_con_deuda }}</h4>
                     <small class="text-muted">Con Deuda</small>
                 </div>
             </div>
@@ -126,6 +126,7 @@
                                     <td class="text-center">
                                         <div class="btn-group" role="group">
                                             <a href="{{ url_for('proveedor_detalle', pid=proveedor.id) }}" class="btn btn-sm btn-outline-primary" title="Ver detalle"><i class="fas fa-eye"></i></a>
+                                            <a href="{{ url_for('proveedor_facturas', pid=proveedor.id) }}" class="btn btn-sm btn-outline-info" title="Ver facturas"><i class="fas fa-file-invoice-dollar"></i></a>
                                             <a href="{{ url_for('proveedor_editar', pid=proveedor.id) }}" class="btn btn-sm btn-outline-warning" title="Editar"><i class="fas fa-edit"></i></a>
                                             {% if proveedor.activo %}
                                             <form method="POST" action="{{ url_for('proveedor_eliminar', pid=proveedor.id) }}" class="d-inline" onsubmit="return confirm('¿Desactivar proveedor {{ proveedor.nombre }}?')">

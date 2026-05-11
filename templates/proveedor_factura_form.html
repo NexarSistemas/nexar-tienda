@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}{{ accion }} - {{ proveedor.nombre }}{% endblock %}
+{% block page_title %}<i class="fas fa-file-invoice-dollar me-2"></i>{{ accion }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('proveedor_facturas', pid=proveedor.id) }}" class="btn btn-sm btn-outline-secondary">
+    <i class="fas fa-arrow-left me-1"></i>Volver a facturas
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-xl-7 col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">{{ accion }} para {{ proveedor.nombre }}</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" class="row g-3">
+                        <div class="col-md-6">
+                            <label for="numero_factura" class="form-label">Numero de factura</label>
+                            <input type="text" class="form-control" id="numero_factura" name="numero_factura" value="{{ factura.numero_factura if factura else '' }}" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="fecha" class="form-label">Fecha</label>
+                            <input type="date" class="form-control" id="fecha" name="fecha" value="{{ factura.fecha if factura else '' }}" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="fecha_vencimiento" class="form-label">Fecha vencimiento</label>
+                            <input type="date" class="form-control" id="fecha_vencimiento" name="fecha_vencimiento" value="{{ factura.fecha_vencimiento if factura else '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="importe" class="form-label">Importe</label>
+                            <input type="number" class="form-control" id="importe" name="importe" min="0.01" step="0.01" value="{{ factura.importe if factura else '' }}" required>
+                        </div>
+                        {% if factura %}
+                        <div class="col-md-4">
+                            <label class="form-label">Pagado</label>
+                            <input type="text" class="form-control" value="{{ factura.pagado | fmt_ars }}" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Saldo pendiente</label>
+                            <input type="text" class="form-control" value="{{ (factura.importe - factura.pagado) | fmt_ars }}" disabled>
+                        </div>
+                        {% endif %}
+                        <div class="col-12">
+                            <label for="observaciones" class="form-label">Observaciones</label>
+                            <textarea class="form-control" id="observaciones" name="observaciones" rows="4">{{ factura.observaciones if factura else '' }}</textarea>
+                        </div>
+                        <div class="col-12 d-flex justify-content-end gap-2">
+                            <a href="{{ url_for('proveedor_facturas', pid=proveedor.id) }}" class="btn btn-outline-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-primary">{{ accion }}</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

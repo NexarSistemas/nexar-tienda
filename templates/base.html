@@ -62,7 +62,7 @@
             <a class="nav-link {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle'] %}active{% endif %}" href="{{ url_for('clientes') }}">
                 <i class="fas fa-users"></i> Clientes
             </a>
-            <a class="nav-link {% if request.endpoint in ['proveedores', 'proveedor_nuevo', 'proveedor_editar', 'proveedor_detalle'] %}active{% endif %}" href="{{ url_for('proveedores') }}">
+            <a class="nav-link {% if request.endpoint in ['proveedores', 'proveedor_nuevo', 'proveedor_editar', 'proveedor_detalle', 'proveedor_facturas', 'proveedor_factura_nueva', 'proveedor_factura_editar'] %}active{% endif %}" href="{{ url_for('proveedores') }}">
                 <i class="fas fa-industry"></i> Proveedores
             </a>
 

@@ -20,6 +20,7 @@ import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from licensing.planes import PLANES, get_plan_activo, get_plan_display_name, normalize_plan
 from licensing.permisos import get_modulos_activos, get_modulos_debug_info, require_modulo
+from services.cuentas_corrientes import calcular_estado_factura, calcular_saldo_factura
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.mercadopago_checkout import (
     MercadoPagoCheckoutError,
@@ -167,6 +168,30 @@ def _first_non_empty(*values) -> str:
         if str(value or "").strip():
             return str(value).strip()
     return ""
+
+
+def _enriquecer_facturas_proveedor(facturas) -> list[dict]:
+    resultado = []
+    for factura in facturas:
+        item = dict(factura)
+        item["saldo"] = calcular_saldo_factura(factura)
+        item["estado"] = calcular_estado_factura(factura)
+        resultado.append(item)
+    return resultado
+
+
+def _get_proveedor_or_404(pid):
+    proveedor = db.get_proveedor(pid)
+    if not proveedor:
+        abort(404)
+    return proveedor
+
+
+def _get_factura_proveedor_or_404(pid, factura_id):
+    factura = db.get_factura_proveedor(factura_id)
+    if not factura or int(factura["proveedor_id"] or 0) != int(pid):
+        abort(404)
+    return factura
 
 
 def _mask_license_key(value: str) -> str:
@@ -1421,7 +1446,17 @@ def cliente_eliminar(cid):
 @login_required
 def proveedores():
     buscar = request.args.get("q", "")
-    return render_template("proveedores.html", proveedores=db.get_proveedores(activo_only=False, search=buscar), buscar=buscar)
+    proveedores_list = db.get_proveedores(activo_only=False, search=buscar)
+    proveedores_con_deuda = sum(
+        1 for proveedor in proveedores_list
+        if db.get_deuda_proveedor_desde_facturas(proveedor["id"]) > 0
+    )
+    return render_template(
+        "proveedores.html",
+        proveedores=proveedores_list,
+        buscar=buscar,
+        proveedores_con_deuda=proveedores_con_deuda,
+    )
 
 
 @main_bp.route("/proveedores/nuevo", methods=["GET", "POST"])
@@ -1454,15 +1489,120 @@ def proveedor_editar(pid):
 @main_bp.route("/proveedores/<int:pid>")
 @login_required
 def proveedor_detalle(pid):
+    proveedor = _get_proveedor_or_404(pid)
+    saldo_auxiliar = db.get_saldo_proveedor(pid)
+    movimientos_auxiliares = db.get_movimientos_proveedor(pid)
+    resumen_facturas = db.get_resumen_facturas_proveedor(pid)
+    facturas = _enriquecer_facturas_proveedor(db.get_facturas_proveedor(pid))
     return render_template(
         "proveedor_detalle.html",
-        proveedor=db.get_proveedor(pid),
-        saldo=db.get_saldo_proveedor(pid),
-        deuda_comercial=db.get_deuda_proveedor_desde_facturas(pid),
-        movimientos=db.get_movimientos_proveedor(pid),
+        proveedor=proveedor,
+        saldo_auxiliar=saldo_auxiliar,
+        deuda_comercial=resumen_facturas["deuda_total"],
+        resumen_facturas=resumen_facturas,
+        facturas=facturas[:5],
+        movimientos_auxiliares=movimientos_auxiliares,
         historial_compras=db.get_historial_compras_proveedor(pid),
         estadisticas=db.get_estadisticas_proveedor(pid),
     )
+
+
+@main_bp.route("/proveedores/<int:pid>/facturas")
+@login_required
+def proveedor_facturas(pid):
+    proveedor = _get_proveedor_or_404(pid)
+    facturas = _enriquecer_facturas_proveedor(db.get_facturas_proveedor(pid))
+    resumen_facturas = db.get_resumen_facturas_proveedor(pid)
+    return render_template(
+        "proveedor_facturas.html",
+        proveedor=proveedor,
+        deuda_comercial=resumen_facturas["deuda_total"],
+        resumen_facturas=resumen_facturas,
+        facturas=facturas,
+    )
+
+
+@main_bp.route("/proveedores/<int:pid>/facturas/nueva", methods=["GET", "POST"])
+@login_required
+def proveedor_factura_nueva(pid):
+    proveedor = _get_proveedor_or_404(pid)
+    if request.method == "POST":
+        try:
+            db.crear_factura_proveedor(
+                pid,
+                request.form.get("numero_factura", ""),
+                request.form.get("fecha", ""),
+                request.form.get("fecha_vencimiento", ""),
+                request.form.get("importe", 0),
+                request.form.get("observaciones", ""),
+            )
+            flash("Factura creada correctamente.", "success")
+            return redirect(url_for("proveedor_facturas", pid=pid))
+        except ValueError as exc:
+            flash(str(exc), "warning")
+    return render_template(
+        "proveedor_factura_form.html",
+        proveedor=proveedor,
+        factura=None,
+        accion="Nueva factura",
+    )
+
+
+@main_bp.route("/proveedores/<int:pid>/facturas/<int:factura_id>/editar", methods=["GET", "POST"])
+@login_required
+def proveedor_factura_editar(pid, factura_id):
+    proveedor = _get_proveedor_or_404(pid)
+    factura = _get_factura_proveedor_or_404(pid, factura_id)
+    if request.method == "POST":
+        try:
+            db.actualizar_factura_proveedor(
+                factura_id,
+                request.form.get("numero_factura", ""),
+                request.form.get("fecha", ""),
+                request.form.get("fecha_vencimiento", ""),
+                request.form.get("importe", 0),
+                request.form.get("observaciones", ""),
+            )
+            flash("Factura actualizada correctamente.", "success")
+            return redirect(url_for("proveedor_facturas", pid=pid))
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            factura = db.get_factura_proveedor(factura_id)
+    return render_template(
+        "proveedor_factura_form.html",
+        proveedor=proveedor,
+        factura=factura,
+        accion="Editar factura",
+    )
+
+
+@main_bp.route("/proveedores/<int:pid>/facturas/<int:factura_id>/pagar", methods=["POST"])
+@login_required
+def proveedor_factura_pagar(pid, factura_id):
+    _get_proveedor_or_404(pid)
+    _get_factura_proveedor_or_404(pid, factura_id)
+    try:
+        db.registrar_pago_factura_proveedor(
+            factura_id,
+            request.form.get("monto", 0),
+        )
+        flash("Pago registrado correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    return redirect(request.form.get("next") or url_for("proveedor_facturas", pid=pid))
+
+
+@main_bp.route("/proveedores/<int:pid>/facturas/<int:factura_id>/eliminar", methods=["POST"])
+@login_required
+def proveedor_factura_eliminar(pid, factura_id):
+    _get_proveedor_or_404(pid)
+    _get_factura_proveedor_or_404(pid, factura_id)
+    try:
+        db.eliminar_factura_proveedor(factura_id)
+        flash("Factura eliminada correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    return redirect(request.form.get("next") or url_for("proveedor_facturas", pid=pid))
 
 
 @main_bp.route("/proveedores/<int:pid>/movimiento", methods=["POST"])

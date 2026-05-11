@@ -13,12 +13,16 @@
                         {{ proveedor.nombre }}
                     </h1>
                     <p class="text-muted mb-0">
-                        Código: <span class="badge bg-secondary">{{ proveedor.codigo }}</span>
+                        Codigo: <span class="badge bg-secondary">{{ proveedor.codigo }}</span>
                         {% if proveedor.cuit %} • CUIT: {{ proveedor.cuit }}{% endif %}
                     </p>
                 </div>
-                <div>
-                    <a href="{{ url_for('proveedor_editar', pid=proveedor.id) }}" class="btn btn-outline-warning me-2">
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('proveedor_facturas', pid=proveedor.id) }}" class="btn btn-primary">
+                        <i class="fas fa-file-invoice-dollar me-1"></i>
+                        Ver facturas
+                    </a>
+                    <a href="{{ url_for('proveedor_editar', pid=proveedor.id) }}" class="btn btn-outline-warning">
                         <i class="fas fa-edit me-1"></i>
                         Editar
                     </a>
@@ -35,18 +39,68 @@
         <div class="col-md-8">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-address-card me-2"></i>Información del Proveedor</h5>
+                    <h5 class="mb-0"><i class="fas fa-address-card me-2"></i>Informacion del Proveedor</h5>
                 </div>
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-6"><strong>Nombre:</strong><br>{{ proveedor.nombre }}</div>
-                        <div class="col-md-6"><strong>Código:</strong><br><span class="badge bg-secondary">{{ proveedor.codigo }}</span></div>
+                        <div class="col-md-6"><strong>Codigo:</strong><br><span class="badge bg-secondary">{{ proveedor.codigo }}</span></div>
                         {% if proveedor.cuit %}<div class="col-md-6"><strong>CUIT:</strong><br>{{ proveedor.cuit }}</div>{% endif %}
-                        {% if proveedor.telefono %}<div class="col-md-6"><strong>Teléfono:</strong><br><a href="tel:{{ proveedor.telefono }}" class="text-decoration-none">{{ proveedor.telefono }}</a></div>{% endif %}
+                        {% if proveedor.telefono %}<div class="col-md-6"><strong>Telefono:</strong><br><a href="tel:{{ proveedor.telefono }}" class="text-decoration-none">{{ proveedor.telefono }}</a></div>{% endif %}
                         {% if proveedor.email %}<div class="col-md-6"><strong>Email:</strong><br><a href="mailto:{{ proveedor.email }}" class="text-decoration-none">{{ proveedor.email }}</a></div>{% endif %}
-                        <div class="col-md-6"><strong>Días de Crédito:</strong><br>{{ proveedor.dias_credito }}</div>
+                        <div class="col-md-6"><strong>Dias de Credito:</strong><br>{{ proveedor.dias_credito }}</div>
                         <div class="col-md-6"><strong>Estado:</strong><br>{% if proveedor.activo %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-secondary">Inactivo</span>{% endif %}</div>
                     </div>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-file-invoice-dollar me-2"></i>Ultimas Facturas</h5>
+                    <a href="{{ url_for('proveedor_facturas', pid=proveedor.id) }}" class="btn btn-sm btn-outline-primary">
+                        Ir al listado completo
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if facturas %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Numero</th>
+                                    <th>Fecha</th>
+                                    <th>Vencimiento</th>
+                                    <th class="text-end">Importe</th>
+                                    <th class="text-end">Pagado</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for factura in facturas %}
+                                <tr>
+                                    <td>{{ factura.numero_factura or ('Factura #' ~ factura.id) }}</td>
+                                    <td>{{ factura.fecha or '-' }}</td>
+                                    <td>{{ factura.fecha_vencimiento or '-' }}</td>
+                                    <td class="text-end">{{ factura.importe | fmt_ars }}</td>
+                                    <td class="text-end">{{ factura.pagado | fmt_ars }}</td>
+                                    <td class="text-end fw-bold {% if factura.saldo > 0 %}text-danger{% else %}text-success{% endif %}">{{ factura.saldo | fmt_ars }}</td>
+                                    <td>
+                                        <span class="badge {% if factura.estado == 'VENCIDA' %}bg-danger{% elif factura.estado == 'POR VENCER' %}bg-warning text-dark{% elif factura.estado == 'PAGADA' %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {{ factura.estado }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-file-invoice-dollar fa-2x text-muted mb-2"></i>
+                        <p class="text-muted mb-0">No hay facturas comerciales registradas para este proveedor.</p>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -55,29 +109,49 @@
             <div class="card {% if deuda_comercial > 0 %}border-danger{% else %}border-info{% endif %}">
                 <div class="card-header"><h5 class="mb-0"><i class="fas fa-file-invoice-dollar me-2"></i>Deuda Comercial</h5></div>
                 <div class="card-body text-center">
-                    <div class="display-4 mb-2 {% if deuda_comercial > 0 %}text-danger{% else %}text-info{% endif %}">$ {{ "%.2f"|format(deuda_comercial) }}</div>
+                    <div class="display-4 mb-2 {% if deuda_comercial > 0 %}text-danger{% else %}text-info{% endif %}">{{ deuda_comercial | fmt_ars }}</div>
                     <p class="mb-0">{% if deuda_comercial > 0 %}<span class="text-danger">Calculada desde facturas_proveedores</span>{% else %}<span class="text-info">Sin deuda comercial registrada</span>{% endif %}</p>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <div class="row text-center g-2">
+                        <div class="col-6">
+                            <small class="text-muted d-block">Pendientes</small>
+                            <strong>{{ resumen_facturas.facturas_pendientes }}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Vencidas</small>
+                            <strong class="{% if resumen_facturas.facturas_vencidas > 0 %}text-danger{% endif %}">{{ resumen_facturas.facturas_vencidas }}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Por vencer</small>
+                            <strong>{{ resumen_facturas.facturas_por_vencer }}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Pagadas</small>
+                            <strong class="text-success">{{ resumen_facturas.facturas_pagadas }}</strong>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="card mt-3 {% if saldo > 0 %}border-warning{% elif saldo < 0 %}border-success{% else %}border-secondary{% endif %}">
-                <div class="card-header"><h5 class="mb-0"><i class="fas fa-balance-scale me-2"></i>Movimientos Auxiliares</h5></div>
+            <div class="card mt-3 {% if saldo_auxiliar > 0 %}border-warning{% elif saldo_auxiliar < 0 %}border-success{% else %}border-secondary{% endif %}">
+                <div class="card-header"><h5 class="mb-0"><i class="fas fa-balance-scale me-2"></i>Saldo Auxiliar</h5></div>
                 <div class="card-body text-center">
-                    <div class="display-6 mb-2 {% if saldo > 0 %}text-warning{% elif saldo < 0 %}text-success{% else %}text-secondary{% endif %}">$ {{ "%.2f"|format(saldo) }}</div>
+                    <div class="display-6 mb-2 {% if saldo_auxiliar > 0 %}text-warning{% elif saldo_auxiliar < 0 %}text-success{% else %}text-secondary{% endif %}">{{ saldo_auxiliar | fmt_ars }}</div>
                     <p class="mb-0"><span class="text-muted">Saldo legado basado en cc_proveedores_mov</span></p>
                 </div>
             </div>
 
             <div class="card mt-3">
-                <div class="card-header"><h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Estadísticas</h6></div>
+                <div class="card-header"><h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Estadisticas</h6></div>
                 <div class="card-body">
                     <div class="row text-center">
                         <div class="col-6"><div class="h4 mb-0 text-primary">{{ estadisticas.total_compras }}</div><small class="text-muted">Compras</small></div>
-                        <div class="col-6"><div class="h4 mb-0 text-success">$ {{ "%.2f"|format(estadisticas.monto_total) }}</div><small class="text-muted">Total</small></div>
+                        <div class="col-6"><div class="h4 mb-0 text-success">{{ estadisticas.monto_total | fmt_ars }}</div><small class="text-muted">Total</small></div>
                     </div>
                     {% if estadisticas.ultima_compra %}
                     <hr>
-                    <small class="text-muted">Última compra: {{ estadisticas.ultima_compra.fecha }}<br>Monto: ${{ "%.2f"|format(estadisticas.ultima_compra.total) }}</small>
+                    <small class="text-muted">Ultima compra: {{ estadisticas.ultima_compra.fecha }}<br>Monto: {{ estadisticas.ultima_compra.total | fmt_ars }}</small>
                     {% endif %}
                 </div>
             </div>
@@ -88,27 +162,27 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Movimientos de Cuenta Corriente</h5>
+                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Movimientos Auxiliares</h5>
                     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoMovimiento"><i class="fas fa-plus me-1"></i>Nuevo Movimiento</button>
                 </div>
                 <div class="card-body">
-                    {% if movimientos %}
+                    {% if movimientos_auxiliares %}
                     <div class="table-responsive">
                         <table class="table table-hover">
                             <thead class="table-light">
-                                <tr><th>Fecha</th><th>Tipo</th><th>Número</th><th class="text-end">Debe</th><th class="text-end">Haber</th><th class="text-end">Saldo</th><th>Observaciones</th></tr>
+                                <tr><th>Fecha</th><th>Tipo</th><th>Numero</th><th class="text-end">Debe</th><th class="text-end">Haber</th><th class="text-end">Saldo</th><th>Observaciones</th></tr>
                             </thead>
                             <tbody>
                                 {% set saldo_acumulado = 0 %}
-                                {% for movimiento in movimientos %}
+                                {% for movimiento in movimientos_auxiliares %}
                                 {% set saldo_acumulado = saldo_acumulado + movimiento.debe - movimiento.haber %}
                                 <tr>
                                     <td>{{ movimiento.fecha }}</td>
                                     <td><span class="badge bg-{{ 'danger' if movimiento.tipo == 'Compra' else 'success' if movimiento.tipo == 'Pago' else 'info' }}">{{ movimiento.tipo }}</span></td>
                                     <td>{{ movimiento.numero_comprobante or '-' }}</td>
-                                    <td class="text-end">{% if movimiento.debe > 0 %}<span class="text-danger fw-bold">$ {{ "%.2f"|format(movimiento.debe) }}</span>{% endif %}</td>
-                                    <td class="text-end">{% if movimiento.haber > 0 %}<span class="text-success fw-bold">$ {{ "%.2f"|format(movimiento.haber) }}</span>{% endif %}</td>
-                                    <td class="text-end fw-bold {{ 'text-danger' if saldo_acumulado > 0 else 'text-success' if saldo_acumulado < 0 else 'text-muted' }}">$ {{ "%.2f"|format(saldo_acumulado) }}</td>
+                                    <td class="text-end">{% if movimiento.debe > 0 %}<span class="text-danger fw-bold">{{ movimiento.debe | fmt_ars }}</span>{% endif %}</td>
+                                    <td class="text-end">{% if movimiento.haber > 0 %}<span class="text-success fw-bold">{{ movimiento.haber | fmt_ars }}</span>{% endif %}</td>
+                                    <td class="text-end fw-bold {{ 'text-danger' if saldo_acumulado > 0 else 'text-success' if saldo_acumulado < 0 else 'text-muted' }}">{{ saldo_acumulado | fmt_ars }}</td>
                                     <td>{{ movimiento.observaciones or '-' }}</td>
                                 </tr>
                                 {% endfor %}
@@ -116,7 +190,7 @@
                         </table>
                     </div>
                     {% else %}
-                    <div class="text-center py-4"><i class="fas fa-history fa-2x text-muted mb-2"></i><p class="text-muted mb-0">No hay movimientos registrados</p></div>
+                    <div class="text-center py-4"><i class="fas fa-history fa-2x text-muted mb-2"></i><p class="text-muted mb-0">No hay movimientos auxiliares registrados</p></div>
                     {% endif %}
                 </div>
             </div>
@@ -141,8 +215,8 @@
                                     <td>{{ compra.numero_remito or '-' }}</td>
                                     <td>{{ compra.descripcion }}</td>
                                     <td class="text-center">{{ compra.cantidad }}</td>
-                                    <td class="text-end">$ {{ "%.2f"|format(compra.costo_unitario) }}</td>
-                                    <td class="text-end fw-bold">$ {{ "%.2f"|format(compra.total) }}</td>
+                                    <td class="text-end">{{ compra.costo_unitario | fmt_ars }}</td>
+                                    <td class="text-end fw-bold">{{ compra.total | fmt_ars }}</td>
                                     <td>{{ compra.observaciones or '-' }}</td>
                                 </tr>
                                 {% endfor %}
@@ -162,7 +236,7 @@
             <div class="modal-content">
                 <form method="POST" action="{{ url_for('proveedor_agregar_movimiento', pid=proveedor.id) }}">
                     <div class="modal-header">
-                        <h5 class="modal-title" id="modalNuevoMovimientoLabel">Agregar movimiento</h5>
+                        <h5 class="modal-title" id="modalNuevoMovimientoLabel">Agregar movimiento auxiliar</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                     </div>
                     <div class="modal-body">
@@ -172,7 +246,7 @@
                                 <option value="Pago">Pago</option>
                                 <option value="Ajuste">Ajuste</option>
                             </select></div>
-                        <div class="mb-3"><label for="numero_comprobante" class="form-label">Número comprobante</label><input type="text" class="form-control" name="numero_comprobante" id="numero_comprobante"></div>
+                        <div class="mb-3"><label for="numero_comprobante" class="form-label">Numero comprobante</label><input type="text" class="form-control" name="numero_comprobante" id="numero_comprobante"></div>
                         <div class="row g-2">
                             <div class="col-6"><label for="debe" class="form-label">Debe</label><input type="number" step="0.01" min="0" class="form-control" name="debe" id="debe" value="0"></div>
                             <div class="col-6"><label for="haber" class="form-label">Haber</label><input type="number" step="0.01" min="0" class="form-control" name="haber" id="haber" value="0"></div>
