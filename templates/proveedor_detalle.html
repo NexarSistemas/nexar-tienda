@@ -52,11 +52,19 @@
         </div>
 
         <div class="col-md-4">
-            <div class="card {% if saldo > 0 %}border-danger{% elif saldo < 0 %}border-success{% else %}border-info{% endif %}">
-                <div class="card-header"><h5 class="mb-0"><i class="fas fa-balance-scale me-2"></i>Saldo Cuenta Corriente</h5></div>
+            <div class="card {% if deuda_comercial > 0 %}border-danger{% else %}border-info{% endif %}">
+                <div class="card-header"><h5 class="mb-0"><i class="fas fa-file-invoice-dollar me-2"></i>Deuda Comercial</h5></div>
                 <div class="card-body text-center">
-                    <div class="display-4 mb-2 {% if saldo > 0 %}text-danger{% elif saldo < 0 %}text-success{% else %}text-info{% endif %}">$ {{ "%.2f"|format(saldo) }}</div>
-                    <p class="mb-0">{% if saldo > 0 %}<span class="text-danger">Proveedor debe dinero</span>{% elif saldo < 0 %}<span class="text-success">A favor del proveedor</span>{% else %}<span class="text-info">Saldo al día</span>{% endif %}</p>
+                    <div class="display-4 mb-2 {% if deuda_comercial > 0 %}text-danger{% else %}text-info{% endif %}">$ {{ "%.2f"|format(deuda_comercial) }}</div>
+                    <p class="mb-0">{% if deuda_comercial > 0 %}<span class="text-danger">Calculada desde facturas_proveedores</span>{% else %}<span class="text-info">Sin deuda comercial registrada</span>{% endif %}</p>
+                </div>
+            </div>
+
+            <div class="card mt-3 {% if saldo > 0 %}border-warning{% elif saldo < 0 %}border-success{% else %}border-secondary{% endif %}">
+                <div class="card-header"><h5 class="mb-0"><i class="fas fa-balance-scale me-2"></i>Movimientos Auxiliares</h5></div>
+                <div class="card-body text-center">
+                    <div class="display-6 mb-2 {% if saldo > 0 %}text-warning{% elif saldo < 0 %}text-success{% else %}text-secondary{% endif %}">$ {{ "%.2f"|format(saldo) }}</div>
+                    <p class="mb-0"><span class="text-muted">Saldo legado basado en cc_proveedores_mov</span></p>
                 </div>
             </div>
 

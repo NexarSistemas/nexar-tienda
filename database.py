@@ -18,6 +18,10 @@ from datetime import datetime, date, timedelta
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from licensing.planes import PLANES as TIER_MODULES_MAP, normalize_plan
+from services.cuentas_corrientes import (
+    calcular_deuda_proveedor_desde_facturas,
+    calcular_saldo_cliente_desde_movimientos,
+)
 
 # ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
 # Define limites de productos, clientes y proveedores por tipo de licencia
@@ -1954,11 +1958,11 @@ def update_cliente(cid, data):
 
 def get_saldo_cliente(cid):
     """Calcula saldo de cuenta corriente del cliente."""
-    r = q(
-        "SELECT COALESCE(SUM(debe),0)-COALESCE(SUM(haber),0) as saldo FROM cc_clientes_mov WHERE cliente_id=?",
-        (cid,), fetchone=True
+    movimientos = q(
+        "SELECT debe, haber FROM cc_clientes_mov WHERE cliente_id=?",
+        (cid,),
     )
-    return r['saldo'] if r else 0
+    return calcular_saldo_cliente_desde_movimientos(movimientos)
 
 
 def get_movimientos_cliente(cid, limit=50):
@@ -2097,12 +2101,28 @@ def update_proveedor(pid, data):
 
 
 def get_saldo_proveedor(pid):
-    """Calcula saldo de cuenta corriente del proveedor."""
+    """Saldo legado/auxiliar del proveedor basado en cc_proveedores_mov."""
     r = q(
         "SELECT COALESCE(SUM(debe),0)-COALESCE(SUM(haber),0) as saldo FROM cc_proveedores_mov WHERE proveedor_id=?",
         (pid,), fetchone=True
     )
     return r['saldo'] if r else 0
+
+
+def get_facturas_proveedor(proveedor_id):
+    """Obtiene facturas del proveedor para deuda comercial desde facturas_proveedores."""
+    return q(
+        """SELECT * FROM facturas_proveedores
+        WHERE proveedor_id=?
+        ORDER BY COALESCE(fecha_vencimiento, ''), COALESCE(fecha, ''), id DESC""",
+        (proveedor_id,),
+    )
+
+
+def get_deuda_proveedor_desde_facturas(proveedor_id):
+    """Calcula deuda comercial del proveedor desde facturas_proveedores."""
+    facturas = get_facturas_proveedor(proveedor_id)
+    return calcular_deuda_proveedor_desde_facturas(facturas)
 
 
 def get_movimientos_proveedor(pid, limit=50):
