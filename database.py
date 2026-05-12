@@ -24,7 +24,13 @@ from services.cuentas_corrientes import (
     calcular_saldo_factura,
     calcular_saldo_cliente_desde_movimientos,
 )
-from services.rubros import get_rubro_actual, get_unidad_label, normalizar_unidad
+from services.rubros import (
+    get_rubro_actual,
+    get_unidad_label,
+    get_rubros_disponibles,
+    normalizar_rubro,
+    normalizar_unidad,
+)
 
 # ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
 # Define limites de productos, clientes y proveedores por tipo de licencia
@@ -160,6 +166,8 @@ DEFAULT_GASTO_CATEGORIAS = [
 ]
 
 GASTO_CLASIFICACIONES = ("Operativo", "Impuesto", "Financiero", "Otro")
+RUBRO_CONFIG_KEY = "rubro_negocio"
+RUBRO_CONFIRMADO_CONFIG_KEY = "rubro_negocio_confirmado"
 
 # ─── RUTA DE LA BASE DE DATOS ────────────────────────────────────────────────
 
@@ -637,7 +645,8 @@ def init_db():
         ('backup_keep', '10'),
         ('backup_dir', ''),
         ('backup_ultimo', ''),
-        ('rubro_negocio', 'tienda'),
+        (RUBRO_CONFIG_KEY, ''),
+        (RUBRO_CONFIRMADO_CONFIG_KEY, '0'),
         ('gastos_categorias', json.dumps(DEFAULT_GASTO_CATEGORIAS, ensure_ascii=False)),
         # ─── SISTEMA DE LICENCIAS RSA ─────────────────────────────────────────
         ('demo_mode', '1'),                 # 1=demo, 0=licencia activa
@@ -854,6 +863,24 @@ def get_config():
     return {r['clave']: r['valor'] for r in rows}
 
 
+def get_config_valor(clave: str, default=None):
+    """Devuelve una configuración puntual con fallback."""
+    row = q("SELECT valor FROM config WHERE clave=?", (clave,), fetchone=True)
+    if not row:
+        return default
+    valor = row["valor"]
+    return valor if valor not in (None, "") else default
+
+
+def set_config_valor(clave: str, valor):
+    """Persiste una configuración puntual."""
+    q(
+        "INSERT OR REPLACE INTO config VALUES (?,?)",
+        (clave, "" if valor is None else str(valor)),
+        commit=True,
+    )
+
+
 def set_config(data: dict):
     """Actualiza multiples valores de configuracion."""
     conn = get_conn()
@@ -862,6 +889,52 @@ def set_config(data: dict):
         c.execute("INSERT OR REPLACE INTO config VALUES (?,?)", (k, v))
     conn.commit()
     conn.close()
+
+
+def get_rubro_configurado():
+    """Devuelve el rubro confirmado por el usuario o None si hoy solo aplica fallback."""
+    cfg = get_config()
+    if not _as_bool(cfg.get(RUBRO_CONFIRMADO_CONFIG_KEY)):
+        return None
+    rubro = str(cfg.get(RUBRO_CONFIG_KEY, "") or "").strip().lower()
+    return rubro if rubro in set(get_rubros_disponibles()) else None
+
+
+def set_rubro_configurado(rubro: str):
+    """Guarda el rubro operativo confirmado por el usuario."""
+    rubro_raw = str(rubro or "").strip().lower()
+    if rubro_raw not in set(get_rubros_disponibles()):
+        raise ValueError("Rubro invalido.")
+    set_config(
+        {
+            RUBRO_CONFIG_KEY: normalizar_rubro(rubro_raw),
+            RUBRO_CONFIRMADO_CONFIG_KEY: "1",
+        }
+    )
+
+
+def tiene_datos_operativos():
+    """Indica si la instalacion ya tiene datos que vuelven riesgoso forzar el asistente."""
+    counts = q(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM productos WHERE activo=1) AS productos,
+            (SELECT COUNT(*) FROM ventas) AS ventas,
+            (SELECT COUNT(*) FROM compras) AS compras
+        """,
+        fetchone=True,
+    )
+    return bool((counts["productos"] or 0) + (counts["ventas"] or 0) + (counts["compras"] or 0))
+
+
+def necesita_configuracion_inicial_rubro():
+    """Solo fuerza el asistente cuando el rubro no fue confirmado y la instalacion sigue vacia."""
+    return get_rubro_configurado() is None and not tiene_datos_operativos()
+
+
+def debe_mostrar_aviso_rubro_pendiente():
+    """En instalaciones existentes muestra aviso en vez de bloquear la app."""
+    return get_rubro_configurado() is None and tiene_datos_operativos()
 
 
 # ─── LICENCIAS RSA ───────────────────────────────────────────────────────────

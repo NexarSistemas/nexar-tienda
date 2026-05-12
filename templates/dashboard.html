@@ -18,6 +18,19 @@
         </div>
     </div>
     {% endif %}
+    {% if mostrar_aviso_rubro_pendiente %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-3" role="alert">
+                <div>
+                    <strong>Rubro pendiente de confirmación.</strong>
+                    Hoy la app está usando <strong>{{ rubro_actual|capitalize }}</strong> por fallback. Confirmalo para dejarlo persistido en SQLite.
+                </div>
+                <a href="{{ url_for('configuracion_rubro_inicial') }}" class="btn btn-sm btn-outline-dark">Configurar rubro</a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 <div class="dashboard">
     <div class="row mb-4">
         <div class="col-md-3">

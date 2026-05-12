@@ -19,6 +19,7 @@ from routes.main import ensure_license_auto_refresh_thread, main_bp
 from licensing.permisos import modulo_activo
 from services.license_storage import cargar_licencia
 from services.license_sdk import validate_saved_license
+from services.rubros import get_rubro_actual
 from services.update_checker import get_cached_update_info
 
 
@@ -53,8 +54,7 @@ def create_app() -> Flask:
     @app.context_processor
     def inject_global_vars() -> dict[str, Any]:
         def get_config_valor(key: str, default: Any = None) -> Any:
-            config = db.get_config()
-            return config.get(key, default)
+            return db.get_config_valor(key, default)
 
         def get_licencia_status() -> dict[str, Any]:
             info = db.get_license_info()
@@ -75,6 +75,8 @@ def create_app() -> Flask:
             }
 
         lic_status = get_licencia_status() if "user" in session else None
+        config = db.get_config()
+        rubro_actual = get_rubro_actual(config)
 
         return {
             "get_config_valor": get_config_valor,
@@ -82,6 +84,7 @@ def create_app() -> Flask:
             "get_license_info": db.get_license_info,
             "get_plan_display_name": get_plan_display_name,
             "app_version": app_version,
+            "rubro_actual_app": rubro_actual,
             "modulo_activo": modulo_activo,
             "update_info": (
                 get_cached_update_info(app, app_version)
@@ -162,10 +165,26 @@ def create_app() -> Flask:
             if user and (not user["security_question"] or not user["security_answer_hash"]):
                 return redirect("/configurar-recuperacion")
 
+        rubro_allowed_paths = (
+            "/configuracion/rubro-inicial",
+            "/logout",
+            "/static",
+            "/licencia",
+            "/mi-plan",
+            "/apagar-rapido",
+            "/shutdown",
+            "/ayuda",
+            "/acerca",
+            "/changelog",
+        )
+        if not request.path.startswith(rubro_allowed_paths) and db.necesita_configuracion_inicial_rubro():
+            return redirect("/configuracion/rubro-inicial")
+
         # Permitir rutas libres de chequeo de licencia.
         license_allowed_paths = (
             "/activar",
             "/licencia",
+            "/configuracion/rubro-inicial",
             "/logout",
             "/apagar",
             "/apagar-rapido",
@@ -279,6 +298,7 @@ def create_app() -> Flask:
         "rentabilidad_detallada",
         "perfil",
         "config",
+        "configuracion_rubro_inicial",
         "mi_plan",
         "config_categoria",
         "config_categoria_eliminar",

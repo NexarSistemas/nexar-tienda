@@ -18,6 +18,7 @@
         <div class="sidebar-brand">
             <h5><i class="fas fa-store me-2" style="color:var(--accent)"></i>{{ get_config_valor('nombre_negocio', 'Nexar Tienda') }}</h5>
             <small>Nexar Tienda v{{ app_version }}</small>
+            <div class="small text-muted mt-1">Rubro: {{ rubro_actual_app|capitalize }}</div>
         </div>
 
         <div class="sidebar-nav">

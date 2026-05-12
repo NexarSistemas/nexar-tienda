@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Configuración inicial del negocio{% endblock %}
+{% block page_title %}<i class="fas fa-store-alt me-2"></i>Configuración inicial del negocio{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-xl-9 col-lg-10">
+            <form method="POST">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body p-4 p-lg-5">
+                        <div class="text-center mb-4">
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle mb-3">Paso inicial</span>
+                            <h3 class="mb-2">Configuración inicial del negocio</h3>
+                            <p class="text-muted mb-0">
+                                Elegí el rubro principal para adaptar unidades y comportamiento general de la app.
+                            </p>
+                        </div>
+
+                        {% if rubro_guardado %}
+                        <div class="alert alert-warning">
+                            <strong>Cambiar el rubro puede afectar unidades, productos, stock y reportes.</strong>
+                            Usá este cambio solo si realmente necesitás redefinir la operación del negocio.
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info">
+                            Luego no conviene cambiarlo libremente. Si hoy estás entrando por fallback, confirmalo ahora para dejarlo guardado.
+                        </div>
+                        {% endif %}
+
+                        <div class="row g-3 mb-4">
+                            {% for item in rubros %}
+                            <div class="col-md-6 col-xl-4">
+                                <label class="card h-100 shadow-sm border-2 {% if selected_rubro == item.value %}border-primary{% else %}border-light{% endif %}">
+                                    <div class="card-body">
+                                        <div class="form-check">
+                                            <input
+                                                class="form-check-input"
+                                                type="radio"
+                                                name="rubro"
+                                                id="rubro_{{ item.value }}"
+                                                value="{{ item.value }}"
+                                                {% if selected_rubro == item.value %}checked{% endif %}
+                                            >
+                                            <span class="form-check-label fw-semibold ms-1">{{ item.label }}</span>
+                                        </div>
+                                        <div class="small text-muted mt-3">
+                                            Unidades: {{ item.unidades|join(', ') }}
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        {% if permitir_cambio %}
+                        <div class="form-check mb-4">
+                            <input class="form-check-input" type="checkbox" value="1" id="confirmar_cambio" name="confirmar_cambio">
+                            <label class="form-check-label" for="confirmar_cambio">
+                                Entiendo que cambiar el rubro puede afectar unidades, productos, stock y reportes.
+                            </label>
+                        </div>
+                        {% endif %}
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                            <div class="text-muted small">
+                                Rubro activo hoy: <strong>{{ rubro_actual|capitalize }}</strong>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-lg px-4">
+                                <i class="fas fa-save me-2"></i>Guardar rubro
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
