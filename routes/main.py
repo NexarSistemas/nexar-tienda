@@ -556,6 +556,19 @@ def formatear_precio_ticket(valor) -> str:
     return f"$ {entero},{dec}"
 
 
+def _enriquecer_items_reporte(items):
+    enriquecidos = []
+    for item in items:
+        row = dict(item)
+        cantidad = float(row.get("unidades") or row.get("total_vendido") or 0)
+        unidad = row.get("unidad") or "unidad"
+        row["cantidad_formateada"] = formatear_cantidad_ticket(cantidad)
+        row["unidad_formateada"] = formatear_unidad_ticket(unidad, cantidad)
+        row["cantidad_unidad_texto"] = f"{row['cantidad_formateada']} {row['unidad_formateada']}"
+        enriquecidos.append(row)
+    return enriquecidos
+
+
 def _validate_sale_delete_authorization(form) -> tuple[bool, str]:
     if not _as_bool(form.get("confirmo_responsabilidad")):
         return False, "Debés confirmar la advertencia de responsabilidad antes de borrar la venta."
@@ -1958,14 +1971,42 @@ def proveedor_eliminar(pid):
 @login_required
 def reportes():
     require_modulo("reportes")
-    rent = db.get_stats_rentabilidad()
-    pagos = [{"medio_pago": r["medio_pago"], "monto": r["total"]} for r in db.get_ventas_por_medio_pago(date.today().year, date.today().month)]
-    ventas_7 = db.q("SELECT fecha as dia, ROUND(SUM(total),2) as monto FROM ventas WHERE fecha >= date('now','-6 days') GROUP BY fecha ORDER BY fecha")
+    rubro_actual = get_rubro_actual(db.get_config())
+    rent = db.get_stats_rentabilidad(rubro=rubro_actual)
+    pagos = [{"medio_pago": r["medio_pago"], "monto": r["total"]} for r in db.get_ventas_por_medio_pago(date.today().year, date.today().month, rubro=rubro_actual)]
+    rubro_cond, rubro_params = db._build_rubro_compatible_filter_sql("p", rubro_actual)
+    ventas_7 = db.q(
+        f"""
+        SELECT v.fecha as dia, ROUND(SUM(v.total),2) as monto
+        FROM ventas v
+        WHERE v.fecha >= date('now','-6 days')
+          AND EXISTS (
+              SELECT 1
+              FROM ventas_detalle vd
+              LEFT JOIN productos p ON p.id = vd.producto_id
+              WHERE vd.venta_id = v.id AND {rubro_cond}
+          )
+        GROUP BY v.fecha ORDER BY v.fecha
+        """,
+        tuple(rubro_params),
+    )
     gastos_nec = sum(float(r["monto"] or 0) for r in db.get_gastos() if "prescindible" not in str(r["necesario"]).lower())
     gastos_pre = sum(float(r["monto"] or 0) for r in db.get_gastos() if "prescindible" in str(r["necesario"]).lower())
     total_g = gastos_nec + gastos_pre
     pct = round((gastos_pre / total_g) * 100, 1) if total_g else 0
-    return render_template("reportes.html", rentabilidad=rent, top_productos=db.get_top_productos_vendidos(5), pagos=pagos, ventas_7_dias=ventas_7, gastos_necesarios=gastos_nec, gastos_prescindibles=gastos_pre, pct_prescindibles=pct, recomendacion_gastos="Revisar gastos prescindibles." if pct > 20 else "Gastos prescindibles controlados.")
+    return render_template(
+        "reportes.html",
+        rentabilidad=rent,
+        top_productos=_enriquecer_items_reporte(db.get_top_productos_vendidos(5, rubro=rubro_actual)),
+        pagos=pagos,
+        ventas_7_dias=ventas_7,
+        gastos_necesarios=gastos_nec,
+        gastos_prescindibles=gastos_pre,
+        pct_prescindibles=pct,
+        recomendacion_gastos="Revisar gastos prescindibles." if pct > 20 else "Gastos prescindibles controlados.",
+        rubro_actual=rubro_actual,
+        categorias_rubro=get_categorias_disponibles(rubro_actual),
+    )
 
 
 @main_bp.route("/estadisticas")
@@ -1973,12 +2014,13 @@ def reportes():
 def estadisticas():
     require_modulo("reportes")
     year = int(request.args.get("year", date.today().year))
-    ventas_mes = db.get_ventas_por_mes(year)
+    rubro_actual = get_rubro_actual(db.get_config())
+    ventas_mes = db.get_ventas_por_mes(year, rubro=rubro_actual)
     meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
-    semanas = db.get_ventas_por_semana(8)
-    medios = db.get_ventas_por_medio_pago(year, date.today().month)
-    cats = db.get_ventas_por_categoria()
-    return render_template("estadisticas.html", year=year, meses_labels=json.dumps(meses), ventas_vals=json.dumps([ventas_mes.get(m, {}).get("total", 0) for m in range(1, 13)]), tickets_vals=json.dumps([ventas_mes.get(m, {}).get("tickets", 0) for m in range(1, 13)]), semanas=semanas, semanas_labels=json.dumps([s["label"] for s in semanas]), semanas_vals=json.dumps([s["total"] for s in semanas]), medios=medios, medios_labels=json.dumps([m["medio_pago"] for m in medios]), medios_vals=json.dumps([m["total"] for m in medios]), temporadas=db.get_ventas_por_temporada(), cats=cats, cats_labels=json.dumps([c["categoria"] for c in cats[:8]]), cats_vals=json.dumps([c["total"] for c in cats[:8]]))
+    semanas = db.get_ventas_por_semana(8, rubro=rubro_actual)
+    medios = db.get_ventas_por_medio_pago(year, date.today().month, rubro=rubro_actual)
+    cats = db.get_ventas_por_categoria(rubro=rubro_actual)
+    return render_template("estadisticas.html", year=year, meses_labels=json.dumps(meses), ventas_vals=json.dumps([ventas_mes.get(m, {}).get("total", 0) for m in range(1, 13)]), tickets_vals=json.dumps([ventas_mes.get(m, {}).get("tickets", 0) for m in range(1, 13)]), semanas=semanas, semanas_labels=json.dumps([s["label"] for s in semanas]), semanas_vals=json.dumps([s["total"] for s in semanas]), medios=medios, medios_labels=json.dumps([m["medio_pago"] for m in medios]), medios_vals=json.dumps([m["total"] for m in medios]), temporadas=db.get_ventas_por_temporada(rubro=rubro_actual), cats=cats, cats_labels=json.dumps([c["categoria"] for c in cats[:8]]), cats_vals=json.dumps([c["total"] for c in cats[:8]]), rubro_actual=rubro_actual, categorias_rubro=get_categorias_disponibles(rubro_actual))
 
 
 @main_bp.route("/analisis")
@@ -1987,20 +2029,22 @@ def analisis():
     require_modulo("ia")
     desde = request.args.get("desde", (date.today() - timedelta(days=30)).isoformat())
     hasta = request.args.get("hasta", date.today().isoformat())
-    top = db.get_top_productos_analisis(15, desde, hasta)
+    rubro_actual = get_rubro_actual(db.get_config())
+    top = _enriquecer_items_reporte(db.get_top_productos_analisis(15, desde, hasta, rubro=rubro_actual))
     return render_template(
         "analisis.html",
         top=top,
-        bottom=db.get_bottom_productos(10),
-        temporadas=db.get_ventas_por_temporada(),
-        rent=db.get_stats_rentabilidad(),
-        rent_hist=db.get_rentabilidad_historica(),
+        bottom=_enriquecer_items_reporte(db.get_bottom_productos(10, rubro=rubro_actual)),
+        temporadas=db.get_ventas_por_temporada(rubro=rubro_actual),
+        rent=db.get_stats_rentabilidad(rubro=rubro_actual),
+        rent_hist=db.get_rentabilidad_historica(rubro=rubro_actual),
         gastos_cat=db.q("SELECT categoria, ROUND(SUM(monto),2) as total, necesario FROM gastos GROUP BY categoria ORDER BY total DESC"),
         fecha_desde=desde,
         fecha_hasta=hasta,
-        resumen_bruto=db.get_resumen_rentabilidad_periodo(desde, hasta),
+        resumen_bruto=db.get_resumen_rentabilidad_periodo(desde, hasta, rubro=rubro_actual),
         top_labels=json.dumps([t["descripcion"][:20] for t in top]),
         top_vals=json.dumps([t["total_pesos"] for t in top]),
+        rubro_actual=rubro_actual,
     )
 
 
@@ -2008,6 +2052,7 @@ def analisis():
 @admin_required
 def rentabilidad_detallada():
     require_modulo("reportes")
+    rubro_actual = get_rubro_actual(db.get_config())
     hoy = date.today()
     semana_desde = hoy - timedelta(days=hoy.weekday())
     mes_desde = date(hoy.year, hoy.month, 1)
@@ -2033,15 +2078,17 @@ def rentabilidad_detallada():
         fecha_hasta=hasta,
         tab=tab,
         periodo=periodo,
-        resumen_simple=db.get_resumen_rentabilidad_simple(desde, hasta),
+        resumen_simple=db.get_resumen_rentabilidad_simple(desde, hasta, rubro=rubro_actual),
         gastos_categoria=db.get_gastos_por_categoria_periodo(desde, hasta),
-        evolucion_simple=db.get_evolucion_rentabilidad_simple(granularidad, desde, hasta),
-        articulos=db.get_rentabilidad_detallada_articulos(desde, hasta),
-        diario=db.get_rentabilidad_detallada_periodos("diario", desde, hasta),
-        mensual=db.get_rentabilidad_detallada_periodos("mensual", desde, hasta),
-        anual=db.get_rentabilidad_detallada_periodos("anual", desde, hasta),
-        gastos_mensual=db.get_composicion_gastos_rentabilidad("mensual", desde, hasta),
-        gastos_semanal=db.get_composicion_gastos_rentabilidad("semanal", desde, hasta),
+        evolucion_simple=db.get_evolucion_rentabilidad_simple(granularidad, desde, hasta, rubro=rubro_actual),
+        articulos=_enriquecer_items_reporte(db.get_rentabilidad_detallada_articulos(desde, hasta, rubro=rubro_actual)),
+        diario=db.get_rentabilidad_detallada_periodos("diario", desde, hasta, rubro=rubro_actual),
+        mensual=db.get_rentabilidad_detallada_periodos("mensual", desde, hasta, rubro=rubro_actual),
+        anual=db.get_rentabilidad_detallada_periodos("anual", desde, hasta, rubro=rubro_actual),
+        gastos_mensual=db.get_composicion_gastos_rentabilidad("mensual", desde, hasta, rubro=rubro_actual),
+        gastos_semanal=db.get_composicion_gastos_rentabilidad("semanal", desde, hasta, rubro=rubro_actual),
+        rubro_actual=rubro_actual,
+        categorias_rubro=get_categorias_disponibles(rubro_actual),
     )
 
 

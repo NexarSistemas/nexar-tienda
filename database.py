@@ -1542,6 +1542,15 @@ def _build_rubro_compatible_filter(rubro_actual: str | None):
     return "(COALESCE(TRIM(rubro), '') = '' OR LOWER(rubro) = ?)", [rubro]
 
 
+def _build_rubro_compatible_filter_sql(alias: str = "p", rubro_actual: str | None = None):
+    rubro = normalizar_rubro(rubro_actual or get_rubro_actual(get_config()))
+    return f"(COALESCE(TRIM({alias}.rubro), '') = '' OR LOWER({alias}.rubro) = ?)", [rubro]
+
+
+def _append_condition(base: str, condition: str) -> str:
+    return f"{base} AND {condition}" if base else f"WHERE {condition}"
+
+
 def add_categoria(nombre):
     """Agrega una nueva categoría."""
     q("INSERT OR IGNORE INTO categorias (nombre) VALUES (?)", (nombre,), fetchall=False, commit=True)
@@ -3434,22 +3443,37 @@ def get_venta_ticket(vid):
 
 # ─── REPORTES Y ESTADÍSTICAS (PASO 12) ───────────────────────────────────────
 
-def get_stats_rentabilidad(mes_actual=None):
+def get_stats_rentabilidad(mes_actual=None, rubro=None):
     """Calcula ganancia bruta y operativa simple del mes."""
     if not mes_actual:
         mes_actual = datetime.now().strftime('%Y-%m')
 
     # Total ventas.
-    ventas = q("SELECT COALESCE(SUM(total), 0) as total FROM ventas WHERE fecha LIKE ?", (f"{mes_actual}%",), fetchone=True)['total']
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
+    ventas = q(
+        f"""
+        SELECT COALESCE(SUM(v.total), 0) as total
+        FROM ventas v
+        WHERE v.fecha LIKE ?
+          AND EXISTS (
+              SELECT 1
+              FROM ventas_detalle vd
+              LEFT JOIN productos p ON p.id = vd.producto_id
+              WHERE vd.venta_id = v.id AND {rubro_cond}
+          )
+        """,
+        (f"{mes_actual}%", *rubro_params),
+        fetchone=True,
+    )['total']
 
     # Costo de lo vendido: usa el costo guardado al vender y cae al costo actual en ventas viejas.
-    costo_ventas = q("""
+    costo_ventas = q(f"""
         SELECT COALESCE(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 0) as total_costo
         FROM ventas_detalle vd
         JOIN ventas v ON v.id = vd.venta_id
         LEFT JOIN productos p ON p.id = vd.producto_id
-        WHERE v.fecha LIKE ?
-    """, (f"{mes_actual}%",), fetchone=True)['total_costo']
+        WHERE v.fecha LIKE ? AND {rubro_cond}
+    """, (f"{mes_actual}%", *rubro_params), fetchone=True)['total_costo']
 
     gastos_rows = q(
         """SELECT COALESCE(clasificacion, 'Operativo') as clasificacion,
@@ -3487,81 +3511,125 @@ def get_stats_rentabilidad(mes_actual=None):
         'utilidad_neta': ganancia_neta_estimada
     }
 
-def get_top_productos_vendidos(limit=5):
+def get_top_productos_vendidos(limit=5, rubro=None):
     """Obtiene los productos más vendidos por cantidad."""
-    return q("""
-        SELECT descripcion, SUM(cantidad) as total_vendido, SUM(subtotal) as recaudado
-        FROM ventas_detalle
-        GROUP BY producto_id
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
+    return q(f"""
+        SELECT COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre') as descripcion,
+               COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
+               COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad') as unidad,
+               SUM(vd.cantidad) as total_vendido,
+               SUM(vd.subtotal) as recaudado
+        FROM ventas_detalle vd
+        LEFT JOIN productos p ON p.id = vd.producto_id
+        WHERE {rubro_cond}
+        GROUP BY
+            vd.producto_id,
+            COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre'),
+            COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria'),
+            COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad')
         ORDER BY total_vendido DESC
         LIMIT ?
-    """, (limit,))
+    """, (*rubro_params, limit))
 
-def get_ventas_por_mes(year):
+def get_ventas_por_mes(year, rubro=None):
     """Retorna total de ventas y cantidad de tickets por mes para un año dado."""
-    rows = q("""
-        SELECT strftime('%m', fecha) as mes,
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
+    rows = q(f"""
+        SELECT strftime('%m', v.fecha) as mes,
                COUNT(*) as tickets,
-               ROUND(SUM(total), 2) as total
-        FROM ventas
-        WHERE strftime('%Y', fecha) = ?
+               ROUND(SUM(v.total), 2) as total
+        FROM ventas v
+        WHERE strftime('%Y', v.fecha) = ?
+          AND EXISTS (
+              SELECT 1
+              FROM ventas_detalle vd
+              LEFT JOIN productos p ON p.id = vd.producto_id
+              WHERE vd.venta_id = v.id AND {rubro_cond}
+          )
         GROUP BY mes
-    """, (str(year),))
+    """, (str(year), *rubro_params))
     return {int(r['mes']): dict(r) for r in rows}
 
-def get_ventas_por_semana(semanas=8):
+def get_ventas_por_semana(semanas=8, rubro=None):
     """Retorna ventas agrupadas por semana para las últimas N semanas."""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     rows = q(f"""
-        SELECT strftime('%W/%Y', fecha) as label,
-               ROUND(SUM(total), 2) as total,
+        SELECT strftime('%W/%Y', v.fecha) as label,
+               ROUND(SUM(v.total), 2) as total,
                COUNT(*) as tickets
-        FROM ventas
-        WHERE fecha >= date('now', '-{semanas * 7} days')
+        FROM ventas v
+        WHERE v.fecha >= date('now', '-{semanas * 7} days')
+          AND EXISTS (
+              SELECT 1
+              FROM ventas_detalle vd
+              LEFT JOIN productos p ON p.id = vd.producto_id
+              WHERE vd.venta_id = v.id AND {rubro_cond}
+          )
         GROUP BY label ORDER BY label
-    """)
+    """, tuple(rubro_params))
     return [dict(r) for r in rows]
 
-def get_ventas_por_medio_pago(year, mes):
+def get_ventas_por_medio_pago(year, mes, rubro=None):
     """Retorna ventas agrupadas por medio de pago para un año y mes."""
-    return q("""
-        SELECT medio_pago,
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
+    return q(f"""
+        SELECT v.medio_pago,
                COUNT(*) as cant,
-               ROUND(SUM(total), 2) as total
-        FROM ventas
-        WHERE strftime('%Y', fecha) = ? AND strftime('%m', fecha) = ?
-        GROUP BY medio_pago
-    """, (str(year), str(mes).zfill(2)))
+               ROUND(SUM(v.total), 2) as total
+        FROM ventas v
+        WHERE strftime('%Y', v.fecha) = ? AND strftime('%m', v.fecha) = ?
+          AND EXISTS (
+              SELECT 1
+              FROM ventas_detalle vd
+              LEFT JOIN productos p ON p.id = vd.producto_id
+              WHERE vd.venta_id = v.id AND {rubro_cond}
+          )
+        GROUP BY v.medio_pago
+    """, (str(year), str(mes).zfill(2), *rubro_params))
 
-def get_ventas_por_temporada():
+def get_ventas_por_temporada(rubro=None):
     """Retorna ventas agrupadas por temporada."""
-    return q("""
-        SELECT temporada as nombre, COUNT(id) as cant, ROUND(SUM(total), 2) as total
-        FROM ventas
-        WHERE temporada != ''
-        GROUP BY temporada ORDER BY total DESC
-    """)
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
+    return q(f"""
+        SELECT v.temporada as nombre, COUNT(v.id) as cant, ROUND(SUM(v.total), 2) as total
+        FROM ventas v
+        WHERE v.temporada != ''
+          AND EXISTS (
+              SELECT 1
+              FROM ventas_detalle vd
+              LEFT JOIN productos p ON p.id = vd.producto_id
+              WHERE vd.venta_id = v.id AND {rubro_cond}
+          )
+        GROUP BY v.temporada ORDER BY total DESC
+    """, tuple(rubro_params))
 
-def get_ventas_por_categoria():
+def get_ventas_por_categoria(rubro=None):
     """Retorna ventas agrupadas por categoría de producto."""
-    return q("""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
+    return q(f"""
         SELECT COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
                ROUND(SUM(vd.subtotal), 2) as total
         FROM ventas_detalle vd
         LEFT JOIN productos p ON vd.producto_id = p.id
+        WHERE {rubro_cond}
         GROUP BY COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria')
         ORDER BY total DESC
-    """)
+    """, tuple(rubro_params))
 
-def get_top_productos_analisis(limit=15, desde='', hasta=''):
+def get_top_productos_analisis(limit=15, desde='', hasta='', rubro=None):
     """Retorna los productos más vendidos en un rango de fechas con rentabilidad."""
     params = []
     condicion = ""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     if desde and hasta:
         condicion = "WHERE v.fecha BETWEEN ? AND ?"
         params = [desde, hasta]
+    condicion = _append_condition(condicion, rubro_cond)
     return q(f"""
         SELECT COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre') as descripcion,
                COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
+               COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad') as unidad,
                SUM(vd.cantidad) as unidades,
                ROUND(SUM(vd.subtotal), 2) as total_pesos,
                ROUND(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 2) as costo_mercaderia,
@@ -3581,18 +3649,21 @@ def get_top_productos_analisis(limit=15, desde='', hasta=''):
         GROUP BY
             vd.producto_id,
             COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre'),
-            COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria')
+            COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria'),
+            COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad')
         ORDER BY total_pesos DESC LIMIT ?
-    """, params + [limit])
+    """, params + rubro_params + [limit])
 
 
-def get_resumen_rentabilidad_periodo(desde='', hasta=''):
+def get_resumen_rentabilidad_periodo(desde='', hasta='', rubro=None):
     """Resume ingresos, costo historico y ganancia bruta de un periodo."""
     params = []
     condicion = ""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     if desde and hasta:
         condicion = "WHERE v.fecha BETWEEN ? AND ?"
         params = [desde, hasta]
+    condicion = _append_condition(condicion, rubro_cond)
     row = q(f"""
         SELECT ROUND(COALESCE(SUM(vd.subtotal), 0), 2) as ingresos,
                ROUND(COALESCE(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 0), 2) as costo,
@@ -3601,7 +3672,7 @@ def get_resumen_rentabilidad_periodo(desde='', hasta=''):
         JOIN ventas v ON vd.venta_id = v.id
         LEFT JOIN productos p ON vd.producto_id = p.id
         {condicion}
-    """, params, fetchone=True)
+    """, params + rubro_params, fetchone=True)
     ingresos = float(row["ingresos"] or 0) if row else 0
     ganancia = float(row["ganancia"] or 0) if row else 0
     return {
@@ -3655,17 +3726,20 @@ def _resumen_gastos_periodo(desde='', hasta=''):
     }
 
 
-def get_rentabilidad_detallada_articulos(desde='', hasta=''):
+def get_rentabilidad_detallada_articulos(desde='', hasta='', rubro=None):
     """Rentabilidad estimada por articulo, con gastos prorrateados por ingresos."""
     params = []
     condicion = ""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     if desde and hasta:
         condicion = "WHERE v.fecha BETWEEN ? AND ?"
         params = [desde, hasta]
+    condicion = _append_condition(condicion, rubro_cond)
 
     rows = q(f"""
         SELECT COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre') as descripcion,
                COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
+               COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad') as unidad,
                SUM(vd.cantidad) as unidades,
                ROUND(SUM(vd.subtotal), 2) as ingresos,
                ROUND(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 2) as costo,
@@ -3677,9 +3751,10 @@ def get_rentabilidad_detallada_articulos(desde='', hasta=''):
         GROUP BY
             vd.producto_id,
             COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre'),
-            COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria')
+            COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria'),
+            COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad')
         ORDER BY ingresos DESC
-    """, params)
+    """, params + rubro_params)
 
     total_ingresos = sum(float(row["ingresos"] or 0) for row in rows)
     gastos = _resumen_gastos_periodo(desde, hasta)
@@ -3696,6 +3771,7 @@ def get_rentabilidad_detallada_articulos(desde='', hasta=''):
         resultado.append({
             "descripcion": row["descripcion"],
             "categoria": row["categoria"],
+            "unidad": row["unidad"] or "unidad",
             "unidades": float(row["unidades"] or 0),
             "ingresos": ingresos,
             "costo": float(row["costo"] or 0),
@@ -3710,17 +3786,19 @@ def get_rentabilidad_detallada_articulos(desde='', hasta=''):
     return resultado
 
 
-def get_rentabilidad_detallada_periodos(granularidad='diario', desde='', hasta=''):
+def get_rentabilidad_detallada_periodos(granularidad='diario', desde='', hasta='', rubro=None):
     """Rentabilidad agrupada por dia, mes o anio."""
     ventas_expr = _periodo_ventas_expr(granularidad)
     gastos_expr = _periodo_gastos_expr(granularidad)
     params = []
     condicion_ventas = ""
     condicion_gastos = ""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     if desde and hasta:
         condicion_ventas = "WHERE v.fecha BETWEEN ? AND ?"
         condicion_gastos = "WHERE fecha BETWEEN ? AND ?"
         params = [desde, hasta]
+    condicion_ventas = _append_condition(condicion_ventas, rubro_cond)
 
     ventas_rows = q(f"""
         SELECT {ventas_expr} as periodo,
@@ -3731,7 +3809,7 @@ def get_rentabilidad_detallada_periodos(granularidad='diario', desde='', hasta='
         LEFT JOIN productos p ON vd.producto_id = p.id
         {condicion_ventas}
         GROUP BY {ventas_expr}
-    """, params)
+    """, params + rubro_params)
 
     gastos_rows = q(f"""
         SELECT {gastos_expr} as periodo,
@@ -3791,17 +3869,19 @@ def get_rentabilidad_detallada_periodos(granularidad='diario', desde='', hasta='
     return resultado
 
 
-def get_composicion_gastos_rentabilidad(granularidad='mensual', desde='', hasta=''):
+def get_composicion_gastos_rentabilidad(granularidad='mensual', desde='', hasta='', rubro=None):
     """Muestra ingresos y gastos reales agrupados por categoria para explicar el margen."""
     ventas_expr = _periodo_ventas_expr(granularidad)
     gastos_expr = _periodo_gastos_expr(granularidad)
     params = []
     condicion_ventas = ""
     condicion_gastos = ""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     if desde and hasta:
         condicion_ventas = "WHERE v.fecha BETWEEN ? AND ?"
         condicion_gastos = "WHERE fecha BETWEEN ? AND ?"
         params = [desde, hasta]
+    condicion_ventas = _append_condition(condicion_ventas, f"EXISTS (SELECT 1 FROM ventas_detalle vd LEFT JOIN productos p ON p.id = vd.producto_id WHERE vd.venta_id = v.id AND {rubro_cond})")
 
     ventas_rows = q(f"""
         SELECT {ventas_expr} as periodo,
@@ -3809,7 +3889,7 @@ def get_composicion_gastos_rentabilidad(granularidad='mensual', desde='', hasta=
         FROM ventas v
         {condicion_ventas}
         GROUP BY {ventas_expr}
-    """, params)
+    """, params + rubro_params)
 
     gastos_rows = q(f"""
         SELECT {gastos_expr} as periodo,
@@ -3858,9 +3938,9 @@ def get_composicion_gastos_rentabilidad(granularidad='mensual', desde='', hasta=
     return resultado
 
 
-def get_resumen_rentabilidad_simple(desde='', hasta=''):
+def get_resumen_rentabilidad_simple(desde='', hasta='', rubro=None):
     """Resumen simple de rentabilidad para vista ejecutiva."""
-    bruto = get_resumen_rentabilidad_periodo(desde, hasta)
+    bruto = get_resumen_rentabilidad_periodo(desde, hasta, rubro=rubro)
     gastos = _resumen_gastos_periodo(desde, hasta)
     ganancia_bruta = float(bruto["ganancia"] or 0)
     gastos_operativos = float(gastos["gastos_operativos"] or 0)
@@ -3903,35 +3983,38 @@ def get_gastos_por_categoria_periodo(desde='', hasta=''):
     """, params)
 
 
-def get_evolucion_rentabilidad_simple(granularidad='mensual', desde='', hasta=''):
+def get_evolucion_rentabilidad_simple(granularidad='mensual', desde='', hasta='', rubro=None):
     """Evolucion de ingresos, gastos y neta estimada por periodo."""
-    periodos = get_rentabilidad_detallada_periodos(granularidad, desde, hasta)
+    periodos = get_rentabilidad_detallada_periodos(granularidad, desde, hasta, rubro=rubro)
     return list(reversed(periodos))
 
 
-def get_bottom_productos(limit=10):
+def get_bottom_productos(limit=10, rubro=None):
     """Retorna los productos con menor movimiento (activos)."""
-    return q("""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
+    return q(f"""
         SELECT p.descripcion, p.categoria,
+               COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(p.unidad, ''), 'unidad') as unidad,
                COALESCE(SUM(vd.cantidad), 0) as unidades
         FROM productos p
         LEFT JOIN ventas_detalle vd ON p.id = vd.producto_id
-        WHERE p.activo = 1
+        WHERE p.activo = 1 AND {rubro_cond}
         GROUP BY p.id ORDER BY unidades ASC LIMIT ?
-    """, (limit,))
+    """, (*rubro_params, limit))
 
-def get_rentabilidad_historica():
+def get_rentabilidad_historica(rubro=None):
     """Retorna rentabilidad de los últimos 6 meses."""
-    return q("""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
+    return q(f"""
         SELECT strftime('%Y-%m', v.fecha) as mes,
                ROUND(SUM(v.total), 2) as ingresos,
                ROUND(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 2) as costo
         FROM ventas v
         JOIN ventas_detalle vd ON v.id = vd.venta_id
         LEFT JOIN productos p ON vd.producto_id = p.id
-        WHERE v.fecha >= date('now', '-6 months')
+        WHERE v.fecha >= date('now', '-6 months') AND {rubro_cond}
         GROUP BY mes ORDER BY mes
-    """)
+    """, tuple(rubro_params))
 
 def get_catalogo_export():
     """Retorna todos los productos activos para exportación."""
