@@ -1,4 +1,4 @@
-# 🎁 Nexar Tienda v1.29.0
+# 🎁 Nexar Tienda v1.30.0
 
 Sistema Integral de Gestión Comercial diseñado para tiendas de regalos, bijouterie, marroquinería y productos estacionales. Optimizado para un funcionamiento fluido, seguro y con una interfaz estética de alto nivel.
 
