@@ -4,6 +4,21 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.30.0] - 2026-05-12
+
+### Added
+- Configuracion inicial del rubro del negocio con persistencia en SQLite y fallback compatible con `NEXAR_RUBRO`.
+- Tickets de venta mejorados con datos del negocio, rubro actual y detalle de unidades fraccionadas.
+- Categorias de productos por rubro manteniendo compatibilidad con productos legacy.
+
+### Changed
+- Reportes, estadisticas y rentabilidad ahora respetan rubro actual, categorias por rubro y unidades fraccionadas.
+- Se alinea la metadata de version del proyecto para el release estable `v1.30.0`.
+
+### Fixed
+- Se corrigen consultas SQL ambiguas en reportes y rentabilidad despues de adaptar rubro/unidades.
+- Se mantiene compatibilidad con modo tienda por defecto, productos existentes y ventas historicas sin rubro.
+
 ## [1.29.0] - 2026-05-12
 
 ### Added
