@@ -22,6 +22,56 @@ UNIDADES_POR_RUBRO = {
     "ferreteria": UNIDADES_TIENDA,
 }
 
+CATEGORIAS_TIENDA = (
+    "Bijouterie",
+    "Marroquineria",
+    "Bazar",
+    "Peluches",
+    "Regaleria",
+    "Jugueteria",
+    "Papeleria",
+    "Decoracion",
+    "Adornos",
+    "Accesorios",
+    "Productos de Temporada",
+    "Navidad",
+    "Dia de la Madre",
+    "Dia del Padre",
+    "Otros",
+)
+
+CATEGORIAS_ALMACEN = (
+    "Bebidas",
+    "Lacteos",
+    "Fiambres",
+    "Carniceria",
+    "Verduleria",
+    "Frutas",
+    "Panaderia",
+    "Limpieza",
+    "Perfumeria",
+    "Golosinas",
+    "Galletitas",
+    "Pastas",
+    "Arroz y legumbres",
+    "Conservas",
+    "Aceites y condimentos",
+    "Congelados",
+    "Mascotas",
+    "Huevos",
+    "Cigarrillos",
+    "Varios",
+)
+
+CATEGORIAS_POR_RUBRO = {
+    "tienda": CATEGORIAS_TIENDA,
+    "almacen": CATEGORIAS_ALMACEN,
+    "kiosco": CATEGORIAS_TIENDA,
+    "regaleria": CATEGORIAS_TIENDA,
+    "libreria": CATEGORIAS_TIENDA,
+    "ferreteria": CATEGORIAS_TIENDA,
+}
+
 UNIDAD_LABELS = {
     "unidad": "Unidad",
     "paquete": "Paquete",
@@ -97,6 +147,16 @@ def es_almacen(config=None):
 def get_unidades_disponibles(rubro=None, config=None):
     rubro_normalizado = normalizar_rubro(rubro or get_rubro_actual(config=config))
     return list(UNIDADES_POR_RUBRO.get(rubro_normalizado, UNIDADES_TIENDA))
+
+
+def get_categorias_disponibles(rubro=None, config=None):
+    rubro_normalizado = normalizar_rubro(rubro or get_rubro_actual(config=config))
+    return list(CATEGORIAS_POR_RUBRO.get(rubro_normalizado, CATEGORIAS_TIENDA))
+
+
+def get_categoria_default(rubro=None, config=None):
+    categorias = get_categorias_disponibles(rubro=rubro, config=config)
+    return categorias[0] if categorias else "Otros"
 
 
 def normalizar_unidad(value, rubro=None):

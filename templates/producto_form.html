@@ -91,11 +91,12 @@
                                 <select class="form-select" id="categoria" name="categoria" required>
                                     <option value="">-- Seleccionar --</option>
                                     {% for cat in categorias %}
-                                    <option value="{{ cat }}" {% if producto and producto['categoria'] == cat %}selected{% endif %}>
+                                    <option value="{{ cat }}" {% if categoria_actual == cat %}selected{% endif %}>
                                         {{ cat }}
                                     </option>
                                     {% endfor %}
                                 </select>
+                                <small class="form-text text-muted">Categorías disponibles para rubro {{ rubro_actual|capitalize }}.</small>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="unidad" class="form-label">Unidad</label>
