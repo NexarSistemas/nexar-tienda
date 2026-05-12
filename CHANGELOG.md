@@ -4,6 +4,20 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.29.0] - 2026-05-12
+
+### Added
+- Facturas de proveedores.
+- Compras a cuenta corriente proveedor.
+- Dashboard con alertas financieras.
+- Rubros y unidades centralizadas.
+- Venta fraccionada por kg, litro y docena.
+
+### Fixed
+- Ajustes en POS, carrito, ticket y stock.
+- Correcciones en `/mi-plan` y `/licencia`.
+- Correcciones en edicion de productos y compras.
+
 ## [1.28.2] - 2026-05-08
 
 ### Changed
