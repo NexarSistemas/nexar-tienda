@@ -25,6 +25,7 @@ from services.license_storage import cargar_licencia, guardar_licencia
 from services.rubros import (
     get_rubro_actual,
     get_rubros_disponibles,
+    get_unidad_label,
     get_unidades_disponibles,
     normalizar_rubro,
     normalizar_unidad,
@@ -500,6 +501,47 @@ def _build_rubro_cards():
         }
         for rubro in get_rubros_disponibles()
     ]
+
+
+def formatear_cantidad_ticket(cantidad) -> str:
+    try:
+        cantidad_num = float(cantidad or 0)
+    except (TypeError, ValueError):
+        return "0"
+    if cantidad_num.is_integer():
+        return str(int(cantidad_num))
+    texto = f"{cantidad_num:.3f}".rstrip("0").rstrip(".")
+    return texto or "0"
+
+
+def formatear_unidad_ticket(unidad, cantidad) -> str:
+    unidad_normalizada = normalizar_unidad(unidad or "unidad")
+    try:
+        cantidad_num = float(cantidad or 0)
+    except (TypeError, ValueError):
+        cantidad_num = 0.0
+
+    if unidad_normalizada == "unidad":
+        return "unidad" if abs(cantidad_num) == 1 else "unidades"
+    if unidad_normalizada == "paquete":
+        return "paquete" if abs(cantidad_num) == 1 else "paquetes"
+    if unidad_normalizada == "docena":
+        return "docena"
+    if unidad_normalizada == "kg":
+        return "kg"
+    if unidad_normalizada == "litro":
+        return "litro"
+    return get_unidad_label(unidad_normalizada).lower()
+
+
+def formatear_precio_ticket(valor) -> str:
+    try:
+        number = float(valor or 0)
+    except (TypeError, ValueError):
+        number = 0.0
+    entero, dec = f"{number:,.2f}".split(".")
+    entero = entero.replace(",", ".")
+    return f"$ {entero},{dec}"
 
 
 def _validate_sale_delete_authorization(form) -> tuple[bool, str]:
@@ -1284,25 +1326,54 @@ def venta_finalizar():
 @login_required
 def ticket(vid):
     venta = db.q("SELECT * FROM ventas WHERE id=?", (vid,), fetchone=True)
+    if not venta:
+        abort(404)
     detalle = db.get_venta_detalle(vid)
 
     cfg = db.get_config()
+    rubro_actual = get_rubro_actual(cfg)
     iva_items = []
     iva_totales = {}
     if venta:
         for item in detalle:
-            producto = db.q("SELECT iva FROM productos WHERE id=?", (item["producto_id"],), fetchone=True)
+            producto = db.q(
+                "SELECT iva, tipo_unidad, unidad, permite_fraccionado, por_peso FROM productos WHERE id=?",
+                (item["producto_id"],),
+                fetchone=True,
+            )
             iva_label = (item["iva"] or (producto["iva"] if producto and producto["iva"] else "21%")).strip()
             try:
                 iva_rate = float(iva_label.replace("%", "").replace(",", "."))
             except ValueError:
                 iva_rate = 0.0
             subtotal = float(item["subtotal"] or 0)
+            cantidad = float(item["cantidad"] or 0)
+            unidad_base = (
+                (producto["tipo_unidad"] if producto and producto["tipo_unidad"] else "")
+                or (item["unidad"] or "")
+                or (producto["unidad"] if producto and producto["unidad"] else "")
+                or "unidad"
+            )
+            unidad_normalizada = normalizar_unidad(unidad_base, rubro_actual)
+            cantidad_formateada = formatear_cantidad_ticket(cantidad)
+            unidad_formateada = formatear_unidad_ticket(unidad_normalizada, cantidad)
+            precio_unitario = float(item["precio_unitario"] or 0)
             base = subtotal / (1 + (iva_rate / 100)) if iva_rate > 0 else subtotal
             iva_importe = subtotal - base
             item_dict = dict(item)
             item_dict["iva_label"] = iva_label
             item_dict["iva_importe"] = round(iva_importe, 2)
+            item_dict["unidad_normalizada"] = unidad_normalizada
+            item_dict["cantidad_formateada"] = cantidad_formateada
+            item_dict["unidad_formateada"] = unidad_formateada
+            item_dict["precio_unitario_formateado"] = formatear_precio_ticket(precio_unitario)
+            item_dict["subtotal_formateado"] = formatear_precio_ticket(subtotal)
+            item_dict["precio_por_unidad_formateado"] = f"{item_dict['precio_unitario_formateado']}/{unidad_formateada}"
+            item_dict["cantidad_unidad_texto"] = f"{cantidad_formateada} {unidad_formateada}"
+            item_dict["linea_resumen"] = (
+                f"{cantidad_formateada} {unidad_formateada} x "
+                f"{item_dict['precio_por_unidad_formateado']}"
+            )
             iva_items.append(item_dict)
             bucket = iva_totales.setdefault(iva_label, {"base": 0.0, "iva": 0.0, "total": 0.0})
             bucket["base"] += base
@@ -1317,7 +1388,19 @@ def ticket(vid):
         }
         for alicuota, valores in sorted(iva_totales.items(), key=lambda item: item[0])
     ]
-    return render_template("ticket.html", venta=venta, detalle=iva_items, iva_resumen=iva_resumen, cfg=cfg)
+    return render_template(
+        "ticket.html",
+        venta=venta,
+        detalle=iva_items,
+        iva_resumen=iva_resumen,
+        cfg=cfg,
+        rubro_actual=rubro_actual,
+        venta_id=venta["id"],
+        subtotal_formateado=formatear_precio_ticket(venta["subtotal"]),
+        descuento_formateado=formatear_precio_ticket(venta["descuento_adicional"]),
+        interes_formateado=formatear_precio_ticket(venta["interes_financiacion"]),
+        total_formateado=formatear_precio_ticket(venta["total"]),
+    )
 
 
 @main_bp.route("/historial")
