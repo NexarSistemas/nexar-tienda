@@ -47,7 +47,7 @@
         <thead class="table-light">
             <tr>
                 <th>{% if show_producto %}Producto{% else %}Período{% endif %}</th>
-                {% if show_producto %}<th>Categoría</th><th class="text-center">Unidades</th>{% endif %}
+                {% if show_producto %}<th>Categoría</th><th class="text-center">Cantidad</th>{% endif %}
                 <th class="text-end">Ingresos</th>
                 <th class="text-end">Costo</th>
                 <th class="text-end">Ganancia bruta</th>
@@ -65,7 +65,7 @@
                 </td>
                 {% if show_producto %}
                 <td>{{ row.categoria }}</td>
-                <td class="text-center">{{ row.unidades }}</td>
+                <td class="text-center">{{ row.cantidad_unidad_texto if row.cantidad_unidad_texto is defined else row.unidades }}</td>
                 {% endif %}
                 <td class="text-end fw-bold">{{ row.ingresos | fmt_ars }}</td>
                 <td class="text-end">{{ row.costo | fmt_ars }}</td>
@@ -148,6 +148,10 @@
 
 {% block content %}
 <div class="container-fluid py-4">
+    <div class="alert alert-light border shadow-sm">
+        <strong>Rubro actual:</strong> {{ rubro_actual|capitalize }}.
+        Los artículos y categorías se calculan con compatibilidad para productos legacy sin rubro.
+    </div>
     <div class="alert alert-info shadow-sm">
         {% if tab == 'resumen' %}
         <strong>Resumen de rentabilidad:</strong> información simple para saber cómo va la semana, el mes o el año con ingresos, gastos reales y neta estimada.

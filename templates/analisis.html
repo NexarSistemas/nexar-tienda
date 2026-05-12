@@ -18,6 +18,10 @@
 
 {% block content %}
 <div class="container-fluid py-4">
+    <div class="alert alert-light border shadow-sm mb-4">
+        <strong>Rubro actual:</strong> {{ rubro_actual|capitalize }}.
+        Las cantidades se muestran con su unidad operativa para reflejar ventas fraccionadas y productos legacy compatibles.
+    </div>
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card shadow-sm border-0 bg-primary text-white">
@@ -68,7 +72,7 @@
                                 <tr>
                                     <th>Producto</th>
                                     <th>Categoría</th>
-                                    <th class="text-center">Unidades</th>
+                                    <th class="text-center">Cantidad</th>
                                     <th class="text-end">Ingresos</th>
                                     <th class="text-end">Costo</th>
                                     <th class="text-end text-success">Ganancia Bruta</th>
@@ -78,7 +82,7 @@
                             <tbody>
                                 {% for t in top %}
                                 <tr>
-                                    <td>{{ t.descripcion }}</td><td>{{ t.categoria }}</td><td class="text-center">{{ t.unidades }}</td>
+                                    <td>{{ t.descripcion }}</td><td>{{ t.categoria }}</td><td class="text-center">{{ t.cantidad_unidad_texto }}</td>
                                     <td class="text-end fw-bold">{{ t.total_pesos | fmt_ars }}</td>
                                     <td class="text-end">{{ t.costo_mercaderia | fmt_ars }}</td>
                                     <td class="text-end text-success fw-bold">{{ t.utilidad | fmt_ars }}</td>
@@ -101,7 +105,7 @@
                         {% for b in bottom %}
                         <li class="list-group-item d-flex justify-content-between">
                             <span>{{ b.descripcion }}</span>
-                            <span class="badge bg-warning text-dark">{{ b.unidades }} vendidas</span>
+                            <span class="badge bg-warning text-dark">{{ b.cantidad_unidad_texto }}</span>
                         </li>
                         {% endfor %}
                     </ul>
