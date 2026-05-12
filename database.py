@@ -25,6 +25,8 @@ from services.cuentas_corrientes import (
     calcular_saldo_cliente_desde_movimientos,
 )
 from services.rubros import (
+    get_categorias_disponibles,
+    get_categoria_default,
     get_rubro_actual,
     get_unidad_label,
     get_rubros_disponibles,
@@ -1535,6 +1537,11 @@ def get_categorias():
     return [r['nombre'] for r in q("SELECT nombre FROM categorias WHERE activa=1 ORDER BY nombre")]
 
 
+def _build_rubro_compatible_filter(rubro_actual: str | None):
+    rubro = normalizar_rubro(rubro_actual or get_rubro_actual(get_config()))
+    return "(COALESCE(TRIM(rubro), '') = '' OR LOWER(rubro) = ?)", [rubro]
+
+
 def add_categoria(nombre):
     """Agrega una nueva categoría."""
     q("INSERT OR IGNORE INTO categorias (nombre) VALUES (?)", (nombre,), fetchall=False, commit=True)
@@ -1831,13 +1838,17 @@ def get_roles():
 
 # ─── PRODUCTOS ───────────────────────────────────────────────────────────────
 
-def get_productos(activo_only=True, search=''):
+def get_productos(activo_only=True, search='', rubro=None):
     """Devuelve productos filtrables."""
     sql = "SELECT * FROM productos"
     conds = []
     params = []
     if activo_only:
         conds.append("activo=1")
+    if rubro is not None:
+        rubro_cond, rubro_params = _build_rubro_compatible_filter(rubro)
+        conds.append(rubro_cond)
+        params += rubro_params
     if search:
         conds.append("(codigo_interno LIKE ? OR codigo_barras LIKE ? OR descripcion LIKE ? OR categoria LIKE ?)")
         params += [f'%{search}%'] * 4
@@ -1854,9 +1865,18 @@ def get_producto(pid):
 
 def get_producto_by_codigo(codigo):
     """Busca por código interno o barras."""
-    r = q("SELECT * FROM productos WHERE codigo_interno=? AND activo=1", (codigo,), fetchone=True)
+    rubro_cond, rubro_params = _build_rubro_compatible_filter(None)
+    r = q(
+        f"SELECT * FROM productos WHERE codigo_interno=? AND activo=1 AND {rubro_cond}",
+        (codigo, *rubro_params),
+        fetchone=True,
+    )
     if not r:
-        r = q("SELECT * FROM productos WHERE codigo_barras=? AND activo=1", (codigo,), fetchone=True)
+        r = q(
+            f"SELECT * FROM productos WHERE codigo_barras=? AND activo=1 AND {rubro_cond}",
+            (codigo, *rubro_params),
+            fetchone=True,
+        )
     return r
 
 
@@ -1908,7 +1928,7 @@ def add_producto(data):
         (codigo_interno,codigo_barras,descripcion,marca,categoria,unidad,tipo_unidad,permite_fraccionado,rubro,por_peso,costo,precio_venta,iva,activo)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)""",
         (codigo, data.get('codigo_barras', ''), data['descripcion'], data.get('marca', ''),
-         data.get('categoria', ''), unidad, tipo_unidad, permite_fraccionado,
+         data.get('categoria') or get_categoria_default(rubro_actual), unidad, tipo_unidad, permite_fraccionado,
          data.get('rubro') or rubro_actual, 1 if es_fraccionable else int(data.get('por_peso', 0)),
          float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'))
     )
@@ -1924,17 +1944,22 @@ def add_producto(data):
 
 def update_producto(pid, data):
     """Actualiza un producto."""
+    producto_actual = get_producto(pid)
     rubro_actual = get_rubro_actual(get_config())
     tipo_unidad = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
     unidad = get_unidad_label(tipo_unidad)
     permite_fraccionado = int(data.get('permite_fraccionado', 0) or 0)
     es_fraccionable = producto_permite_fraccionado({"tipo_unidad": tipo_unidad, "permite_fraccionado": permite_fraccionado, "por_peso": data.get("por_peso", 0)})
+    rubro_guardado = (
+        str(data.get('rubro', '') or '').strip().lower()
+        or str((producto_actual['rubro'] if producto_actual else '') or '').strip().lower()
+    )
     q(
         """UPDATE productos SET codigo_barras=?,descripcion=?,marca=?,categoria=?,unidad=?,tipo_unidad=?,
         permite_fraccionado=?,rubro=?,por_peso=?,costo=?,precio_venta=?,iva=?,activo=? WHERE id=?""",
         (data.get('codigo_barras', ''), data['descripcion'], data.get('marca', ''),
-         data.get('categoria', ''), unidad, tipo_unidad, permite_fraccionado,
-         data.get('rubro') or rubro_actual, 1 if es_fraccionable else int(data.get('por_peso', 0)),
+         data.get('categoria') or get_categoria_default(rubro_actual), unidad, tipo_unidad, permite_fraccionado,
+         rubro_guardado or None, 1 if es_fraccionable else int(data.get('por_peso', 0)),
          float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'),
          int(data.get('activo', 1)), pid),
         fetchall=False, commit=True
@@ -3355,12 +3380,15 @@ def get_dashboard_stats():
 
 def buscar_productos_pos(search):
     """Busca productos para POS por nombre/código/categoría."""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter(None)
     sql = """SELECT p.id, p.codigo_interno, p.codigo_barras, p.descripcion, p.categoria, p.unidad,
                     p.tipo_unidad, p.permite_fraccionado, p.por_peso, p.precio_venta, s.stock_actual
              FROM productos p
              JOIN stock s ON s.producto_id = p.id
              WHERE p.activo=1"""
     params = []
+    sql += f" AND {rubro_cond}"
+    params += rubro_params
     if search:
         sql += " AND (p.descripcion LIKE ? OR p.categoria LIKE ? OR p.codigo_interno LIKE ? OR p.codigo_barras LIKE ?)"
         params += [f'%{search}%'] * 4

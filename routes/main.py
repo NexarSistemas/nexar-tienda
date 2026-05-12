@@ -23,6 +23,8 @@ from licensing.permisos import get_modulos_activos, get_modulos_debug_info, requ
 from services.cuentas_corrientes import calcular_estado_factura, calcular_saldo_factura
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.rubros import (
+    get_categoria_default,
+    get_categorias_disponibles,
     get_rubro_actual,
     get_rubros_disponibles,
     get_unidad_label,
@@ -501,6 +503,16 @@ def _build_rubro_cards():
         }
         for rubro in get_rubros_disponibles()
     ]
+
+
+def _merge_categorias_visibles(rubro_actual: str, categorias_extra=None):
+    categorias = list(get_categorias_disponibles(rubro_actual))
+    extras = categorias_extra or []
+    for categoria in extras:
+        categoria_limpia = str(categoria or "").strip()
+        if categoria_limpia and categoria_limpia not in categorias:
+            categorias.append(categoria_limpia)
+    return categorias
 
 
 def formatear_cantidad_ticket(cantidad) -> str:
@@ -1004,8 +1016,21 @@ def configuracion_rubro_inicial():
 @login_required
 def productos():
     buscar = request.args.get("q", "")
-    productos_rows = [dict(r) for r in db.get_productos(search=buscar)]
-    return render_template("productos.html", productos=productos_rows, categorias=db.get_categorias(), buscar=buscar, categoria_filtro=request.args.get("categoria", ""))
+    cfg = db.get_config()
+    rubro_actual = get_rubro_actual(cfg)
+    productos_rows = [dict(r) for r in db.get_productos(search=buscar, rubro=rubro_actual)]
+    categorias_visibles = _merge_categorias_visibles(
+        rubro_actual,
+        [row.get("categoria", "") for row in productos_rows],
+    )
+    return render_template(
+        "productos.html",
+        productos=productos_rows,
+        categorias=categorias_visibles,
+        buscar=buscar,
+        categoria_filtro=request.args.get("categoria", ""),
+        rubro_actual=rubro_actual,
+    )
 
 
 @main_bp.route("/productos/nuevo", methods=["GET", "POST"])
@@ -1049,17 +1074,22 @@ def producto_nuevo():
     unidades_disponibles = get_unidades_disponibles(rubro_actual)
     if unidad_actual not in unidades_disponibles:
         unidades_disponibles = unidades_disponibles + [unidad_actual]
+    categorias_visibles = _merge_categorias_visibles(
+        rubro_actual,
+        [prefill.get("categoria", ""), get_categoria_default(rubro_actual)],
+    )
     return render_template(
         "producto_form.html",
         producto=None,
         stock=None,
-        categorias=db.get_categorias(),
+        categorias=categorias_visibles,
         accion="Nuevo",
         prefill=prefill,
         from_compra=desde_compra,
         draft_compra=draft_compra,
         cancel_url=cancel_url,
         rubro_actual=rubro_actual,
+        categoria_actual=prefill.get("categoria", "") or get_categoria_default(rubro_actual),
         rubros_disponibles=get_rubros_disponibles(),
         unidades_disponibles=unidades_disponibles,
         unidad_actual=unidad_actual,
@@ -1102,13 +1132,18 @@ def producto_editar(pid):
     unidades_disponibles = get_unidades_disponibles(rubro_actual)
     if unidad_actual not in unidades_disponibles:
         unidades_disponibles = unidades_disponibles + [unidad_actual]
+    categorias_visibles = _merge_categorias_visibles(
+        rubro_actual,
+        [producto["categoria"], get_categoria_default(rubro_actual)],
+    )
     return render_template(
         "producto_form.html",
         producto=producto,
         stock=stock,
-        categorias=db.get_categorias(),
+        categorias=categorias_visibles,
         accion="Editar",
         rubro_actual=rubro_actual,
+        categoria_actual=producto["categoria"] or get_categoria_default(rubro_actual),
         rubros_disponibles=get_rubros_disponibles(),
         unidades_disponibles=unidades_disponibles,
         unidad_actual=unidad_actual,
