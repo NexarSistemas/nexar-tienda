@@ -61,15 +61,23 @@
                         <h5 class="mb-0">Rubro del Negocio</h5>
                     </div>
                     <div class="card-body">
-                        <div class="mb-3">
-                            <label class="form-label">Rubro operativo</label>
-                            <select name="rubro_negocio" class="form-select">
-                                {% for rubro in rubros_disponibles %}
-                                <option value="{{ rubro }}" {% if rubro_actual == rubro %}selected{% endif %}>{{ rubro|capitalize }}</option>
-                                {% endfor %}
-                            </select>
-                            <div class="form-text">Cambiar el rubro puede afectar unidades, productos y reportes.</div>
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                            <div>
+                                <div class="text-muted small mb-1">Rubro operativo actual</div>
+                                <div class="h5 mb-2">{{ rubro_actual|capitalize }}</div>
+                                <div class="form-text">Cambiar el rubro puede afectar unidades, productos, stock y reportes.</div>
+                            </div>
+                            <div class="text-end">
+                                <a href="{{ url_for('configuracion_rubro_inicial') }}" class="btn btn-outline-primary">
+                                    <i class="fas fa-layer-group me-2"></i>Configurar rubro
+                                </a>
+                            </div>
                         </div>
+                        {% if mostrar_aviso_rubro_pendiente %}
+                        <div class="alert alert-warning mt-3 mb-0">
+                            El rubro actual se está resolviendo por fallback. Confirmalo desde la configuración para dejarlo persistido en la base.
+                        </div>
+                        {% endif %}
                         <div class="small text-muted">
                             Unidades disponibles hoy para {{ rubro_actual }}:
                             {{ unidades_disponibles|join(', ') }}.

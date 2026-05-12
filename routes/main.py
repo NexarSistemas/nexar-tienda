@@ -491,6 +491,17 @@ def _is_admin_role(role: str | None) -> bool:
     return role in {"Administrador", "admin"}
 
 
+def _build_rubro_cards():
+    return [
+        {
+            "value": rubro,
+            "label": rubro.capitalize(),
+            "unidades": get_unidades_disponibles(rubro),
+        }
+        for rubro in get_rubros_disponibles()
+    ]
+
+
 def _validate_sale_delete_authorization(form) -> tuple[bool, str]:
     if not _as_bool(form.get("confirmo_responsabilidad")):
         return False, "Debés confirmar la advertencia de responsabilidad antes de borrar la venta."
@@ -888,14 +899,62 @@ def recuperar_password():
 @login_required
 def dashboard():
     show_welcome = bool(session.pop("show_welcome", False))
+    cfg = db.get_config()
     return render_template(
         "dashboard.html",
         stats=db.get_dashboard_stats(),
         show_welcome=show_welcome,
+        rubro_actual=get_rubro_actual(cfg),
+        mostrar_aviso_rubro_pendiente=db.debe_mostrar_aviso_rubro_pendiente(),
         resumen_financiero=db.get_resumen_dashboard_financiero(),
         facturas_vencidas=db.get_facturas_proveedores_vencidas_resumen(limit=5),
         facturas_por_vencer=db.get_facturas_proveedores_por_vencer_resumen(dias=7, limit=5),
         clientes_con_deuda=db.get_clientes_con_deuda(limit=5),
+    )
+
+
+@main_bp.route("/configuracion/rubro-inicial", methods=["GET", "POST"])
+@login_required
+def configuracion_rubro_inicial():
+    rubro_guardado = db.get_rubro_configurado()
+    rubro_actual = get_rubro_actual(db.get_config())
+    rubros = _build_rubro_cards()
+    selected_rubro = request.form.get("rubro", rubro_guardado or rubro_actual)
+    if request.method == "POST":
+        rubro = str(request.form.get("rubro", "") or "").strip().lower()
+        if rubro not in set(get_rubros_disponibles()):
+            flash("Seleccioná un rubro válido para continuar.", "warning")
+            return render_template(
+                "configuracion_rubro_inicial.html",
+                rubros=rubros,
+                rubro_actual=rubro_actual,
+                rubro_guardado=rubro_guardado,
+                selected_rubro=selected_rubro,
+                permitir_cambio=bool(rubro_guardado),
+            )
+
+        if rubro_guardado and rubro_guardado != rubro and request.form.get("confirmar_cambio") != "1":
+            flash("Cambiar el rubro puede afectar unidades, productos, stock y reportes.", "warning")
+            return render_template(
+                "configuracion_rubro_inicial.html",
+                rubros=rubros,
+                rubro_actual=rubro_actual,
+                rubro_guardado=rubro_guardado,
+                selected_rubro=rubro,
+                permitir_cambio=True,
+            )
+
+        db.set_rubro_configurado(rubro)
+        flash("Rubro del negocio guardado correctamente.", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template(
+        "configuracion_rubro_inicial.html",
+        rubros=rubros,
+        rubro_actual=rubro_actual,
+        rubro_guardado=rubro_guardado,
+        selected_rubro=selected_rubro,
+        permitir_cambio=bool(rubro_guardado),
     )
 
 
@@ -1900,7 +1959,8 @@ def config():
     if request.method == "POST":
         data = request.form.to_dict()
         data["ticket_mostrar_iva"] = "1" if _as_bool(data.get("ticket_mostrar_iva")) else "0"
-        data["rubro_negocio"] = normalizar_rubro(data.get("rubro_negocio"))
+        data.pop("rubro_negocio", None)
+        data.pop("rubro_negocio_confirmado", None)
         db.set_config(data)
         return redirect(url_for("config"))
     cfg = db.get_config()
@@ -1911,6 +1971,8 @@ def config():
         categorias=db.get_categorias(),
         categorias_gastos=db.get_gasto_categorias(),
         rubro_actual=rubro_actual,
+        rubro_guardado=db.get_rubro_configurado(),
+        mostrar_aviso_rubro_pendiente=db.debe_mostrar_aviso_rubro_pendiente(),
         rubros_disponibles=get_rubros_disponibles(),
         unidades_disponibles=get_unidades_disponibles(rubro_actual),
     )
@@ -2828,4 +2890,3 @@ def shutdown():
         return ("", 204)
     current_app.logger.info("Shutdown solicitado, pero no disponible en este servidor.")
     return ("", 202)
-

@@ -61,12 +61,32 @@ def normalizar_rubro(value):
     return rubro if rubro in RUBROS_DISPONIBLES else DEFAULT_RUBRO
 
 
+def _get_rubro_confirmado_desde_config(config=None):
+    if not config:
+        return None
+    confirmado = str(config.get("rubro_negocio_confirmado", "") or "").strip().lower()
+    if confirmado not in {"1", "true", "yes", "si", "on"}:
+        return None
+    rubro = str(config.get("rubro_negocio", "") or "").strip().lower()
+    return rubro if rubro in RUBROS_DISPONIBLES else None
+
+
 def get_rubro_actual(config=None):
+    rubro_db = _get_rubro_confirmado_desde_config(config)
+    if rubro_db:
+        return rubro_db
+    if config is None:
+        try:
+            from database import get_rubro_configurado
+
+            rubro_db = get_rubro_configurado()
+        except Exception:
+            rubro_db = None
+        if rubro_db:
+            return rubro_db
     env_rubro = os.getenv("NEXAR_RUBRO", "").strip()
     if env_rubro:
         return normalizar_rubro(env_rubro)
-    if config:
-        return normalizar_rubro(config.get("rubro_negocio"))
     return DEFAULT_RUBRO
 
 
@@ -74,8 +94,8 @@ def es_almacen(config=None):
     return get_rubro_actual(config=config) == "almacen"
 
 
-def get_unidades_disponibles(rubro=None):
-    rubro_normalizado = normalizar_rubro(rubro or DEFAULT_RUBRO)
+def get_unidades_disponibles(rubro=None, config=None):
+    rubro_normalizado = normalizar_rubro(rubro or get_rubro_actual(config=config))
     return list(UNIDADES_POR_RUBRO.get(rubro_normalizado, UNIDADES_TIENDA))
 
 
