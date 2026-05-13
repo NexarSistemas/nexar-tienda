@@ -12,7 +12,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from licensing.planes import get_modulos_plan, get_plan_actions, get_plan_display_name
+from licensing.planes import (
+    get_license_status_context,
+    get_modulos_plan,
+    get_plan_actions,
+    get_plan_display_name,
+)
 
 
 class LicenseIntegrationTests(unittest.TestCase):
@@ -69,6 +74,36 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(info["tier"], "PRO")
         self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("PRO"))
 
+    def test_pro_activo_con_10_dias_no_muestra_aviso_critico(self):
+        info = self._sync_license(
+            plan_original="PRO",
+            plan_efectivo="PRO",
+            plan="PRO",
+            tier="PRO",
+            plan_base_permanente=False,
+            expira=(date.today() + timedelta(days=10)).isoformat(),
+        )
+        status = get_license_status_context(info)
+        self.assertEqual(status["estado_comercial"], "mensual_activo")
+        self.assertEqual(status["dias_para_vencer"], 10)
+        self.assertFalse(status["mostrar_aviso_preventivo"])
+        self.assertFalse(status["mostrar_aviso_vencimiento"])
+
+    def test_pro_activo_con_7_dias_muestra_aviso_preventivo(self):
+        info = self._sync_license(
+            plan_original="PRO",
+            plan_efectivo="PRO",
+            plan="PRO",
+            tier="PRO",
+            plan_base_permanente=False,
+            expira=(date.today() + timedelta(days=7)).isoformat(),
+        )
+        status = get_license_status_context(info)
+        self.assertEqual(status["estado_comercial"], "mensual_por_vencer")
+        self.assertEqual(status["dias_para_vencer"], 7)
+        self.assertTrue(status["mostrar_aviso_preventivo"])
+        self.assertFalse(status["mostrar_aviso_vencimiento"])
+
     def test_mensual_full_activa_devuelve_permisos_full(self):
         info = self._sync_license(
             plan_original="MENSUAL_FULL",
@@ -94,6 +129,9 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(info["tier"], "BASICA")
         self.assertTrue(info["fallback_aplicado"])
         self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("BASICA"))
+        status = get_license_status_context(info)
+        self.assertEqual(status["estado_comercial"], "mensual_vencido_con_basica")
+        self.assertTrue(status["mostrar_revalidar"])
 
     def test_pro_vencida_sin_base_permanente_no_regala_basica(self):
         info = self._sync_license(
@@ -108,6 +146,9 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(info["tier"], "SIN_PLAN")
         self.assertFalse(info["fallback_aplicado"])
         self.assertEqual(self.permisos.get_modulos_activos(), set())
+        status = get_license_status_context(info)
+        self.assertEqual(status["estado_comercial"], "mensual_vencido_sin_plan")
+        self.assertTrue(status["recomendar_basica"])
 
     def test_full_vencida_con_base_permanente_devuelve_basica(self):
         info = self._sync_license(
@@ -122,6 +163,8 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(info["tier"], "BASICA")
         self.assertTrue(info["fallback_aplicado"])
         self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("BASICA"))
+        status = get_license_status_context(info)
+        self.assertEqual(status["estado_comercial"], "mensual_vencido_con_basica")
 
     def test_full_vencida_sin_base_permanente_no_regala_basica(self):
         info = self._sync_license(
@@ -136,6 +179,39 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(info["tier"], "SIN_PLAN")
         self.assertFalse(info["fallback_aplicado"])
         self.assertEqual(self.permisos.get_modulos_activos(), set())
+        status = get_license_status_context(info)
+        self.assertEqual(status["estado_comercial"], "mensual_vencido_sin_plan")
+
+    def test_basica_no_vence(self):
+        info = self._sync_license(
+            plan_original="BASICA",
+            plan_efectivo="BASICA",
+            plan="BASICA",
+            tier="BASICA",
+            plan_base_permanente=True,
+            expira="",
+        )
+        status = get_license_status_context(info)
+        self.assertEqual(status["estado_comercial"], "basica_permanente")
+        self.assertIsNone(status["dias_para_vencer"])
+        self.assertFalse(status["mostrar_aviso_vencimiento"])
+
+    def test_demo_vencido_no_se_convierte_en_basica_gratis(self):
+        status = get_license_status_context(
+            {
+                "plan_original": "DEMO",
+                "plan_efectivo": "DEMO",
+                "plan": "DEMO",
+                "tier": "DEMO",
+                "expirada": False,
+                "plan_base_permanente": False,
+                "expires_at": "",
+            },
+            demo_status={"demo": True, "vencido": True, "dias_restantes": 0},
+        )
+        self.assertEqual(status["estado_comercial"], "demo_vencido")
+        self.assertEqual(status["plan_efectivo"], "DEMO")
+        self.assertFalse(status["basica_activada"])
 
     def test_templates_no_exponen_demo_como_plan_comercial(self):
         licencia_template = (PROJECT_ROOT / "templates" / "licencia.html").read_text(encoding="utf-8")
@@ -155,6 +231,21 @@ class LicenseIntegrationTests(unittest.TestCase):
         actions = get_plan_actions("PRO")
         self.assertEqual(actions["planes_comprables"], ["FULL"])
 
+    def test_pro_activo_puede_renovar(self):
+        actions = get_plan_actions("PRO", plan_original="PRO", dias_para_vencer=15)
+        self.assertTrue(actions["puede_renovar"])
+        self.assertEqual(actions["plan_renovable"], "PRO")
+        self.assertEqual(actions["cta_renovacion"], "Renovar PRO")
+        self.assertFalse(actions["renovacion_destacada"])
+        self.assertFalse(actions["auto_renovacion"])
+
+    def test_full_activo_puede_renovar(self):
+        actions = get_plan_actions("FULL", plan_original="FULL", dias_para_vencer=15)
+        self.assertTrue(actions["puede_renovar"])
+        self.assertEqual(actions["plan_renovable"], "FULL")
+        self.assertEqual(actions["cta_renovacion"], "Renovar FULL")
+        self.assertFalse(actions["renovacion_destacada"])
+
     def test_full_no_muestra_compra(self):
         actions = get_plan_actions("MENSUAL_FULL")
         self.assertEqual(actions["planes_comprables"], [])
@@ -166,8 +257,65 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertTrue(actions["es_plan_completo"])
 
     def test_sin_plan_permite_comprar_basica_pro_y_full(self):
-        actions = get_plan_actions("SIN_PLAN", tiene_checkout=False)
+        actions = get_plan_actions("SIN_PLAN", tiene_checkout=False, plan_original="SIN_PLAN")
         self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "FULL"])
+        self.assertFalse(actions["puede_renovar"])
+
+    def test_basica_no_muestra_renovar_solo_upgrade(self):
+        actions = get_plan_actions("BASICA", plan_original="BASICA")
+        self.assertFalse(actions["puede_renovar"])
+        self.assertEqual(actions["planes_comprables"], ["PRO", "FULL"])
+
+    def test_demo_no_muestra_renovar(self):
+        actions = get_plan_actions("DEMO", tiene_checkout=False, plan_original="DEMO")
+        self.assertFalse(actions["puede_renovar"])
+        self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "FULL"])
+
+    def test_pro_proximo_a_vencer_muestra_renovacion_destacada(self):
+        actions = get_plan_actions("PRO", plan_original="PRO", dias_para_vencer=7)
+        self.assertTrue(actions["puede_renovar"])
+        self.assertTrue(actions["renovacion_destacada"])
+        self.assertEqual(actions["cta_renovacion"], "Renovar ahora")
+
+    def test_full_proximo_a_vencer_muestra_renovacion_destacada(self):
+        actions = get_plan_actions("FULL", plan_original="FULL", dias_para_vencer=3)
+        self.assertTrue(actions["puede_renovar"])
+        self.assertTrue(actions["renovacion_destacada"])
+        self.assertEqual(actions["cta_renovacion"], "Renovar ahora")
+
+    def test_pro_vencido_muestra_reactivar_renovar(self):
+        actions = get_plan_actions(
+            "BASICA",
+            plan_original="PRO",
+            basica_activada=True,
+            licencia_vencida=True,
+            dias_para_vencer=-2,
+        )
+        self.assertTrue(actions["puede_renovar"])
+        self.assertEqual(actions["plan_renovable"], "PRO")
+        self.assertEqual(actions["cta_renovacion"], "Reactivar/Renovar plan")
+        self.assertTrue(actions["renovacion_destacada"])
+
+    def test_full_vencido_muestra_reactivar_renovar(self):
+        actions = get_plan_actions(
+            "SIN_PLAN",
+            plan_original="FULL",
+            basica_activada=False,
+            licencia_vencida=True,
+            dias_para_vencer=-2,
+            tiene_checkout=False,
+        )
+        self.assertTrue(actions["puede_renovar"])
+        self.assertEqual(actions["plan_renovable"], "FULL")
+        self.assertEqual(actions["cta_renovacion"], "Reactivar/Renovar plan")
+        self.assertTrue(actions["renovacion_destacada"])
+
+    def test_no_muestra_cancelar_auto_renovacion_si_no_existe_backend(self):
+        actions = get_plan_actions("PRO", plan_original="PRO", dias_para_vencer=20)
+        self.assertFalse(actions["puede_cancelar_auto_renovacion"])
+        self.assertFalse(actions["puede_activar_auto_renovacion"])
+        mi_plan_template = (PROJECT_ROOT / "templates" / "mi_plan.html").read_text(encoding="utf-8")
+        self.assertNotIn("Cancelar renovacion automatica", mi_plan_template)
 
     def test_normalize_plan_legacy_y_canonico_full(self):
         from licensing.planes import normalize_plan

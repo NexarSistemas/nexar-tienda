@@ -1,4 +1,5 @@
 import os
+from datetime import date
 
 
 TECHNICAL_FULL_PLAN = "FULL"
@@ -105,9 +106,12 @@ def get_plan_actions(
     basica_activada: bool = False,
     licencia_vencida: bool = False,
     tiene_checkout: bool = True,
+    plan_original: str | None = None,
+    dias_para_vencer: int | None = None,
 ) -> dict[str, object]:
     raw_plan = str(plan_actual or "DEMO").strip().upper().replace("-", "_").replace(" ", "_")
     normalized_plan = SIN_PLAN if raw_plan == SIN_PLAN else normalize_plan(raw_plan, default="DEMO")
+    normalized_original = _normalize_status_plan(plan_original, default=normalized_plan)
 
     effective_plan = normalized_plan
     if licencia_vencida:
@@ -181,6 +185,24 @@ def get_plan_actions(
             "Si todavía no ves checkout directo para esta instalación, podés continuar desde Licencia."
         )
 
+    renewal_plan = normalized_original if normalized_original in {"PRO", TECHNICAL_FULL_PLAN} else ""
+    renewal_display = get_plan_display_name(renewal_plan) if renewal_plan else ""
+    renewal_available = bool(renewal_plan)
+    renewal_highlighted = False
+    renewal_cta = ""
+    renewal_text = ""
+
+    if renewal_available:
+        renewal_text = "La renovacion actual es manual. Al pagar nuevamente se extendera tu licencia."
+        if licencia_vencida:
+            renewal_cta = "Reactivar/Renovar plan"
+            renewal_highlighted = True
+        elif dias_para_vencer is not None and dias_para_vencer <= 7:
+            renewal_cta = "Renovar ahora"
+            renewal_highlighted = True
+        else:
+            renewal_cta = f"Renovar {renewal_display}"
+
     return {
         "plan_actual": effective_plan,
         "plan_display": "SIN PLAN" if effective_plan == SIN_PLAN else get_plan_display_name(effective_plan),
@@ -195,4 +217,143 @@ def get_plan_actions(
         "estado_clase": alert_class,
         "mensaje_checkout": checkout_message,
         "es_plan_completo": effective_plan == TECHNICAL_FULL_PLAN,
+        "puede_renovar": renewal_available,
+        "plan_renovable": renewal_plan,
+        "plan_renovable_display": renewal_display,
+        "texto_renovacion": renewal_text,
+        "cta_renovacion": renewal_cta,
+        "renovacion_destacada": renewal_highlighted,
+        "auto_renovacion": False,
+        "puede_cancelar_auto_renovacion": False,
+        "puede_activar_auto_renovacion": False,
+        "texto_auto_renovacion": "Renovacion automatica: proximamente.",
+    }
+
+
+def _normalize_status_plan(plan: str | None, default: str = "DEMO") -> str:
+    raw = str(plan or default).strip().upper().replace("-", "_").replace(" ", "_")
+    if raw == SIN_PLAN:
+        return SIN_PLAN
+    return normalize_plan(raw, default=default)
+
+
+def _get_remaining_days(expires_at: str | None) -> int | None:
+    raw_value = str(expires_at or "").strip()
+    if not raw_value:
+        return None
+    try:
+        return (date.fromisoformat(raw_value) - date.today()).days
+    except Exception:
+        return None
+
+
+def get_license_status_context(
+    license_info: dict[str, object] | None,
+    *,
+    demo_status: dict[str, object] | None = None,
+) -> dict[str, object]:
+    info = license_info or {}
+    plan_original = _normalize_status_plan(
+        info.get("plan_original") or info.get("plan") or info.get("tier"),
+        default="DEMO",
+    )
+    plan_efectivo = _normalize_status_plan(
+        info.get("plan_efectivo") or info.get("effective_plan") or info.get("tier") or plan_original,
+        default=plan_original,
+    )
+    licencia_vencida = bool(info.get("expirada"))
+    basica_activada = bool(info.get("plan_base_permanente"))
+    expires_at = str(info.get("expires_at") or "").strip()
+    dias_para_vencer = _get_remaining_days(expires_at) if plan_original in {"PRO", "FULL"} else None
+    plan_original_display = "SIN PLAN" if plan_original == SIN_PLAN else get_plan_display_name(plan_original)
+    plan_efectivo_display = "SIN PLAN" if plan_efectivo == SIN_PLAN else get_plan_display_name(plan_efectivo)
+
+    estado_comercial = "plan_activo"
+    titulo_estado = f"Plan {plan_efectivo_display} activo"
+    mensaje_estado = "La licencia actual esta activa."
+    alert_class = "info"
+    mostrar_aviso_preventivo = False
+    mostrar_aviso_vencimiento = False
+    recomendar_basica = False
+
+    if plan_original == "BASICA":
+        estado_comercial = "basica_permanente"
+        titulo_estado = "Licencia BASICA permanente"
+        mensaje_estado = "Tu licencia BASICA es permanente y no vence."
+        alert_class = "info"
+        dias_para_vencer = None
+    elif plan_original in {"PRO", "FULL"} and licencia_vencida and basica_activada:
+        estado_comercial = "mensual_vencido_con_basica"
+        titulo_estado = f"Plan {plan_original_display} vencido"
+        mensaje_estado = "Tu plan mensual vencio. Seguis usando BASICA porque tenes licencia permanente."
+        alert_class = "warning"
+        mostrar_aviso_vencimiento = True
+    elif plan_original in {"PRO", "FULL"} and licencia_vencida:
+        estado_comercial = "mensual_vencido_sin_plan"
+        titulo_estado = f"Plan {plan_original_display} vencido"
+        mensaje_estado = (
+            "Tu plan mensual vencio y la app quedo limitada. "
+            "Te recomendamos BASICA para no quedar bloqueado."
+        )
+        alert_class = "danger"
+        mostrar_aviso_vencimiento = True
+        recomendar_basica = True
+    elif plan_original in {"PRO", "FULL"} and dias_para_vencer is not None and dias_para_vencer <= 7:
+        estado_comercial = "mensual_por_vencer"
+        titulo_estado = f"Plan {plan_original_display} por vencer"
+        if dias_para_vencer <= 0:
+            mensaje_estado = (
+                f"Tu plan {plan_original_display} vence hoy. Podes renovar o actualizar tu licencia."
+            )
+        elif dias_para_vencer == 1:
+            mensaje_estado = (
+                f"Tu plan {plan_original_display} vence en 1 dia. Podes renovar o actualizar tu licencia."
+            )
+        else:
+            mensaje_estado = (
+                f"Tu plan {plan_original_display} vence en {dias_para_vencer} dias. "
+                "Podes renovar o actualizar tu licencia."
+            )
+        alert_class = "warning"
+        mostrar_aviso_preventivo = True
+    elif plan_original in {"PRO", "FULL"}:
+        estado_comercial = "mensual_activo"
+        titulo_estado = f"Plan {plan_original_display} activo"
+        mensaje_estado = "Tu plan mensual esta activo."
+        alert_class = "success"
+    elif plan_original == "DEMO":
+        demo = demo_status or {}
+        if bool(demo.get("vencido")):
+            estado_comercial = "demo_vencido"
+            titulo_estado = "Periodo demo vencido"
+            mensaje_estado = "El demo vencio y no se convierte en BASICA automaticamente."
+            alert_class = "warning"
+        else:
+            estado_comercial = "demo_activo"
+            titulo_estado = "Periodo demo activo"
+            mensaje_estado = "Estas usando el periodo de prueba."
+            alert_class = "warning"
+    elif plan_efectivo == SIN_PLAN:
+        estado_comercial = "sin_plan"
+        titulo_estado = "App limitada"
+        mensaje_estado = "Esta instalacion no tiene un plan activo en este momento."
+        alert_class = "danger"
+
+    return {
+        "plan_original": plan_original,
+        "plan_original_display": plan_original_display,
+        "plan_efectivo": plan_efectivo,
+        "plan_efectivo_display": plan_efectivo_display,
+        "licencia_vencida": licencia_vencida,
+        "dias_para_vencer": dias_para_vencer,
+        "basica_activada": basica_activada,
+        "estado_comercial": estado_comercial,
+        "titulo_estado": titulo_estado,
+        "mensaje_estado": mensaje_estado,
+        "alert_class": alert_class,
+        "mostrar_revalidar": plan_original in {"PRO", "FULL"} and licencia_vencida,
+        "mostrar_aviso_preventivo": mostrar_aviso_preventivo,
+        "mostrar_aviso_vencimiento": mostrar_aviso_vencimiento,
+        "recomendar_basica": recomendar_basica,
+        "expires_at": expires_at,
     }

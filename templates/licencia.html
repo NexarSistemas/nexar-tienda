@@ -77,6 +77,15 @@
   </div>
 
   <div class="col-lg-7">
+    {% if license_status and (license_status.mostrar_aviso_preventivo or license_status.mostrar_aviso_vencimiento or license_status.recomendar_basica) %}
+    <div class="alert alert-{{ license_status.alert_class }} mb-3">
+      <strong>{{ license_status.titulo_estado }}</strong>
+      <div class="small mt-1">{{ license_status.mensaje_estado }}</div>
+      {% if plan_actions and plan_actions.puede_renovar %}
+      <div class="small mt-2">{{ plan_actions.texto_renovacion }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
     {% if license_info and license_info.tier != 'DEMO' %}
     <div class="card mb-3">
       <div class="card-header bg-white"><strong>Estado actual de la licencia</strong></div>
@@ -88,11 +97,11 @@
           </div>
           <div class="col-6 col-md-3">
             <div class="small text-muted text-uppercase">Plan original</div>
-            <div class="fw-semibold">{{ 'FULL' if license_info.plan_original == 'FULL' else license_info.plan_original }}</div>
+            <div class="fw-semibold">{{ license_status.plan_original_display if license_status else license_info.plan_original }}</div>
           </div>
           <div class="col-6 col-md-3">
             <div class="small text-muted text-uppercase">Plan efectivo</div>
-            <div class="fw-semibold">{{ plan_display if license_info.plan_efectivo != 'SIN_PLAN' else 'SIN PLAN' }}</div>
+            <div class="fw-semibold">{{ license_status.plan_efectivo_display if license_status else plan_display }}</div>
           </div>
           <div class="col-6 col-md-3">
             <div class="small text-muted text-uppercase">Fallback</div>
