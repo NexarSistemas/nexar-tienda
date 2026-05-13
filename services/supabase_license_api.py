@@ -8,7 +8,7 @@ import platform
 from typing import Any
 
 import requests
-from licensing.planes import normalize_plan
+from licensing.planes import get_plan_actions, normalize_plan
 
 PRODUCTO_DEFAULT = os.getenv("LICENSE_PRODUCT", "nexar-tienda")
 logger = logging.getLogger(__name__)
@@ -322,6 +322,8 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
         "plan_actual": payload["plan_actual"],
         "plan_destino": payload["plan_destino"],
     }
+    commercial_actions = get_plan_actions(payload["plan_actual"], tiene_checkout=True)
+    allowed_targets = set(commercial_actions.get("planes_comprables", []))
 
     if not payload["producto"] or not payload["plan_actual"] or not payload["plan_solicitado"]:
         _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_required_fields")
@@ -332,13 +334,7 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
         }
 
     if payload["tipo_solicitud"] == "cambio_plan":
-        valid_manual_changes = {
-            "BASICA": {"PRO", "MENSUAL_FULL"},
-            "PRO": {"BASICA", "MENSUAL_FULL"},
-            "MENSUAL_FULL": {"BASICA", "PRO"},
-        }
-        allowed_targets = valid_manual_changes.get(payload["plan_actual"], set())
-        if payload["plan_actual"] not in valid_manual_changes:
+        if payload["plan_actual"] == "MENSUAL_FULL":
             _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="invalid_current_plan")
             return {
                 "ok": False,
@@ -388,7 +384,7 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
         _set_supabase_debug(operation=operation, status="ok", status_code=resp.status_code, last_error="")
         return {"ok": True, "message": "Solicitud de cambio de plan enviada.", "status_code": resp.status_code}
 
-    if payload["plan_actual"] not in {"BASICA", "PRO"}:
+    if not allowed_targets:
         _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="invalid_current_plan")
         return {
             "ok": False,
@@ -396,8 +392,7 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
             "error": "invalid_current_plan",
         }
 
-    expected_target = "PRO" if payload["plan_actual"] == "BASICA" else "MENSUAL_FULL"
-    if payload["plan_solicitado"] != expected_target:
+    if payload["plan_solicitado"] not in allowed_targets:
         _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="invalid_target_plan")
         return {
             "ok": False,

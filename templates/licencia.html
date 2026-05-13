@@ -60,9 +60,9 @@
           <div class="col-12">
             <label class="form-label">Plan solicitado</label>
             <select name="plan" class="form-select">
-              <option value="BASICA" selected>BASICA</option>
-              <option value="PRO">PRO</option>
-              <option value="MENSUAL_FULL">FULL</option>
+              {% for option in plan_request_options %}
+              <option value="{{ option.plan }}" {% if loop.first %}selected{% endif %}>{{ option.plan_display }}</option>
+              {% endfor %}
             </select>
           </div>
 

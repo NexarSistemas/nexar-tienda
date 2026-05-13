@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from licensing.planes import get_modulos_plan, get_plan_display_name
+from licensing.planes import get_modulos_plan, get_plan_actions, get_plan_display_name
 
 
 class LicenseIntegrationTests(unittest.TestCase):
@@ -140,15 +140,41 @@ class LicenseIntegrationTests(unittest.TestCase):
     def test_templates_no_exponen_demo_como_plan_comercial(self):
         licencia_template = (PROJECT_ROOT / "templates" / "licencia.html").read_text(encoding="utf-8")
         self.assertNotIn('<option value="DEMO">', licencia_template)
-        self.assertIn('<option value="BASICA"', licencia_template)
-        self.assertIn('<option value="PRO">PRO</option>', licencia_template)
-        self.assertIn('<option value="MENSUAL_FULL">FULL</option>', licencia_template)
+        self.assertIn('value="{{ option.plan }}"', licencia_template)
+        self.assertIn('{{ option.plan_display }}', licencia_template)
+
+    def test_demo_muestra_basica_pro_y_full(self):
+        actions = get_plan_actions("DEMO", tiene_checkout=False)
+        self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "MENSUAL_FULL"])
+
+    def test_basica_muestra_pro_y_full(self):
+        actions = get_plan_actions("BASICA")
+        self.assertEqual(actions["planes_comprables"], ["PRO", "MENSUAL_FULL"])
+
+    def test_pro_muestra_full(self):
+        actions = get_plan_actions("PRO")
+        self.assertEqual(actions["planes_comprables"], ["MENSUAL_FULL"])
+
+    def test_full_no_muestra_compra(self):
+        actions = get_plan_actions("MENSUAL_FULL")
+        self.assertEqual(actions["planes_comprables"], [])
+        self.assertTrue(actions["es_plan_completo"])
+
+    def test_mensual_full_se_trata_como_full(self):
+        actions = get_plan_actions("FULL")
+        self.assertEqual(actions["plan_actual"], "MENSUAL_FULL")
+        self.assertTrue(actions["es_plan_completo"])
+
+    def test_sin_plan_permite_comprar_basica_pro_y_full(self):
+        actions = get_plan_actions("SIN_PLAN", tiene_checkout=False)
+        self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "MENSUAL_FULL"])
 
     def test_full_se_muestra_como_full_y_debug_expone_resolucion(self):
         self.assertEqual(get_plan_display_name("MENSUAL_FULL"), "FULL")
 
         app = self.app_module.create_app()
         fake_license = {
+            "key": "NXR-TDA-TEST-001",
             "tier": "BASICA",
             "plan": "PRO",
             "plan_original": "PRO",
@@ -174,7 +200,9 @@ class LicenseIntegrationTests(unittest.TestCase):
                  mock.patch.object(self.routes_main, "get_modulos_debug_info", return_value={"final_modules": ["core"], "tier_modules": ["core"], "final_source": "db_tier"}), \
                  mock.patch.object(self.routes_main, "get_supabase_debug_state", return_value={"configured": False}), \
                  mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "NXR-TDA-TEST-001"}), \
-                 mock.patch.object(self.app_module, "refresh_saved_license_online", return_value=(True, "", fake_license)), \
+                 mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value=fake_license), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
                  mock.patch.object(self.app_module.db, "q", return_value=fake_user):
                 response = client.get("/debug/licencia")
 
