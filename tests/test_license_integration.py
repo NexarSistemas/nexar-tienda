@@ -78,8 +78,8 @@ class LicenseIntegrationTests(unittest.TestCase):
             plan_base_permanente=False,
             expira=(date.today() + timedelta(days=15)).isoformat(),
         )
-        self.assertEqual(info["tier"], "MENSUAL_FULL")
-        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("MENSUAL_FULL"))
+        self.assertEqual(info["tier"], "FULL")
+        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("FULL"))
 
     def test_pro_vencida_con_base_permanente_devuelve_basica(self):
         info = self._sync_license(
@@ -118,7 +118,7 @@ class LicenseIntegrationTests(unittest.TestCase):
             plan_base_permanente=True,
             expira=(date.today() - timedelta(days=2)).isoformat(),
         )
-        self.assertEqual(info["plan_original"], "MENSUAL_FULL")
+        self.assertEqual(info["plan_original"], "FULL")
         self.assertEqual(info["tier"], "BASICA")
         self.assertTrue(info["fallback_aplicado"])
         self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("BASICA"))
@@ -132,7 +132,7 @@ class LicenseIntegrationTests(unittest.TestCase):
             plan_base_permanente=False,
             expira=(date.today() - timedelta(days=2)).isoformat(),
         )
-        self.assertEqual(info["plan_original"], "MENSUAL_FULL")
+        self.assertEqual(info["plan_original"], "FULL")
         self.assertEqual(info["tier"], "SIN_PLAN")
         self.assertFalse(info["fallback_aplicado"])
         self.assertEqual(self.permisos.get_modulos_activos(), set())
@@ -145,15 +145,15 @@ class LicenseIntegrationTests(unittest.TestCase):
 
     def test_demo_muestra_basica_pro_y_full(self):
         actions = get_plan_actions("DEMO", tiene_checkout=False)
-        self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "MENSUAL_FULL"])
+        self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "FULL"])
 
     def test_basica_muestra_pro_y_full(self):
         actions = get_plan_actions("BASICA")
-        self.assertEqual(actions["planes_comprables"], ["PRO", "MENSUAL_FULL"])
+        self.assertEqual(actions["planes_comprables"], ["PRO", "FULL"])
 
     def test_pro_muestra_full(self):
         actions = get_plan_actions("PRO")
-        self.assertEqual(actions["planes_comprables"], ["MENSUAL_FULL"])
+        self.assertEqual(actions["planes_comprables"], ["FULL"])
 
     def test_full_no_muestra_compra(self):
         actions = get_plan_actions("MENSUAL_FULL")
@@ -162,12 +162,26 @@ class LicenseIntegrationTests(unittest.TestCase):
 
     def test_mensual_full_se_trata_como_full(self):
         actions = get_plan_actions("FULL")
-        self.assertEqual(actions["plan_actual"], "MENSUAL_FULL")
+        self.assertEqual(actions["plan_actual"], "FULL")
         self.assertTrue(actions["es_plan_completo"])
 
     def test_sin_plan_permite_comprar_basica_pro_y_full(self):
         actions = get_plan_actions("SIN_PLAN", tiene_checkout=False)
-        self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "MENSUAL_FULL"])
+        self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "FULL"])
+
+    def test_normalize_plan_legacy_y_canonico_full(self):
+        from licensing.planes import normalize_plan
+
+        self.assertEqual(normalize_plan("PRO"), "PRO")
+        self.assertEqual(normalize_plan("FULL"), "FULL")
+        self.assertEqual(normalize_plan("MENSUAL_FULL"), "FULL")
+
+    def test_pro_no_colapsa_a_full(self):
+        pro_modules = get_modulos_plan("PRO")
+        full_modules = get_modulos_plan("FULL")
+
+        self.assertNotEqual(pro_modules, full_modules)
+        self.assertTrue(full_modules.issuperset(pro_modules))
 
     def test_full_se_muestra_como_full_y_debug_expone_resolucion(self):
         self.assertEqual(get_plan_display_name("MENSUAL_FULL"), "FULL")

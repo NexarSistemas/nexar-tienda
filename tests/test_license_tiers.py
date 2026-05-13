@@ -11,6 +11,7 @@ Verifica que los tiers se mapeen correctamente a módulos:
 import os
 import sys
 import tempfile
+import unittest
 from pathlib import Path
 
 # Agregar raíz del proyecto al path
@@ -60,14 +61,14 @@ def test_tier_modules_mapping():
     from database import TIER_LIMITS
 
     # Verificar que existan los tiers esperados
-    expected_tiers = {'DEMO', 'BASICA', 'PRO', 'MENSUAL_FULL'}
+    expected_tiers = {'DEMO', 'BASICA', 'PRO', 'FULL'}
     assert set(PLANES.keys()) == expected_tiers, \
         f"Tiers esperados: {expected_tiers}, obtenido: {set(PLANES.keys())}"
 
     # Verificar que BASICA esté en TIER_LIMITS
     assert 'BASICA' in TIER_LIMITS, "BASICA debe estar en TIER_LIMITS"
     assert 'DEMO' in TIER_LIMITS, "DEMO debe estar en TIER_LIMITS"
-    assert 'MENSUAL_FULL' in TIER_LIMITS, "MENSUAL_FULL debe estar en TIER_LIMITS"
+    assert 'FULL' in TIER_LIMITS, "FULL debe estar en TIER_LIMITS"
 
     print("✓ Mapeo de tiers a módulos es consistente")
 
@@ -79,9 +80,10 @@ def test_normalize_tier():
         'BASICO': 'BASICA',
         'TDA_BASICA': 'BASICA',
         'PRO': 'PRO',
-        'FULL': 'MENSUAL_FULL',
-        'MENSUAL': 'MENSUAL_FULL',
-        'TDA_PRO': 'MENSUAL_FULL',
+        'FULL': 'FULL',
+        'MENSUAL_FULL': 'FULL',
+        'MENSUAL': 'FULL',
+        'TDA_PRO': 'FULL',
         'DEMO': 'DEMO',
         'BASICA': 'BASICA',
     }
@@ -312,11 +314,22 @@ def test_pro_modules():
 
 def test_full_includes_all():
     """Verifica que MENSUAL_FULL incluya todos los módulos esperados."""
-    full_modules = PLANES['MENSUAL_FULL']
+    full_modules = PLANES['FULL']
     assert full_modules == FULL_MODULES, \
-        f"MENSUAL_FULL: esperados {FULL_MODULES}, obtenido {full_modules}"
+        f"FULL: esperados {FULL_MODULES}, obtenido {full_modules}"
 
     print("✓ MENSUAL_FULL tiene mapeo completo")
+
+
+class LicenseTierNormalizationTests(unittest.TestCase):
+    def test_normalize_plan_preserva_pro(self):
+        self.assertEqual(normalize_plan("PRO"), "PRO")
+
+    def test_normalize_plan_preserva_full(self):
+        self.assertEqual(normalize_plan("FULL"), "FULL")
+
+    def test_normalize_plan_acepta_alias_legacy(self):
+        self.assertEqual(normalize_plan("MENSUAL_FULL"), "FULL")
 
 
 def run_all_tests():

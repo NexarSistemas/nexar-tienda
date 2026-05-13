@@ -205,7 +205,7 @@ def create_app() -> Flask:
             return redirect("/licencia")
 
         local_info = db.get_license_info()
-        if local_info.get("tier") in {"BASICA", "PRO", "MENSUAL_FULL"}:
+        if local_info.get("tier") in {"BASICA", "PRO", "FULL"}:
             return None
 
         ok, _ = validate_saved_license(debug=False)

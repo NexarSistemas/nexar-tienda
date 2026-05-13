@@ -67,14 +67,14 @@ TIER_LIMITS = {
         "updates": True,
         "descripcion": "Licencia Pro"
     },
-    "MENSUAL_FULL": {
+    "FULL": {
         "productos": None,      # ilimitado
         "clientes": None,
         "proveedores": None,
         "dias_prueba": None,
         "support": True,
         "updates": True,
-        "descripcion": "Mensual Full (actualizaciones y soporte)"
+        "descripcion": "Licencia Full (actualizaciones y soporte)"
     },
 }
 
@@ -99,7 +99,7 @@ def _normalize_effective_plan(plan: str | None = None) -> str:
 
 
 def _is_subscription_plan(plan: str) -> bool:
-    return plan in {"PRO", "MENSUAL_FULL"}
+    return plan in {"PRO", "FULL"}
 
 
 def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
@@ -1186,7 +1186,7 @@ def get_license_info() -> dict:
     snapshot = _resolve_license_snapshot(cfg)
     tier = snapshot["plan_efectivo"]
     expires_at_str = snapshot["expires_at"]
-    full_days = snapshot["remaining_days"] if snapshot["plan_original"] == "MENSUAL_FULL" else None
+    full_days = snapshot["remaining_days"] if snapshot["plan_original"] == "FULL" else None
 
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["DEMO"])
     modules = _extract_license_modules({'modules': cfg.get('license_modules', '[]')})
@@ -1227,7 +1227,7 @@ def get_license_info() -> dict:
         'pro_expires_soon':     full_days == 5,
         'pro_expires_tomorrow': full_days == 1,
         'full_days': full_days,
-        'full_vencido': snapshot["plan_original"] == "MENSUAL_FULL" and snapshot["expirada"],
+        'full_vencido': snapshot["plan_original"] == "FULL" and snapshot["expirada"],
     }
 
 
@@ -1391,7 +1391,7 @@ def activar_licencia(token_b64: str) -> tuple:
     tier = normalize_license_plan(data.get("tier", "BASICA"))
 
     # ── Regla: Mensual Full requiere BASICA previa en el flujo legacy RSA ────
-    if tier == "MENSUAL_FULL":
+    if tier == "FULL":
         cfg = get_config()
         if cfg.get("basica_activada", "0") != "1":
             return (

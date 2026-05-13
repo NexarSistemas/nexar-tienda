@@ -11,7 +11,7 @@ DEFAULT_NEXAR_PAGOS_API = "https://nexar-pagos.netlify.app/.netlify/functions"
 REQUEST_TIMEOUT_SECONDS = 12
 PRICE_BY_PLAN = {
     "PRO": 9900,
-    "MENSUAL_FULL": 19900,
+    "FULL": 19900,
 }
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ def build_external_reference(license_key: str, producto: str, plan_destino: str)
         raise MercadoPagoCheckoutError("No se encontró una licencia válida para iniciar el checkout.")
     if not product_value:
         raise MercadoPagoCheckoutError("No se pudo resolver el producto de la licencia.")
-    if plan_value not in {"PRO", "MENSUAL_FULL"}:
+    if plan_value not in {"PRO", "FULL"}:
         raise MercadoPagoCheckoutError("El plan solicitado no admite checkout online todavía.")
 
     return f"{license_value}|{product_value}|{plan_value}"
@@ -74,7 +74,7 @@ def create_checkout_preference(
     reference = str(external_reference or "").strip()
     api_base = get_nexar_pagos_api_base()
 
-    if plan not in {"PRO", "MENSUAL_FULL"}:
+    if plan not in {"PRO", "FULL"}:
         raise MercadoPagoCheckoutError("El plan solicitado no admite checkout online todavía.")
     if not email:
         raise MercadoPagoCheckoutError("Necesitás cargar un email del titular antes de continuar.")

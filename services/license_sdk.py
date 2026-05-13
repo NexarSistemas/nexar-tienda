@@ -225,7 +225,7 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
 
         raw_plan = license_data.get("plan") or license_data.get("tier") or license_data.get("license_plan")
         plan = db.normalize_license_plan(raw_plan)
-        if plan == "MENSUAL_FULL" and db.get_config().get("basica_activada", "0") != "1":
+        if plan == "FULL" and db.get_config().get("basica_activada", "0") != "1":
             _set_license_debug(
                 status="online_error",
                 validation_mode=source,
