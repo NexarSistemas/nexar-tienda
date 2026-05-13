@@ -18,7 +18,13 @@ from pathlib import Path
 
 import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
-from licensing.planes import PLANES, get_plan_activo, get_plan_display_name, normalize_plan
+from licensing.planes import (
+    PLANES,
+    get_commercial_plan_options,
+    get_plan_actions,
+    get_plan_display_name,
+    normalize_plan,
+)
 from licensing.permisos import get_modulos_activos, get_modulos_debug_info, require_modulo
 from services.cuentas_corrientes import calcular_estado_factura, calcular_saldo_factura
 from services.license_storage import cargar_licencia, guardar_licencia
@@ -226,13 +232,38 @@ def _resolve_next_upgrade_plan(license_info: dict[str, object] | None) -> str:
     return available[0] if available else ""
 
 
+def _has_checkout_license(license_info: dict[str, object] | None = None) -> bool:
+    license_info = license_info or {}
+    stored_license = cargar_licencia() or {}
+    license_key = _first_non_empty(
+        license_info.get("key", ""),
+        stored_license.get("license_key", ""),
+    )
+    return bool(license_key)
+
+
+def _get_plan_actions_context(
+    license_info: dict[str, object] | None,
+    *,
+    tiene_checkout: bool | None = None,
+) -> dict[str, object]:
+    license_info = license_info or {}
+    basica_activada = bool(license_info.get("plan_base_permanente"))
+    if not basica_activada:
+        basica_activada = _as_bool(db.get_config().get("basica_activada", "0"))
+    return get_plan_actions(
+        license_info.get("tier", "DEMO"),
+        basica_activada=basica_activada,
+        licencia_vencida=bool(license_info.get("expirada")),
+        tiene_checkout=_has_checkout_license(license_info) if tiene_checkout is None else tiene_checkout,
+    )
+
+
 def _get_available_checkout_plans(license_info: dict[str, object] | None) -> list[str]:
-    current_plan = normalize_plan(str((license_info or {}).get("tier", "DEMO")), default="DEMO")
-    if current_plan == "BASICA":
-        return ["PRO", "MENSUAL_FULL"]
-    if current_plan == "PRO":
-        return ["MENSUAL_FULL"]
-    return []
+    if not _has_checkout_license(license_info):
+        return []
+    actions = _get_plan_actions_context(license_info, tiene_checkout=True)
+    return list(actions.get("planes_comprables", []))
 
 
 def _resolve_requested_checkout_plan(license_info: dict[str, object] | None) -> str:
@@ -2201,12 +2232,14 @@ def mi_plan():
     todos_los_modulos = sorted(set().union(*PLANES.values()))
     modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
     license_info = refreshed_info or db.get_license_info()
+    plan_actions = _get_plan_actions_context(license_info)
     available_checkout_plans = _get_available_checkout_plans(license_info)
     next_upgrade_plan = _resolve_next_upgrade_plan(license_info)
     return render_template(
         "mi_plan.html",
         plan_activo=license_info.get("tier", "DEMO"),
         plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+        plan_actions=plan_actions,
         license_info=license_info,
         modulos_activos=modulos_activos,
         modulos_bloqueados=modulos_bloqueados,
@@ -2371,34 +2404,28 @@ def mi_plan_checkout_open():
 @admin_required
 def mi_plan_solicitar_upgrade():
     license_info = db.get_license_info()
-    plan_actual = normalize_plan(license_info.get("tier", "DEMO"), default="DEMO")
+    plan_actions = _get_plan_actions_context(license_info, tiene_checkout=_has_checkout_license(license_info))
+    plan_actual = str(plan_actions.get("plan_actual", "DEMO"))
+    allowed_targets = list(plan_actions.get("planes_comprables", []))
     plan_solicitado = normalize_plan(
         request.form.get("plan_destino", "") or request.form.get("plan_solicitado", ""),
         default="",
     )
 
-    if plan_solicitado:
-        valid_manual_changes = {
-            "BASICA": {"PRO", "MENSUAL_FULL"},
-            "PRO": {"BASICA", "MENSUAL_FULL"},
-            "MENSUAL_FULL": {"BASICA", "PRO"},
-        }
-        allowed_targets = valid_manual_changes.get(plan_actual, set())
-        if plan_solicitado not in allowed_targets:
-            flash("El cambio de plan solicitado no estÃ¡ disponible para tu licencia actual.", "info")
-            return redirect(url_for("main.mi_plan"))
-
-    if not plan_solicitado and plan_actual == "BASICA":
-        plan_solicitado = "PRO"
-    elif not plan_solicitado and plan_actual == "PRO":
-        plan_solicitado = "MENSUAL_FULL"
-    elif not plan_solicitado:
-        flash("Tu plan actual ya está completo o no admite actualización.", "info")
+    if plan_solicitado and plan_solicitado not in allowed_targets:
+        flash("El cambio de plan solicitado no est? disponible para tu licencia actual.", "info")
         return redirect(url_for("main.mi_plan"))
+
+    if not plan_solicitado:
+        if allowed_targets:
+            plan_solicitado = allowed_targets[0]
+        else:
+            flash("Tu plan actual ya est? completo o no admite actualizaci?n.", "info")
+            return redirect(url_for("main.mi_plan"))
 
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
-        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
+        flash("No se encontr? una licencia activa para enviar el cambio de plan.", "warning")
         return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
@@ -2440,11 +2467,8 @@ def mi_plan_solicitar_upgrade():
     result = create_upgrade_request(payload)
     if result.get("ok"):
         flash("Solicitud de cambio de plan enviada.", "success")
-        return redirect(url_for("main.mi_plan"))
-    if result.get("ok"):
-        flash("Solicitud de actualización enviada.", "success")
     else:
-        flash(result.get("message", "No se pudo enviar la solicitud de actualización."), "danger")
+        flash(result.get("message", "No se pudo enviar la solicitud de actualizaci?n."), "danger")
     return redirect(url_for("main.mi_plan"))
 
 
@@ -2502,6 +2526,7 @@ def licencia():
         license_info=license_info,
         demo_status=demo_status,
         plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+        plan_request_options=get_commercial_plan_options(),
         license_holder=_get_license_holder_profile(license_info),
     )
 

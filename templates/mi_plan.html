@@ -12,7 +12,7 @@
                     <h5 class="mb-0">Plan activo</h5>
                 </div>
                 <div class="card-body">
-                    {% set plan_label = 'Periodo de prueba' if plan_activo == 'DEMO' else (plan_display or ('FULL' if plan_activo == 'MENSUAL_FULL' else plan_activo)) %}
+                    {% set plan_label = plan_actions.plan_display if plan_actions else 'Plan no disponible' %}
                     <div class="display-6 fw-bold text-primary mb-2" id="license-plan-label">{{ plan_label }}</div>
                     <p class="text-muted mb-3">Los modulos disponibles dependen del plan configurado para esta instalacion.</p>
                     {% if license_info and license_info.tier != 'DEMO' %}
@@ -24,29 +24,15 @@
                     </div>
                     {% endif %}
 
-                    {% if plan_activo == 'BASICA' %}
-                    <div class="alert alert-info mb-0">
-                        <div class="fw-semibold">Elegí tu upgrade</div>
-                        <div class="small">Podés pasar directo a PRO o FULL desde esta pantalla.</div>
+                    {% if plan_actions %}
+                    <div class="alert alert-{{ plan_actions.estado_clase }} mb-0">
+                        <div class="fw-semibold">{{ plan_actions.titulo_estado }}</div>
+                        <div class="small">{{ plan_actions.mensaje_estado }}</div>
                     </div>
-                    {% elif plan_activo == 'PRO' %}
-                    <div class="alert alert-primary mb-0">
-                        <div class="fw-semibold">Actualizar a FULL</div>
-                        <div class="small">Accedé a funciones premium, multinegocio y soporte prioritario.</div>
-                    </div>
-                    {% elif plan_activo == 'MENSUAL_FULL' %}
-                    <div class="alert alert-success mb-0">
-                        <div class="fw-semibold">Plan completo activo</div>
-                    </div>
-                    {% elif plan_activo == 'DEMO' %}
+                    {% else %}
                     <div class="alert alert-warning mb-0">
-                        <div class="fw-semibold">Periodo de prueba activo</div>
-                        <div class="small">Los planes comerciales disponibles son BASICA, PRO y FULL.</div>
-                    </div>
-                    {% elif plan_activo == 'SIN_PLAN' %}
-                    <div class="alert alert-danger mb-0">
-                        <div class="fw-semibold">Suscripcion vencida</div>
-                        <div class="small">No hay BASICA permanente para aplicar fallback en esta instalacion.</div>
+                        <div class="fw-semibold">Acciones no disponibles</div>
+                        <div class="small">No se pudieron cargar las acciones del plan. Intent? refrescar la licencia.</div>
                     </div>
                     {% endif %}
                     <hr>
@@ -72,94 +58,59 @@
                             {% endif %}
                         </div>
 
-                        {% if plan_activo == 'BASICA' %}
+                        {% if plan_actions and plan_actions.acciones %}
                         <div class="d-grid gap-2">
+                            {% for action in plan_actions.acciones %}
+                            {% if plan_actions.mostrar_checkout %}
                             <button
-                                class="btn btn-primary checkout-upgrade-button"
+                                class="btn {% if action.is_primary %}btn-primary{% else %}btn-outline-primary{% endif %} checkout-upgrade-button"
                                 type="button"
                                 data-checkout-url="{{ url_for('main.mi_plan_checkout') }}"
                                 data-checkout-open-url="{{ url_for('main.mi_plan_checkout_open') }}"
-                                data-target-plan="PRO"
-                                data-target-plan-display="PRO"
+                                data-target-plan="{{ action.plan }}"
+                                data-target-plan-display="{{ action.plan_display }}"
                                 data-csrf-token="{{ csrf_token() }}"
                                 {% if not checkout_enabled %}disabled{% endif %}
                             >
-                                Actualizar a PRO
+                                {{ action.button_label }}
                             </button>
-                            <button
-                                class="btn btn-outline-primary checkout-upgrade-button"
-                                type="button"
-                                data-checkout-url="{{ url_for('main.mi_plan_checkout') }}"
-                                data-checkout-open-url="{{ url_for('main.mi_plan_checkout_open') }}"
-                                data-target-plan="MENSUAL_FULL"
-                                data-target-plan-display="FULL"
-                                data-csrf-token="{{ csrf_token() }}"
-                                {% if not checkout_enabled %}disabled{% endif %}
-                            >
-                                Actualizar a FULL
-                            </button>
+                            {% else %}
+                            <a class="btn {% if action.is_primary %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('licencia') }}">
+                                {{ action.button_label }}
+                            </a>
+                            {% endif %}
+                            {% endfor %}
                         </div>
                         <div class="small text-muted mt-2" id="checkout-upgrade-message">
-                            Podés elegir PRO o FULL. El checkout se abre en Mercado Pago y la licencia se refresca al volver a la app.
+                            {{ plan_actions.mensaje_checkout or '' }}
                         </div>
-                        {% elif plan_activo == 'PRO' %}
-                        <div class="d-grid gap-2">
-                            <button
-                                class="btn btn-primary checkout-upgrade-button"
-                                type="button"
-                                data-checkout-url="{{ url_for('main.mi_plan_checkout') }}"
-                                data-checkout-open-url="{{ url_for('main.mi_plan_checkout_open') }}"
-                                data-target-plan="MENSUAL_FULL"
-                                data-target-plan-display="FULL"
-                                data-csrf-token="{{ csrf_token() }}"
-                                {% if not checkout_enabled %}disabled{% endif %}
-                            >
-                                Actualizar a FULL
-                            </button>
-                            <form method="POST" action="{{ url_for('main.mi_plan_solicitar_upgrade') }}">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="plan_destino" value="BASICA">
-                                <button class="btn btn-outline-secondary w-100" type="submit">
-                                    Solicitar volver a BASICA, manual
-                                </button>
-                            </form>
+                        {% if plan_actions.mostrar_solicitud_manual %}
+                        <div class="border rounded p-3 mt-3">
+                            <div class="small fw-semibold text-uppercase text-muted mb-2">Alternativa manual</div>
+                            {% if checkout_enabled %}
+                            <div class="d-grid gap-2">
+                                {% for action in plan_actions.acciones_manuales %}
+                                <form method="POST" action="{{ url_for('main.mi_plan_solicitar_upgrade') }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="plan_destino" value="{{ action.plan }}">
+                                    <button class="btn btn-outline-secondary w-100" type="submit">
+                                        {{ action.button_label }}
+                                    </button>
+                                </form>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <a class="btn btn-outline-secondary w-100" href="{{ url_for('licencia') }}">
+                                Gestionar activacion o solicitud manual
+                            </a>
+                            {% endif %}
                         </div>
-                        <div class="small text-muted mt-2" id="checkout-upgrade-message">
-                            El checkout se abre en Mercado Pago y la licencia se refresca al volver a la app.
-                        </div>
-                        {% elif plan_activo == 'MENSUAL_FULL' %}
-                        <p class="text-success fw-semibold mb-2">Plan completo activo</p>
-                        <div class="d-grid gap-2">
-                            <form method="POST" action="{{ url_for('main.mi_plan_solicitar_upgrade') }}">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="plan_destino" value="PRO">
-                                <button class="btn btn-outline-secondary w-100" type="submit">
-                                    Solicitar bajar a PRO, manual
-                                </button>
-                            </form>
-                            <form method="POST" action="{{ url_for('main.mi_plan_solicitar_upgrade') }}">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="plan_destino" value="BASICA">
-                                <button class="btn btn-outline-secondary w-100" type="submit">
-                                    Solicitar bajar a BASICA, manual
-                                </button>
-                            </form>
-                        </div>
-                        <div class="small text-muted mt-2" id="checkout-upgrade-message">
-                            Los cambios hacia planes inferiores se manejan manualmente por ahora.
-                        </div>
-                        {% elif plan_activo == 'DEMO' %}
-                        <a class="btn btn-outline-primary w-100" href="{{ url_for('licencia') }}">
-                            Comprar o solicitar plan desde Licencia
-                        </a>
-                        <div class="small text-muted mt-2" id="checkout-upgrade-message">
-                            El checkout directo todavia no esta disponible para DEMO.
-                        </div>
+                        {% endif %}
+                        {% elif plan_actions %}
+                        <p class="text-success fw-semibold mb-0">No hay acciones comerciales disponibles para este plan.</p>
+                        <div class="small text-muted mt-2" id="checkout-upgrade-message"></div>
                         {% else %}
-                        <p class="text-success fw-semibold mb-0">No hay upgrades directos disponibles para este plan.</p>
-                        <div class="small text-muted mt-2" id="checkout-upgrade-message">
-                            Si necesitás un cambio de plan, gestionarlo desde Licencia o Soporte.
-                        </div>
+                        <div class="alert alert-warning mb-0">No se pudieron cargar las acciones del plan. Intent? refrescar la licencia.</div>
                         {% endif %}
 
                         <div class="alert alert-light border mt-3 d-none" id="post-payment-refresh-panel">
