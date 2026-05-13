@@ -98,21 +98,15 @@
                     <h5 class="mb-0">Categorías de Productos</h5>
                 </div>
                 <div class="card-body">
-                    <form action="{{ url_for('config_categoria') }}" method="POST" class="mb-4">
-                        <div class="input-group">
-                            <input type="text" name="nombre" class="form-control" placeholder="Nueva categoría..." required>
-                            <button class="btn btn-outline-primary" type="submit">Agregar</button>
-                        </div>
-                    </form>
+                    <p class="text-muted small mb-3">
+                        Estas categorías se definen automáticamente según el rubro actual: <strong>{{ rubro_actual|capitalize }}</strong>.
+                    </p>
 
                     <div class="list-group list-group-flush border-top">
-                        {% for cat in categorias %}
+                        {% for cat in categorias_rubro %}
                         <div class="list-group-item d-flex justify-content-between align-items-center px-0">
                             {{ cat }}
-                            <form action="{{ url_for('config_categoria_eliminar') }}" method="POST" onsubmit="return confirm('¿Eliminar la categoría «{{ cat }}»? Los productos existentes no se borrarán.')">
-                                <input type="hidden" name="nombre" value="{{ cat }}">
-                                <button type="submit" class="btn btn-sm btn-link text-danger"><i class="fas fa-trash"></i></button>
-                            </form>
+                            <span class="badge bg-light text-dark">Rubro activo</span>
                         </div>
                         {% endfor %}
                     </div>

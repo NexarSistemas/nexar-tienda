@@ -23,6 +23,9 @@ from licensing.permisos import get_modulos_activos, get_modulos_debug_info, requ
 from services.cuentas_corrientes import calcular_estado_factura, calcular_saldo_factura
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.rubros import (
+    convertir_cantidad_a_base,
+    convertir_cantidad_desde_base,
+    convertir_precio_desde_base,
     get_categoria_default,
     get_categorias_disponibles,
     get_rubro_actual,
@@ -526,17 +529,22 @@ def formatear_cantidad_ticket(cantidad) -> str:
     return texto or "0"
 
 
+def cantidad_para_mostrar(unidad, cantidad) -> float:
+    return convertir_cantidad_desde_base(cantidad, unidad)
+
+
 def formatear_unidad_ticket(unidad, cantidad) -> str:
     unidad_normalizada = normalizar_unidad(unidad or "unidad")
-    try:
-        cantidad_num = float(cantidad or 0)
-    except (TypeError, ValueError):
-        cantidad_num = 0.0
+    cantidad_num = cantidad_para_mostrar(unidad_normalizada, cantidad)
 
     if unidad_normalizada == "unidad":
         return "unidad" if abs(cantidad_num) == 1 else "unidades"
     if unidad_normalizada == "paquete":
         return "paquete" if abs(cantidad_num) == 1 else "paquetes"
+    if unidad_normalizada == "gramo":
+        return "gramo" if abs(cantidad_num) == 1 else "gramos"
+    if unidad_normalizada == "ml":
+        return "ml"
     if unidad_normalizada == "docena":
         return "docena"
     if unidad_normalizada == "kg":
@@ -546,14 +554,30 @@ def formatear_unidad_ticket(unidad, cantidad) -> str:
     return get_unidad_label(unidad_normalizada).lower()
 
 
-def formatear_precio_ticket(valor) -> str:
+def formatear_precio_ticket(valor, decimales=2) -> str:
     try:
         number = float(valor or 0)
     except (TypeError, ValueError):
         number = 0.0
-    entero, dec = f"{number:,.2f}".split(".")
+    entero, dec = f"{number:,.{decimales}f}".split(".")
     entero = entero.replace(",", ".")
     return f"$ {entero},{dec}"
+
+
+def formatear_precio_por_unidad_ticket(valor, unidad) -> str:
+    unidad_normalizada = normalizar_unidad(unidad or "unidad")
+    precio_mostrable = convertir_precio_desde_base(valor, unidad_normalizada)
+    decimales = 4 if unidad_normalizada in {"gramo", "ml"} else 2
+    return formatear_precio_ticket(precio_mostrable, decimales=decimales)
+
+
+def _serializar_producto_pos(producto):
+    payload = dict(producto)
+    unidad_visual = normalizar_unidad(payload.get("unidad") or payload.get("tipo_unidad") or "unidad")
+    payload["unidad"] = get_unidad_label(unidad_visual)
+    payload["stock_actual"] = cantidad_para_mostrar(unidad_visual, payload.get("stock_actual", 0))
+    payload["precio_venta_display"] = convertir_precio_desde_base(payload.get("precio_venta", 0), unidad_visual)
+    return payload
 
 
 def _enriquecer_items_reporte(items):
@@ -562,7 +586,8 @@ def _enriquecer_items_reporte(items):
         row = dict(item)
         cantidad = float(row.get("unidades") or row.get("total_vendido") or 0)
         unidad = row.get("unidad") or "unidad"
-        row["cantidad_formateada"] = formatear_cantidad_ticket(cantidad)
+        cantidad_mostrable = cantidad_para_mostrar(unidad, cantidad)
+        row["cantidad_formateada"] = formatear_cantidad_ticket(cantidad_mostrable)
         row["unidad_formateada"] = formatear_unidad_ticket(unidad, cantidad)
         row["cantidad_unidad_texto"] = f"{row['cantidad_formateada']} {row['unidad_formateada']}"
         enriquecidos.append(row)
@@ -1129,18 +1154,36 @@ def producto_editar(pid):
             or producto_validacion.get("unidad")
         )
         producto_validacion["por_peso"] = int(producto_validacion.get("por_peso", 0) or 0)
+        unidad_formulario = normalizar_unidad(
+            data.get("tipo_unidad") or data.get("unidad") or producto.get("unidad") or producto.get("tipo_unidad") or "unidad"
+        )
+        stock_actual_base = (
+            convertir_cantidad_a_base(data.get("stock_actual", 0), unidad_formulario)
+            if "stock_actual" in data
+            else float(stock["stock_actual"] if stock else 0)
+        )
+        stock_minimo_base = (
+            convertir_cantidad_a_base(data.get("stock_minimo", 0), unidad_formulario)
+            if "stock_minimo" in data
+            else float(stock["stock_minimo"] if stock else 5)
+        )
+        stock_maximo_base = (
+            convertir_cantidad_a_base(data.get("stock_maximo", 0), unidad_formulario)
+            if "stock_maximo" in data
+            else float(stock["stock_maximo"] if stock else 50)
+        )
         try:
-            nuevo_stock = db.validar_cantidad_producto(producto_validacion, data.get("stock_actual", stock["stock_actual"] if stock else 0), campo="stock")
+            nuevo_stock = db.validar_cantidad_producto(producto_validacion, stock_actual_base, campo="stock")
             db.update_producto(pid, data)
         except ValueError as exc:
             flash(str(exc), "warning")
             return redirect(request.url)
-        db.update_stock_item(pid, nuevo_stock, float(data.get("stock_minimo", 5)), float(data.get("stock_maximo", 50)), data.get("proveedor_habitual", ""))
+        db.update_stock_item(pid, nuevo_stock, stock_minimo_base, stock_maximo_base, data.get("proveedor_habitual", ""))
         flash("Producto actualizado.", "success")
         return redirect(url_for("productos"))
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
-    unidad_producto = producto["tipo_unidad"] if "tipo_unidad" in producto.keys() and producto["tipo_unidad"] else producto["unidad"]
+    unidad_producto = producto["unidad"] if "unidad" in producto.keys() and producto["unidad"] else producto["tipo_unidad"]
     unidad_actual = normalizar_unidad(unidad_producto, rubro_actual)
     unidades_disponibles = get_unidades_disponibles(rubro_actual)
     if unidad_actual not in unidades_disponibles:
@@ -1260,7 +1303,8 @@ def punto_venta():
 @main_bp.route("/api/buscar_productos")
 @login_required
 def api_buscar_productos():
-    return jsonify({"ok": True, "productos": [dict(r) for r in db.buscar_productos_pos(request.args.get("q", ""))]})
+    productos = [_serializar_producto_pos(r) for r in db.buscar_productos_pos(request.args.get("q", ""))]
+    return jsonify({"ok": True, "productos": productos})
 
 
 @main_bp.route("/api/producto/buscar")
@@ -1275,6 +1319,7 @@ def api_producto_buscar():
     stock_row = db.q("SELECT stock_actual FROM stock WHERE producto_id=?", (producto["id"],), fetchone=True)
     payload = dict(producto)
     payload["stock_actual"] = float(stock_row["stock_actual"] or 0) if stock_row else 0
+    payload = _serializar_producto_pos(payload)
     return jsonify({"ok": True, "producto": payload})
 
 
@@ -1290,8 +1335,13 @@ def api_carrito_agregar():
     stock_row = db.q("SELECT stock_actual FROM stock WHERE producto_id=?", (pid,), fetchone=True)
     if not producto or not stock_row:
         return jsonify({"ok": False, "error": "Producto o cantidad invalida."}), 400
+    unidad_visual = normalizar_unidad(producto["unidad"] or producto["tipo_unidad"] or "unidad")
     try:
-        cantidad = db.validar_cantidad_producto(producto, payload.get("cantidad", 0), campo="cantidad")
+        cantidad = db.validar_cantidad_producto(
+            producto,
+            convertir_cantidad_a_base(payload.get("cantidad", 0), unidad_visual),
+            campo="cantidad",
+        )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     if cantidad > float(stock_row["stock_actual"] or 0):
@@ -1310,7 +1360,7 @@ def api_carrito_agregar():
             "codigo_interno": producto["codigo_interno"],
             "descripcion": producto["descripcion"],
             "categoria": producto["categoria"],
-            "unidad": producto["unidad"],
+            "unidad": get_unidad_label(unidad_visual),
             "cantidad": cantidad,
             "precio_unitario": precio,
             "costo_unitario": float(producto["costo"] or 0),
@@ -1397,13 +1447,13 @@ def ticket(vid):
             subtotal = float(item["subtotal"] or 0)
             cantidad = float(item["cantidad"] or 0)
             unidad_base = (
-                (producto["tipo_unidad"] if producto and producto["tipo_unidad"] else "")
-                or (item["unidad"] or "")
+                (item["unidad"] or "")
                 or (producto["unidad"] if producto and producto["unidad"] else "")
+                or (producto["tipo_unidad"] if producto and producto["tipo_unidad"] else "")
                 or "unidad"
             )
             unidad_normalizada = normalizar_unidad(unidad_base, rubro_actual)
-            cantidad_formateada = formatear_cantidad_ticket(cantidad)
+            cantidad_formateada = formatear_cantidad_ticket(cantidad_para_mostrar(unidad_normalizada, cantidad))
             unidad_formateada = formatear_unidad_ticket(unidad_normalizada, cantidad)
             precio_unitario = float(item["precio_unitario"] or 0)
             base = subtotal / (1 + (iva_rate / 100)) if iva_rate > 0 else subtotal
@@ -1414,7 +1464,7 @@ def ticket(vid):
             item_dict["unidad_normalizada"] = unidad_normalizada
             item_dict["cantidad_formateada"] = cantidad_formateada
             item_dict["unidad_formateada"] = unidad_formateada
-            item_dict["precio_unitario_formateado"] = formatear_precio_ticket(precio_unitario)
+            item_dict["precio_unitario_formateado"] = formatear_precio_por_unidad_ticket(precio_unitario, unidad_normalizada)
             item_dict["subtotal_formateado"] = formatear_precio_ticket(subtotal)
             item_dict["precio_por_unidad_formateado"] = f"{item_dict['precio_unitario_formateado']}/{unidad_formateada}"
             item_dict["cantidad_unidad_texto"] = f"{cantidad_formateada} {unidad_formateada}"
@@ -2133,7 +2183,7 @@ def config():
     return render_template(
         "config.html",
         cfg=cfg,
-        categorias=db.get_categorias(),
+        categorias_rubro=get_categorias_disponibles(rubro_actual),
         categorias_gastos=db.get_gasto_categorias(),
         rubro_actual=rubro_actual,
         rubro_guardado=db.get_rubro_configurado(),

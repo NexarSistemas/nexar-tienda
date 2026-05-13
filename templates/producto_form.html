@@ -103,11 +103,11 @@
                                 <select class="form-select" id="unidad" name="unidad">
                                     {% for unidad in unidades_disponibles %}
                                     <option value="{{ unidad }}" {% if unidad_actual == unidad %}selected{% endif %}>
-                                        {{ unidad|capitalize if unidad not in ['kg', 'ml'] else unidad|upper }}
+                                        {% if unidad == 'kg' %}KG{% elif unidad == 'ml' %}ml{% else %}{{ unidad|capitalize }}{% endif %}
                                     </option>
                                     {% endfor %}
                                 </select>
-                                <small class="form-text text-muted">Rubro actual: {{ rubro_actual|capitalize }}. La venta fraccionada todavia no esta habilitada.</small>
+                                <small class="form-text text-muted">Rubro actual: {{ rubro_actual|capitalize }}. En almacen podes usar kg, gramo, litro, ml y docena. Gramo y ml se guardan internamente sobre base kg/litro.</small>
                             </div>
                         </div>
 
@@ -226,7 +226,7 @@
                                     Este producto permite cantidades decimales
                                 </label>
                             </div>
-                            <small class="form-text text-muted">Solo usalo para productos vendidos en fracciones, por ejemplo kg, litro o ml.</small>
+                            <small class="form-text text-muted">Solo usalo para productos vendidos en fracciones, por ejemplo kg, gramo, litro o ml.</small>
                         </div>
 
                         <!-- ─── STOCK INICIAL (Solo en creación) ─── -->
