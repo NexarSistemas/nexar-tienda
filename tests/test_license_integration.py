@@ -19,6 +19,7 @@ from licensing.planes import (
     get_plan_display_name,
     get_update_access_context,
 )
+from services.rubros import get_rubros_disponibles
 
 
 class LicenseIntegrationTests(unittest.TestCase):
@@ -423,12 +424,12 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertNotIn(b"solo para el plan FULL", response.data)
 
     def test_windows_update_helper_script_espera_cierre_y_lanza_instalador(self):
-        installer = Path(self.temp_dir.name) / "NexarTienda_1.31.2_Setup.exe"
+        installer = Path(self.temp_dir.name) / "NexarTienda_1.32.0_Setup.exe"
         installer.write_text("stub", encoding="utf-8")
 
         script = self.routes_main._build_windows_update_launcher_script(
             installer=installer,
-            target_version="1.31.2",
+            target_version="1.32.0",
         )
 
         self.assertIn("Stop-Process -Id $AppPid -Force", script)
@@ -439,7 +440,7 @@ class LicenseIntegrationTests(unittest.TestCase):
     def test_consume_windows_update_status_sincroniza_config_y_limpia_archivo(self):
         status_path = Path(self.temp_dir.name) / "windows_update_status.json"
         status_path.write_text(
-            '{"status":"install_failed","target_version":"1.31.2","installer_name":"NexarTienda_1.31.2_Setup.exe","error":"boom","finished_at":"2026-05-13 10:00"}',
+            '{"status":"install_failed","target_version":"1.32.0","installer_name":"NexarTienda_1.32.0_Setup.exe","error":"boom","finished_at":"2026-05-13 10:00"}',
             encoding="utf-8",
         )
 
@@ -451,14 +452,14 @@ class LicenseIntegrationTests(unittest.TestCase):
             "update_install_status": "install_failed",
             "update_finished_at": "2026-05-13 10:00",
             "update_install_error": "boom",
-            "update_target_version": "1.31.2",
-            "update_installer_name": "NexarTienda_1.31.2_Setup.exe",
+            "update_target_version": "1.32.0",
+            "update_installer_name": "NexarTienda_1.32.0_Setup.exe",
         })
         self.assertFalse(status_path.exists())
 
     def test_actualizacion_instalar_windows_prepara_helper_y_cierra_app(self):
         app = self.app_module.create_app()
-        installer = Path(self.temp_dir.name) / "NexarTienda_1.31.2_Setup.exe"
+        installer = Path(self.temp_dir.name) / "NexarTienda_1.32.0_Setup.exe"
         installer.write_text("stub", encoding="utf-8")
 
         with app.test_client() as client:
@@ -477,7 +478,7 @@ class LicenseIntegrationTests(unittest.TestCase):
             with mock.patch.object(self.routes_main.db, "count_usuarios", return_value=1), \
                  mock.patch.object(self.routes_main.db, "get_license_info", return_value=license_info), \
                  mock.patch.object(self.routes_main, "_update_file", return_value=installer), \
-                 mock.patch.object(self.routes_main, "_installer_version", return_value="1.31.2"), \
+                 mock.patch.object(self.routes_main, "_installer_version", return_value="1.32.0"), \
                  mock.patch.object(self.routes_main, "_make_backup", return_value=Path("backup.db")), \
                  mock.patch.object(self.routes_main, "_write_windows_update_status") as mocked_write_status, \
                  mock.patch.object(self.routes_main, "_launch_windows_update_helper") as mocked_launch_helper, \
@@ -490,7 +491,7 @@ class LicenseIntegrationTests(unittest.TestCase):
                  mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: default), \
                  mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "NXR-TDA-TEST-001"}):
                 response = client.post(
-                    "/respaldo/actualizacion/instalar/NexarTienda_1.31.2_Setup.exe",
+                    "/respaldo/actualizacion/instalar/NexarTienda_1.32.0_Setup.exe",
                     data={"csrf_token": "test"},
                 )
 
@@ -498,15 +499,89 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertIn(b"Cerrando Nexar Tienda para actualizar", response.data)
         mocked_write_status.assert_called_once_with(
             "in_progress",
-            target_version="1.31.2",
-            installer_name="NexarTienda_1.31.2_Setup.exe",
+            target_version="1.32.0",
+            installer_name="NexarTienda_1.32.0_Setup.exe",
         )
-        mocked_launch_helper.assert_called_once_with(installer=installer, target_version="1.31.2")
+        mocked_launch_helper.assert_called_once_with(installer=installer, target_version="1.32.0")
 
     def test_inno_setup_no_relanzamiento_automatico_postinstall(self):
         iss_template = (PROJECT_ROOT / "build" / "nexar_tienda.iss").read_text(encoding="utf-8")
         self.assertNotIn("Flags: nowait postinstall", iss_template)
         self.assertNotIn('Description: "Iniciar {#AppName} ahora"', iss_template)
+
+    def test_rubros_visibles_se_limitan_a_tienda_y_almacen(self):
+        self.assertEqual(get_rubros_disponibles(), ["tienda", "almacen"])
+
+    def test_registro_inicial_guarda_admin_rubro_y_datos_comercio(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["_csrf_token"] = "test"
+            response = client.post(
+                "/registro-inicial",
+                data={
+                    "csrf_token": "test",
+                    "nombre_completo": "Admin Comercio",
+                    "username": "admin",
+                    "admin_email": "admin@comercio.com",
+                    "admin_telefono": "264123456",
+                    "password": "Abc123$",
+                    "password_confirm": "Abc123$",
+                    "rubro": "almacen",
+                    "nombre_negocio": "Comercio Central",
+                    "cuit": "20-12345678-9",
+                    "direccion": "Calle Falsa 123",
+                    "localidad": "San Juan",
+                    "provincia": "San Juan",
+                    "negocio_email": "ventas@comercio.com",
+                    "telefono": "264555000",
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/login"))
+        usuario = self.database.get_usuario_by_username("admin")
+        cfg = self.database.get_config()
+        self.assertEqual(usuario["email"], "admin@comercio.com")
+        self.assertEqual(usuario["telefono"], "264123456")
+        self.assertEqual(self.database.get_rubro_configurado(), "almacen")
+        self.assertEqual(cfg["nombre_negocio"], "Comercio Central")
+        self.assertEqual(cfg["localidad"], "San Juan")
+        self.assertEqual(cfg["provincia"], "San Juan")
+        self.assertEqual(cfg["negocio_email"], "ventas@comercio.com")
+
+    def test_rubro_inicial_queda_solo_lectura_si_ya_esta_configurado(self):
+        self.database.set_rubro_configurado("tienda")
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "admin", "id": 1}
+                session["_csrf_token"] = "test"
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    return {"security_question": "q", "security_answer_hash": "hash"}
+                if "FROM config" in query:
+                    return {"valor": None}
+                return {"valor": None} if fetchone else []
+
+            fake_license = {"key": "NXR-TDA-TEST-001", "tier": "PRO", "updates": True}
+            with mock.patch.object(self.routes_main.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"rubro_negocio": "tienda", "rubro_negocio_confirmado": "1"}), \
+                 mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value=fake_license), \
+                 mock.patch.object(self.app_module.db, "get_demo_status", return_value={"vencido": False, "dias_restantes": 0}), \
+                 mock.patch.object(self.app_module.db, "get_config", return_value={"rubro_negocio": "tienda", "rubro_negocio_confirmado": "1"}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: default), \
+                 mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "NXR-TDA-TEST-001"}):
+                response = client.get("/configuracion/rubro-inicial")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"contact", response.data.lower())
 
 
 if __name__ == "__main__":
