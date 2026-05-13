@@ -4,6 +4,20 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.32.0] - 2026-05-13
+
+### Added
+- Onboarding inicial unificado para `Nexar Comercio` con alta segura del administrador y carga de datos comerciales en un solo paso.
+- Persistencia de email y telefono del administrador, junto con localidad, provincia y email del comercio.
+
+### Changed
+- El branding visual pasa a mostrarse como `Nexar Comercio` sin modificar el identificador interno `nexar-tienda`.
+- El rubro visible para nuevas instalaciones se limita a `tienda` y `almacen`.
+
+### Fixed
+- El rubro queda bloqueado despues del primer inicio para evitar cambios operativos inconsistentes desde la interfaz comun.
+- La configuracion inicial deja persistidos los datos del comercio para tickets y pantallas principales.
+
 ## [1.31.2] - 2026-05-13
 
 ### Fixed

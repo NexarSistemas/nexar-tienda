@@ -284,6 +284,8 @@ def init_db():
             password_hash TEXT NOT NULL,
             rol TEXT DEFAULT 'usuario',
             nombre_completo TEXT DEFAULT '',
+            email TEXT DEFAULT '',
+            telefono TEXT DEFAULT '',
             activo INTEGER DEFAULT 1,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -618,6 +620,10 @@ def init_db():
         c.execute("ALTER TABLE usuarios ADD COLUMN security_question TEXT")
     if 'security_answer_hash' not in columnas_u:
         c.execute("ALTER TABLE usuarios ADD COLUMN security_answer_hash TEXT")
+    if 'email' not in columnas_u:
+        c.execute("ALTER TABLE usuarios ADD COLUMN email TEXT DEFAULT ''")
+    if 'telefono' not in columnas_u:
+        c.execute("ALTER TABLE usuarios ADD COLUMN telefono TEXT DEFAULT ''")
     columnas_cm = [r['name'] for r in c.execute("PRAGMA table_info(caja_movimientos)").fetchall()]
     if 'gasto_id' not in columnas_cm:
         c.execute("ALTER TABLE caja_movimientos ADD COLUMN gasto_id INTEGER")
@@ -637,7 +643,10 @@ def init_db():
     defaults = [
         ('nombre_negocio', 'Mi Tienda'),
         ('direccion', ''),
+        ('localidad', ''),
+        ('provincia', ''),
         ('telefono', ''),
+        ('negocio_email', ''),
         ('cuit', ''),
         ('responsable', ''),
         ('margen_minimo', '0.20'),
@@ -902,7 +911,7 @@ def get_rubro_configurado():
     if not _as_bool(cfg.get(RUBRO_CONFIRMADO_CONFIG_KEY)):
         return None
     rubro = str(cfg.get(RUBRO_CONFIG_KEY, "") or "").strip().lower()
-    return rubro if rubro in set(get_rubros_disponibles()) else None
+    return rubro if rubro in set(get_rubros_disponibles(include_future=True)) else None
 
 
 def set_rubro_configurado(rubro: str):
@@ -1740,16 +1749,35 @@ def get_usuarios():
     )
 
 
-def add_usuario(username, password, rol, nombre_completo, security_question=None, security_answer=None):
+def add_usuario(
+    username,
+    password,
+    rol,
+    nombre_completo,
+    security_question=None,
+    security_answer=None,
+    *,
+    email="",
+    telefono="",
+):
     """Agrega un nuevo usuario."""
     password_hash = generate_password_hash(password)
     ans_hash = None
     if security_answer:
         ans_hash = hash_security_answer(security_answer)
     q(
-        """INSERT INTO usuarios (username,password_hash,rol,nombre_completo, security_question, security_answer_hash)
-        VALUES (?,?,?,?,?,?)""",
-        (username, password_hash, rol, nombre_completo, security_question, ans_hash),
+        """INSERT INTO usuarios (username,password_hash,rol,nombre_completo,email,telefono,security_question,security_answer_hash)
+        VALUES (?,?,?,?,?,?,?,?)""",
+        (
+            username,
+            password_hash,
+            rol,
+            nombre_completo,
+            email,
+            telefono,
+            security_question,
+            ans_hash,
+        ),
         fetchall=False, commit=True
     )
 
@@ -1801,6 +1829,14 @@ def update_perfil(uid, data):
     """Actualiza datos del perfil del propio usuario."""
     sets = ["nombre_completo=?"]
     params = [data.get('nombre_completo', '')]
+
+    if 'email' in data:
+        sets.append("email=?")
+        params.append(data.get('email', ''))
+
+    if 'telefono' in data:
+        sets.append("telefono=?")
+        params.append(data.get('telefono', ''))
 
     if data.get('password'):
         sets.append("password_hash=?")

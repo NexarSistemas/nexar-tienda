@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Ticket #{{ venta.numero_ticket }} - Nexar Tienda{% endblock %}
+{% block title %}Ticket #{{ venta.numero_ticket }} - {{ app_display_name }}{% endblock %}
 
 {% block content %}
 <div class="ticket-page py-4">
@@ -10,7 +10,7 @@
                 <div class="ticket-eyebrow">Comprobante interno de venta</div>
                 <div class="ticket-header-main">
                     <div>
-                        <h1>{{ cfg.nombre_negocio or 'Nexar Tienda' }}</h1>
+                        <h1>{{ cfg.nombre_negocio or app_display_name }}</h1>
                         <div class="ticket-meta">
                             <span class="meta-pill">Rubro: {{ rubro_actual|capitalize }}</span>
                             {% if cfg.cuit %}<span class="meta-pill">CUIT/DNI: {{ cfg.cuit }}</span>{% endif %}

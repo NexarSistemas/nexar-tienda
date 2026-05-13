@@ -37,6 +37,7 @@ from services.rubros import (
     get_categoria_default,
     get_categorias_disponibles,
     get_rubro_actual,
+    get_rubro_label,
     get_rubros_disponibles,
     get_unidad_label,
     get_unidades_disponibles,
@@ -576,11 +577,72 @@ def _build_rubro_cards():
     return [
         {
             "value": rubro,
-            "label": rubro.capitalize(),
+            "label": get_rubro_label(rubro),
             "unidades": get_unidades_disponibles(rubro),
         }
         for rubro in get_rubros_disponibles()
     ]
+
+
+def _build_initial_setup_context(form_data: dict[str, str] | None = None) -> dict[str, object]:
+    data = form_data or {}
+    selected_rubro = normalizar_rubro(data.get("rubro") or "tienda")
+    return {
+        "rubros": _build_rubro_cards(),
+        "selected_rubro": selected_rubro,
+        "business_fields": {
+            "nombre_completo": str(data.get("nombre_completo", "") or "").strip(),
+            "username": str(data.get("username", "") or "").strip(),
+            "admin_email": str(data.get("admin_email", "") or "").strip().lower(),
+            "admin_telefono": str(data.get("admin_telefono", "") or "").strip(),
+            "nombre_negocio": str(data.get("nombre_negocio", "") or "").strip(),
+            "cuit": str(data.get("cuit", "") or "").strip(),
+            "direccion": str(data.get("direccion", "") or "").strip(),
+            "localidad": str(data.get("localidad", "") or "").strip(),
+            "provincia": str(data.get("provincia", "") or "").strip(),
+            "negocio_email": str(data.get("negocio_email", "") or "").strip().lower(),
+            "telefono": str(data.get("telefono", "") or "").strip(),
+        },
+    }
+
+
+def _validate_email(value: str, *, required: bool = True) -> tuple[bool, str]:
+    email = str(value or "").strip().lower()
+    if not email:
+        return (False, "El email es obligatorio.") if required else (True, "")
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return False, "Ingresá un email válido."
+    return True, ""
+
+
+def _validate_initial_setup_payload(form_data: dict[str, str]) -> tuple[bool, str]:
+    required_fields = {
+        "nombre_completo": "Completá el nombre del administrador.",
+        "username": "Completá el usuario administrador.",
+        "nombre_negocio": "Completá el nombre comercial.",
+        "cuit": "Completá el CUIT.",
+        "direccion": "Completá la dirección del comercio.",
+        "localidad": "Completá la localidad.",
+        "provincia": "Completá la provincia.",
+        "telefono": "Completá el teléfono del comercio.",
+    }
+    for field, message in required_fields.items():
+        if not str(form_data.get(field, "") or "").strip():
+            return False, message
+
+    rubro = str(form_data.get("rubro", "") or "").strip().lower()
+    if rubro not in set(get_rubros_disponibles()):
+        return False, "Seleccioná un rubro válido para continuar."
+
+    ok, msg = _validate_email(form_data.get("admin_email", ""))
+    if not ok:
+        return False, f"Email del administrador: {msg}"
+
+    ok, msg = _validate_email(form_data.get("negocio_email", ""))
+    if not ok:
+        return False, f"Email del comercio: {msg}"
+
+    return True, ""
 
 
 def _merge_categorias_visibles(rubro_actual: str, categorias_extra=None):
@@ -1130,6 +1192,46 @@ def registro_inicial():
     if db.count_usuarios() > 0:
         return redirect(url_for("login"))
     if request.method == "POST":
+        form_data = request.form.to_dict()
+        if "admin_email" in form_data:
+            context = _build_initial_setup_context(form_data)
+            negocio = context["business_fields"]
+            password = request.form.get("password", "")
+            password_confirm = request.form.get("password_confirm", "")
+            ok, msg = _validate_initial_setup_payload(form_data)
+            if not ok:
+                flash(f"⚠️ {msg}", "warning")
+                return render_template("registro_inicial.html", **context)
+            ok, msg = _validate_password_confirmation(password, password_confirm)
+            if not ok:
+                flash(f"❌ {msg}", "danger")
+                return render_template("registro_inicial.html", **context)
+            if db.get_usuario_by_username(negocio["username"]):
+                flash("⚠️ Ese usuario administrador ya existe.", "warning")
+                return render_template("registro_inicial.html", **context)
+            db.add_usuario(
+                negocio["username"],
+                password,
+                "Administrador",
+                negocio["nombre_completo"],
+                email=negocio["admin_email"],
+                telefono=negocio["admin_telefono"],
+            )
+            db.set_rubro_configurado(form_data.get("rubro", "tienda"))
+            db.set_config(
+                {
+                    "nombre_negocio": negocio["nombre_negocio"],
+                    "cuit": negocio["cuit"],
+                    "direccion": negocio["direccion"],
+                    "localidad": negocio["localidad"],
+                    "provincia": negocio["provincia"],
+                    "telefono": negocio["telefono"],
+                    "negocio_email": negocio["negocio_email"],
+                    "responsable": negocio["nombre_completo"],
+                }
+            )
+            flash("✅ Configuración inicial completada. Ya podés iniciar sesión.", "success")
+            return redirect(url_for("login"))
         nombre = request.form.get("nombre_completo", "").strip()
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
@@ -1150,7 +1252,7 @@ def registro_inicial():
         db.add_usuario(username, password, "Administrador", nombre, question, answer)
         flash("✅ Administrador creado. Ya podés iniciar sesión.", "success")
         return redirect(url_for("login"))
-    return render_template("registro_inicial.html")
+    return render_template("registro_inicial.html", **_build_initial_setup_context())
 
 
 @main_bp.route("/login", methods=["GET", "POST"])
@@ -1268,6 +1370,19 @@ def configuracion_rubro_inicial():
     rubro_actual = get_rubro_actual(db.get_config())
     rubros = _build_rubro_cards()
     selected_rubro = request.form.get("rubro", rubro_guardado or rubro_actual)
+    if rubro_guardado:
+        if request.method == "POST":
+            flash("El rubro ya quedó configurado. Para cambiarlo, contactá soporte.", "warning")
+            return redirect(url_for("config"))
+        return render_template(
+            "configuracion_rubro_inicial.html",
+            rubros=rubros,
+            rubro_actual=rubro_actual,
+            rubro_guardado=rubro_guardado,
+            selected_rubro=selected_rubro,
+            permitir_cambio=False,
+            solo_lectura=True,
+        )
     if request.method == "POST":
         rubro = str(request.form.get("rubro", "") or "").strip().lower()
         if rubro not in set(get_rubros_disponibles()):
@@ -1278,18 +1393,8 @@ def configuracion_rubro_inicial():
                 rubro_actual=rubro_actual,
                 rubro_guardado=rubro_guardado,
                 selected_rubro=selected_rubro,
-                permitir_cambio=bool(rubro_guardado),
-            )
-
-        if rubro_guardado and rubro_guardado != rubro and request.form.get("confirmar_cambio") != "1":
-            flash("Cambiar el rubro puede afectar unidades, productos, stock y reportes.", "warning")
-            return render_template(
-                "configuracion_rubro_inicial.html",
-                rubros=rubros,
-                rubro_actual=rubro_actual,
-                rubro_guardado=rubro_guardado,
-                selected_rubro=rubro,
-                permitir_cambio=True,
+                permitir_cambio=False,
+                solo_lectura=False,
             )
 
         db.set_rubro_configurado(rubro)
@@ -1302,7 +1407,8 @@ def configuracion_rubro_inicial():
         rubro_actual=rubro_actual,
         rubro_guardado=rubro_guardado,
         selected_rubro=selected_rubro,
-        permitir_cambio=bool(rubro_guardado),
+        permitir_cambio=False,
+        solo_lectura=False,
     )
 
 

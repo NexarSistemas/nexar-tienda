@@ -22,6 +22,9 @@ from services.license_sdk import validate_saved_license
 from services.rubros import get_rubro_actual
 from services.update_checker import get_cached_update_info
 
+APP_DISPLAY_NAME = "Nexar Comercio"
+APP_INTERNAL_PRODUCT = "nexar-tienda"
+
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -84,6 +87,8 @@ def create_app() -> Flask:
             "get_license_info": db.get_license_info,
             "get_plan_display_name": get_plan_display_name,
             "app_version": app_version,
+            "app_display_name": APP_DISPLAY_NAME,
+            "app_internal_product": APP_INTERNAL_PRODUCT,
             "rubro_actual_app": rubro_actual,
             "modulo_activo": modulo_activo,
             "update_info": (

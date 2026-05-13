@@ -1,13 +1,17 @@
 import os
 
 DEFAULT_RUBRO = "tienda"
-RUBROS_DISPONIBLES = (
+RUBROS_COMPATIBLES = (
     "tienda",
     "almacen",
     "kiosco",
     "regaleria",
     "libreria",
     "ferreteria",
+)
+RUBROS_HABILITADOS = (
+    "tienda",
+    "almacen",
 )
 
 UNIDADES_TIENDA = ("unidad", "paquete")
@@ -118,13 +122,26 @@ UNIDAD_ALIASES = {
 }
 
 
-def get_rubros_disponibles():
-    return list(RUBROS_DISPONIBLES)
+RUBRO_LABELS = {
+    "tienda": "Tienda",
+    "almacen": "Almacén",
+    "kiosco": "Kiosco",
+    "regaleria": "Regalería",
+    "libreria": "Librería",
+    "ferreteria": "Ferretería",
+}
 
+def get_rubros_disponibles(include_future: bool = False):
+    rubros = RUBROS_COMPATIBLES if include_future else RUBROS_HABILITADOS
+    return list(rubros)
+
+
+def get_rubro_label(rubro: str | None) -> str:
+    return RUBRO_LABELS.get(normalizar_rubro(rubro), "Tienda")
 
 def normalizar_rubro(value):
     rubro = str(value or "").strip().lower()
-    return rubro if rubro in RUBROS_DISPONIBLES else DEFAULT_RUBRO
+    return rubro if rubro in RUBROS_COMPATIBLES else DEFAULT_RUBRO
 
 
 def _get_rubro_confirmado_desde_config(config=None):
@@ -134,7 +151,7 @@ def _get_rubro_confirmado_desde_config(config=None):
     if confirmado not in {"1", "true", "yes", "si", "on"}:
         return None
     rubro = str(config.get("rubro_negocio", "") or "").strip().lower()
-    return rubro if rubro in RUBROS_DISPONIBLES else None
+    return rubro if rubro in RUBROS_COMPATIBLES else None
 
 
 def get_rubro_actual(config=None):
