@@ -4,6 +4,18 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.33.0] - 2026-05-13
+
+### Added
+- Onboarding inicial unificado para `Nexar Comercio` con alta del administrador, seleccion inicial de rubro y carga de datos comerciales en un solo flujo.
+
+### Changed
+- El branding visual de la app pasa a mostrarse como `Nexar Comercio` en login, ventanas, sidebar, acerca de y otros textos visibles, manteniendo `nexar-tienda` como identificador interno compatible.
+
+### Fixed
+- Los builds de GitHub Actions quedan preparados para la migracion de Node 24 en acciones JavaScript, evitando warnings de deprecacion.
+- El workflow de Windows queda fijado en `windows-2022` para evitar cambios inesperados por runners mas nuevos.
+
 ## [1.32.0] - 2026-05-13
 
 ### Added
