@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Acerca de — Nexar Tienda{% endblock %}
+{% block title %}Acerca de — {{ app_display_name }}{% endblock %}
 {% block content %}
 
 <div class="d-flex justify-content-center mt-2">
   <div class="card shadow-sm" style="max-width:520px; width:100%;">
     <div class="card-body p-5 text-center">
       <i class="fas fa-store display-2 text-primary"></i>
-      <h3 class="mt-3 fw-bold">Nexar Tienda</h3>
+      <h3 class="mt-3 fw-bold">{{ app_display_name }}</h3>
       <p class="text-muted">Sistema Integral de Gestión Comercial</p>
       <hr>
       <div class="text-start">

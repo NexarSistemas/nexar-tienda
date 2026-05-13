@@ -20,7 +20,7 @@ def safe_print(text):
 
 
 VENV_DIR = "venv"
-APP_TITLE = "Nexar Tienda"
+APP_TITLE = "Nexar Comercio"
 APP_HOST = "127.0.0.1"
 
 
@@ -167,7 +167,7 @@ def esperar_servidor(url, timeout=10):
 # 🚀 MAIN
 # ==============================
 if __name__ == "__main__":
-    safe_print("🚀 Iniciando Nexar Tienda...")
+    safe_print("🚀 Iniciando Nexar Comercio...")
 
     if not es_ejecutable() and not omitir_venv():
         if not en_virtualenv():

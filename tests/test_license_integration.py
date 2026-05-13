@@ -496,7 +496,7 @@ class LicenseIntegrationTests(unittest.TestCase):
                 )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Cerrando Nexar Tienda para actualizar", response.data)
+        self.assertIn(b"Cerrando Nexar Comercio para actualizar", response.data)
         mocked_write_status.assert_called_once_with(
             "in_progress",
             target_version="1.32.0",

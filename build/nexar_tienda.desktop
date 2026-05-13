@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Nexar Tienda
+Name=Nexar Comercio
 Comment=Sistema integral de gestión para tiendas
 Exec=/usr/local/bin/nexartienda
 Path=/opt/nexar-tienda
