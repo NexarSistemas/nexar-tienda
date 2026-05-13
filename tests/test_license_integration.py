@@ -17,6 +17,7 @@ from licensing.planes import (
     get_modulos_plan,
     get_plan_actions,
     get_plan_display_name,
+    get_update_access_context,
 )
 
 
@@ -374,6 +375,52 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(payload["plan_efectivo"], "BASICA")
         self.assertEqual(payload["estado"], "vencida_con_fallback_basica")
         self.assertTrue(payload["fallback_aplicado"])
+
+    def test_pro_tiene_acceso_a_actualizaciones_normales(self):
+        access = get_update_access_context({"tier": "PRO", "updates": True})
+        self.assertTrue(access["puede_actualizar"])
+        self.assertEqual(access["plan"], "PRO")
+
+    def test_full_legacy_tiene_acceso_a_actualizaciones_normales(self):
+        access = get_update_access_context({"tier": "MENSUAL_FULL", "updates": True})
+        self.assertTrue(access["puede_actualizar"])
+        self.assertEqual(access["plan"], "FULL")
+
+    def test_basica_no_tiene_actualizaciones_normales(self):
+        access = get_update_access_context({"tier": "BASICA", "updates": False})
+        self.assertFalse(access["puede_actualizar"])
+        self.assertIn("PRO y FULL", access["mensaje"])
+
+    def test_respaldo_pro_no_queda_bloqueado_por_check_full_only(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "admin", "id": 1}
+                session["_csrf_token"] = "test"
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    return {"security_question": "q", "security_answer_hash": "hash"}
+                if "FROM config" in query:
+                    return {"valor": None}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.routes_main.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.routes_main.db, "get_license_info", return_value={"key": "NXR-TDA-TEST-001", "tier": "PRO", "updates": True}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={}), \
+                 mock.patch.object(self.routes_main, "get_cached_update_info", return_value={"available": False}), \
+                 mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"key": "NXR-TDA-TEST-001", "tier": "PRO", "updates": True}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: default), \
+                 mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "NXR-TDA-TEST-001"}):
+                response = client.post("/respaldo/actualizacion/descargar", data={"csrf_token": "test"}, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"No hay una actualizacion nueva disponible.", response.data)
+        self.assertNotIn(b"solo para el plan FULL", response.data)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,13 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.31.1] - 2026-05-13
+
+### Fixed
+- Se corrige el acceso a actualizaciones normales para los planes PRO y FULL.
+- FULL mantiene sus módulos premium exclusivos sin cambios.
+- BASICA conserva sus limitaciones y sigue acotada a fixes críticos y mantenimiento básico.
+
 ## [1.31.0] - 2026-05-13
 
 ### Added

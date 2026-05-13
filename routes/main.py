@@ -24,6 +24,7 @@ from licensing.planes import (
     get_plan_actions,
     get_plan_display_name,
     get_license_status_context,
+    get_update_access_context,
     normalize_plan,
 )
 from licensing.permisos import get_modulos_activos, get_modulos_debug_info, require_modulo
@@ -2730,7 +2731,8 @@ def respaldo():
 
     cfg = db.get_config()
     license_info = db.get_license_info()
-    can_use_updates = license_info.get("tier") == "FULL" and license_info.get("updates")
+    update_access = get_update_access_context(license_info)
+    can_use_updates = update_access["puede_actualizar"]
     update_state = _update_install_state(current_app.config.get("APP_VERSION", "0.0.0"))
     update_info = (
         get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
@@ -2744,6 +2746,7 @@ def respaldo():
         update_info=update_info,
         update_state=update_state,
         can_use_updates=can_use_updates,
+        update_access=update_access,
         ultimo=cfg.get("backup_ultimo", "Nunca"),
         intervalo=cfg.get("backup_intervalo_h", "24"),
         keep=cfg.get("backup_keep", "10"),
@@ -2790,8 +2793,9 @@ def respaldo_restaurar(nombre):
 @admin_required
 def actualizacion_descargar():
     license_info = db.get_license_info()
-    if license_info.get("tier") != "FULL" or not license_info.get("updates"):
-        flash("Las actualizaciones estan disponibles solo para el plan FULL.", "warning")
+    update_access = get_update_access_context(license_info)
+    if not update_access["puede_actualizar"]:
+        flash(update_access["mensaje"], "warning")
         return redirect(url_for("respaldo"))
 
     update_info = get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
@@ -2840,8 +2844,9 @@ def actualizacion_abrir_carpeta():
 @admin_required
 def actualizacion_instalar(nombre):
     license_info = db.get_license_info()
-    if license_info.get("tier") != "FULL" or not license_info.get("updates"):
-        flash("Las actualizaciones estan disponibles solo para el plan FULL.", "warning")
+    update_access = get_update_access_context(license_info)
+    if not update_access["puede_actualizar"]:
+        flash(update_access["mensaje"], "warning")
         return redirect(url_for("respaldo"))
 
     installer = _update_file(nombre)

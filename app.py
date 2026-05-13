@@ -13,7 +13,7 @@ load_runtime_env()
 logging.basicConfig(level=logging.INFO)
 
 import database as db
-from licensing.planes import get_plan_display_name
+from licensing.planes import get_plan_display_name, get_update_access_context
 from routes.licencia import licencia_bp
 from routes.main import ensure_license_auto_refresh_thread, main_bp
 from licensing.permisos import modulo_activo
@@ -88,7 +88,7 @@ def create_app() -> Flask:
             "modulo_activo": modulo_activo,
             "update_info": (
                 get_cached_update_info(app, app_version)
-                if lic_status and lic_status.get("updates")
+                if lic_status and get_update_access_context(lic_status).get("puede_actualizar")
                 else {"available": False}
             ),
             "csrf_token": csrf_token,

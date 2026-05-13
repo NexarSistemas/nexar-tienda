@@ -7,6 +7,7 @@ LEGACY_FULL_PLAN = "MENSUAL_FULL"
 COMMERCIAL_FULL_LABEL = "FULL"
 SIN_PLAN = "SIN_PLAN"
 COMMERCIAL_PLAN_ORDER = ("BASICA", "PRO", TECHNICAL_FULL_PLAN)
+PLANES_CON_ACTUALIZACIONES = ("PRO", TECHNICAL_FULL_PLAN)
 
 TIER_ALIASES = {
     "BASIC": "BASICA",
@@ -98,6 +99,35 @@ def get_commercial_plan_options() -> list[dict[str, str]]:
         }
         for plan in COMMERCIAL_PLAN_ORDER
     ]
+
+
+def get_update_access_context(license_info: dict[str, object] | None) -> dict[str, object]:
+    info = license_info or {}
+    plan_value = (
+        info.get("plan_efectivo")
+        or info.get("effective_plan")
+        or info.get("tier")
+        or info.get("plan")
+        or "DEMO"
+    )
+    normalized_plan = _normalize_status_plan(str(plan_value), default="DEMO")
+    plan_display = "SIN PLAN" if normalized_plan == SIN_PLAN else get_plan_display_name(normalized_plan)
+    updates_enabled = bool(info.get("updates"))
+    puede_actualizar = normalized_plan in PLANES_CON_ACTUALIZACIONES and updates_enabled
+
+    if puede_actualizar:
+        mensaje = "Tu plan incluye actualizaciones normales de la aplicacion."
+    elif normalized_plan == "BASICA":
+        mensaje = "Las actualizaciones normales estan disponibles para PRO y FULL. BASICA mantiene fixes criticos y mantenimiento basico."
+    else:
+        mensaje = "Las actualizaciones normales estan disponibles para PRO y FULL."
+
+    return {
+        "plan": normalized_plan,
+        "plan_display": plan_display,
+        "puede_actualizar": puede_actualizar,
+        "mensaje": mensaje,
+    }
 
 
 def get_plan_actions(
