@@ -11,7 +11,23 @@ RUBROS_DISPONIBLES = (
 )
 
 UNIDADES_TIENDA = ("unidad", "paquete")
-UNIDADES_ALMACEN = ("unidad", "paquete", "kg", "litro", "docena")
+UNIDADES_ALMACEN = ("unidad", "paquete", "kg", "gramo", "litro", "ml", "docena")
+UNIDADES_FRACCIONABLES = {"kg", "gramo", "litro", "ml", "docena"}
+UNIDADES_BASE = {
+    "kg": "kg",
+    "gramo": "kg",
+    "litro": "litro",
+    "ml": "litro",
+}
+UNIDADES_FACTORES_BASE = {
+    "unidad": 1.0,
+    "paquete": 1.0,
+    "kg": 1.0,
+    "gramo": 0.001,
+    "litro": 1.0,
+    "ml": 0.001,
+    "docena": 1.0,
+}
 
 UNIDADES_POR_RUBRO = {
     "tienda": UNIDADES_TIENDA,
@@ -173,3 +189,46 @@ def get_unidad_label(value):
     if unidad_normalizada in UNIDAD_LABELS:
         return UNIDAD_LABELS[unidad_normalizada]
     return unidad_normalizada.replace("_", " ").capitalize()
+
+
+def es_unidad_fraccionable(value) -> bool:
+    return normalizar_unidad(value) in UNIDADES_FRACCIONABLES
+
+
+def get_unidad_interna(value):
+    unidad_normalizada = normalizar_unidad(value)
+    return UNIDADES_BASE.get(unidad_normalizada, unidad_normalizada)
+
+
+def convertir_cantidad_a_base(cantidad, unidad):
+    try:
+        cantidad_num = float(cantidad or 0)
+    except (TypeError, ValueError):
+        cantidad_num = 0.0
+    unidad_normalizada = normalizar_unidad(unidad)
+    factor = UNIDADES_FACTORES_BASE.get(unidad_normalizada, 1.0)
+    return round(cantidad_num * factor, 3)
+
+
+def convertir_cantidad_desde_base(cantidad, unidad):
+    try:
+        cantidad_num = float(cantidad or 0)
+    except (TypeError, ValueError):
+        cantidad_num = 0.0
+    unidad_normalizada = normalizar_unidad(unidad)
+    factor = UNIDADES_FACTORES_BASE.get(unidad_normalizada, 1.0)
+    if factor == 0:
+        return cantidad_num
+    return round(cantidad_num / factor, 3)
+
+
+def convertir_precio_desde_base(precio, unidad):
+    try:
+        precio_num = float(precio or 0)
+    except (TypeError, ValueError):
+        precio_num = 0.0
+    unidad_normalizada = normalizar_unidad(unidad)
+    factor = UNIDADES_FACTORES_BASE.get(unidad_normalizada, 1.0)
+    if factor == 0:
+        return precio_num
+    return precio_num * factor

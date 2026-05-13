@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function productoPermiteFraccionado(product) {
     const tipoUnidad = String(product?.tipo_unidad || product?.unidad || '').toLowerCase();
-    return Boolean(parseInt(product?.permite_fraccionado || product?.por_peso || 0, 10)) || ['kg', 'litro', 'docena'].includes(tipoUnidad);
+    return Boolean(parseInt(product?.permite_fraccionado || product?.por_peso || 0, 10)) || ['kg', 'gramo', 'litro', 'ml', 'docena'].includes(tipoUnidad);
   }
 
   async function fetchCart() {
@@ -318,7 +318,7 @@ document.addEventListener('DOMContentLoaded', function () {
               ${badgePeso}
             </div>
             <div class="text-end ms-2 flex-shrink-0">
-              <div style="font-weight:700;color:var(--sidebar-active);font-size:.9rem">$${formatNum(p.precio_venta)}</div>
+              <div style="font-weight:700;color:var(--sidebar-active);font-size:.9rem">$${formatNum(p.precio_venta_display ?? p.precio_venta)}</div>
               <small style="color:${stockColor}">${stock <= 0 ? 'Sin stock' : 'Stock: ' + stock}</small>
             </div>
           </div>
@@ -335,7 +335,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('sugNombre').textContent = product.descripcion || '';
     document.getElementById('sugCat').textContent = product.categoria || '-';
     document.getElementById('sugUnidad').textContent = product.unidad || 'Unidad';
-    document.getElementById('sugPrecio').textContent = formatNum(product.precio_venta);
+    document.getElementById('sugPrecio').textContent = formatNum(product.precio_venta_display ?? product.precio_venta);
     document.getElementById('sugStock').textContent = product.stock_actual || 0;
     const permiteFraccionado = productoPermiteFraccionado(product);
     document.getElementById('cantLabel').textContent = permiteFraccionado ? `Cantidad (${product.unidad || product.tipo_unidad || 'unidad'}):` : 'Cantidad:';

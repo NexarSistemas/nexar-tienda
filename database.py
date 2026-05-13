@@ -25,11 +25,14 @@ from services.cuentas_corrientes import (
     calcular_saldo_cliente_desde_movimientos,
 )
 from services.rubros import (
+    convertir_cantidad_a_base,
     get_categorias_disponibles,
     get_categoria_default,
     get_rubro_actual,
     get_unidad_label,
+    get_unidad_interna,
     get_rubros_disponibles,
+    es_unidad_fraccionable,
     normalizar_rubro,
     normalizar_unidad,
 )
@@ -1894,10 +1897,12 @@ def producto_permite_fraccionado(producto) -> bool:
     if not producto:
         return False
     try:
-        tipo_unidad = str(producto["tipo_unidad"] or producto["unidad"] or "").strip().lower()
+        tipo_unidad = normalizar_unidad(producto["tipo_unidad"] or "")
+        unidad_visual = normalizar_unidad(producto["unidad"] or "")
         return bool(
             int(producto["permite_fraccionado"] or 0)
-            or tipo_unidad in {"kg", "litro", "docena"}
+            or es_unidad_fraccionable(tipo_unidad)
+            or es_unidad_fraccionable(unidad_visual)
             or int(producto["por_peso"] or 0)
         )
     except Exception:
@@ -1923,11 +1928,14 @@ def add_producto(data):
     """Agrega un nuevo producto."""
     codigo = next_codigo()
     rubro_actual = get_rubro_actual(get_config())
-    tipo_unidad = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
-    unidad = get_unidad_label(tipo_unidad)
+    unidad_seleccionada = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
+    tipo_unidad = get_unidad_interna(unidad_seleccionada)
+    unidad = get_unidad_label(unidad_seleccionada)
     permite_fraccionado = int(data.get('permite_fraccionado', 0) or 0)
-    es_fraccionable = producto_permite_fraccionado({"tipo_unidad": tipo_unidad, "permite_fraccionado": permite_fraccionado, "por_peso": data.get("por_peso", 0)})
-    stock_actual = float(data.get('stock_actual', 0) or 0)
+    es_fraccionable = producto_permite_fraccionado({"tipo_unidad": tipo_unidad, "unidad": unidad_seleccionada, "permite_fraccionado": permite_fraccionado, "por_peso": data.get("por_peso", 0)})
+    stock_actual = convertir_cantidad_a_base(data.get('stock_actual', 0), unidad_seleccionada)
+    stock_minimo = convertir_cantidad_a_base(data.get('stock_minimo', 5), unidad_seleccionada)
+    stock_maximo = convertir_cantidad_a_base(data.get('stock_maximo', 50), unidad_seleccionada)
     if not es_fraccionable and not stock_actual.is_integer():
         raise ValueError("El stock inicial solo puede tener decimales para productos fraccionados.")
     conn = get_conn()
@@ -1944,7 +1952,7 @@ def add_producto(data):
     pid = c.lastrowid
     c.execute(
         "INSERT INTO stock (producto_id,stock_actual,stock_minimo,stock_maximo) VALUES (?,?,?,?)",
-        (pid, stock_actual, float(data.get('stock_minimo', 5)), float(data.get('stock_maximo', 50)))
+        (pid, stock_actual, stock_minimo, stock_maximo)
     )
     conn.commit()
     conn.close()
@@ -1955,10 +1963,11 @@ def update_producto(pid, data):
     """Actualiza un producto."""
     producto_actual = get_producto(pid)
     rubro_actual = get_rubro_actual(get_config())
-    tipo_unidad = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
-    unidad = get_unidad_label(tipo_unidad)
+    unidad_seleccionada = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
+    tipo_unidad = get_unidad_interna(unidad_seleccionada)
+    unidad = get_unidad_label(unidad_seleccionada)
     permite_fraccionado = int(data.get('permite_fraccionado', 0) or 0)
-    es_fraccionable = producto_permite_fraccionado({"tipo_unidad": tipo_unidad, "permite_fraccionado": permite_fraccionado, "por_peso": data.get("por_peso", 0)})
+    es_fraccionable = producto_permite_fraccionado({"tipo_unidad": tipo_unidad, "unidad": unidad_seleccionada, "permite_fraccionado": permite_fraccionado, "por_peso": data.get("por_peso", 0)})
     rubro_guardado = (
         str(data.get('rubro', '') or '').strip().lower()
         or str((producto_actual['rubro'] if producto_actual else '') or '').strip().lower()
@@ -3517,7 +3526,7 @@ def get_top_productos_vendidos(limit=5, rubro=None):
     return q(f"""
         SELECT COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre') as descripcion,
                COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
-               COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad') as unidad,
+               COALESCE(NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), NULLIF(p.tipo_unidad, ''), 'unidad') as unidad,
                SUM(vd.cantidad) as total_vendido,
                SUM(vd.subtotal) as recaudado
         FROM ventas_detalle vd
@@ -3527,7 +3536,7 @@ def get_top_productos_vendidos(limit=5, rubro=None):
             vd.producto_id,
             COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre'),
             COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria'),
-            COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad')
+            COALESCE(NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), NULLIF(p.tipo_unidad, ''), 'unidad')
         ORDER BY total_vendido DESC
         LIMIT ?
     """, (*rubro_params, limit))
@@ -3629,7 +3638,7 @@ def get_top_productos_analisis(limit=15, desde='', hasta='', rubro=None):
     return q(f"""
         SELECT COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre') as descripcion,
                COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
-               COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad') as unidad,
+               COALESCE(NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), NULLIF(p.tipo_unidad, ''), 'unidad') as unidad,
                SUM(vd.cantidad) as unidades,
                ROUND(SUM(vd.subtotal), 2) as total_pesos,
                ROUND(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 2) as costo_mercaderia,
@@ -3650,7 +3659,7 @@ def get_top_productos_analisis(limit=15, desde='', hasta='', rubro=None):
             vd.producto_id,
             COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre'),
             COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria'),
-            COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad')
+            COALESCE(NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), NULLIF(p.tipo_unidad, ''), 'unidad')
         ORDER BY total_pesos DESC LIMIT ?
     """, params + rubro_params + [limit])
 
@@ -3739,7 +3748,7 @@ def get_rentabilidad_detallada_articulos(desde='', hasta='', rubro=None):
     rows = q(f"""
         SELECT COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre') as descripcion,
                COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
-               COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad') as unidad,
+               COALESCE(NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), NULLIF(p.tipo_unidad, ''), 'unidad') as unidad,
                SUM(vd.cantidad) as unidades,
                ROUND(SUM(vd.subtotal), 2) as ingresos,
                ROUND(SUM(vd.cantidad * COALESCE(vd.costo_unitario, p.costo, 0)), 2) as costo,
@@ -3752,7 +3761,7 @@ def get_rentabilidad_detallada_articulos(desde='', hasta='', rubro=None):
             vd.producto_id,
             COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre'),
             COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria'),
-            COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), 'unidad')
+            COALESCE(NULLIF(vd.unidad, ''), NULLIF(p.unidad, ''), NULLIF(p.tipo_unidad, ''), 'unidad')
         ORDER BY ingresos DESC
     """, params + rubro_params)
 
@@ -3994,7 +4003,7 @@ def get_bottom_productos(limit=10, rubro=None):
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     return q(f"""
         SELECT p.descripcion, p.categoria,
-               COALESCE(NULLIF(p.tipo_unidad, ''), NULLIF(p.unidad, ''), 'unidad') as unidad,
+               COALESCE(NULLIF(p.unidad, ''), NULLIF(p.tipo_unidad, ''), 'unidad') as unidad,
                COALESCE(SUM(vd.cantidad), 0) as unidades
         FROM productos p
         LEFT JOIN ventas_detalle vd ON p.id = vd.producto_id
