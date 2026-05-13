@@ -4,6 +4,19 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.31.0] - 2026-05-13
+
+### Added
+- Soporte explícito para gramos y mililitros en productos fraccionados.
+- Visualización de unidades amigables en POS, ticket y reportes.
+
+### Changed
+- Se estabilizó la lógica de rubros, unidades y categorías para modo tienda y almacén.
+- Se mantiene kg/litro como base interna segura para stock.
+
+### Fixed
+- Corrección de categorías por rubro en runtime.
+
 ## [1.30.0] - 2026-05-12
 
 ### Added
@@ -721,11 +734,11 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ### 🛠️ Cambios Técnicos
 - **database.py**: Nuevas tablas `roles`, `permisos` y `roles_permisos`.
-- **app.py**: 
+- **app.py**:
   - Nuevo decorador `@permission_required`.
   - Rutas `/usuarios`, `/usuarios/nuevo`, `/usuarios/<uid>/editar`, `/usuarios/<uid>/eliminar`.
   - Actualización de `@admin_required` a `@permission_required('reportes.ver')` en la ruta `/reportes`.
-- **templates**: 
+- **templates**:
   - Nuevo template `usuarios.html`.
   - Nuevo template `usuario_form.html`.
   - Actualización de `base.html` para incluir el acceso al panel de usuarios.
@@ -747,12 +760,12 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 - **Distribución de Pagos**: Gráfico de torta/doughnut para visualizar el uso de diferentes medios de pago.
 
 ### 🛠️ Cambios Técnicos
-- **database.py**: 
+- **database.py**:
   - Nuevas funciones analíticas: `get_stats_rentabilidad()` y `get_top_productos_vendidos()`.
-- **app.py**: 
+- **app.py**:
   - Nueva ruta `/reportes` (protegida para administradores).
   - Procesamiento de series de tiempo para gráficos de barras y líneas.
-- **templates**: 
+- **templates**:
   - Nuevo template `reportes.html` con integración de Chart.js.
 
 ---
@@ -768,12 +781,12 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 - **Filtros**: Búsqueda por descripción, proveedor y rangos de fechas.
 
 ### 🛠️ Cambios Técnicos
-- **database.py**: 
+- **database.py**:
   - Implementación de la tabla `gastos` y funciones CRUD asociadas.
-- **app.py**: 
+- **app.py**:
   - Rutas `/gastos`, `/gastos/nuevo` y `/gastos/<id>/eliminar`.
   - Lógica de descuento automático en `caja_movimientos`.
-- **templates**: 
+- **templates**:
   - `gastos.html` y `gasto_form.html`.
 
 ---
@@ -787,16 +800,16 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 - **Historial de Cierres**: Auditoría de los últimos 10 arqueos de caja realizados.
 
 ### 🛠️ Cambios Técnicos
-- **database.py**: 
+- **database.py**:
   - Nuevas tablas `caja` y `caja_movimientos`.
   - Centralización de DDLs en `init_db`.
   - Normalización de la función `next_ticket()` para evitar saltos en la numeración.
-- **app.py**: 
+- **app.py**:
   - Rutas `/caja`, `/caja/abrir`, `/caja/movimiento` y `/caja/cerrar`.
   - Modificación de la ruta de finalización de venta para interactuar con la caja activa.
-- **static/js/pos.js**: 
+- **static/js/pos.js**:
   - Corrección de visibilidad de funciones globales y mapeo de campos JSON.
-- **templates**: 
+- **templates**:
   - Nuevo template `caja.html`.
   - Integración del módulo en el sidebar de `base.html`.
 
@@ -989,7 +1002,7 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 - **Historial de movimientos integrado** en formulario
 
 ### 🛠️ Cambios Técnicos
-- **database.py**: 
+- **database.py**:
   - Nueva tabla `stock_movimientos` con FK a `productos`
   - Funciones: `get_stock_movimientos()`, `get_stock_movimientos_all()`
   - Actualización de `get_alertas_count()` con cálculo de estados
