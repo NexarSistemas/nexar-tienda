@@ -23,6 +23,7 @@ from licensing.planes import (
     get_commercial_plan_options,
     get_plan_actions,
     get_plan_display_name,
+    get_license_status_context,
     normalize_plan,
 )
 from licensing.permisos import get_modulos_activos, get_modulos_debug_info, require_modulo
@@ -246,16 +247,31 @@ def _get_plan_actions_context(
     license_info: dict[str, object] | None,
     *,
     tiene_checkout: bool | None = None,
+    license_status: dict[str, object] | None = None,
 ) -> dict[str, object]:
     license_info = license_info or {}
     basica_activada = bool(license_info.get("plan_base_permanente"))
     if not basica_activada:
         basica_activada = _as_bool(db.get_config().get("basica_activada", "0"))
+    status = license_status or _get_license_status_context(license_info)
     return get_plan_actions(
         license_info.get("tier", "DEMO"),
         basica_activada=basica_activada,
         licencia_vencida=bool(license_info.get("expirada")),
         tiene_checkout=_has_checkout_license(license_info) if tiene_checkout is None else tiene_checkout,
+        plan_original=status.get("plan_original"),
+        dias_para_vencer=status.get("dias_para_vencer"),
+    )
+
+
+def _get_license_status_context(
+    license_info: dict[str, object] | None,
+    *,
+    demo_status: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return get_license_status_context(
+        license_info,
+        demo_status=db.get_demo_status() if demo_status is None else demo_status,
     )
 
 
@@ -263,7 +279,11 @@ def _get_available_checkout_plans(license_info: dict[str, object] | None) -> lis
     if not _has_checkout_license(license_info):
         return []
     actions = _get_plan_actions_context(license_info, tiene_checkout=True)
-    return list(actions.get("planes_comprables", []))
+    available: list[str] = list(actions.get("planes_comprables", []))
+    renewal_plan = str(actions.get("plan_renovable", "") or "").strip()
+    if actions.get("puede_renovar") and renewal_plan and renewal_plan not in available:
+        available.append(renewal_plan)
+    return available
 
 
 def _resolve_requested_checkout_plan(license_info: dict[str, object] | None) -> str:
@@ -328,16 +348,35 @@ def _refresh_license_response(force: bool = True) -> tuple[dict[str, object], bo
 
         previous_info = db.get_license_info()
         previous_tier = normalize_plan(previous_info.get("tier", "DEMO"), default="DEMO")
+        previous_effective_plan = str(previous_info.get("plan_efectivo", previous_info.get("tier", previous_tier)) or previous_tier)
+        previous_status = str(previous_info.get("estado", "") or "")
+        previous_expires_at = str(previous_info.get("expires_at", "") or "")
         ok, message, refreshed_info = refresh_saved_license_online(debug=False)
         current_info = refreshed_info or db.get_license_info()
         current_tier = normalize_plan(current_info.get("tier", previous_tier), default=previous_tier)
-        changed = ok and current_tier != previous_tier
+        current_effective_plan = str(current_info.get("plan_efectivo", current_info.get("tier", current_tier)) or current_tier)
+        current_status = str(current_info.get("estado", "") or "")
+        current_expires_at = str(current_info.get("expires_at", "") or "")
+        changed = ok and (
+            current_tier != previous_tier
+            or current_effective_plan != previous_effective_plan
+            or current_status != previous_status
+            or current_expires_at != previous_expires_at
+        )
+        license_status = _get_license_status_context(current_info)
         payload = {
             "ok": ok,
             "changed": changed,
             "message": message,
             "tier": current_info.get("tier", previous_tier),
             "plan": current_info.get("plan", current_tier),
+            "plan_original": current_info.get("plan_original", current_info.get("plan", current_tier)),
+            "plan_efectivo": current_info.get("plan_efectivo", current_info.get("tier", current_tier)),
+            "estado": current_info.get("estado", ""),
+            "fallback_aplicado": bool(current_info.get("fallback_aplicado")),
+            "expirada": bool(current_info.get("expirada")),
+            "expires_at": current_info.get("expires_at", ""),
+            "license_status": license_status,
             "modules": sorted(get_modulos_activos()),
         }
         _LICENSE_REFRESH_LAST_RESULT = dict(payload)
@@ -2232,7 +2271,8 @@ def mi_plan():
     todos_los_modulos = sorted(set().union(*PLANES.values()))
     modulos_bloqueados = [modulo for modulo in todos_los_modulos if modulo not in modulos_activos]
     license_info = refreshed_info or db.get_license_info()
-    plan_actions = _get_plan_actions_context(license_info)
+    license_status = _get_license_status_context(license_info)
+    plan_actions = _get_plan_actions_context(license_info, license_status=license_status)
     available_checkout_plans = _get_available_checkout_plans(license_info)
     next_upgrade_plan = _resolve_next_upgrade_plan(license_info)
     return render_template(
@@ -2240,6 +2280,7 @@ def mi_plan():
         plan_activo=license_info.get("tier", "DEMO"),
         plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
         plan_actions=plan_actions,
+        license_status=license_status,
         license_info=license_info,
         modulos_activos=modulos_activos,
         modulos_bloqueados=modulos_bloqueados,
@@ -2308,7 +2349,13 @@ def api_licencia_estado():
             "plan": str(license_info.get("plan", "") or ""),
             "plan_display": get_plan_display_name(license_info.get("tier", "DEMO")),
             "tier": str(license_info.get("tier", "DEMO") or "DEMO"),
+            "plan_original": str(license_info.get("plan_original", license_info.get("plan", "")) or ""),
+            "plan_efectivo": str(license_info.get("plan_efectivo", license_info.get("tier", "DEMO")) or "DEMO"),
             "estado": str(license_info.get("estado", "") or "activa"),
+            "fallback_aplicado": bool(license_info.get("fallback_aplicado")),
+            "expirada": bool(license_info.get("expirada")),
+            "expires_at": str(license_info.get("expires_at", "") or ""),
+            "license_status": _get_license_status_context(license_info),
             "modules": sorted(license_info.get("modules", []) or []),
             "last_refresh": last_refresh,
             "needs_refresh": needs_refresh,
@@ -2515,6 +2562,7 @@ def licencia():
     local_lic = cargar_licencia() or {}
     license_info = db.get_license_info()
     demo_status = db.get_demo_status()
+    license_status = _get_license_status_context(license_info, demo_status=demo_status)
     return render_template(
         "licencia.html",
         supabase_ok=supabase_configured(),
@@ -2524,8 +2572,10 @@ def licencia():
         producto=get_license_product(),
         license_key_local=local_lic.get("license_key", ""),
         license_info=license_info,
+        license_status=license_status,
         demo_status=demo_status,
         plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+        plan_actions=_get_plan_actions_context(license_info, license_status=license_status),
         plan_request_options=get_commercial_plan_options(),
         license_holder=_get_license_holder_profile(license_info),
     )

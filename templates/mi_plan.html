@@ -15,12 +15,20 @@
                     {% set plan_label = plan_actions.plan_display if plan_actions else 'Plan no disponible' %}
                     <div class="display-6 fw-bold text-primary mb-2" id="license-plan-label">{{ plan_label }}</div>
                     <p class="text-muted mb-3">Los modulos disponibles dependen del plan configurado para esta instalacion.</p>
-                    {% if license_info and license_info.tier != 'DEMO' %}
+
+                    {% if license_status %}
                     <div class="small text-muted mb-3" id="license-status-summary">
                         Estado: <strong>{{ license_info.estado or 'activa' }}</strong> ·
-                        Plan original: <strong>{{ 'FULL' if license_info.plan_original == 'MENSUAL_FULL' else license_info.plan_original }}</strong> ·
-                        Plan efectivo: <strong>{{ 'FULL' if license_info.plan_efectivo == 'MENSUAL_FULL' else license_info.plan_efectivo }}</strong> ·
+                        Plan original: <strong>{{ license_status.plan_original_display }}</strong> ·
+                        Plan efectivo: <strong>{{ license_status.plan_efectivo_display }}</strong> ·
                         Fallback: <strong>{{ 'SI' if license_info.fallback_aplicado else 'NO' }}</strong>
+                    </div>
+                    {% endif %}
+
+                    {% if license_status and (license_status.mostrar_aviso_preventivo or license_status.mostrar_aviso_vencimiento) %}
+                    <div class="alert alert-{{ license_status.alert_class }} mb-3" id="license-expiry-alert">
+                        <div class="fw-semibold">{{ license_status.titulo_estado }}</div>
+                        <div class="small">{{ license_status.mensaje_estado }}</div>
                     </div>
                     {% endif %}
 
@@ -32,7 +40,7 @@
                     {% else %}
                     <div class="alert alert-warning mb-0">
                         <div class="fw-semibold">Acciones no disponibles</div>
-                        <div class="small">No se pudieron cargar las acciones del plan. Intent? refrescar la licencia.</div>
+                        <div class="small">No se pudieron cargar las acciones del plan. Intenta refrescar la licencia.</div>
                     </div>
                     {% endif %}
                     <hr>
@@ -57,6 +65,44 @@
                             Si aprobaste un upgrade en Nexar Admin, podes forzar la sincronizacion desde aca.
                             {% endif %}
                         </div>
+                        {% if plan_actions and plan_actions.puede_renovar %}
+                        <div class="border rounded p-3 mb-3 {% if plan_actions.renovacion_destacada %}border-warning bg-warning-subtle{% else %}bg-light{% endif %}">
+                            <div class="fw-semibold mb-2">
+                                Renovacion manual de {{ plan_actions.plan_renovable_display }}
+                            </div>
+                            <div class="small text-muted mb-2">{{ plan_actions.texto_renovacion }}</div>
+                            <div class="small text-muted mb-3">{{ plan_actions.texto_auto_renovacion }}</div>
+                            {% if plan_actions.mostrar_checkout %}
+                            <button
+                                class="btn {% if plan_actions.renovacion_destacada %}btn-warning{% else %}btn-outline-primary{% endif %} w-100 checkout-upgrade-button"
+                                type="button"
+                                data-checkout-url="{{ url_for('main.mi_plan_checkout') }}"
+                                data-checkout-open-url="{{ url_for('main.mi_plan_checkout_open') }}"
+                                data-target-plan="{{ plan_actions.plan_renovable }}"
+                                data-target-plan-display="{{ plan_actions.plan_renovable_display }}"
+                                data-csrf-token="{{ csrf_token() }}"
+                                {% if not checkout_enabled %}disabled{% endif %}
+                            >
+                                {{ plan_actions.cta_renovacion }}
+                            </button>
+                            {% else %}
+                            <a class="btn {% if plan_actions.renovacion_destacada %}btn-warning{% else %}btn-outline-primary{% endif %} w-100" href="{{ url_for('licencia') }}">
+                                {{ plan_actions.cta_renovacion }}
+                            </a>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        {% if license_status and license_status.mostrar_revalidar %}
+                        <div class="d-grid mb-3">
+                            <button
+                                class="btn btn-outline-primary"
+                                type="button"
+                                id="manual-revalidate-button"
+                            >
+                                Ya pague / Revalidar licencia
+                            </button>
+                        </div>
+                        {% endif %}
 
                         {% if plan_actions and plan_actions.acciones %}
                         <div class="d-grid gap-2">
@@ -110,16 +156,16 @@
                         <p class="text-success fw-semibold mb-0">No hay acciones comerciales disponibles para este plan.</p>
                         <div class="small text-muted mt-2" id="checkout-upgrade-message"></div>
                         {% else %}
-                        <div class="alert alert-warning mb-0">No se pudieron cargar las acciones del plan. Intent? refrescar la licencia.</div>
+                        <div class="alert alert-warning mb-0">No se pudieron cargar las acciones del plan. Intenta refrescar la licencia.</div>
                         {% endif %}
 
                         <div class="alert alert-light border mt-3 d-none" id="post-payment-refresh-panel">
                             <div class="fw-semibold mb-2">Seguimiento post-pago</div>
                             <div class="small text-muted mb-3" id="post-payment-refresh-message">
-                                Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar y tocá "Ya pagué, actualizar licencia".
+                                Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volve a Nexar y toca "Ya pague, actualizar licencia".
                             </div>
                             <button class="btn btn-outline-primary btn-sm" type="button" id="post-payment-refresh-button">
-                                Ya pagué, actualizar licencia
+                                Ya pague, actualizar licencia
                             </button>
                         </div>
                     {% else %}
@@ -201,6 +247,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const refreshButton = document.getElementById('refresh-license-button');
+    const manualRevalidateButton = document.getElementById('manual-revalidate-button');
     const refreshMessage = document.getElementById('refresh-license-message');
     const planLabel = document.getElementById('license-plan-label');
     const statusSummary = document.getElementById('license-status-summary');
@@ -213,6 +260,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const postPaymentButton = document.getElementById('post-payment-refresh-button');
     const licenseStateUrl = '{{ url_for("main.api_licencia_estado") }}';
     const initialPlanTier = '{{ plan_activo }}';
+    const initialEffectivePlan = '{{ license_info.plan_efectivo or plan_activo }}';
+    const initialLicenseStatus = '{{ license_info.estado or "activa" }}';
+    const initialExpiresAt = '{{ license_info.expires_at or "" }}';
     const postPaymentStorageKey = 'nexar-post-payment-refresh';
     let postPaymentPollTimer = null;
     let postPaymentPollStartedAt = 0;
@@ -221,8 +271,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function renderPlanLabel(tier) {
         if (!tier) return '';
-        if (tier === 'MENSUAL_FULL' || tier === 'FULL') return 'FULL';
+        if (tier === 'FULL') return 'FULL';
         if (tier === 'DEMO') return 'Periodo de prueba';
+        if (tier === 'SIN_PLAN') return 'SIN PLAN';
         return tier;
     }
 
@@ -237,9 +288,17 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function renderStatusSummary(planText) {
-        if (!statusSummary || !planText) return;
-        statusSummary.innerHTML = 'Estado: <strong>activa</strong> · Plan efectivo: <strong>' + planText + '</strong>';
+    function renderStatusSummary(data) {
+        if (!statusSummary || !data) return;
+        const estado = data.estado || 'activa';
+        const planOriginal = renderPlanLabel(data.plan_original || '');
+        const planEfectivo = renderPlanLabel(data.plan_efectivo || data.tier || '');
+        const fallback = data.fallback_aplicado ? 'SI' : 'NO';
+        statusSummary.innerHTML =
+            'Estado: <strong>' + estado + '</strong> · ' +
+            'Plan original: <strong>' + planOriginal + '</strong> · ' +
+            'Plan efectivo: <strong>' + planEfectivo + '</strong> · ' +
+            'Fallback: <strong>' + fallback + '</strong>';
     }
 
     function updatePostPaymentPanel(state, message) {
@@ -261,7 +320,7 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             sessionStorage.setItem(postPaymentStorageKey, JSON.stringify(data));
         } catch (error) {
-            // Ignorar si sessionStorage no está disponible.
+            // Ignorar si sessionStorage no esta disponible.
         }
     }
 
@@ -278,7 +337,7 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             sessionStorage.removeItem(postPaymentStorageKey);
         } catch (error) {
-            // Ignorar si sessionStorage no está disponible.
+            // Ignorar si sessionStorage no esta disponible.
         }
     }
 
@@ -295,7 +354,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (planLabel && planText) {
             planLabel.textContent = planText;
         }
-        renderStatusSummary(planText);
+        renderStatusSummary(data);
         renderModules(data.modules || []);
         refreshMessage.className = 'small text-success mb-3';
         refreshMessage.textContent = successMessage || 'Licencia actualizada correctamente';
@@ -309,6 +368,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (opts.showLoading !== false) {
             refreshButton.disabled = true;
+            if (manualRevalidateButton) {
+                manualRevalidateButton.disabled = true;
+            }
             refreshButton.textContent = 'Refrescando licencia...';
             refreshMessage.className = 'small text-muted mb-3';
             refreshMessage.textContent = 'Consultando licencia online...';
@@ -333,7 +395,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (planLabel && planText) {
                     planLabel.textContent = planText;
                 }
-                renderStatusSummary(planText);
+                renderStatusSummary(data);
                 renderModules(data.modules || []);
                 refreshMessage.className = 'small text-success mb-3';
                 refreshMessage.textContent = planText
@@ -361,6 +423,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (opts.showLoading !== false) {
                 refreshButton.disabled = false;
                 refreshButton.textContent = 'Refrescar licencia';
+                if (manualRevalidateButton) {
+                    manualRevalidateButton.disabled = false;
+                }
             }
         }
     }
@@ -385,7 +450,13 @@ document.addEventListener('DOMContentLoaded', function () {
             return false;
         }
 
-        if ((data.tier || '') && data.tier !== initialPlanTier) {
+        const stateChanged =
+            ((data.tier || '') && data.tier !== initialPlanTier) ||
+            ((data.plan_efectivo || '') && data.plan_efectivo !== initialEffectivePlan) ||
+            ((data.estado || '') && data.estado !== initialLicenseStatus) ||
+            ((data.expires_at || '') && data.expires_at !== initialExpiresAt);
+
+        if (stateChanged) {
             applyUpdatedLicenseState(data, 'Licencia actualizada correctamente');
             clearPostPaymentStorage();
             stopPostPaymentPolling();
@@ -409,17 +480,17 @@ document.addEventListener('DOMContentLoaded', function () {
             const elapsed = Date.now() - postPaymentPollStartedAt;
             if (elapsed >= 120000) {
                 stopPostPaymentPolling();
-                updatePostPaymentPanel('pending', 'Todavía no vemos el cambio. Podés tocar "Ya pagué, actualizar licencia".');
+                updatePostPaymentPanel('pending', 'Todavia no vemos el cambio. Podes tocar "Ya pague, actualizar licencia".');
                 return;
             }
 
             try {
                 const updated = await checkLicenseStatusForPostPayment();
                 if (!updated) {
-                    updatePostPaymentPanel('pending', 'Pago pendiente de acreditación o licencia aún no actualizada');
+                    updatePostPaymentPanel('pending', 'Pago pendiente de acreditacion o licencia aun no actualizada');
                 }
             } catch (error) {
-                updatePostPaymentPanel('error', 'No pudimos verificar la licencia ahora. Probá nuevamente en unos segundos.');
+                updatePostPaymentPanel('error', 'No pudimos verificar la licencia ahora. Proba nuevamente en unos segundos.');
             }
         }, 10000);
     }
@@ -440,11 +511,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const updated = await checkLicenseStatusForPostPayment();
             if (!updated) {
-                updatePostPaymentPanel('pending', 'Pago pendiente de acreditación o licencia aún no actualizada');
+                updatePostPaymentPanel('pending', 'Pago pendiente de acreditacion o licencia aun no actualizada');
                 startPostPaymentPolling();
             }
         } catch (error) {
-            updatePostPaymentPanel('error', 'No pudimos actualizar la licencia ahora. Probá nuevamente en unos segundos.');
+            updatePostPaymentPanel('error', 'No pudimos actualizar la licencia ahora. Proba nuevamente en unos segundos.');
         } finally {
             postPaymentButton.disabled = false;
         }
@@ -457,14 +528,20 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    refreshButton.addEventListener('click', function () {
+    function triggerLicenseRefresh() {
         runLicenseRefresh({
             showLoading: true,
             showNoChangeMessage: true,
             showErrors: true,
             useFallbackForm: true
         });
-    });
+    }
+
+    refreshButton.addEventListener('click', triggerLicenseRefresh);
+
+    if (manualRevalidateButton) {
+        manualRevalidateButton.addEventListener('click', triggerLicenseRefresh);
+    }
 
     if (checkoutButtons.length > 0 && checkoutMessage) {
         checkoutButtons.forEach(function (checkoutButton) {
@@ -509,13 +586,13 @@ document.addEventListener('DOMContentLoaded', function () {
                         initialPlanTier: initialPlanTier,
                         startedAt: Date.now()
                     });
-                    updatePostPaymentPanel('pending', 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar y tocá "Ya pagué, actualizar licencia".');
+                    updatePostPaymentPanel('pending', 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volve a Nexar y toca "Ya pague, actualizar licencia".');
                     startPostPaymentPolling();
 
                     if (isDesktopWebview) {
                         resetCheckoutButtons();
                         checkoutMessage.className = 'small text-success mt-2';
-                        checkoutMessage.textContent = 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar.';
+                        checkoutMessage.textContent = 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volve a Nexar.';
                         return;
                     }
 
@@ -543,7 +620,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const postPaymentState = getPostPaymentStorage();
     if (postPaymentState && postPaymentState.initialPlanTier === initialPlanTier && postPaymentPanel) {
-        updatePostPaymentPanel('pending', 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volvé a Nexar y tocá "Ya pagué, actualizar licencia".');
+        updatePostPaymentPanel('pending', 'Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volve a Nexar y toca "Ya pague, actualizar licencia".');
         startPostPaymentPolling();
     }
 
