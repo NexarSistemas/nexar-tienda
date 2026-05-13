@@ -206,11 +206,11 @@
             {% if update_info and update_info.available %}
                 <div class="alert alert-info shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2" role="alert">
                     <div>
-                        <strong>Nueva version disponible: v{{ update_info.latest }}.</strong>
-                        Tenes instalada la v{{ update_info.current }}. Preparala desde Respaldos y actualizaciones cuando termines tu trabajo.
+                        <strong>Nueva versión disponible: v{{ update_info.latest }}.</strong>
+                        Tenés instalada la v{{ update_info.current }}. Preparala desde Respaldos y actualizaciones cuando termines tu trabajo.
                     </div>
                     <a class="btn btn-sm btn-outline-primary" href="{{ url_for('respaldo') }}">
-                        Preparar actualizacion
+                        Preparar actualización
                     </a>
                 </div>
             {% endif %}
@@ -229,7 +229,7 @@
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                    <div class="alert alert-{{ 'success' if 'éxito' in message or '✅' in message else 'danger' if '❌' in message else 'warning' if '⚠' in message else 'info' }} alert-dismissible fade show" role="alert">
+                    <div class="alert alert-{{ category if category in ['success', 'danger', 'warning', 'info'] else 'info' }} alert-dismissible fade show" role="alert">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
