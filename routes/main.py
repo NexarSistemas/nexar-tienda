@@ -2460,19 +2460,19 @@ def mi_plan_solicitar_upgrade():
     )
 
     if plan_solicitado and plan_solicitado not in allowed_targets:
-        flash("El cambio de plan solicitado no est? disponible para tu licencia actual.", "info")
+        flash("El cambio de plan solicitado no está disponible para tu licencia actual.", "info")
         return redirect(url_for("main.mi_plan"))
 
     if not plan_solicitado:
         if allowed_targets:
             plan_solicitado = allowed_targets[0]
         else:
-            flash("Tu plan actual ya est? completo o no admite actualizaci?n.", "info")
+            flash("Tu plan actual ya está completo o no admite actualización.", "info")
             return redirect(url_for("main.mi_plan"))
 
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
-        flash("No se encontr? una licencia activa para enviar el cambio de plan.", "warning")
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
         return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
@@ -2515,7 +2515,7 @@ def mi_plan_solicitar_upgrade():
     if result.get("ok"):
         flash("Solicitud de cambio de plan enviada.", "success")
     else:
-        flash(result.get("message", "No se pudo enviar la solicitud de actualizaci?n."), "danger")
+        flash(result.get("message", "No se pudo enviar la solicitud de actualización."), "danger")
     return redirect(url_for("main.mi_plan"))
 
 
