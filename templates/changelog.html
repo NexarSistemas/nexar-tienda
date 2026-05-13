@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Novedades — Nexar Tienda{% endblock %}
+{% block title %}Novedades — {{ app_display_name }}{% endblock %}
 {% block page_title %}<i class="fas fa-list-alt me-2"></i>Registro de Cambios{% endblock %}
 
 {% block content %}
@@ -11,7 +11,7 @@
                     <div class="text-center mb-4">
                         <i class="fas fa-history fa-2x text-primary mb-2"></i>
                         <h4 class="fw-bold text-navy">Historial de Evolución</h4>
-                        <p class="text-muted small">Novedades y mejoras continuas en Nexar Tienda</p>
+                        <p class="text-muted small">Novedades y mejoras continuas en {{ app_display_name }}</p>
                         <hr class="opacity-25">
                     </div>
                     <div class="accordion changelog-accordion" id="changelogAccordion">
@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     elements.forEach((el) => {
         if (el.tagName === 'H2') {
-            const versionText = el.textContent.replace('Changelog - Nexar Tienda', '').trim();
+            const versionText = el.textContent.replace('Changelog - Nexar Tienda', '').replace('Changelog - Nexar Comercio', '').trim();
             if (!versionText) return;
 
             // Si ya alcanzamos el límite de lanzamientos, dejamos de capturar

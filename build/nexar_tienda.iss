@@ -11,7 +11,7 @@
   #define AppVersion "1.32.0"
 #endif
 
-#define AppName      "Nexar Tienda"
+#define AppName      "Nexar Comercio"
 #define AppExeName   "NexarTienda.exe"
 #define AppPublisher "Nexar Sistemas"
 #define AppURL       "https://wa.me/5492645858874"
@@ -224,6 +224,6 @@ end;
 
 [Messages]
 WelcomeLabel1=Bienvenido al instalador de {#AppName} v{#AppVersion}
-WelcomeLabel2=Este asistente instalará {#AppName} en tu computadora.%n%nNexar Tienda es un sistema de gestión completo para comercios.%n%nCerrá todas las demás aplicaciones antes de continuar.
+WelcomeLabel2=Este asistente instalará {#AppName} en tu computadora.%n%nNexar Comercio es un sistema de gestión completo para comercios.%n%nCerrá todas las demás aplicaciones antes de continuar.
 FinishedHeadingLabel=Instalación completada
 FinishedLabel={#AppName} v{#AppVersion} se instaló correctamente.%n%nHacé clic en Finalizar para cerrar el asistente.

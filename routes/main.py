@@ -988,7 +988,7 @@ if ($remaining.Count -gt 0) {{
 
 $stillRunning = @(Get-AppProcesses())
 if ($stillRunning.Count -gt 0) {{
-    $message = "No se pudo cerrar completamente Nexar Tienda antes de iniciar el instalador."
+    $message = "No se pudo cerrar completamente Nexar Comercio antes de iniciar el instalador."
     Write-Log $message
     Write-Status 'install_failed' $message
     exit 1
@@ -3176,7 +3176,7 @@ def actualizacion_instalar(nombre):
             )
             return render_template(
                 "apagado.html",
-                titulo="Cerrando Nexar Tienda para actualizar",
+                titulo="Cerrando Nexar Comercio para actualizar",
                 mensaje="La app se va a cerrar para iniciar el instalador de Windows de forma segura.",
                 estado="Esperando que se liberen Flask, pywebview y el ejecutable antes de abrir la actualización.",
                 delay_ms=1600,
@@ -3201,7 +3201,7 @@ def actualizacion_instalar(nombre):
         _track_update_process(target_version, process)
         flash(
             f"Instalador iniciado con permisos de administrador. Respaldo previo: {backup_path.name}. "
-            "Cuando termine, Nexar Tienda te va a pedir reiniciar la app.",
+                "Cuando termine, Nexar Comercio te va a pedir reiniciar la app.",
             "success",
         )
     except FileNotFoundError:
@@ -3230,15 +3230,15 @@ def actualizacion_reiniciar():
     if _requires_manual_reopen(installer_name):
         return render_template(
             "apagado.html",
-            titulo="Cerrando Nexar Tienda",
-            mensaje="La actualizacion ya se instalo. Volve a abrir Nexar Tienda desde el acceso directo.",
+            titulo="Cerrando Nexar Comercio",
+            mensaje="La actualizacion ya se instalo. Volve a abrir Nexar Comercio desde el acceso directo.",
             estado="Windows puede tardar unos segundos en liberar el instalador antes del proximo inicio.",
             delay_ms=1200,
         )
 
     return render_template(
         "apagado.html",
-        titulo="Reiniciando Nexar Tienda",
+        titulo="Reiniciando Nexar Comercio",
         mensaje="La app se cerrara y volvera a abrirse con la version nueva.",
         estado="Esto puede tardar unos segundos mientras el sistema libera el instalador.",
         delay_ms=5000,
@@ -3303,7 +3303,7 @@ def ayuda():
     cfg = db.get_config()
     licencia = db.get_license_info()
     usuario = session.get("user", {})
-    negocio = cfg.get("nombre_negocio", "Nexar Tienda")
+    negocio = cfg.get("nombre_negocio", "Nexar Comercio")
     support_defaults = {
         "nombre": _first_non_empty(
             licencia.get("owner_name", ""),
