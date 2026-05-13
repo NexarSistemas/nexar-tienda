@@ -144,7 +144,7 @@
                 <td>{{ u.fecha }}</td>
                 <td>{{ u.tamanio_mb }} MB</td>
                 <td>
-                  <form method="POST" action="{{ url_for('actualizacion_instalar', nombre=u.nombre) }}" class="d-inline" onsubmit="return confirm('Se creara un respaldo y se abrira el instalador del sistema. Al terminar, Nexar Tienda te va a pedir reiniciar la app.')">
+                  <form method="POST" action="{{ url_for('actualizacion_instalar', nombre=u.nombre) }}" class="d-inline" onsubmit="return confirm('Se creara un respaldo, Nexar Tienda se cerrara por completo y despues se abrira el instalador del sistema. Al terminar, volve a abrir la app desde el acceso directo.')">
                     <button class="btn btn-sm btn-success" {% if update_state and update_state.status in ['in_progress', 'ready_restart'] %}disabled{% endif %}><i class="fas fa-box-open me-1"></i>Instalar</button>
                   </form>
                   <div class="mt-1"><code class="small">{{ u.comando }}</code></div>

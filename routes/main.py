@@ -73,7 +73,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = app_data_dir()
 BACKUP_DIR = DATA_DIR / "respaldo"
 UPDATE_DIR = DATA_DIR / "updates"
+LOG_DIR = DATA_DIR / "logs"
 CHANGELOG_PATH = BASE_DIR / "CHANGELOG.md"
+WINDOWS_UPDATE_STATUS_PATH = UPDATE_DIR / "windows_update_status.json"
+WINDOWS_UPDATE_LAUNCHER_PATH = UPDATE_DIR / "windows_update_launcher.ps1"
+WINDOWS_UPDATE_LOG_PATH = LOG_DIR / "update-installer.log"
 
 DESKTOP_STATE = {
     "user_logged_in": False,
@@ -802,7 +806,188 @@ def _requires_manual_reopen(installer_name: str) -> bool:
     return sys.platform.startswith("win") and (installer_name or "").lower().endswith(".exe")
 
 
+def _powershell_literal(value: str | Path) -> str:
+    return str(value).replace("'", "''")
+
+
+def _write_windows_update_status(status: str, *, target_version: str, installer_name: str, error: str = "") -> None:
+    if not sys.platform.startswith("win"):
+        return
+    UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "status": status,
+        "target_version": target_version,
+        "installer_name": installer_name,
+        "error": error,
+        "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    WINDOWS_UPDATE_STATUS_PATH.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+
+
+def _consume_windows_update_status() -> None:
+    if not sys.platform.startswith("win") or not WINDOWS_UPDATE_STATUS_PATH.exists():
+        return
+    try:
+        payload = json.loads(WINDOWS_UPDATE_STATUS_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("No se pudo leer el estado externo de actualizacion Windows: %s", exc)
+        return
+
+    status = str(payload.get("status", "") or "").strip()
+    if not status:
+        return
+
+    data = {
+        "update_install_status": status,
+        "update_finished_at": str(payload.get("finished_at", "") or ""),
+        "update_install_error": str(payload.get("error", "") or ""),
+    }
+    target_version = str(payload.get("target_version", "") or "").strip()
+    installer_name = str(payload.get("installer_name", "") or "").strip()
+    if target_version:
+        data["update_target_version"] = target_version
+    if installer_name:
+        data["update_installer_name"] = installer_name
+    db.set_config(data)
+    try:
+        WINDOWS_UPDATE_STATUS_PATH.unlink(missing_ok=True)
+    except Exception as exc:
+        logger.warning("No se pudo limpiar el estado externo de actualizacion Windows: %s", exc)
+
+
+def _build_windows_update_launcher_script(*, installer: Path, target_version: str) -> str:
+    app_executable = Path(sys.executable).resolve()
+    app_process_name = app_executable.stem
+    app_process_path = str(app_executable) if getattr(sys, "frozen", False) else ""
+    app_pid = os.getpid()
+    script = f"""$ErrorActionPreference = 'Stop'
+$InstallerPath = '{_powershell_literal(installer)}'
+$StatusPath = '{_powershell_literal(WINDOWS_UPDATE_STATUS_PATH)}'
+$LogPath = '{_powershell_literal(WINDOWS_UPDATE_LOG_PATH)}'
+$TargetVersion = '{_powershell_literal(target_version)}'
+$InstallerName = '{_powershell_literal(installer.name)}'
+$AppPid = {app_pid}
+$AppProcessName = '{_powershell_literal(app_process_name)}'
+$AppProcessPath = '{_powershell_literal(app_process_path)}'
+
+function Write-Log([string]$Message) {{
+    $logDir = Split-Path -Parent $LogPath
+    if ($logDir -and -not (Test-Path $logDir)) {{
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    }}
+    Add-Content -Path $LogPath -Value ("[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message)
+}}
+
+function Write-Status([string]$Status, [string]$ErrorMessage = '') {{
+    $statusDir = Split-Path -Parent $StatusPath
+    if ($statusDir -and -not (Test-Path $statusDir)) {{
+        New-Item -ItemType Directory -Path $statusDir -Force | Out-Null
+    }}
+    @{{
+        status = $Status
+        target_version = $TargetVersion
+        installer_name = $InstallerName
+        error = $ErrorMessage
+        finished_at = (Get-Date).ToString('yyyy-MM-dd HH:mm')
+    }} | ConvertTo-Json | Set-Content -Path $StatusPath -Encoding UTF8
+}}
+
+function Get-AppProcesses() {{
+    $processes = Get-CimInstance Win32_Process -Filter "Name = '$($AppProcessName).exe'" -ErrorAction SilentlyContinue
+    if (-not $processes) {{
+        return @()
+    }}
+    if ($AppProcessPath) {{
+        return @($processes | Where-Object {{ $_.ExecutablePath -and $_.ExecutablePath -ieq $AppProcessPath }})
+    }}
+    return @($processes | Where-Object {{ $_.ProcessId -eq $AppPid }})
+}}
+
+Write-Log "Inicio helper de actualizacion Windows para $InstallerName."
+Write-Status 'in_progress'
+
+$deadline = (Get-Date).AddSeconds(45)
+while ((Get-Process -Id $AppPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {{
+    Start-Sleep -Milliseconds 500
+}}
+
+if (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) {{
+    Write-Log "El proceso principal sigue vivo; forzando cierre del PID $AppPid."
+    Stop-Process -Id $AppPid -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}}
+
+$remaining = @(Get-AppProcesses())
+if ($remaining.Count -gt 0) {{
+    Write-Log ("Procesos remanentes detectados: " + (($remaining | ForEach-Object {{ $_.ProcessId }}) -join ', '))
+    $remaining | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}
+    Start-Sleep -Seconds 2
+}}
+
+$stillRunning = @(Get-AppProcesses())
+if ($stillRunning.Count -gt 0) {{
+    $message = "No se pudo cerrar completamente Nexar Tienda antes de iniciar el instalador."
+    Write-Log $message
+    Write-Status 'install_failed' $message
+    exit 1
+}}
+
+Write-Log "Lanzando instalador $InstallerPath."
+try {{
+    $process = Start-Process -FilePath $InstallerPath -WorkingDirectory (Split-Path -Parent $InstallerPath) -PassThru -Wait
+    $exitCode = $process.ExitCode
+    if ($exitCode -eq 0) {{
+        Write-Log "Instalador finalizado correctamente."
+        Write-Status 'ready_restart'
+        exit 0
+    }}
+
+    $message = "El instalador termino con codigo $exitCode."
+    Write-Log $message
+    Write-Status 'install_failed' $message
+    exit $exitCode
+}} catch {{
+    $message = $_.Exception.Message
+    Write-Log ("Error al lanzar el instalador: " + $message)
+    Write-Status 'install_failed' $message
+    exit 1
+}}
+"""
+    return script
+
+
+def _launch_windows_update_helper(*, installer: Path, target_version: str) -> None:
+    UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    script_content = _build_windows_update_launcher_script(installer=installer, target_version=target_version)
+    WINDOWS_UPDATE_LAUNCHER_PATH.write_text(script_content, encoding="utf-8")
+    creation_flags = 0
+    for flag_name in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP"):
+        creation_flags |= int(getattr(subprocess, flag_name, 0))
+
+    logger.info(
+        "Preparando helper externo de actualizacion Windows. installer=%s target=%s script=%s",
+        installer,
+        target_version,
+        WINDOWS_UPDATE_LAUNCHER_PATH,
+    )
+    subprocess.Popen(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(WINDOWS_UPDATE_LAUNCHER_PATH),
+        ],
+        creationflags=creation_flags,
+        close_fds=True,
+        cwd=str(UPDATE_DIR),
+    )
+
+
 def _update_install_state(current_version: str | None = None) -> dict:
+    _consume_windows_update_status()
     license_info = db.get_license_info()
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
@@ -2871,17 +3056,30 @@ def actualizacion_instalar(nombre):
 
     if sys.platform.startswith("win") and is_windows_installer:
         try:
-            process = subprocess.Popen([str(installer)])
-            _track_update_process(target_version, process)
-            flash(
-                f"Instalador de Windows iniciado. Respaldo previo: {backup_path.name}. "
-                "Cuando termine, Nexar Tienda te va a pedir reiniciar la app.",
-                "success",
+            _write_windows_update_status(
+                "in_progress",
+                target_version=target_version,
+                installer_name=installer.name,
+            )
+            _launch_windows_update_helper(installer=installer, target_version=target_version)
+            logger.info(
+                "Actualizacion Windows preparada. installer=%s target=%s backup=%s",
+                installer,
+                target_version,
+                backup_path.name,
+            )
+            return render_template(
+                "apagado.html",
+                titulo="Cerrando Nexar Tienda para actualizar",
+                mensaje="La app se va a cerrar para iniciar el instalador de Windows de forma segura.",
+                estado="Esperando que se liberen Flask, pywebview y el ejecutable antes de abrir la actualización.",
+                delay_ms=1600,
             )
         except Exception as exc:
             db.set_config({"update_install_status": "install_failed", "update_install_error": str(exc)})
+            logger.exception("No se pudo preparar la actualizacion Windows.")
             flash(f"No se pudo iniciar el instalador: {exc}. Ejecuta manualmente: {command}", "warning")
-        return redirect(url_for("respaldo"))
+            return redirect(url_for("respaldo"))
 
     if not sys.platform.startswith("linux"):
         db.set_config({
@@ -3179,6 +3377,7 @@ def apagar_sistema():
 def shutdown():
     if not _is_same_origin_local_request():
         abort(403)
+    logger.info("Shutdown solicitado desde la interfaz local.")
     fn = request.environ.get("werkzeug.server.shutdown")
     if fn:
         fn()

@@ -4,6 +4,13 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.31.2] - 2026-05-13
+
+### Fixed
+- Se estabiliza el flujo de actualización en Windows cerrando Nexar Tienda antes de abrir el instalador.
+- Se evita el relanzamiento automático inmediato del instalador para reducir errores de PyInstaller con `_MEI` y `python311.dll`.
+- Se agregan logs y verificación de procesos remanentes para dejar la instalación en un estado consistente.
+
 ## [1.31.1] - 2026-05-13
 
 ### Fixed
