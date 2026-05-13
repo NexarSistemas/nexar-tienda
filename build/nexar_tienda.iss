@@ -74,8 +74,10 @@ Source: "launch_with_log.bat"; DestDir: "{app}"; Flags: ignoreversion
 Name: "{userprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "Sistema de gestión para tiendas"
 Name: "{userdesktop}\{#AppName}";  Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "Sistema de gestión para tiendas"; Tasks: desktopicon
 
-[Run]
-Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Description: "Iniciar {#AppName} ahora"; Flags: nowait postinstall skipifsilent unchecked
+; No relanzar la app automaticamente al finalizar.
+; En actualizaciones in-app esperamos el cierre completo del ejecutable
+; antes de abrir el instalador y la reapertura queda manual para evitar
+; errores de PyInstaller con _MEI/python311.dll.
 
 [Code]
 

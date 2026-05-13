@@ -214,6 +214,7 @@ if __name__ == "__main__":
             def restartApp(self, delay_ms=5000):
                 def _restart():
                     try:
+                        safe_print(f"[update] Reinicio solicitado. Esperando {max(int(delay_ms or 5000), 1000)} ms antes de relanzar.")
                         time.sleep(max(int(delay_ms or 5000), 1000) / 1000)
                         if es_ejecutable():
                             subprocess.Popen([sys.executable], cwd=os.path.dirname(sys.executable) or None)
@@ -228,6 +229,7 @@ if __name__ == "__main__":
             def closeWindow(self):
                 def _close():
                     try:
+                        safe_print("[update] Cierre de ventana solicitado desde la app.")
                         if getattr(webview, "windows", None):
                             webview.windows[0].destroy()
                     finally:
