@@ -334,7 +334,7 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
         }
 
     if payload["tipo_solicitud"] == "cambio_plan":
-        if payload["plan_actual"] == "MENSUAL_FULL":
+        if payload["plan_actual"] == "FULL":
             _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="invalid_current_plan")
             return {
                 "ok": False,

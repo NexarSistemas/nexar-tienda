@@ -2267,7 +2267,7 @@ def mi_plan_actualizar_licencia():
     response, ok = _refresh_license_response(force=True)
     if ok:
         plan = str(response.get("tier", "DEMO"))
-        plan_label = "FULL" if plan == "MENSUAL_FULL" else plan
+        plan_label = get_plan_display_name(plan)
         flash(f"Estado de licencia actualizado. Plan actual: {plan_label}.", "success")
     else:
         flash(
@@ -2680,7 +2680,7 @@ def respaldo():
 
     cfg = db.get_config()
     license_info = db.get_license_info()
-    can_use_updates = license_info.get("tier") == "MENSUAL_FULL" and license_info.get("updates")
+    can_use_updates = license_info.get("tier") == "FULL" and license_info.get("updates")
     update_state = _update_install_state(current_app.config.get("APP_VERSION", "0.0.0"))
     update_info = (
         get_cached_update_info(current_app, current_app.config.get("APP_VERSION", "0.0.0"))
@@ -2740,7 +2740,7 @@ def respaldo_restaurar(nombre):
 @admin_required
 def actualizacion_descargar():
     license_info = db.get_license_info()
-    if license_info.get("tier") != "MENSUAL_FULL" or not license_info.get("updates"):
+    if license_info.get("tier") != "FULL" or not license_info.get("updates"):
         flash("Las actualizaciones estan disponibles solo para el plan FULL.", "warning")
         return redirect(url_for("respaldo"))
 
@@ -2790,7 +2790,7 @@ def actualizacion_abrir_carpeta():
 @admin_required
 def actualizacion_instalar(nombre):
     license_info = db.get_license_info()
-    if license_info.get("tier") != "MENSUAL_FULL" or not license_info.get("updates"):
+    if license_info.get("tier") != "FULL" or not license_info.get("updates"):
         flash("Las actualizaciones estan disponibles solo para el plan FULL.", "warning")
         return redirect(url_for("respaldo"))
 
