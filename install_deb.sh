@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Instala el ultimo paquete .deb de Nexar Tienda resolviendo dependencias.
+# Instala el ultimo paquete .deb de Nexar Comercio resolviendo dependencias.
 
 set -euo pipefail
 
@@ -25,5 +25,5 @@ sudo apt install -y "${TMP_DEB}"
 rm -f "${TMP_DEB}"
 
 echo ""
-echo "Nexar Tienda instalado. Ejecutar con:"
+echo "Nexar Comercio instalado. Ejecutar con:"
 echo "  nexartienda"

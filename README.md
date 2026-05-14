@@ -1,54 +1,60 @@
-# 🎁 Nexar Tienda v1.30.0
+# Nexar Comercio v1.33.1
 
-Sistema Integral de Gestión Comercial diseñado para tiendas de regalos, bijouterie, marroquinería y productos estacionales. Optimizado para un funcionamiento fluido, seguro y con una interfaz estética de alto nivel.
+Sistema integral de gestion comercial para tiendas y comercios minoristas.
+`Nexar Comercio` es la marca visible del producto. `nexar-tienda` se mantiene
+como identificador tecnico compatible para builds, instaladores, actualizaciones
+y artefactos existentes.
 
-**Desarrollado por Nexar Sistemas — © 2026**
+Release comercial estable `v1.33.1`:
+
+- Branding visible unificado como `Nexar Comercio`.
+- Actualizacion visual de iconos y assets sin renombrar archivos internos.
+- Versionado sincronizado entre app, documentacion e instaladores.
+- Consolidacion de fixes recientes de licencias y actualizaciones Windows.
+- Evolucion funcional reciente en rubro, unidades, categorias y venta fraccionada.
+- Base lista para acompanar la landing/web comercial del producto.
+
+Desarrollado por Nexar Sistemas - 2026
 
 ---
 
-## 📦 Estructura del Proyecto
+## Estructura del Proyecto
 
-```
+```text
 nexar-tienda/
-├── app.py                → Lógica principal y rutas Flask
-├── database.py           → Motor de base de datos SQLite y consultas SQL
-├── iniciar.py            → Launcher universal con ventana nativa
-├── tienda.db             → Base de datos (generada al iniciar)
-├── VERSION               → Control de versión actual
-├── CHANGELOG.md          → Historial detallado de cambios
-├── static/               → Recursos estáticos (CSS, JS, Imágenes)
-│   ├── css/main.css      → Estilos "Fine" (Azul marino & Plata)
-│   └── js/pos.js         → Lógica del Punto de Venta
-├── templates/            → Plantillas Jinja2 (UI/UX)
-└── respaldo/             → Copias de seguridad automáticas
+|-- app.py                -> Logica principal y rutas Flask
+|-- database.py           -> Motor SQLite y consultas SQL
+|-- iniciar.py            -> Launcher desktop con ventana nativa
+|-- VERSION               -> Version actual de release
+|-- CHANGELOG.md          -> Historial detallado de cambios
+|-- static/               -> CSS, JS e iconos
+|-- templates/            -> Templates Jinja2
+`-- build/                -> Specs, instalador y metadata de build
 ```
 
----
-
-##  Instalación y Arranque
+## Instalacion y Arranque
 
 ### Requisitos
-- **Python 3.11** o superior.
-- Dependencias: `flask`, `pywebview`, `openpyxl`, `reportlab`, `markdown`, `python-dotenv`.
 
-### Inicio Rápido
-Para iniciar la aplicación como una herramienta de escritorio:
+- Python 3.11 o superior
+- Dependencias: `flask`, `pywebview`, `openpyxl`, `reportlab`, `markdown`, `python-dotenv`
+
+### Inicio rapido
 
 ```bash
 python iniciar.py
 ```
 
-El launcher buscará automáticamente un puerto libre (rango 5200-5999) e iniciará la aplicación en una **ventana nativa** independiente, maximizada y optimizada para el uso diario.
+El launcher busca un puerto libre e inicia la aplicacion en una ventana nativa
+maximizada para uso diario.
 
 ### Instalacion Linux (.deb)
-
-Para instalar el paquete generado por GitHub Actions o por `build_deb.sh`, usar `apt`:
 
 ```bash
 sudo apt install ./nexar-tienda_VERSION_amd64.deb
 ```
 
-Si `apt` muestra una nota sobre el usuario `_apt` y permisos de `Descargas`, no es un fallo. Para evitar esa advertencia, copiá el paquete a `/tmp` antes de instalar:
+Si `apt` no puede leer el archivo desde `Descargas`, copiarlo antes a `/tmp`:
 
 ```bash
 cp ~/Descargas/nexar-tienda_VERSION_amd64.deb /tmp/
@@ -56,7 +62,7 @@ chmod 0644 /tmp/nexar-tienda_VERSION_amd64.deb
 sudo apt install /tmp/nexar-tienda_VERSION_amd64.deb
 ```
 
-`dpkg -i` no descarga dependencias. Si se instalo con `dpkg -i` y el paquete quedo "sin configurar", reparar con:
+Si se uso `dpkg -i` y quedaron dependencias pendientes:
 
 ```bash
 sudo apt --fix-broken install
@@ -68,58 +74,46 @@ Tambien se puede usar el helper del repo:
 ./install_deb.sh ./nexar-tienda_VERSION_amd64.deb
 ```
 
----
+## Modulos Principales
 
-## ✨ Módulos Principales
+### Punto de Venta
 
-### 🛒 Punto de Venta (POS)
-- Carrito de compras persistente basado en sesiones.
-- Búsqueda inteligente por nombre, código o categoría.
-- Gestión de múltiples medios de pago.
-- Integración directa con Cuenta Corriente de clientes.
+- Carrito persistente y multiples medios de pago
+- Integracion con clientes y cuenta corriente
+- Ticket de venta y soporte de venta fraccionada
 
-### 📦 Control de Inventario
-- Estados de stock dinámicos (Sin Stock, Crítico, Bajo, Normal, Exceso).
-- Historial de movimientos y ajustes auditados.
-- Soporte para productos de temporada y destacados.
+### Inventario y Catalogo
 
-### 💰 Finanzas y Gastos
-- Gestión de categorías de gastos dinámicas.
-- Clasificación de esencialidad: **Gastos Necesarios vs. Prescindibles**.
-- Análisis de salud financiera con recomendaciones automáticas.
-- **Historial Interactivo**: Registro de cambios con sistema de acordeón y filtrado de lanzamientos.
-- Control de caja diaria con apertura, arqueo y liquidación.
+- Stock con estados dinamicos y movimientos auditados
+- Rubros y categorias alineados al negocio
+- Unidades compatibles con tienda y almacen
 
-### 👥 Clientes y Proveedores
-- Gestión de Cuentas Corrientes (Debe/Haber).
-- Límites de crédito personalizables por cliente.
-- Historial de compras y estadísticas de lealtad.
+### Caja, Reportes y Finanzas
 
----
+- Caja diaria, gastos y reportes operativos
+- Analisis y rentabilidad con datos historicos
+- Exportaciones y herramientas de respaldo
 
-## 🔐 Seguridad y Licenciamiento
+### Clientes, Proveedores y Licencias
 
-- **Acceso RBAC**: Control de acceso basado en roles (Administrador, Encargado, Vendedor).
-- **Seguridad de Cuentas**: Validación de contraseñas fuertes y recuperación mediante pregunta secreta.
-- **Licenciamiento Supabase + SDK Nexar**: Activación online mediante `nexar_licencias`, vinculación por HWID y cache offline para continuidad operativa.
-- **Tiers de Licencia**:
-    - **DEMO**: 30 días de prueba con funcionalidad completa.
-    - **BÁSICA**: Incluye `core`, `clientes`, `proveedores`, `pos`, `stock`, `caja` y `gastos`.
-    - **PRO**: Suma `compras`, `historial`, `reportes`, `export` y `multiusuario` básico.
-    - **MENSUAL FULL**: Mantiene el plan completo mensual y agrega módulos avanzados como `temporadas`, `multinegocio` e `ia`, con actualizaciones y soporte.
-    - **Anti-Reinstalación**: El contador de la demo no se reinicia al reinstalar la aplicación.
-- **Multi-PC**: Las licencias soportan `max_devices` y lista de equipos autorizados.
-- **Recuperación Obligatoria**: Los usuarios creados por el administrador deben configurar pregunta y respuesta secreta al primer inicio.
+- Cuentas corrientes y compras
+- Licenciamiento online con cache local
+- Planes BASICA, PRO y FULL con modulos por tier
 
----
+## Seguridad y Licenciamiento
+
+- Acceso RBAC por roles
+- Recuperacion de cuenta obligatoria para usuarios nuevos
+- Activacion online mediante `nexar_licencias`
+- `nexar-tienda` se conserva como `LICENSE_PRODUCT` compatible
 
 ### Flujo manual de solicitudes de licencia
 
 La pantalla de licencia permite que el cliente envie una solicitud con nombre,
 email, WhatsApp opcional e ID del equipo. Esa solicitud queda pendiente en
-Supabase y el desarrollador la aprueba o rechaza manualmente desde `nexar-admin`.
-Al aprobar, se genera una licencia real en la tabla `licencias` y el cliente
-recibe la clave para pegarla en Nexar Tienda.
+Supabase y el desarrollador la aprueba o rechaza manualmente desde
+`nexar-admin`. Al aprobar, se genera una licencia real en la tabla `licencias`
+y el cliente recibe la clave para pegarla en Nexar Comercio.
 
 Tabla necesaria en Supabase:
 
@@ -153,23 +147,18 @@ with check (
 );
 ```
 
-La policy anterior es solo para `insert`: permite que la app instalada envie
-una solicitud nueva. No agregues policies de `select`, `update` ni `delete`
-para `anon`, asi ningun cliente puede leer, modificar o borrar solicitudes de
-otros. La bandeja de solicitudes se consulta solo con `SUPABASE_SERVICE_ROLE_KEY`
-desde `nexar-admin`.
+La policy anterior es solo para `insert`. No agregar policies de `select`,
+`update` ni `delete` para `anon`.
 
-Para probar localmente, usa `.env.example` como referencia. El envio de
-solicitudes en Nexar Tienda necesita `SUPABASE_URL` y `SUPABASE_ANON_KEY`.
-La bandeja de aprobacion, rechazo y emision de licencias vive en `nexar-admin`.
-La service role key debe quedar solo en el entorno local/admin de `nexar-admin`,
-nunca dentro del instalador de Nexar Tienda.
+Para probar localmente, usar `.env.example` como referencia. El envio de
+solicitudes en Nexar Comercio necesita `SUPABASE_URL` y `SUPABASE_ANON_KEY`.
+La service role key debe quedar solo en `nexar-admin`, nunca dentro del
+instalador de Nexar Comercio.
 
 ### Solicitudes de soporte desde la app
 
 La pantalla de Ayuda incluye un formulario de soporte que envia nombre, email,
 WhatsApp opcional, motivo, mensaje y datos tecnicos basicos de la instalacion.
-El envio usa la clave anon/publica y solo inserta registros en Supabase.
 
 Tabla necesaria:
 
@@ -206,55 +195,33 @@ with check (
 );
 ```
 
-No agregues policies de `select`, `update` ni `delete` para `anon`. La lectura y
-gestion de solicitudes debe hacerse desde `nexar-admin` con service role key.
-
----
-
-## 💾 Backups y Exportación
-
-- **Respaldos Automáticos**: Programables cada N horas, manteniendo un historial rotativo en la carpeta `/respaldo`.
-- **Excel**: Exportación completa del catálogo para control de stock externo.
-- **PDF**: Generación de listas de precios profesionales listas para imprimir o enviar.
-
----
-
-## 🛠 Tecnologías
-
-- **Backend**: Python 3.11 + Flask 3.0.
-- **Frontend**: Bootstrap 5.3, Inter Font, Font Awesome 6.
-- **Base de Datos**: SQLite 3 con integridad referencial.
-- **Desktop Wrapper**: pywebview para una experiencia de usuario nativa.
-
----
-
-## 🚀 Builds e Instaladores
+## Builds e Instaladores
 
 Los instaladores se generan con GitHub Actions, PyInstaller e Inno Setup.
-Para que la activación online funcione sin que el usuario instale nada extra,
-el build instala el SDK `nexar_licencias` e incluye una configuración pública
-de runtime.
+Los iconos se toman desde `static/icons/` conservando los nombres existentes,
+por lo que la actualizacion visual no rompe rutas internas ni accesos directos.
 
-Secrets/variables esperados en GitHub:
+Puntos de empaque verificados:
 
-- `PUBLIC_KEY`: contenido de `keys/public_key.pem`.
-- `SUPABASE_URL`: URL pública del proyecto Supabase.
-- `SUPABASE_ANON_KEY`: clave anon/pública con políticas RLS limitadas para validar licencias.
-- `NEXAR_SDK_TOKEN`: solo si el repo `nexar_licencias` es privado y el `GITHUB_TOKEN` no puede leerlo.
-- Variable opcional `NEXAR_LICENCIAS_REPOSITORY`: repo del SDK, por defecto `<owner>/nexar_licencias`.
+- Windows PyInstaller usa `static/icons/nexar_tienda.ico`
+- Inno Setup usa `SetupIconFile=..\\static\\icons\\nexar_tienda.ico`
+- Linux `.desktop` usa `Icon=nexar_tienda`
+- El builder `.deb` copia `static/icons/nexar_tienda.PNG` a `usr/share/pixmaps/nexar_tienda.png`
 
-No se debe incluir `SUPABASE_SERVICE_ROLE_KEY` en instaladores, `.spec`, `.iss`
-ni binarios de cliente. Esa clave queda reservada para `nexar-admin`.
+Secrets y variables esperados en CI:
 
----
+- `PUBLIC_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `NEXAR_SDK_TOKEN` si `nexar_licencias` es privado
+- `NEXAR_LICENCIAS_REPOSITORY` opcional
 
-## 📞 Soporte y Contacto
+No se debe incluir `SUPABASE_SERVICE_ROLE_KEY` en instaladores, specs ni binarios
+de cliente.
 
-¿Necesitás ayuda o una licencia Pro?
-- **WhatsApp**: +54 9 264 585-8874
-- **Email**: nexarsistemas@outlook.com.ar
+## Soporte y Contacto
 
----
-*Desarrollado con ❤️ para el comercio argentino.*
+- WhatsApp: +54 9 264 585-8874
+- Email: nexarsistemas@outlook.com.ar
 
-**Nexar Sistemas — Soluciones de Software de Alta Calidad.**
+Nexar Sistemas - Soluciones de Software de Alta Calidad.
