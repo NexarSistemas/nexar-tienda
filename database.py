@@ -11,7 +11,6 @@ Basado en Nexar Almacén, adaptado para tienda de regalos:
 
 import sqlite3
 import os
-import sys
 import hashlib
 import json
 from datetime import datetime, date, timedelta
@@ -36,6 +35,7 @@ from services.rubros import (
     normalizar_rubro,
     normalizar_unidad,
 )
+from services.paths import get_database_path
 
 # ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
 # Define limites de productos, clientes y proveedores por tipo de licencia
@@ -176,27 +176,7 @@ RUBRO_CONFIRMADO_CONFIG_KEY = "rubro_negocio_confirmado"
 
 # ─── RUTA DE LA BASE DE DATOS ────────────────────────────────────────────────
 
-def _get_app_dir():
-    """
-    Retorna el directorio base para datos persistentes.
-    - En modo congelado (PyInstaller): usa una carpeta de datos del usuario.
-      Windows: %APPDATA%\\Nexar Tienda\\
-      Linux: ~/.local/share/nexar-tienda/
-    - En desarrollo normal: usa la carpeta de este archivo.
-    """
-    try:
-        from services.runtime_config import app_data_dir
-
-        return str(app_data_dir())
-    except Exception:
-        pass
-    if getattr(sys, 'frozen', False):
-        if os.name == "nt":
-            return os.path.join(os.getenv("APPDATA", os.path.expanduser("~")), "Nexar Tienda")
-        return os.path.join(os.path.expanduser("~"), ".local", "share", "nexar-tienda")
-    return os.path.dirname(os.path.abspath(__file__))
-
-DB_PATH = os.path.join(_get_app_dir(), 'tienda.db')
+DB_PATH = str(get_database_path())
 
 
 def _restrict_file(path):

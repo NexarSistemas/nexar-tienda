@@ -36,7 +36,10 @@ def _is_windows() -> bool:
 def _asset_matches_platform(name: str) -> bool:
     normalized = name.lower()
     if _is_windows():
-        return normalized.startswith("nexartienda_") and normalized.endswith("_setup.exe")
+        return (
+            normalized.startswith("nexartienda_")
+            or normalized.startswith("nexarcomercio_")
+        ) and normalized.endswith("_setup.exe")
     return normalized.startswith("nexar-tienda_") and normalized.endswith("_amd64.deb")
 
 

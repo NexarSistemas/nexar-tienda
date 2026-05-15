@@ -7,6 +7,7 @@ from typing import Any
 
 from flask import Flask, abort, redirect, render_template, request, session
 
+from services.paths import get_path_layout
 from services.runtime_config import load_runtime_env
 
 load_runtime_env()
@@ -27,6 +28,15 @@ APP_INTERNAL_PRODUCT = "nexar-tienda"
 
 
 def create_app() -> Flask:
+    path_layout = get_path_layout()
+    logging.info("Ruta de datos activa: %s", path_layout.active_root)
+    logging.info("Ruta de base SQLite activa: %s", path_layout.active_database_path)
+    if path_layout.migration_performed:
+        logging.info("Migracion automatica completada desde: %s", path_layout.migration_source)
+    if path_layout.using_fallback:
+        logging.warning("Se esta usando fallback temporal de datos: %s", path_layout.active_root)
+    if path_layout.migration_error:
+        logging.error("Error de migracion de datos: %s", path_layout.migration_error)
     app = Flask(__name__)
     db.init_db()
     secret_key = os.getenv("SECRET_KEY", "").strip()

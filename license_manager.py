@@ -1,9 +1,8 @@
 import json
 
-from services.runtime_config import app_data_dir, restrict_permissions
+from services.paths import get_licenses_dir, restrict_permissions
 
-
-LICENSE_FILE = app_data_dir() / "license.json"
+LICENSE_FILE = get_licenses_dir() / "license.json"
 
 def guardar_licencia(data: dict):
     with open(LICENSE_FILE, "w", encoding="utf-8") as f:

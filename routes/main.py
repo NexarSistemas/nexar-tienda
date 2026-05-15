@@ -57,7 +57,12 @@ from services.license_sdk import (
     refresh_saved_license_online,
     validate_license_key,
 )
-from services.runtime_config import app_data_dir
+from services.paths import (
+    get_app_data_dir,
+    get_backups_dir,
+    get_logs_dir,
+    get_updates_dir,
+)
 from services.supabase_license_api import (
     create_license_request,
     create_support_request,
@@ -71,10 +76,10 @@ from services.update_checker import download_release_asset, get_cached_update_in
 main_bp = Blueprint("main", __name__)
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = app_data_dir()
-BACKUP_DIR = DATA_DIR / "respaldo"
-UPDATE_DIR = DATA_DIR / "updates"
-LOG_DIR = DATA_DIR / "logs"
+DATA_DIR = get_app_data_dir()
+BACKUP_DIR = get_backups_dir()
+UPDATE_DIR = get_updates_dir()
+LOG_DIR = get_logs_dir()
 CHANGELOG_PATH = BASE_DIR / "CHANGELOG.md"
 WINDOWS_UPDATE_STATUS_PATH = UPDATE_DIR / "windows_update_status.json"
 WINDOWS_UPDATE_LAUNCHER_PATH = UPDATE_DIR / "windows_update_launcher.ps1"
@@ -800,7 +805,7 @@ def _resolver_proveedor_gasto(data: dict) -> dict | None:
 
 
 def _backup_list() -> list[dict]:
-    BACKUP_DIR.mkdir(exist_ok=True)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     items = []
     for path in sorted(BACKUP_DIR.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True):
         stat = path.stat()
@@ -812,7 +817,11 @@ def _update_list() -> list[dict]:
     current_version = current_app.config.get("APP_VERSION", "0.0.0")
     UPDATE_DIR.mkdir(parents=True, exist_ok=True)
     items = []
-    candidates = [*UPDATE_DIR.glob("nexar-tienda_*_amd64.deb"), *UPDATE_DIR.glob("NexarTienda_*_Setup.exe")]
+    candidates = [
+        *UPDATE_DIR.glob("nexar-tienda_*_amd64.deb"),
+        *UPDATE_DIR.glob("NexarTienda_*_Setup.exe"),
+        *UPDATE_DIR.glob("NexarComercio_*_Setup.exe"),
+    ]
     for path in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
         installer_version = _installer_version(path.name)
         if installer_version and _version_tuple(installer_version) <= _version_tuple(current_version):
@@ -834,7 +843,9 @@ def _update_list() -> list[dict]:
 def _update_file(nombre: str) -> Path:
     safe_name = Path(nombre or "").name
     valid_linux = safe_name.startswith("nexar-tienda_") and safe_name.endswith("_amd64.deb")
-    valid_windows = safe_name.startswith("NexarTienda_") and safe_name.endswith("_Setup.exe")
+    valid_windows = (
+        safe_name.startswith("NexarTienda_") or safe_name.startswith("NexarComercio_")
+    ) and safe_name.endswith("_Setup.exe")
     if safe_name != nombre or not (valid_linux or valid_windows):
         abort(404)
     path = (UPDATE_DIR / safe_name).resolve()
@@ -856,6 +867,7 @@ def _installer_version(filename: str) -> str:
     patterns = (
         r"^nexar-tienda_(?P<version>[0-9]+(?:\.[0-9]+){1,2})_amd64\.deb$",
         r"^NexarTienda_(?P<version>[0-9]+(?:\.[0-9]+){1,2})_Setup\.exe$",
+        r"^NexarComercio_(?P<version>[0-9]+(?:\.[0-9]+){1,2})_Setup\.exe$",
     )
     for pattern in patterns:
         match = re.match(pattern, filename or "")
@@ -1152,8 +1164,8 @@ def _is_sqlite_database(path: Path) -> bool:
 
 
 def _make_backup() -> Path:
-    BACKUP_DIR.mkdir(exist_ok=True)
-    target = BACKUP_DIR / f"tienda_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db"
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    target = BACKUP_DIR / f"nexar_comercio_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db"
     shutil.copy2(db.DB_PATH, target)
     try:
         if os.name != "nt":

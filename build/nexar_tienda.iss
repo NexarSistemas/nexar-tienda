@@ -12,7 +12,7 @@
 #endif
 
 #define AppName      "Nexar Comercio"
-#define AppExeName   "NexarTienda.exe"
+#define AppExeName   "NexarComercio.exe"
 #define AppPublisher "Nexar Sistemas"
 #define AppURL       "https://wa.me/5492645858874"
 
@@ -27,12 +27,12 @@ AppSupportURL={#AppURL}
 AppUpdatesURL={#AppURL}
 LicenseFile=..\LICENSE.txt
 
-DefaultDirName={userappdata}\{#AppName}
+DefaultDirName={localappdata}\Programs\NexarComercio
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
 
 OutputDir=..\dist\installer
-OutputBaseFilename=NexarTienda_{#AppVersion}_Setup
+OutputBaseFilename=NexarComercio_{#AppVersion}_Setup
 
 SetupIconFile=..\static\icons\nexar_tienda.ico
 
@@ -58,7 +58,7 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "desktopicon"; Description: "Crear acceso directo en el Escritorio"; GroupDescription: "Opciones adicionales:"
 
 [Files]
-Source: "..\dist\NexarTienda.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\NexarComercio.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 ; ── Clave pública RSA para verificación de licencias ────────────────
