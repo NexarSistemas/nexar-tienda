@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import logging
 import os
 import sys
 import subprocess
@@ -22,6 +23,7 @@ def safe_print(text):
 VENV_DIR = "venv"
 APP_TITLE = "Nexar Comercio"
 APP_HOST = "127.0.0.1"
+logger = logging.getLogger(__name__)
 
 
 # ==============================
@@ -33,6 +35,10 @@ def en_virtualenv():
 
 def es_ejecutable():
     return getattr(sys, 'frozen', False)
+
+
+def es_desktop_empaquetado():
+    return es_ejecutable() and not os.environ.get("FLASK_ENV", "").strip().lower() == "development"
 
 
 def omitir_venv():
@@ -131,17 +137,36 @@ def obtener_puerto_libre():
     return port
 
 
+def configurar_logs_servidor_local():
+    if not es_desktop_empaquetado():
+        return
+
+    try:
+        from flask import cli as flask_cli
+
+        flask_cli.show_server_banner = lambda *args, **kwargs: None
+    except Exception:
+        pass
+
+    werkzeug_logger = logging.getLogger("werkzeug")
+    werkzeug_logger.setLevel(logging.ERROR)
+    werkzeug_logger.propagate = False
+
+
 # ==============================
 # 🔹 Iniciar Flask
 # ==============================
 def iniciar_flask(port):
     from app import app
-    
+
+    configurar_logs_servidor_local()
+    logger.info("Servidor local iniciado en http://%s:%s", APP_HOST, port)
     app.run(
         host=APP_HOST,
         port=port,
         debug=False,
-        use_reloader=False
+        use_reloader=False,
+        threaded=True,
     )
 
 
