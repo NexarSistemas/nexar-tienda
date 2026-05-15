@@ -66,7 +66,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='NexarComercio',
+    name='NexarTienda',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

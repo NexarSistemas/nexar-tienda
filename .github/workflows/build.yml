@@ -292,9 +292,10 @@ jobs:
       - name: Verificar binario generado
         shell: pwsh
         run: |
+          Write-Host "Contenido de dist:"
+          Get-ChildItem -Recurse dist -ErrorAction SilentlyContinue
           if (!(Test-Path "dist\NexarTienda.exe")) {
             Write-Error "❌ No se encontró dist\NexarTienda.exe"
-            Get-ChildItem dist -ErrorAction SilentlyContinue
             exit 1
           }
           $size = (Get-Item "dist\NexarTienda.exe").Length / 1MB
