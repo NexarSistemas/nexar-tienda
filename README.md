@@ -1,11 +1,11 @@
-# Nexar Comercio v1.33.1
+# Nexar Comercio v1.34.0
 
 Sistema integral de gestion comercial para tiendas y comercios minoristas.
 `Nexar Comercio` es la marca visible del producto. `nexar-tienda` se mantiene
 como identificador tecnico compatible para builds, instaladores, actualizaciones
 y artefactos existentes.
 
-Release comercial estable `v1.33.1`:
+Release comercial estable `v1.34.0`:
 
 - Branding visible unificado como `Nexar Comercio`.
 - Actualizacion visual de iconos y assets sin renombrar archivos internos.

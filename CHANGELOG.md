@@ -4,16 +4,16 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
-## [1.33.1] - 2026-05-14
+## [1.34.0] - 2026-05-15
 
 ### Added
-- Se consolida la preparacion comercial de release `v1.33.1` con versionado, instaladores y documentacion sincronizados para `Nexar Comercio`.
+- Se consolida la preparacion comercial de release `v1.34.0` con versionado, instaladores y documentacion sincronizados para `Nexar Comercio`.
 - El README y el changelog quedan alineados con el posicionamiento comercial, incluyendo referencias a branding, landing/web comercial y alcance operativo del producto.
 
 ### Changed
 - Se actualizan los iconos y assets visuales manteniendo exactamente los mismos nombres de archivo para no romper rutas internas, accesos directos ni empaquetados.
 - Se normaliza el branding visible hacia `Nexar Comercio` en documentacion e instaladores, manteniendo `nexar-tienda` como identificador tecnico compatible para builds, rutas y artefactos.
-- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG`, `.desktop` e `Inno Setup` para el release estable `v1.33.1`.
+- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG`, `.desktop` e `Inno Setup` para el release estable `v1.34.0`.
 - Se deja resumida la evolucion reciente en rubro, unidades, categorias y venta fraccionada como parte del estado comercial estable de la app.
 
 ### Fixed
