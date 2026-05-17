@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import os
@@ -13,7 +14,7 @@ import platform
 import webbrowser
 from datetime import date, datetime, timedelta
 from functools import wraps
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 
 import database as db
@@ -60,6 +61,7 @@ from services.license_sdk import (
 from services.paths import (
     get_app_data_dir,
     get_backups_dir,
+    get_exports_dir,
     get_logs_dir,
     get_updates_dir,
 )
@@ -116,6 +118,27 @@ PURCHASE_DRAFT_FIELDS = (
     "producto_descripcion",
     "codigo_barras",
 )
+
+PRODUCTOS_IMPORT_CSV_COLUMNS = [
+    "descripcion",
+    "marca",
+    "categoria",
+    "proveedor_habitual",
+    "codigo_barras",
+    "costo",
+    "precio_venta",
+    "stock_actual",
+    "stock_minimo",
+    "stock_maximo",
+    "unidad",
+]
+PRODUCTOS_IMPORT_REQUIRED_COLUMNS = {
+    "descripcion",
+    "costo",
+    "precio_venta",
+    "stock_actual",
+}
+PRODUCTOS_IMPORT_TEMPLATE_FILENAME = "plantilla_productos_nexar.csv"
 
 
 def _as_bool(value) -> bool:
@@ -225,6 +248,124 @@ def _build_precios_preview_rows(productos_rows, porcentaje: float) -> list[dict]
         item["precio_venta_nuevo"] = round(float(item.get("precio_venta") or 0) * factor, 2)
         preview.append(item)
     return preview
+
+
+def _normalizar_csv_header(value: str) -> str:
+    return str(value or "").strip().lower()
+
+
+def _parse_float_csv(value, field_name: str, row_number: int, *, allow_zero: bool = True, must_be_positive: bool = False) -> float:
+    texto = str(value or "").strip().replace(",", ".")
+    if texto == "":
+        raise ValueError(f"Fila {row_number}: {field_name} es obligatorio.")
+    try:
+        numero = float(texto)
+    except ValueError as exc:
+        raise ValueError(f"Fila {row_number}: {field_name} debe ser numérico.") from exc
+    if numero < 0:
+        raise ValueError(f"Fila {row_number}: {field_name} no puede ser negativo.")
+    if not allow_zero and numero == 0:
+        raise ValueError(f"Fila {row_number}: {field_name} no puede ser cero.")
+    if must_be_positive and numero <= 0:
+        raise ValueError(f"Fila {row_number}: {field_name} debe ser mayor a 0.")
+    return numero
+
+
+def _validar_fila_importacion_producto(row: dict[str, str], row_number: int, rubro_actual: str) -> dict[str, str] | None:
+    normalized = {
+        key: str(row.get(key, "") or "").strip()
+        for key in PRODUCTOS_IMPORT_CSV_COLUMNS
+    }
+    if not any(normalized.values()):
+        return None
+    if not normalized["descripcion"]:
+        raise ValueError(f"Fila {row_number}: descripcion es obligatoria.")
+
+    costo = _parse_float_csv(normalized["costo"], "costo", row_number)
+    precio_venta = _parse_float_csv(normalized["precio_venta"], "precio_venta", row_number)
+    stock_actual = _parse_float_csv(
+        normalized["stock_actual"],
+        "stock_actual",
+        row_number,
+        allow_zero=False,
+        must_be_positive=True,
+    )
+
+    stock_minimo = 5.0
+    if normalized["stock_minimo"]:
+        stock_minimo = _parse_float_csv(normalized["stock_minimo"], "stock_minimo", row_number)
+
+    stock_maximo = 50.0
+    if normalized["stock_maximo"]:
+        stock_maximo = _parse_float_csv(normalized["stock_maximo"], "stock_maximo", row_number)
+
+    unidad = normalizar_unidad(normalized["unidad"] or "unidad", rubro_actual)
+    categoria = normalized["categoria"] or get_categoria_default(rubro_actual)
+
+    return {
+        "descripcion": normalized["descripcion"],
+        "marca": normalized["marca"],
+        "categoria": categoria,
+        "proveedor_habitual": normalized["proveedor_habitual"],
+        "codigo_barras": normalized["codigo_barras"],
+        "costo": str(costo),
+        "precio_venta": str(precio_venta),
+        "stock_actual": str(stock_actual),
+        "stock_minimo": str(stock_minimo),
+        "stock_maximo": str(stock_maximo),
+        "tipo_unidad": unidad,
+        "unidad": unidad,
+    }
+
+
+def _get_productos_import_template_dir() -> Path:
+    return get_exports_dir() / "plantillas"
+
+
+def _build_productos_import_template_csv() -> str:
+    ejemplo = [
+        "Mate imperial azul",
+        "Artesanal",
+        "Mates",
+        "Distribuidora San Juan",
+        "",
+        "1000",
+        "1800",
+        "1",
+        "1",
+        "10",
+        "unidad",
+    ]
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(PRODUCTOS_IMPORT_CSV_COLUMNS)
+    writer.writerow(ejemplo)
+    return output.getvalue()
+
+
+def _resolve_productos_import_target_dir(destino: str) -> tuple[Path, str | None]:
+    destino_normalizado = str(destino or "app").strip().lower()
+    app_dir = _get_productos_import_template_dir()
+    if destino_normalizado == "downloads":
+        xdg_download_dir = os.getenv("XDG_DOWNLOAD_DIR", "").strip()
+        candidate_paths: list[Path] = []
+        if xdg_download_dir:
+            candidate_paths.append(Path(xdg_download_dir.replace("$HOME", str(Path.home()))).expanduser())
+        candidate_paths.extend(
+            [
+                Path.home() / "Downloads",
+                Path.home() / "Descargas",
+                Path.home() / "descargas",
+            ]
+        )
+        for candidate in candidate_paths:
+            if candidate.exists():
+                return candidate, None
+        home_dir = Path.home()
+        if home_dir.exists():
+            return home_dir, "No se encontró una carpeta de descargas válida. Se usó la carpeta personal del usuario."
+        return app_dir, "No se encontró una carpeta de descargas válida ni la carpeta personal. Se usó la carpeta de la aplicación."
+    return app_dir, None
 
 
 def _enriquecer_facturas_proveedor(facturas) -> list[dict]:
@@ -1683,6 +1824,130 @@ def productos_lote():
         rows_data=rows_data,
         unidad_actual=unidad_actual,
     )
+
+
+@main_bp.route("/productos/importar", methods=["GET", "POST"])
+@login_required
+def productos_importar():
+    cfg = db.get_config()
+    rubro_actual = get_rubro_actual(cfg)
+    import_errors: list[str] = []
+    filename = ""
+
+    if request.method == "POST":
+        archivo = request.files.get("archivo_csv")
+        if not archivo or not str(archivo.filename or "").strip():
+            import_errors.append("Seleccioná un archivo CSV para importar.")
+        else:
+            filename = str(archivo.filename or "").strip()
+            if not filename.lower().endswith(".csv"):
+                import_errors.append("El archivo debe tener extensión .csv.")
+
+        filas_validas: list[dict[str, str]] = []
+        if not import_errors and archivo:
+            try:
+                contenido = archivo.stream.read().decode("utf-8-sig")
+            except UnicodeDecodeError:
+                import_errors.append("No se pudo leer el archivo. Usá UTF-8 o la plantilla descargable.")
+                contenido = ""
+
+            if not import_errors:
+                buffer = StringIO(contenido)
+                reader = csv.reader(buffer)
+                try:
+                    raw_headers = next(reader)
+                except StopIteration:
+                    import_errors.append("El archivo CSV está vacío.")
+                    raw_headers = []
+
+                if raw_headers:
+                    headers = [_normalizar_csv_header(col) for col in raw_headers]
+                    missing = [
+                        col for col in PRODUCTOS_IMPORT_REQUIRED_COLUMNS
+                        if col not in headers
+                    ]
+                    if missing:
+                        import_errors.append(
+                            "Faltan columnas obligatorias: " + ", ".join(sorted(missing)) + "."
+                        )
+                    elif len(set(headers)) != len(headers):
+                        import_errors.append("El archivo tiene columnas duplicadas.")
+
+                if not import_errors and raw_headers:
+                    buffer.seek(0)
+                    dict_reader = csv.DictReader(buffer, fieldnames=headers)
+                    next(dict_reader, None)
+                    for row_number, row in enumerate(dict_reader, start=2):
+                        try:
+                            validada = _validar_fila_importacion_producto(row, row_number, rubro_actual)
+                        except ValueError as exc:
+                            import_errors.append(str(exc))
+                            continue
+                        if validada is not None:
+                            filas_validas.append(validada)
+
+                if not import_errors and not filas_validas:
+                    import_errors.append("El CSV no contiene filas válidas para importar.")
+
+        if filas_validas:
+            current_count = int(db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"] or 0)
+            check = db.check_license_limits("productos", current_count + len(filas_validas))
+            if not check["ok"]:
+                import_errors.append(check["message"])
+
+        if not import_errors and filas_validas:
+            for fila in filas_validas:
+                db.add_producto(fila)
+            flash(f"Se importaron {len(filas_validas)} productos.", "success")
+            return redirect(url_for("productos"))
+
+    return render_template(
+        "productos_importar.html",
+        columnas_esperadas=PRODUCTOS_IMPORT_CSV_COLUMNS,
+        columnas_obligatorias=sorted(PRODUCTOS_IMPORT_REQUIRED_COLUMNS),
+        rubro_actual=rubro_actual,
+        import_errors=import_errors,
+        filename=filename,
+        template_dir=str(_get_productos_import_template_dir()),
+        template_filename=PRODUCTOS_IMPORT_TEMPLATE_FILENAME,
+        template_destino=request.form.get("destino", "app") if request.method == "POST" else "app",
+    )
+
+
+@main_bp.route("/productos/importar/plantilla", methods=["POST"])
+@login_required
+def productos_importar_generar_plantilla():
+    destino = request.form.get("destino", "app")
+    template_dir, warning_message = _resolve_productos_import_target_dir(destino)
+    template_dir.mkdir(parents=True, exist_ok=True)
+    template_path = template_dir / PRODUCTOS_IMPORT_TEMPLATE_FILENAME
+    template_path.write_text(_build_productos_import_template_csv(), encoding="utf-8", newline="")
+    if warning_message:
+        flash(warning_message, "warning")
+    flash(f"Plantilla generada en: {template_path}", "success")
+    return redirect(url_for("productos_importar"))
+
+
+@main_bp.route("/productos/importar/plantilla/abrir-carpeta", methods=["POST"])
+@login_required
+def productos_importar_abrir_carpeta():
+    template_dir = _get_productos_import_template_dir()
+    template_dir.mkdir(parents=True, exist_ok=True)
+    if sys.platform.startswith("linux"):
+        try:
+            subprocess.Popen(["xdg-open", str(template_dir)])
+            flash("Carpeta de plantillas abierta.", "success")
+        except Exception as exc:
+            flash(f"No se pudo abrir la carpeta: {exc}", "warning")
+    elif sys.platform.startswith("win"):
+        try:
+            os.startfile(str(template_dir))  # type: ignore[attr-defined]
+            flash("Carpeta de plantillas abierta.", "success")
+        except Exception as exc:
+            flash(f"No se pudo abrir la carpeta: {exc}", "warning")
+    else:
+        flash(f"Carpeta de plantillas: {template_dir}", "info")
+    return redirect(url_for("productos_importar"))
 
 
 @main_bp.route("/productos/nuevo", methods=["GET", "POST"])

@@ -264,3 +264,106 @@ Implementar Prioridad 5A del roadmap: carga por lotes de productos únicos reuti
 - Caso B: dejar filas vacías y confirmar que solo se cree la fila válida.
 - Caso C: provocar error en una fila y verificar que no haya guardado parcial.
 - Caso D: usar una categoría configurable nueva y validar que aparezca correctamente.
+
+## 2026-05-17 — Codex — feature/importacion-productos-plantilla
+
+### Tarea
+Implementar Prioridad 6 del roadmap: importación de productos mediante plantilla CSV descargable.
+
+### Archivos modificados
+- `routes/main.py`
+- `templates/productos.html`
+- `templates/productos_importar.html`
+- `app.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregó una pantalla de importación CSV accesible desde Catálogo con instrucciones, columnas esperadas y carga de archivo.
+- Se agregó descarga de plantilla CSV usando `csv` de la librería estándar y `Response`.
+- La importación valida encabezados, tolera BOM con `utf-8-sig`, ignora filas completamente vacías y acumula errores por fila sin guardar parcialmente.
+- Si no hay errores, se crean los productos usando `db.add_producto(data)` respetando proveedor habitual, categorías configurables y valores por defecto del rubro actual.
+- Se agregaron aliases legacy para los nuevos endpoints en `app.py`.
+
+### Qué se probó
+- Validación sintáctica de Python.
+- Revisión estática del flujo de descarga de plantilla, validación e importación completa sin guardado parcial.
+
+### Pendiente
+- Caso A: importar 2 productos válidos y verificarlos en catálogo.
+- Caso B: importar CSV sin `descripcion` y verificar error.
+- Caso C: importar mezcla de fila válida e inválida y confirmar que no se importe ninguna.
+- Caso D: importar con categoría vacía y confirmar categoría por defecto.
+- Caso E: importar con `proveedor_habitual` y validar visualización/filtro.
+
+## 2026-05-17 — Codex — feature/importacion-productos-plantilla corrección plantilla nativa
+
+### Tarea
+Corregir la UX de descarga de plantilla CSV en ventana nativa pywebview para que el usuario sepa dónde se generó el archivo.
+
+### Archivos modificados
+- `routes/main.py`
+- `templates/productos_importar.html`
+- `app.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- El flujo principal ahora genera la plantilla CSV en una carpeta conocida: `exports/plantillas/plantilla_productos_nexar.csv`.
+- La app muestra un `flash` con la ruta exacta del archivo generado.
+- Se agregó un botón opcional para abrir la carpeta de plantillas reutilizando el patrón existente del proyecto.
+- La pantalla de importación ahora explica por qué en ventana nativa se usa generación local en vez de depender solo de la descarga del navegador embebido.
+
+### Qué se probó
+- Validación sintáctica de Python.
+- Revisión estática del flujo de generación de plantilla, apertura de carpeta y mantenimiento de la importación existente.
+
+### Pendiente
+- Generar la plantilla desde la ventana nativa y verificar que el archivo exista en la ruta informada.
+- Abrir el archivo con Excel o LibreOffice.
+- Confirmar que la importación CSV sigue funcionando sin cambios.
+
+## 2026-05-17 — Codex — feature/importacion-productos-plantilla mejora destino
+
+### Tarea
+Mejorar la generación de la plantilla CSV para permitir guardarla en Descargas además de la carpeta de la aplicación.
+
+### Archivos modificados
+- `routes/main.py`
+- `templates/productos_importar.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregó selector de destino para generar la plantilla en la carpeta de la aplicación o en `Downloads`.
+- Si `Downloads` no existe, la app usa la carpeta personal del usuario y, como último fallback, la carpeta de la aplicación.
+- La generación sigue mostrando la ruta final exacta mediante `flash`.
+- Se mantuvo intacta la importación CSV actual.
+
+### Qué se probó
+- Validación sintáctica de Python.
+- Revisión estática del flujo de selección de destino, fallback y mensaje final al usuario.
+
+### Pendiente
+- Generar la plantilla en carpeta de la app y verificar ruta.
+- Generar la plantilla en Descargas y verificar ruta.
+- Confirmar fallback correcto cuando `Downloads` no exista.
+
+## 2026-05-17 — Codex — feature/importacion-productos-plantilla mejora detección descargas
+
+### Tarea
+Mejorar la detección de la carpeta Descargas/Downloads para generar la plantilla CSV.
+
+### Archivos modificados
+- `routes/main.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- La resolución de carpeta de descargas ahora revisa `XDG_DOWNLOAD_DIR` si existe.
+- También prueba `~/Downloads`, `~/Descargas` y `~/descargas`.
+- Si no encuentra ninguna carpeta válida, usa `Path.home()` y mantiene la carpeta de la app como fallback final.
+
+### Qué se probó
+- Validación sintáctica de Python.
+- Revisión estática del flujo de selección de destino y fallbacks.
+
+### Pendiente
+- Verificar generación en Linux con carpeta `Descargas`.
+- Verificar generación en entornos con `XDG_DOWNLOAD_DIR`.
