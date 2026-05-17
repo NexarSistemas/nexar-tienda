@@ -1866,23 +1866,38 @@ def get_roles():
 
 # ─── PRODUCTOS ───────────────────────────────────────────────────────────────
 
-def get_productos(activo_only=True, search='', rubro=None):
+def get_productos(activo_only=True, search='', rubro=None, proveedor=''):
     """Devuelve productos filtrables."""
-    sql = "SELECT * FROM productos"
+    sql = (
+        "SELECT productos.*, COALESCE(s.proveedor_habitual, '') AS proveedor_habitual "
+        "FROM productos "
+        "LEFT JOIN stock s ON s.producto_id = productos.id"
+    )
     conds = []
     params = []
     if activo_only:
-        conds.append("activo=1")
+        conds.append("productos.activo=1")
     if rubro is not None:
         rubro_cond, rubro_params = _build_rubro_compatible_filter(rubro)
         conds.append(rubro_cond)
         params += rubro_params
     if search:
-        conds.append("(codigo_interno LIKE ? OR codigo_barras LIKE ? OR descripcion LIKE ? OR categoria LIKE ?)")
-        params += [f'%{search}%'] * 4
+        conds.append(
+            "("
+            "productos.codigo_interno LIKE ? "
+            "OR productos.codigo_barras LIKE ? "
+            "OR productos.descripcion LIKE ? "
+            "OR productos.categoria LIKE ? "
+            "OR COALESCE(s.proveedor_habitual, '') LIKE ?"
+            ")"
+        )
+        params += [f'%{search}%'] * 5
+    if proveedor:
+        conds.append("LOWER(COALESCE(s.proveedor_habitual, '')) = ?")
+        params.append(str(proveedor).strip().lower())
     if conds:
         sql += " WHERE " + " AND ".join(conds)
-    sql += " ORDER BY descripcion"
+    sql += " ORDER BY productos.descripcion"
     return q(sql, params)
 
 

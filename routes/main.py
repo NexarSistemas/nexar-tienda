@@ -1428,19 +1428,36 @@ def configuracion_rubro_inicial():
 @login_required
 def productos():
     buscar = request.args.get("q", "")
+    categoria_filtro = request.args.get("categoria", "")
+    proveedor_filtro = (request.args.get("proveedor", "") or "").strip()
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
-    productos_rows = [dict(r) for r in db.get_productos(search=buscar, rubro=rubro_actual)]
+    productos_rows = [
+        dict(r)
+        for r in db.get_productos(
+            search=buscar,
+            rubro=rubro_actual,
+            proveedor=proveedor_filtro,
+        )
+    ]
     categorias_visibles = _merge_categorias_visibles(
         rubro_actual,
         [row.get("categoria", "") for row in productos_rows],
     )
+    proveedores_map = {}
+    for row in productos_rows:
+        nombre = str(row.get("proveedor_habitual") or "").strip()
+        if nombre:
+            proveedores_map.setdefault(nombre.lower(), nombre)
+    proveedores_visibles = sorted(proveedores_map.values(), key=str.lower)
     return render_template(
         "productos.html",
         productos=productos_rows,
         categorias=categorias_visibles,
+        proveedores_visibles=proveedores_visibles,
         buscar=buscar,
-        categoria_filtro=request.args.get("categoria", ""),
+        categoria_filtro=categoria_filtro,
+        proveedor_filtro=proveedor_filtro,
         rubro_actual=rubro_actual,
     )
 
