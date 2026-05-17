@@ -8,6 +8,9 @@ No inventar arquitectura nueva.
 No cambiar nombres técnicos existentes.
 No tocar licencias, pagos, builds ni actualizaciones salvo pedido explícito.
 
+Nunca trabajar directo sobre main.
+Cada mejora debe ir en rama propia.
+
 Usar patrones existentes:
 - Flask routes en routes/main.py
 - consultas SQLite en database.py

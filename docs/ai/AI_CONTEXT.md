@@ -32,12 +32,10 @@ Antes de modificar:
 5. mantener compatibilidad con datos existentes
 6. actualizar AI_CHANGELOG.md
 
-Evitar:
-- refactors masivos
-- cambios de arquitectura innecesarios
-- renombrar rutas públicas
-- romper compatibilidad de licencias
-- modificar builds sin necesidad
+## Regla de ramas
+
+Nunca trabajar directamente sobre main.
+Cada mejora debe ir en rama propia.
 
 ## Áreas sensibles
 

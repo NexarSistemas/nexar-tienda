@@ -10,6 +10,8 @@ Definir documentación viva para IA y roadmap de mejoras de Nexar Comercio.
 ### Hallazgos
 - Producto visible: Nexar Comercio.
 - Repo técnico: nexar-tienda.
+- Regla agregada: nunca trabajar directo sobre main.
+- Cada mejora debe ir en rama propia.
 - Hay fricción al crear producto desde compra porque exige descripción previa.
 - Ya existe flujo return_to=compra_nueva.
 - Catálogo tiene búsqueda y filtro por categoría.

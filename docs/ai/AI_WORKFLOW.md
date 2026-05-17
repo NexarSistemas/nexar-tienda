@@ -2,21 +2,24 @@
 
 Todas las IA deben leer primero:
 
-1. docs/ai/AI_CONTEXT.md
-2. docs/ai/ROADMAP_NEXAR_COMERCIO.md
-3. docs/ai/AI_CHANGELOG.md
+1. AGENTS.md
+2. docs/ai/AI_CONTEXT.md
+3. docs/ai/ROADMAP_NEXAR_COMERCIO.md
+4. docs/ai/AI_CHANGELOG.md
 
 ## Flujo
 
-1. Identificar tarea.
-2. Revisar roadmap.
-3. Buscar archivos afectados.
-4. Entender flujo actual.
-5. Proponer cambio mínimo.
-6. Implementar.
-7. Probar lo posible.
-8. Actualizar AI_CHANGELOG.md.
-9. Actualizar ROADMAP si cambia estado.
+1. Verificar rama actual.
+2. Si está en main, crear rama propia.
+3. Identificar tarea.
+4. Revisar roadmap.
+5. Buscar archivos afectados.
+6. Entender flujo actual.
+7. Proponer cambio mínimo.
+8. Implementar.
+9. Probar lo posible.
+10. Actualizar AI_CHANGELOG.md.
+11. Actualizar ROADMAP si cambia estado.
 
 ## Bajo consumo de tokens
 
@@ -25,22 +28,3 @@ Todas las IA deben leer primero:
 - No tocar áreas sensibles fuera de la tarea.
 - Preferir parches pequeños.
 - No modificar builds/versionado salvo pedido explícito.
-
-## Formato de AI_CHANGELOG
-
-## YYYY-MM-DD — IA usada
-
-### Tarea
-Descripción corta.
-
-### Archivos modificados
-- archivo
-
-### Qué se cambió
-- cambio
-
-### Qué se probó
-- prueba
-
-### Pendiente
-- pendiente
