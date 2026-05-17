@@ -1428,19 +1428,43 @@ def configuracion_rubro_inicial():
 @login_required
 def productos():
     buscar = request.args.get("q", "")
+    categoria_filtro = request.args.get("categoria", "")
+    proveedor_filtro = (request.args.get("proveedor", "") or "").strip()
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
-    productos_rows = [dict(r) for r in db.get_productos(search=buscar, rubro=rubro_actual)]
+    productos_para_filtros = [
+        dict(r)
+        for r in db.get_productos(
+            search=buscar,
+            rubro=rubro_actual,
+        )
+    ]
+    productos_rows = [
+        dict(r)
+        for r in db.get_productos(
+            search=buscar,
+            rubro=rubro_actual,
+            proveedor=proveedor_filtro,
+        )
+    ]
     categorias_visibles = _merge_categorias_visibles(
         rubro_actual,
         [row.get("categoria", "") for row in productos_rows],
     )
+    proveedores_map = {}
+    for row in productos_para_filtros:
+        nombre = str(row.get("proveedor_habitual") or "").strip()
+        if nombre:
+            proveedores_map.setdefault(nombre.lower(), nombre)
+    proveedores_visibles = sorted(proveedores_map.values(), key=str.lower)
     return render_template(
         "productos.html",
         productos=productos_rows,
         categorias=categorias_visibles,
+        proveedores_visibles=proveedores_visibles,
         buscar=buscar,
-        categoria_filtro=request.args.get("categoria", ""),
+        categoria_filtro=categoria_filtro,
+        proveedor_filtro=proveedor_filtro,
         rubro_actual=rubro_actual,
     )
 
@@ -1450,10 +1474,20 @@ def productos():
 def producto_nuevo():
     draft_compra = _purchase_draft_from_source(request.form if request.method == "POST" else request.args)
     desde_compra = request.values.get("return_to") == "compra_nueva"
+    proveedor_habitual_prefill = ""
+    proveedor_id_prefill = draft_compra.get("proveedor_id") or request.values.get("prefill_proveedor_id")
+    if proveedor_id_prefill and proveedor_id_prefill != "0":
+        try:
+            proveedor = db.get_proveedor(int(proveedor_id_prefill))
+        except (TypeError, ValueError):
+            proveedor = None
+        if proveedor:
+            proveedor_habitual_prefill = str(proveedor["nombre"] or "").strip()
     prefill = {
         "descripcion": (request.values.get("prefill_descripcion", "") or "").strip(),
         "codigo_barras": (request.values.get("prefill_codigo_barras", "") or "").strip(),
         "costo": (request.values.get("prefill_costo", "") or "").strip(),
+        "proveedor_habitual": proveedor_habitual_prefill,
     }
     if request.method == "POST":
         if not _limit_allows("productos"):
@@ -1463,6 +1497,15 @@ def producto_nuevo():
         data = request.form.to_dict()
         if desde_compra:
             data["stock_actual"] = "0"
+            if not str(data.get("proveedor_habitual") or "").strip():
+                proveedor_id = draft_compra.get("proveedor_id") or request.form.get("prefill_proveedor_id")
+                if proveedor_id and proveedor_id != "0":
+                    try:
+                        proveedor = db.get_proveedor(int(proveedor_id))
+                    except (TypeError, ValueError):
+                        proveedor = None
+                    if proveedor:
+                        data["proveedor_habitual"] = str(proveedor["nombre"] or "").strip()
         try:
             nuevo_id = db.add_producto(data)
         except ValueError as exc:
@@ -1500,6 +1543,7 @@ def producto_nuevo():
         from_compra=desde_compra,
         draft_compra=draft_compra,
         cancel_url=cancel_url,
+        proveedores=db.get_proveedores(),
         rubro_actual=rubro_actual,
         categoria_actual=prefill.get("categoria", "") or get_categoria_default(rubro_actual),
         rubros_disponibles=get_rubros_disponibles(),
@@ -1572,6 +1616,7 @@ def producto_editar(pid):
         stock=stock,
         categorias=categorias_visibles,
         accion="Editar",
+        proveedores=db.get_proveedores(),
         rubro_actual=rubro_actual,
         categoria_actual=producto["categoria"] or get_categoria_default(rubro_actual),
         rubros_disponibles=get_rubros_disponibles(),

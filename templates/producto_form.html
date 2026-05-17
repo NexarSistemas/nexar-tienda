@@ -54,6 +54,20 @@
                             >
                         </div>
 
+                        <div class="mb-3">
+                            <label for="proveedor_habitual" class="form-label">Proveedor habitual</label>
+                            {% set proveedor_habitual_actual = (prefill.proveedor_habitual if prefill and prefill.proveedor_habitual else (stock['proveedor_habitual'] if stock and stock['proveedor_habitual'] else '')) %}
+                            <select class="form-select" id="proveedor_habitual" name="proveedor_habitual">
+                                <option value="">Sin proveedor habitual</option>
+                                {% for proveedor in proveedores %}
+                                <option value="{{ proveedor.nombre }}" {% if proveedor_habitual_actual == proveedor.nombre %}selected{% endif %}>
+                                    {{ proveedor.nombre }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Se usa para mostrar y filtrar el catálogo por proveedor.</small>
+                        </div>
+
                         <!-- ─── CÓDIGO ─── -->
                         <div class="row">
                             <div class="col-md-6 mb-3">

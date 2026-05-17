@@ -37,24 +37,32 @@
         <strong>Rubro actual:</strong> {{ rubro_actual|capitalize }}.
         El catálogo muestra productos del rubro actual y también productos legacy sin rubro asignado.
     </div>
-    <div class="row mb-4">
-        <div class="col-md-6">
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
             <div class="input-group">
                 <span class="input-group-text"><i class="fas fa-search"></i></span>
                 <input 
                     type="text" 
                     class="form-control" 
                     id="search-input" 
-                    placeholder="Buscar por código, nombre o categoría..."
+                    placeholder="Buscar por código, nombre, categoría o proveedor..."
                     value="{{ buscar }}"
                 >
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
             <select class="form-select" id="categoria-filter">
                 <option value="">Todas las categorías</option>
                 {% for cat in categorias %}
-                <option value="{{ cat }}" {% if cat == categoria_filtro %}selected{% endif %}>{{ cat }}</option>
+                <option value="{{ cat }}" {% if cat|lower == categoria_filtro|lower %}selected{% endif %}>{{ cat }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <select class="form-select" id="proveedor-filter">
+                <option value="">Todos los proveedores</option>
+                {% for proveedor in proveedores_visibles %}
+                <option value="{{ proveedor }}" {% if proveedor|lower == proveedor_filtro|lower %}selected{% endif %}>{{ proveedor }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -78,7 +86,12 @@
                 <tbody>
                     {% if productos %}
                         {% for producto in productos %}
-                        <tr data-id="{{ producto['id'] }}" data-search="{{ producto['codigo_interno']|lower }} {{ producto['descripcion']|lower }} {{ producto['categoria']|lower }}">
+                        <tr
+                            data-id="{{ producto['id'] }}"
+                            data-categoria="{{ (producto['categoria'] or '')|lower }}"
+                            data-proveedor="{{ (producto['proveedor_habitual'] or '')|lower }}"
+                            data-search="{{ producto['codigo_interno']|lower }} {{ producto['descripcion']|lower }} {{ producto['categoria']|lower }} {{ (producto['proveedor_habitual'] or '')|lower }}"
+                        >
                             <td>
                                 <code>{{ producto['codigo_interno'] }}</code>
                             </td>
@@ -86,6 +99,9 @@
                                 <strong>{{ producto['descripcion'] }}</strong>
                                 {% if producto['marca'] %}
                                 <br><small class="text-muted">{{ producto['marca'] }}</small>
+                                {% endif %}
+                                {% if producto['proveedor_habitual'] %}
+                                <br><small class="text-muted">Proveedor: {{ producto['proveedor_habitual'] }}</small>
                                 {% endif %}
                             </td>
                             <td>
@@ -203,6 +219,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('search-input');
     const categoriaFilter = document.getElementById('categoria-filter');
+    const proveedorFilter = document.getElementById('proveedor-filter');
     const table = document.getElementById('productos-table');
     const rows = table.querySelectorAll('tbody tr');
 
@@ -219,28 +236,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Búsqueda en tiempo real
     function filterRows() {
-        const searchTerm = searchInput.value.toLowerCase();
-        const categoria = categoriaFilter.value;
+        const searchTerm = (searchInput.value || '').trim().toLowerCase();
+        const categoria = (categoriaFilter.value || '').trim().toLowerCase();
+        const proveedor = (proveedorFilter.value || '').trim().toLowerCase();
 
         rows.forEach(row => {
-            const search = row.getAttribute('data-search') || '';
-            const rowCategoria = row.getAttribute('data-categoria') || '';
+            const search = (row.getAttribute('data-search') || '').toLowerCase();
+            const rowCategoria = (row.getAttribute('data-categoria') || '').trim().toLowerCase();
+            const rowProveedor = (row.getAttribute('data-proveedor') || '').trim().toLowerCase();
             
             const matchesSearch = search.includes(searchTerm);
-            const matchesCategoria = !categoria || row.querySelector('td:nth-child(3)').textContent.includes(categoria);
+            const matchesCategoria = !categoria || rowCategoria === categoria;
+            const matchesProveedor = !proveedor || rowProveedor === proveedor;
 
-            row.style.display = (matchesSearch && matchesCategoria) ? '' : 'none';
+            row.style.display = (matchesSearch && matchesCategoria && matchesProveedor) ? '' : 'none';
         });
     }
 
     searchInput.addEventListener('keyup', filterRows);
     categoriaFilter.addEventListener('change', filterRows);
-
-    // Atributo data-categoria para cada fila
-    rows.forEach(row => {
-        const catText = row.querySelector('td:nth-child(3)').textContent.trim();
-        row.setAttribute('data-categoria', catText);
-    });
+    proveedorFilter.addEventListener('change', filterRows);
+    filterRows();
 });
 </script>
 {% endblock %}
