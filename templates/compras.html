@@ -283,16 +283,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     crearProductoBtn.addEventListener('click', function () {
-        const descripcion = (compraForm.elements.namedItem('producto_descripcion').value || '').trim();
-        if (!descripcion) {
-            Swal.fire({
-                title: 'Falta la descripcion',
-                text: 'Completa la descripcion del producto nuevo antes de crearlo desde compra.',
-                icon: 'info',
-                confirmButtonColor: '#1e3a5f'
-            });
-            return;
-        }
         window.location.href = buildProductoUrl();
     });
 
