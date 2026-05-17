@@ -203,3 +203,34 @@ Reemplazar la confirmación nativa del navegador por un modal SweetAlert2 en la 
 - Confirmar que al presionar "Confirmar aumento" aparece el modal SweetAlert2.
 - Verificar que "Cancelar" no aplique cambios.
 - Verificar que "Sí, aplicar aumento" ejecute el POST correctamente.
+
+## 2026-05-17 — Codex — feature/categorias-configurables
+
+### Tarea
+Implementar Prioridad 4 del roadmap: categorías configurables para productos, manteniendo compatibilidad con categorías base y productos existentes.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/config.html`
+- `app.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregaron funciones para listar categorías personalizadas, categorías usadas, categorías configurables y su estado consolidado por rubro actual.
+- La gestión de categorías ahora permite crear, renombrar y activar/desactivar sin borrado destructivo, con validación case-insensitive y actualización de `productos.categoria` al renombrar.
+- Las categorías base hardcodeadas siguen existiendo, pero ahora pueden ocultarse mediante registros de tabla inactivos sin romper compatibilidad.
+- La pantalla de Configuración ahora muestra estado, origen y cantidad de productos por categoría, con acciones de agregar, renombrar y activar/desactivar.
+- Los formularios siguen usando la lista unificada de categorías visibles, manteniendo la categoría actual incluso si quedó inactiva en edición.
+- Se agregaron aliases legacy para los nuevos endpoints de categorías en `app.py`.
+
+### Qué se probó
+- Validación sintáctica de Python.
+- Revisión estática del flujo de configuración y de los selects de categoría en alta/edición de productos.
+
+### Pendientes
+- Caso A: crear una categoría nueva y usarla en un producto.
+- Caso B: renombrar una categoría y verificar actualización en productos existentes.
+- Caso C: desactivar una categoría y confirmar que no aparezca en productos nuevos pero sí siga visible en edición si ya está asignada.
+- Caso D: intentar crear una categoría duplicada con distinta capitalización.
+- Caso E: verificar que categorías de gastos y reportes sigan funcionando igual.

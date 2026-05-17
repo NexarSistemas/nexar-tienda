@@ -1529,6 +1529,175 @@ def get_categorias():
     return [r['nombre'] for r in q("SELECT nombre FROM categorias WHERE activa=1 ORDER BY nombre")]
 
 
+def _normalize_categoria_nombre(nombre) -> str:
+    return str(nombre or "").strip()
+
+
+def _find_categoria_row(nombre):
+    nombre_limpio = _normalize_categoria_nombre(nombre)
+    if not nombre_limpio:
+        return None
+    return q(
+        "SELECT * FROM categorias WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?)) ORDER BY id LIMIT 1",
+        (nombre_limpio,),
+        fetchone=True,
+    )
+
+
+def _categoria_base_existe(nombre) -> bool:
+    nombre_limpio = _normalize_categoria_nombre(nombre)
+    if not nombre_limpio:
+        return False
+    for rubro in get_rubros_disponibles(include_future=True):
+        if nombre_limpio.lower() in {
+            str(cat).strip().lower() for cat in get_categorias_disponibles(rubro)
+        }:
+            return True
+    return False
+
+
+def _upsert_categoria_estado(nombre, activa):
+    nombre_limpio = _normalize_categoria_nombre(nombre)
+    if not nombre_limpio:
+        return
+    existente = _find_categoria_row(nombre_limpio)
+    if existente:
+        q(
+            "UPDATE categorias SET nombre=?, activa=? WHERE id=?",
+            (nombre_limpio, int(bool(activa)), existente["id"]),
+            commit=True,
+        )
+    else:
+        q(
+            "INSERT INTO categorias (nombre, activa) VALUES (?, ?)",
+            (nombre_limpio, int(bool(activa))),
+            commit=True,
+        )
+
+
+def get_categorias_personalizadas(activo_only=True):
+    """Devuelve categorías personalizadas de la tabla categorias."""
+    sql = "SELECT id, nombre, activa FROM categorias"
+    params = []
+    if activo_only:
+        sql += " WHERE activa=1"
+    sql += " ORDER BY nombre"
+    return q(sql, params)
+
+
+def get_categorias_usadas(rubro_actual=None):
+    """Devuelve categorías usadas actualmente en productos activos."""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro_actual)
+    return q(
+        f"""
+        SELECT DISTINCT TRIM(COALESCE(p.categoria, '')) AS nombre
+        FROM productos p
+        WHERE p.activo=1
+          AND TRIM(COALESCE(p.categoria, '')) <> ''
+          AND {rubro_cond}
+        ORDER BY nombre
+        """,
+        rubro_params,
+    )
+
+
+def count_productos_por_categoria(nombre, rubro_actual=None):
+    """Cuenta productos activos asociados a una categoría."""
+    nombre_limpio = _normalize_categoria_nombre(nombre)
+    if not nombre_limpio:
+        return 0
+    rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro_actual)
+    row = q(
+        f"""
+        SELECT COUNT(*) AS total
+        FROM productos p
+        WHERE p.activo=1
+          AND LOWER(TRIM(COALESCE(p.categoria, ''))) = LOWER(TRIM(?))
+          AND {rubro_cond}
+        """,
+        (nombre_limpio, *rubro_params),
+        fetchone=True,
+    )
+    return int(row["total"] or 0) if row else 0
+
+
+def get_categorias_configuracion(rubro_actual):
+    """Devuelve categorías configurables con estado, origen y cantidad de productos."""
+    categorias_map = {}
+
+    def ensure_entry(nombre, *, activa=True, origen=None):
+        nombre_limpio = _normalize_categoria_nombre(nombre)
+        if not nombre_limpio:
+            return None
+        key = nombre_limpio.lower()
+        existed = key in categorias_map
+        entry = categorias_map.setdefault(
+            key,
+            {
+                "nombre": nombre_limpio,
+                "activa": bool(activa),
+                "productos_count": 0,
+                "es_base": False,
+                "es_personalizada": False,
+                "es_usada": False,
+            },
+        )
+        if origen == "base":
+            entry["es_base"] = True
+        elif origen == "personalizada":
+            entry["es_personalizada"] = True
+        elif origen == "usada":
+            entry["es_usada"] = True
+        if origen != "usada":
+            entry["nombre"] = nombre_limpio
+        if origen in {"base", "personalizada"} or not existed:
+            entry["activa"] = bool(activa)
+        return entry
+
+    for categoria in get_categorias_disponibles(rubro_actual):
+        ensure_entry(categoria, activa=True, origen="base")
+
+    for row in get_categorias_personalizadas(activo_only=False):
+        entry = ensure_entry(row["nombre"], activa=bool(row["activa"]), origen="personalizada")
+        if entry:
+            entry["activa"] = bool(row["activa"])
+            entry["nombre"] = _normalize_categoria_nombre(row["nombre"])
+
+    for row in get_categorias_usadas(rubro_actual):
+        ensure_entry(row["nombre"], activa=True, origen="usada")
+
+    resultado = []
+    for key, entry in categorias_map.items():
+        entry["productos_count"] = count_productos_por_categoria(entry["nombre"], rubro_actual)
+        origenes = []
+        if entry["es_base"]:
+            origenes.append("base")
+        if entry["es_personalizada"]:
+            origenes.append("personalizada")
+        if entry["es_usada"]:
+            origenes.append("usada")
+        entry["origen"] = "/".join(origenes) or "personalizada"
+        resultado.append(entry)
+
+    resultado.sort(key=lambda item: item["nombre"].lower())
+    return resultado
+
+
+def get_categorias_configurables(rubro_actual, categoria_actual=""):
+    """Devuelve categorías visibles para formularios de productos."""
+    categoria_actual_limpia = _normalize_categoria_nombre(categoria_actual)
+    categoria_actual_key = categoria_actual_limpia.lower()
+    resultado = []
+    vistos = set()
+    for item in get_categorias_configuracion(rubro_actual):
+        key = item["nombre"].lower()
+        if item["activa"] or (categoria_actual_limpia and key == categoria_actual_key):
+            if key not in vistos:
+                resultado.append(item["nombre"])
+                vistos.add(key)
+    return resultado
+
+
 def _build_rubro_compatible_filter(rubro_actual: str | None):
     rubro = normalizar_rubro(rubro_actual or get_rubro_actual(get_config()))
     return "(COALESCE(TRIM(rubro), '') = '' OR LOWER(rubro) = ?)", [rubro]
@@ -1544,12 +1713,105 @@ def _append_condition(base: str, condition: str) -> str:
 
 
 def add_categoria(nombre):
-    """Agrega una nueva categoría."""
-    q("INSERT OR IGNORE INTO categorias (nombre) VALUES (?)", (nombre,), fetchall=False, commit=True)
+    """Agrega o reactiva una categoría."""
+    nombre_limpio = _normalize_categoria_nombre(nombre)
+    if not nombre_limpio:
+        raise ValueError("Ingresá un nombre de categoría.")
+    existente = _find_categoria_row(nombre_limpio)
+    if existente:
+        if int(existente["activa"] or 0):
+            raise ValueError("La categoría ya existe.")
+        q(
+            "UPDATE categorias SET nombre=?, activa=1 WHERE id=?",
+            (nombre_limpio, existente["id"]),
+            commit=True,
+        )
+        return
+    if _categoria_base_existe(nombre_limpio):
+        raise ValueError("La categoría ya existe.")
+    q(
+        "INSERT INTO categorias (nombre, activa) VALUES (?, 1)",
+        (nombre_limpio,),
+        fetchall=False,
+        commit=True,
+    )
+
+
+def update_categoria(nombre_actual, nuevo_nombre):
+    """Renombra una categoría y actualiza productos relacionados."""
+    nombre_actual_limpio = _normalize_categoria_nombre(nombre_actual)
+    nuevo_nombre_limpio = _normalize_categoria_nombre(nuevo_nombre)
+    if not nombre_actual_limpio:
+        raise ValueError("La categoría actual es obligatoria.")
+    if not nuevo_nombre_limpio:
+        raise ValueError("Ingresá un nuevo nombre de categoría.")
+
+    existente_actual = _find_categoria_row(nombre_actual_limpio)
+    existente_nuevo = _find_categoria_row(nuevo_nombre_limpio)
+    if (
+        existente_nuevo
+        and (
+            not existente_actual
+            or int(existente_nuevo["id"]) != int(existente_actual["id"])
+        )
+        and nuevo_nombre_limpio.lower() != nombre_actual_limpio.lower()
+    ):
+        raise ValueError("Ya existe otra categoría con ese nombre.")
+
+    if nombre_actual_limpio.lower() == nuevo_nombre_limpio.lower():
+        if existente_actual:
+            q(
+                "UPDATE categorias SET nombre=?, activa=1 WHERE id=?",
+                (nuevo_nombre_limpio, existente_actual["id"]),
+                commit=True,
+            )
+        q(
+            "UPDATE productos SET categoria=? WHERE LOWER(TRIM(COALESCE(categoria, ''))) = LOWER(TRIM(?))",
+            (nuevo_nombre_limpio, nombre_actual_limpio),
+            commit=True,
+        )
+        return
+
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE productos SET categoria=? WHERE LOWER(TRIM(COALESCE(categoria, ''))) = LOWER(TRIM(?))",
+            (nuevo_nombre_limpio, nombre_actual_limpio),
+        )
+        if existente_nuevo:
+            c.execute(
+                "UPDATE categorias SET nombre=?, activa=1 WHERE id=?",
+                (nuevo_nombre_limpio, existente_nuevo["id"]),
+            )
+        else:
+            c.execute(
+                "INSERT INTO categorias (nombre, activa) VALUES (?, 1)",
+                (nuevo_nombre_limpio,),
+            )
+        if existente_actual:
+            c.execute("UPDATE categorias SET activa=0 WHERE id=?", (existente_actual["id"],))
+        else:
+            c.execute(
+                "INSERT INTO categorias (nombre, activa) VALUES (?, 0)",
+                (nombre_actual_limpio,),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_categoria_activa(nombre, activa):
+    """Activa o desactiva una categoría sin tocar productos existentes."""
+    nombre_limpio = _normalize_categoria_nombre(nombre)
+    if not nombre_limpio:
+        raise ValueError("La categoría es obligatoria.")
+    _upsert_categoria_estado(nombre_limpio, bool(activa))
+
 
 def delete_categoria(nombre):
-    """Elimina una categoría por nombre."""
-    q("DELETE FROM categorias WHERE nombre=?", (nombre,), commit=True)
+    """Desactiva una categoría de forma segura."""
+    set_categoria_activa(nombre, False)
 
 def get_gasto_categorias():
     """Devuelve lista configurable de categorías de gastos con su tipo."""
