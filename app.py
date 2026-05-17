@@ -319,6 +319,8 @@ def create_app() -> Flask:
         "configuracion_rubro_inicial",
         "mi_plan",
         "config_categoria",
+        "config_categoria_editar",
+        "config_categoria_toggle",
         "config_categoria_eliminar",
         "config_gasto_categoria",
         "config_gasto_categoria_eliminar",

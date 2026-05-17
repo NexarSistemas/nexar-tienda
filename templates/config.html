@@ -99,14 +99,53 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted small mb-3">
-                        Estas categorías se definen automáticamente según el rubro actual: <strong>{{ rubro_actual|capitalize }}</strong>.
+                        Podés combinar categorías base del rubro <strong>{{ rubro_actual|capitalize }}</strong> con categorías personalizadas sin romper productos existentes.
                     </p>
 
+                    <form action="{{ url_for('config_categoria') }}" method="POST" class="mb-4">
+                        <div class="input-group">
+                            <input type="text" name="nombre" class="form-control" placeholder="Nueva categoría de producto..." required>
+                            <button class="btn btn-outline-primary" type="submit">Agregar</button>
+                        </div>
+                    </form>
+
                     <div class="list-group list-group-flush border-top">
-                        {% for cat in categorias_rubro %}
-                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
-                            {{ cat }}
-                            <span class="badge bg-light text-dark">Rubro activo</span>
+                        {% for cat in categorias_configurables %}
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+                                <div>
+                                    <div class="fw-semibold">{{ cat.nombre }}</div>
+                                    <div class="small text-muted">
+                                        {% if cat.productos_count == 1 %}
+                                        Usada en 1 producto
+                                        {% else %}
+                                        Usada en {{ cat.productos_count }} productos
+                                        {% endif %}
+                                    </div>
+                                    <div class="d-flex flex-wrap gap-1 mt-2">
+                                        {% for origen in cat.origen.split('/') %}
+                                        <span class="badge {% if origen == 'base' %}bg-light text-dark{% elif origen == 'personalizada' %}bg-info-subtle text-info{% else %}bg-secondary-subtle text-secondary{% endif %}">
+                                            {{ origen|capitalize }}
+                                        </span>
+                                        {% endfor %}
+                                        <span class="badge {% if cat.activa %}bg-success-subtle text-success{% else %}bg-warning-subtle text-warning{% endif %}">
+                                            {{ 'Activa' if cat.activa else 'Inactiva' }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <form action="{{ url_for('config_categoria_toggle') }}" method="POST">
+                                    <input type="hidden" name="nombre" value="{{ cat.nombre }}">
+                                    <input type="hidden" name="activa" value="{{ 0 if cat.activa else 1 }}">
+                                    <button type="submit" class="btn btn-sm {% if cat.activa %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                                        {{ 'Desactivar' if cat.activa else 'Activar' }}
+                                    </button>
+                                </form>
+                            </div>
+                            <form action="{{ url_for('config_categoria_editar') }}" method="POST" class="d-flex gap-2">
+                                <input type="hidden" name="nombre_actual" value="{{ cat.nombre }}">
+                                <input type="text" name="nuevo_nombre" class="form-control form-control-sm" value="{{ cat.nombre }}" required>
+                                <button class="btn btn-sm btn-outline-secondary" type="submit">Renombrar</button>
+                            </form>
                         </div>
                         {% endfor %}
                     </div>

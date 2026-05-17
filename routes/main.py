@@ -672,7 +672,14 @@ def _validate_initial_setup_payload(form_data: dict[str, str]) -> tuple[bool, st
 
 
 def _merge_categorias_visibles(rubro_actual: str, categorias_extra=None):
-    categorias = list(get_categorias_disponibles(rubro_actual))
+    categoria_actual = ""
+    extras = categorias_extra or []
+    for categoria in extras:
+        categoria_limpia = str(categoria or "").strip()
+        if categoria_limpia:
+            categoria_actual = categoria_limpia
+            break
+    categorias = list(db.get_categorias_configurables(rubro_actual, categoria_actual=categoria_actual))
     extras = categorias_extra or []
     for categoria in extras:
         categoria_limpia = str(categoria or "").strip()
@@ -2758,6 +2765,7 @@ def config():
     return render_template(
         "config.html",
         cfg=cfg,
+        categorias_configurables=db.get_categorias_configuracion(rubro_actual),
         categorias_rubro=get_categorias_disponibles(rubro_actual),
         categorias_gastos=db.get_gasto_categorias(),
         rubro_actual=rubro_actual,
@@ -3027,15 +3035,52 @@ def mi_plan_solicitar_upgrade():
 @main_bp.route("/config/categoria", methods=["POST"])
 @admin_required
 def config_categoria():
-    if request.form.get("nombre", "").strip():
-        db.add_categoria(request.form.get("nombre").strip())
+    try:
+        db.add_categoria(request.form.get("nombre", "").strip())
+        flash("Categoría guardada correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    return redirect(url_for("config"))
+
+
+@main_bp.route("/config/categoria/editar", methods=["POST"])
+@admin_required
+def config_categoria_editar():
+    try:
+        db.update_categoria(
+            request.form.get("nombre_actual", ""),
+            request.form.get("nuevo_nombre", ""),
+        )
+        flash("Categoría actualizada correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    return redirect(url_for("config"))
+
+
+@main_bp.route("/config/categoria/toggle", methods=["POST"])
+@admin_required
+def config_categoria_toggle():
+    nombre = request.form.get("nombre", "")
+    activa = _as_bool(request.form.get("activa", "1"))
+    try:
+        db.set_categoria_activa(nombre, activa)
+        flash(
+            "Categoría activada correctamente." if activa else "Categoría desactivada correctamente.",
+            "success",
+        )
+    except ValueError as exc:
+        flash(str(exc), "warning")
     return redirect(url_for("config"))
 
 
 @main_bp.route("/config/categoria/eliminar", methods=["POST"])
 @admin_required
 def config_categoria_eliminar():
-    db.delete_categoria(request.form.get("nombre", ""))
+    try:
+        db.delete_categoria(request.form.get("nombre", ""))
+        flash("Categoría desactivada correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
     return redirect(url_for("config"))
 
 
