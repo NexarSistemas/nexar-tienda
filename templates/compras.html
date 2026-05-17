@@ -279,6 +279,7 @@ document.addEventListener('DOMContentLoaded', function () {
         params.set('prefill_descripcion', compraForm.elements.namedItem('producto_descripcion').value || '');
         params.set('prefill_codigo_barras', compraForm.elements.namedItem('codigo_barras').value || '');
         params.set('prefill_costo', compraForm.elements.namedItem('costo_unitario').value || '');
+        params.set('prefill_proveedor_id', compraForm.elements.namedItem('proveedor_id').value || '');
         return `{{ url_for('producto_nuevo') }}?${params.toString()}`;
     }
 

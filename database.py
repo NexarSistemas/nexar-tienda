@@ -1959,6 +1959,7 @@ def add_producto(data):
     """Agrega un nuevo producto."""
     codigo = next_codigo()
     rubro_actual = get_rubro_actual(get_config())
+    proveedor_habitual = str(data.get('proveedor_habitual') or '').strip()
     unidad_seleccionada = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
     tipo_unidad = get_unidad_interna(unidad_seleccionada)
     unidad = get_unidad_label(unidad_seleccionada)
@@ -1982,8 +1983,8 @@ def add_producto(data):
     )
     pid = c.lastrowid
     c.execute(
-        "INSERT INTO stock (producto_id,stock_actual,stock_minimo,stock_maximo) VALUES (?,?,?,?)",
-        (pid, stock_actual, stock_minimo, stock_maximo)
+        "INSERT INTO stock (producto_id,stock_actual,stock_minimo,stock_maximo,proveedor_habitual) VALUES (?,?,?,?,?)",
+        (pid, stock_actual, stock_minimo, stock_maximo, proveedor_habitual)
     )
     conn.commit()
     conn.close()

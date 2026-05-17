@@ -102,3 +102,31 @@ Corregir el filtro por proveedor del catálogo para comparar por nombre visible 
 - Verificar que un mismo proveedor escrito con distintas mayúsculas no se duplique en el selector.
 - Probar filtro por proveedor, categoría y búsqueda en combinación.
 - Confirmar que productos sin proveedor solo se oculten al elegir un proveedor específico.
+
+## 2026-05-17 — Codex — feature/filtro-proveedor-catalogo circuito completo
+
+### Tarea
+Cerrar el circuito completo de `proveedor_habitual` para alta, edición y filtrado del catálogo.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/producto_form.html`
+- `templates/compras.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- `add_producto()` ahora guarda `proveedor_habitual` en la fila de `stock` cuando viene informado en el formulario.
+- La ruta `/productos` ahora arma `proveedores_visibles` desde un listado sin aplicar el filtro actual de proveedor, evitando que el selector se achique mal.
+- Crear producto desde catálogo ahora permite elegir proveedor habitual.
+- Crear producto desde compra ahora hereda el proveedor seleccionado mediante `prefill_proveedor_id` y lo guarda en el producto si no se eligió otro manualmente.
+- Editar producto mantiene disponible el selector de proveedor habitual usando el valor actual de `stock`.
+- El catálogo sigue mostrando y filtrando por proveedor usando nombre visible y comparación case-insensitive.
+
+### Qué se probó
+- Validación estática del flujo entre catálogo, alta/edición de producto y creación desde compras.
+
+### Pendiente de prueba manual
+- Caso A: crear producto desde catálogo con proveedor y verificar visualización y filtro.
+- Caso B: crear producto desde compra con proveedor preseleccionado y verificar herencia en catálogo.
+- Caso C: probar variantes de mayúsculas/minúsculas del mismo proveedor en el filtro.
