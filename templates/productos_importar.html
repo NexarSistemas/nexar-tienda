@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Importar productos CSV — {{ app_display_name }}{% endblock %}
+{% block page_title %}<i class="fas fa-file-csv me-2"></i>Importar Productos CSV{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="alert alert-light border mb-4">
+        <strong>Rubro actual:</strong> {{ rubro_actual|capitalize }}.
+        Usá la plantilla para respetar los nombres de columnas. No se importará ningún producto si hay errores.
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Subir archivo CSV</h5>
+                    <div class="d-flex gap-2">
+                        <form method="POST" action="{{ url_for('productos_importar_generar_plantilla') }}" class="d-flex gap-2">
+                            <select name="destino" class="form-select form-select-sm" style="min-width: 220px;">
+                                <option value="app" {% if template_destino == 'app' %}selected{% endif %}>Carpeta de la aplicación</option>
+                                <option value="downloads" {% if template_destino == 'downloads' %}selected{% endif %}>Carpeta Descargas</option>
+                            </select>
+                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-file-circle-plus me-1"></i> Generar plantilla CSV
+                            </button>
+                        </form>
+                        <form method="POST" action="{{ url_for('productos_importar_abrir_carpeta') }}">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                <i class="fas fa-folder-open me-1"></i> Abrir carpeta
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info small">
+                        En ventana nativa, las descargas del navegador pueden no mostrar aviso. Por eso Nexar genera la plantilla en una carpeta conocida.
+                        <br>Ruta esperada: <code>{{ template_dir }}/{{ template_filename }}</code>
+                        <br>Si elegís Descargas, la plantilla quedará en la carpeta de descargas de tu usuario cuando exista.
+                    </div>
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="archivo_csv" class="form-label">Archivo CSV</label>
+                            <input type="file" class="form-control" id="archivo_csv" name="archivo_csv" accept=".csv,text/csv" required>
+                            {% if filename %}
+                            <div class="form-text">Último archivo procesado: {{ filename }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-upload me-1"></i> Importar productos
+                            </button>
+                            <a href="{{ url_for('productos') }}" class="btn btn-outline-secondary">
+                                Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            {% if import_errors %}
+            <div class="card mt-4 border-warning">
+                <div class="card-header bg-warning-subtle">
+                    <h5 class="mb-0">Errores detectados</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Corregí el archivo y volvé a intentarlo. No se importó ningún producto.</p>
+                    <ul class="mb-0">
+                        {% for error in import_errors %}
+                        <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">Columnas esperadas</h6>
+                </div>
+                <div class="card-body">
+                    <ul class="small mb-0">
+                        {% for columna in columnas_esperadas %}
+                        <li>
+                            <code>{{ columna }}</code>
+                            {% if columna in columnas_obligatorias %}
+                            <span class="badge bg-danger-subtle text-danger">Obligatoria</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark">Opcional</span>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">Reglas del CSV</h6>
+                </div>
+                <div class="card-body small text-muted">
+                    <p class="mb-2"><code>descripcion</code>, <code>costo</code>, <code>precio_venta</code> y <code>stock_actual</code> son obligatorios.</p>
+                    <p class="mb-2">Si <code>categoria</code> está vacía se usa la categoría por defecto del rubro actual.</p>
+                    <p class="mb-2">Si <code>unidad</code> está vacía se usa <code>unidad</code>.</p>
+                    <p class="mb-2">La plantilla se guardará en la carpeta <code>exports/plantillas</code> dentro de la aplicación.</p>
+                    <p class="mb-2">También podés generarla en <code>Downloads</code>; si no existe, Nexar usa tu carpeta personal o la carpeta de la app.</p>
+                    <p class="mb-0">Las filas completamente vacías se ignoran automáticamente.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

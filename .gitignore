@@ -81,3 +81,6 @@ secret.key
 
 ### --- Scripts de despliegue y archivos de configuración local --- ###
 scripts/*
+
+### --- carpeta de exportación de productos --- ###
+exports/*
