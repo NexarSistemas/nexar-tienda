@@ -10,17 +10,7 @@ primero mejoras operativas, después mejoras visuales.
 ## Prioridad 0 — Auditoría de edición responsable
 
 Revisar qué se puede editar, eliminar o desactivar en:
-- stock
-- catálogo
-- productos
-- proveedores
-- clientes
-- compras
-- ventas
-- facturas
-- gastos
-- caja
-- reportes
+stock, catálogo, productos, proveedores, clientes, compras, ventas, facturas, gastos, caja y reportes.
 
 Criterio:
 permitir edición responsable sin romper historial, stock ni reportes.
@@ -42,41 +32,13 @@ Requisitos:
 - no romper creación de proveedor
 - hacer cambio mínimo viable
 
-Archivos probables:
-- templates/compras.html
-- routes/main.py
-- templates/producto_form.html
-- database.py
-
 ## Prioridad 2 — Filtro por proveedor en catálogo
 
-Objetivo:
-filtrar productos por proveedor, combinable con búsqueda y categoría.
-
-Caso real:
-ver todos los productos que vende un proveedor específico, por ejemplo mates de Marroquinería Full, sin mezclarlos con otros proveedores.
-
-Archivos probables:
-- routes/main.py
-- templates/productos.html
-- database.py
+Filtrar productos por proveedor, combinable con búsqueda y categoría.
 
 ## Prioridad 3 — Aumento masivo de precios por proveedor/categoría
 
-Objetivo:
-aplicar aumento porcentual a productos de:
-- proveedor completo
-- proveedor + categoría
-
-Ejemplo:
-proveedor X aumenta 2% todo.
-proveedor X aumenta 5% solo termos.
-
-Actualizar:
-- costo
-- precio venta
-
-Debe mostrar cantidad de productos afectados y pedir confirmación.
+Aplicar aumento porcentual a productos de proveedor completo o proveedor + categoría.
 
 ## Prioridad 4 — Categorías configurables
 
@@ -119,8 +81,7 @@ generar código interno imprimible cuando el producto no trae código de barras.
 
 ## Prioridad 8 — Reportes habilitados en demo
 
-Objetivo:
-en versión demo, los reportes deben estar disponibles para que el usuario conozca el sistema.
+En versión demo, los reportes deben estar disponibles.
 
 ## Prioridad 9 — Onboarding inicial
 
@@ -130,11 +91,8 @@ asistente inicial para elegir rubro, cargar primer proveedor, primer producto y 
 ## Prioridad 10 — Imágenes en catálogo
 
 Última prioridad.
-
-Objetivo:
 permitir foto por producto desde PC o teléfono.
 
 ## Futuro — OCR/IA para remitos
 
 No priorizar ahora.
-Primero resolver carga por lote, importación y flujo manual rápido.

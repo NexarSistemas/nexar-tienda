@@ -3,6 +3,7 @@
 Actuar como revisor técnico y funcional de Nexar Comercio.
 
 Leer:
+- AGENTS.md
 - docs/ai/AI_CONTEXT.md
 - docs/ai/ROADMAP_NEXAR_COMERCIO.md
 - docs/ai/AI_WORKFLOW.md
