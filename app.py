@@ -261,6 +261,7 @@ def create_app() -> Flask:
         "configurar_recuperacion",
         "dashboard",
         "productos",
+        "productos_lote",
         "producto_nuevo",
         "producto_editar",
         "producto_eliminar",

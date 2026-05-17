@@ -1497,6 +1497,194 @@ def productos():
     )
 
 
+@main_bp.route("/productos/lote", methods=["GET", "POST"])
+@login_required
+def productos_lote():
+    cfg = db.get_config()
+    rubro_actual = get_rubro_actual(cfg)
+    proveedores = db.get_proveedores()
+
+    def _default_common_data():
+        return {
+            "proveedor_habitual": "",
+            "categoria": get_categoria_default(rubro_actual),
+            "marca": "",
+            "unidad": "unidad",
+            "stock_minimo": "5",
+            "stock_maximo": "50",
+        }
+
+    def _blank_row():
+        return {
+            "descripcion": "",
+            "costo": "",
+            "precio_venta": "",
+            "stock_actual": "",
+            "codigo_barras": "",
+        }
+
+    common_data = _default_common_data()
+    rows_data = [_blank_row() for _ in range(10)]
+
+    if request.method == "POST":
+        common_data = {
+            "proveedor_habitual": (request.form.get("proveedor_habitual", "") or "").strip(),
+            "categoria": (request.form.get("categoria", "") or "").strip(),
+            "marca": (request.form.get("marca", "") or "").strip(),
+            "unidad": (request.form.get("unidad", "unidad") or "unidad").strip(),
+            "stock_minimo": (request.form.get("stock_minimo", "5") or "5").strip(),
+            "stock_maximo": (request.form.get("stock_maximo", "50") or "50").strip(),
+        }
+        descripciones = request.form.getlist("descripcion[]")
+        costos = request.form.getlist("costo[]")
+        precios = request.form.getlist("precio_venta[]")
+        stocks = request.form.getlist("stock_actual[]")
+        codigos_barras = request.form.getlist("codigo_barras[]")
+        total_rows = max(
+            len(descripciones),
+            len(costos),
+            len(precios),
+            len(stocks),
+            len(codigos_barras),
+            10,
+        )
+        rows_data = []
+        filas_validas = []
+        errores = []
+
+        for idx in range(total_rows):
+            row = {
+                "descripcion": (descripciones[idx] if idx < len(descripciones) else "").strip(),
+                "costo": (costos[idx] if idx < len(costos) else "").strip(),
+                "precio_venta": (precios[idx] if idx < len(precios) else "").strip(),
+                "stock_actual": (stocks[idx] if idx < len(stocks) else "").strip(),
+                "codigo_barras": (codigos_barras[idx] if idx < len(codigos_barras) else "").strip(),
+            }
+            rows_data.append(row)
+
+            if not any(row.values()):
+                continue
+            if not row["descripcion"]:
+                errores.append(f"Fila {idx + 1}: la descripción es obligatoria si cargás datos.")
+                continue
+            if row["costo"] == "":
+                errores.append(f"Fila {idx + 1}: el costo es obligatorio.")
+                continue
+            if row["precio_venta"] == "":
+                errores.append(f"Fila {idx + 1}: el precio de venta es obligatorio.")
+                continue
+            if row["stock_actual"] == "":
+                errores.append(f"Fila {idx + 1}: el stock inicial es obligatorio.")
+                continue
+
+            try:
+                costo_num = float(row["costo"])
+            except ValueError:
+                errores.append(f"Fila {idx + 1}: el costo debe ser numérico.")
+                continue
+            try:
+                precio_num = float(row["precio_venta"])
+            except ValueError:
+                errores.append(f"Fila {idx + 1}: el precio de venta debe ser numérico.")
+                continue
+            try:
+                stock_num = float(row["stock_actual"])
+            except ValueError:
+                errores.append(f"Fila {idx + 1}: el stock inicial debe ser numérico.")
+                continue
+
+            if costo_num < 0:
+                errores.append(f"Fila {idx + 1}: el costo no puede ser negativo.")
+            if precio_num < 0:
+                errores.append(f"Fila {idx + 1}: el precio de venta no puede ser negativo.")
+            if stock_num <= 0:
+                errores.append(f"Fila {idx + 1}: el stock inicial debe ser mayor a 0.")
+            if errores:
+                # Solo omitimos agregar la fila si la última validación generó error.
+                fila_con_error = any(msg.startswith(f"Fila {idx + 1}:") for msg in errores)
+                if fila_con_error:
+                    continue
+
+            filas_validas.append(
+                {
+                    "descripcion": row["descripcion"],
+                    "costo": str(costo_num),
+                    "precio_venta": str(precio_num),
+                    "stock_actual": str(stock_num),
+                    "codigo_barras": row["codigo_barras"],
+                }
+            )
+
+        if not common_data["categoria"]:
+            errores.append("Seleccioná una categoría para la carga por lote.")
+
+        try:
+            unidad_normalizada = normalizar_unidad(common_data["unidad"], rubro_actual)
+            common_data["unidad"] = unidad_normalizada
+            stock_minimo_num = float(common_data["stock_minimo"] or 5)
+            stock_maximo_num = float(common_data["stock_maximo"] or 50)
+            if stock_minimo_num < 0:
+                errores.append("El stock mínimo no puede ser negativo.")
+            if stock_maximo_num < 0:
+                errores.append("El stock máximo no puede ser negativo.")
+        except ValueError:
+            errores.append("Stock mínimo y stock máximo deben ser numéricos.")
+            stock_minimo_num = 5.0
+            stock_maximo_num = 50.0
+
+        if not filas_validas and not errores:
+            errores.append("Cargá al menos una fila válida para crear productos.")
+
+        if filas_validas:
+            current_count = int(db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"] or 0)
+            check = db.check_license_limits("productos", current_count + len(filas_validas))
+            if not check["ok"]:
+                errores.append(check["message"])
+
+        if not errores:
+            for fila in filas_validas:
+                db.add_producto(
+                    {
+                        "descripcion": fila["descripcion"],
+                        "marca": common_data["marca"],
+                        "categoria": common_data["categoria"],
+                        "proveedor_habitual": common_data["proveedor_habitual"],
+                        "codigo_barras": fila["codigo_barras"],
+                        "costo": fila["costo"],
+                        "precio_venta": fila["precio_venta"],
+                        "stock_actual": fila["stock_actual"],
+                        "stock_minimo": str(stock_minimo_num),
+                        "stock_maximo": str(stock_maximo_num),
+                        "tipo_unidad": common_data["unidad"],
+                        "unidad": common_data["unidad"],
+                    }
+                )
+            flash(f"Se crearon {len(filas_validas)} productos.", "success")
+            return redirect(url_for("productos"))
+
+        for error in errores:
+            flash(error, "warning")
+
+    unidad_actual = normalizar_unidad(common_data.get("unidad", "unidad"), rubro_actual)
+    unidades_disponibles = get_unidades_disponibles(rubro_actual)
+    if unidad_actual not in unidades_disponibles:
+        unidades_disponibles = unidades_disponibles + [unidad_actual]
+    categorias_visibles = _merge_categorias_visibles(
+        rubro_actual,
+        [common_data.get("categoria", ""), get_categoria_default(rubro_actual)],
+    )
+    return render_template(
+        "productos_lote.html",
+        proveedores=proveedores,
+        categorias=categorias_visibles,
+        rubro_actual=rubro_actual,
+        unidades_disponibles=unidades_disponibles,
+        common_data=common_data,
+        rows_data=rows_data,
+        unidad_actual=unidad_actual,
+    )
+
+
 @main_bp.route("/productos/nuevo", methods=["GET", "POST"])
 @login_required
 def producto_nuevo():

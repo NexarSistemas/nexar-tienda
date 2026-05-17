@@ -234,3 +234,33 @@ Implementar Prioridad 4 del roadmap: categorías configurables para productos, m
 - Caso C: desactivar una categoría y confirmar que no aparezca en productos nuevos pero sí siga visible en edición si ya está asignada.
 - Caso D: intentar crear una categoría duplicada con distinta capitalización.
 - Caso E: verificar que categorías de gastos y reportes sigan funcionando igual.
+
+## 2026-05-17 — Codex — feature/carga-lotes-productos
+
+### Tarea
+Implementar Prioridad 5A del roadmap: carga por lotes de productos únicos reutilizando la lógica existente de alta.
+
+### Archivos modificados
+- `routes/main.py`
+- `templates/productos.html`
+- `templates/productos_lote.html`
+- `app.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregó una pantalla de "Carga por lote" accesible desde Catálogo.
+- La carga por lote permite definir datos comunes del producto y varias filas individuales con descripción, costo, precio, stock y código de barras.
+- El guardado valida todas las filas antes de crear productos y usa `db.add_producto(data)` para cada fila válida, evitando duplicar lógica.
+- Se ignoran filas completamente vacías y se evita guardado parcial cuando una fila cargada tiene errores.
+- Se respetan categorías configurables, proveedor habitual y unidades disponibles del rubro actual.
+- Se agregó alias legacy para el nuevo endpoint en `app.py`.
+
+### Qué se probó
+- Validación sintáctica de Python.
+- Revisión estática del flujo de validación, creación en lote y retorno al catálogo.
+
+### Pendiente
+- Caso A: crear varios productos desde lote y verificar proveedor/categoría en catálogo.
+- Caso B: dejar filas vacías y confirmar que solo se cree la fila válida.
+- Caso C: provocar error en una fila y verificar que no haya guardado parcial.
+- Caso D: usar una categoría configurable nueva y validar que aparezca correctamente.
