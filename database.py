@@ -1901,6 +1901,81 @@ def get_productos(activo_only=True, search='', rubro=None, proveedor=''):
     return q(sql, params)
 
 
+def get_productos_por_proveedor_categoria(proveedor, categoria="", rubro=None):
+    """Devuelve productos activos filtrados por proveedor habitual y categoría opcional."""
+    proveedor_normalizado = str(proveedor or "").strip()
+    if not proveedor_normalizado:
+        return []
+
+    sql = (
+        "SELECT p.id, p.codigo_interno, p.descripcion, p.categoria, p.costo, p.precio_venta, "
+        "COALESCE(s.proveedor_habitual, '') AS proveedor_habitual "
+        "FROM productos p "
+        "LEFT JOIN stock s ON s.producto_id = p.id"
+    )
+    conds = [
+        "p.activo = 1",
+        "LOWER(TRIM(COALESCE(s.proveedor_habitual, ''))) = LOWER(TRIM(?))",
+    ]
+    params = [proveedor_normalizado]
+    if rubro is not None:
+        rubro_cond, rubro_params = _build_rubro_compatible_filter(rubro)
+        conds.append(rubro_cond.replace("productos.", "p."))
+        params += rubro_params
+    if str(categoria or "").strip():
+        conds.append("LOWER(TRIM(COALESCE(p.categoria, ''))) = LOWER(TRIM(?))")
+        params.append(str(categoria).strip())
+    sql += " WHERE " + " AND ".join(conds)
+    sql += " ORDER BY p.descripcion"
+    return q(sql, params)
+
+
+def aplicar_aumento_precios(productos_ids, porcentaje):
+    """Aplica aumento porcentual a costo y precio_venta de productos específicos."""
+    try:
+        porcentaje_num = float(porcentaje)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("El porcentaje debe ser un número válido.") from exc
+    if porcentaje_num <= 0:
+        raise ValueError("El porcentaje debe ser mayor a 0.")
+
+    ids_limpios = []
+    vistos = set()
+    for raw_id in productos_ids or []:
+        try:
+            pid = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if pid > 0 and pid not in vistos:
+            ids_limpios.append(pid)
+            vistos.add(pid)
+    if not ids_limpios:
+        return 0
+
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        placeholders = ",".join("?" for _ in ids_limpios)
+        rows = c.execute(
+            f"SELECT id, costo, precio_venta FROM productos WHERE activo=1 AND id IN ({placeholders})",
+            ids_limpios,
+        ).fetchall()
+        factor = 1 + (porcentaje_num / 100.0)
+        afectados = 0
+        for row in rows:
+            nuevo_costo = round(float(row["costo"] or 0) * factor, 2)
+            nuevo_precio = round(float(row["precio_venta"] or 0) * factor, 2)
+            c.execute(
+                "UPDATE productos SET costo=?, precio_venta=? WHERE id=?",
+                (nuevo_costo, nuevo_precio, row["id"]),
+            )
+            afectados += 1
+        conn.commit()
+        return afectados
+    finally:
+        conn.close()
+
+
 def get_producto(pid):
     """Devuelve un producto por ID."""
     return q("SELECT * FROM productos WHERE id=?", (pid,), fetchone=True)
