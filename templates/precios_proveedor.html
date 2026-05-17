@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Actualizar precios por proveedor — {{ app_display_name }}{% endblock %}
+{% block page_title %}<i class="fas fa-percent me-2"></i>Actualizar Precios{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="alert alert-light border mb-4">
+        <strong>Rubro actual:</strong> {{ rubro_actual|capitalize }}.
+        Esta herramienta actualiza costo y precio de venta por proveedor habitual y categoría opcional.
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('precios_proveedor_previsualizar') }}" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="proveedor" class="form-label">Proveedor</label>
+                    <select class="form-select" id="proveedor" name="proveedor" required>
+                        <option value="">Seleccionar proveedor</option>
+                        {% for proveedor in proveedores %}
+                        <option value="{{ proveedor }}" {% if proveedor|lower == proveedor_filtro|lower %}selected{% endif %}>{{ proveedor }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="categoria" class="form-label">Categoría</label>
+                    <select class="form-select" id="categoria" name="categoria">
+                        <option value="">Todas las categorías</option>
+                        {% for categoria in categorias %}
+                        <option value="{{ categoria }}" {% if categoria|lower == categoria_filtro|lower %}selected{% endif %}>{{ categoria }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="porcentaje" class="form-label">Aumento (%)</label>
+                    <input
+                        type="number"
+                        class="form-control"
+                        id="porcentaje"
+                        name="porcentaje"
+                        step="0.01"
+                        min="0.01"
+                        value="{{ porcentaje }}"
+                        placeholder="Ej: 5"
+                        required
+                    >
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-1"></i> Previsualizar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if productos_preview %}
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Previsualización</h5>
+            <span class="badge bg-warning text-dark">Esta acción modificará precios de {{ total_afectados }} productos</span>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive mb-3">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th>Categoría</th>
+                            <th class="text-end">Costo actual</th>
+                            <th class="text-end">Costo nuevo</th>
+                            <th class="text-end">Venta actual</th>
+                            <th class="text-end">Venta nueva</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for producto in productos_preview %}
+                        <tr>
+                            <td><code>{{ producto.codigo_interno }}</code></td>
+                            <td>
+                                <strong>{{ producto.descripcion }}</strong>
+                                {% if producto.proveedor_habitual %}
+                                <br><small class="text-muted">Proveedor: {{ producto.proveedor_habitual }}</small>
+                                {% endif %}
+                            </td>
+                            <td>{{ producto.categoria or 'Sin categoría' }}</td>
+                            <td class="text-end">{{ producto.costo|fmt_ars }}</td>
+                            <td class="text-end fw-bold">{{ producto.costo_nuevo|fmt_ars }}</td>
+                            <td class="text-end">{{ producto.precio_venta|fmt_ars }}</td>
+                            <td class="text-end fw-bold">{{ producto.precio_venta_nuevo|fmt_ars }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex gap-2">
+                <form
+                    method="POST"
+                    action="{{ url_for('precios_proveedor_aplicar') }}"
+                    id="formAplicarAumento"
+                    data-porcentaje="{{ porcentaje }}"
+                    data-total="{{ total_afectados }}"
+                    data-proveedor="{{ proveedor_filtro }}"
+                    data-categoria="{{ categoria_filtro or 'Todas las categorías' }}"
+                >
+                    <input type="hidden" name="proveedor" value="{{ proveedor_filtro }}">
+                    <input type="hidden" name="categoria" value="{{ categoria_filtro }}">
+                    <input type="hidden" name="porcentaje" value="{{ porcentaje }}">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-check me-1"></i> Confirmar aumento
+                    </button>
+                </form>
+                <a href="{{ url_for('precios_proveedor', proveedor=proveedor_filtro, categoria=categoria_filtro, porcentaje=porcentaje) }}" class="btn btn-outline-secondary">
+                    Cancelar
+                </a>
+            </div>
+        </div>
+    </div>
+    {% elif porcentaje %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-inbox fa-2x text-muted mb-3"></i>
+            <h5 class="text-muted">No se encontraron productos para ese proveedor/categoría</h5>
+            <p class="text-muted mb-0">Revisá los filtros y volvé a previsualizar antes de aplicar cambios.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('formAplicarAumento');
+    if (!form) return;
+
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+
+        const porcentaje = form.dataset.porcentaje || '';
+        const total = parseInt(form.dataset.total || '0', 10);
+        const proveedor = form.dataset.proveedor || 'Proveedor seleccionado';
+        const categoria = form.dataset.categoria || 'Todas las categorías';
+        const productosTexto = total === 1 ? '1 producto' : `${total} productos`;
+
+        Swal.fire({
+            title: 'Confirmar aumento de precios',
+            html: `
+                <div class="text-start">
+                    <p class="mb-2">Se aplicará un aumento de <strong>${porcentaje}%</strong>.</p>
+                    <ul class="mb-0">
+                        <li><strong>Proveedor:</strong> ${proveedor}</li>
+                        <li><strong>Categoría:</strong> ${categoria}</li>
+                        <li><strong>Productos afectados:</strong> ${productosTexto}</li>
+                    </ul>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, aplicar aumento',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            reverseButtons: true
+        }).then((result) => {
+            if (result.isConfirmed) {
+                form.submit();
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

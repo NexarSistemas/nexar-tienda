@@ -4,6 +4,9 @@
 {% block page_title %}<i class="fas fa-truck me-2"></i>Gestión de Proveedores{% endblock %}
 
 {% block topbar_actions %}
+<a href="{{ url_for('precios_proveedor') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="fas fa-percent me-2"></i>Actualizar precios
+</a>
 <a href="{{ url_for('proveedor_nuevo') }}" class="btn btn-sm btn-primary">
     <i class="fas fa-plus me-2"></i>Nuevo Proveedor
 </a>

@@ -130,3 +130,76 @@ Cerrar el circuito completo de `proveedor_habitual` para alta, edición y filtra
 - Caso A: crear producto desde catálogo con proveedor y verificar visualización y filtro.
 - Caso B: crear producto desde compra con proveedor preseleccionado y verificar herencia en catálogo.
 - Caso C: probar variantes de mayúsculas/minúsculas del mismo proveedor en el filtro.
+
+## 2026-05-17 — Codex — feature/aumento-precios-proveedor
+
+### Tarea
+Implementar Prioridad 3 del roadmap: aumento masivo de precios por proveedor y categoría con previsualización y confirmación.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/proveedores.html`
+- `templates/proveedor_detalle.html`
+- `templates/precios_proveedor.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregaron funciones de base de datos para obtener productos activos por `proveedor_habitual` y categoría opcional, y para aplicar aumentos porcentuales redondeados a 2 decimales sobre `costo` y `precio_venta`.
+- Se agregaron rutas para abrir la herramienta, previsualizar productos afectados y confirmar el aumento recalculando siempre del lado servidor.
+- Se agregó acceso discreto desde la lista de proveedores y desde el detalle del proveedor con nombre preseleccionado.
+- La previsualización muestra costo/venta actual y nuevo antes de aplicar cambios.
+
+### Qué se probó
+- Validación sintáctica de Python.
+- Revisión estática del flujo GET/POST, previsualización y confirmación.
+
+### Pendiente de prueba manual
+- Caso A: aumento por proveedor sin categoría.
+- Caso B: aumento por proveedor + categoría.
+- Caso C: proveedor sin productos.
+- Caso D: porcentaje vacío, cero o negativo.
+
+## 2026-05-17 — Codex — feature/aumento-precios-proveedor corrección acceso
+
+### Tarea
+Corregir el acceso a "% Actualizar Precios" para que abra la pantalla sin `Not Found`.
+
+### Archivos modificados
+- `app.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregaron aliases legacy para `precios_proveedor`, `precios_proveedor_previsualizar` y `precios_proveedor_aplicar`, siguiendo el patrón ya usado por el proyecto para endpoints de `main_bp` sin prefijo.
+- Con esto, los enlaces y formularios existentes con `url_for('precios_proveedor')` vuelven a resolver contra `/precios/proveedor`.
+
+### Qué se probó
+- Verificación del `url_map` para confirmar que `/precios/proveedor` queda accesible tanto por `main.precios_proveedor` como por `precios_proveedor`.
+
+### Pendiente de prueba manual
+- Hacer click en "% Actualizar Precios" desde listado de proveedores.
+- Hacer click en "Actualizar precios" desde detalle de proveedor.
+- Confirmar que la pantalla abre correctamente sin aplicar cambios todavía.
+
+## 2026-05-17 — Codex — feature/aumento-precios-proveedor mejora confirmación
+
+### Tarea
+Reemplazar la confirmación nativa del navegador por un modal SweetAlert2 en la aplicación de aumentos masivos.
+
+### Archivos modificados
+- `templates/precios_proveedor.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se eliminó el `confirm()` nativo del botón "Confirmar aumento".
+- Se agregó un formulario identificado con `data-*` para porcentaje, proveedor, categoría y cantidad afectada.
+- Se incorporó confirmación visual con SweetAlert2, manteniendo la lógica actual de aplicación por POST.
+- El texto del modal ahora corrige el plural entre `1 producto` y `N productos`.
+
+### Qué se probó
+- Revisión estática del flujo de previsualización y confirmación en el template.
+
+### Pendiente de prueba manual
+- Confirmar que al presionar "Confirmar aumento" aparece el modal SweetAlert2.
+- Verificar que "Cancelar" no aplique cambios.
+- Verificar que "Sí, aplicar aumento" ejecute el POST correctamente.

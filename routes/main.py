@@ -206,6 +206,27 @@ def _first_non_empty(*values) -> str:
     return ""
 
 
+def _parse_positive_percentage(raw_value) -> float:
+    try:
+        porcentaje = float(str(raw_value or "").replace(",", "."))
+    except ValueError as exc:
+        raise ValueError("El porcentaje debe ser un número válido.") from exc
+    if porcentaje <= 0:
+        raise ValueError("El porcentaje debe ser mayor a 0.")
+    return porcentaje
+
+
+def _build_precios_preview_rows(productos_rows, porcentaje: float) -> list[dict]:
+    factor = 1 + (porcentaje / 100.0)
+    preview = []
+    for row in productos_rows:
+        item = dict(row)
+        item["costo_nuevo"] = round(float(item.get("costo") or 0) * factor, 2)
+        item["precio_venta_nuevo"] = round(float(item.get("precio_venta") or 0) * factor, 2)
+        preview.append(item)
+    return preview
+
+
 def _enriquecer_facturas_proveedor(facturas) -> list[dict]:
     resultado = []
     for factura in facturas:
@@ -2321,6 +2342,141 @@ def proveedor_detalle(pid):
         movimientos_auxiliares=movimientos_auxiliares,
         historial_compras=db.get_historial_compras_proveedor(pid),
         estadisticas=db.get_estadisticas_proveedor(pid),
+    )
+
+
+@main_bp.route("/precios/proveedor")
+@login_required
+def precios_proveedor():
+    proveedor_filtro = (request.args.get("proveedor", "") or "").strip()
+    categoria_filtro = (request.args.get("categoria", "") or "").strip()
+    porcentaje = (request.args.get("porcentaje", "") or "").strip()
+    cfg = db.get_config()
+    rubro_actual = get_rubro_actual(cfg)
+    productos_rubro = [dict(r) for r in db.get_productos(rubro=rubro_actual)]
+    proveedores_map = {}
+    for row in productos_rubro:
+        nombre = str(row.get("proveedor_habitual") or "").strip()
+        if nombre:
+            proveedores_map.setdefault(nombre.lower(), nombre)
+    proveedores_visibles = sorted(proveedores_map.values(), key=str.lower)
+    categorias_visibles = _merge_categorias_visibles(
+        rubro_actual,
+        [row.get("categoria", "") for row in productos_rubro],
+    )
+    return render_template(
+        "precios_proveedor.html",
+        proveedores=proveedores_visibles,
+        categorias=categorias_visibles,
+        proveedor_filtro=proveedor_filtro,
+        categoria_filtro=categoria_filtro,
+        porcentaje=porcentaje,
+        productos_preview=[],
+        total_afectados=0,
+        rubro_actual=rubro_actual,
+    )
+
+
+@main_bp.route("/precios/proveedor/previsualizar", methods=["POST"])
+@login_required
+def precios_proveedor_previsualizar():
+    proveedor_filtro = (request.form.get("proveedor", "") or "").strip()
+    categoria_filtro = (request.form.get("categoria", "") or "").strip()
+    porcentaje_raw = (request.form.get("porcentaje", "") or "").strip()
+    cfg = db.get_config()
+    rubro_actual = get_rubro_actual(cfg)
+    productos_rubro = [dict(r) for r in db.get_productos(rubro=rubro_actual)]
+    proveedores_map = {}
+    for row in productos_rubro:
+        nombre = str(row.get("proveedor_habitual") or "").strip()
+        if nombre:
+            proveedores_map.setdefault(nombre.lower(), nombre)
+    proveedores_visibles = sorted(proveedores_map.values(), key=str.lower)
+    categorias_visibles = _merge_categorias_visibles(
+        rubro_actual,
+        [row.get("categoria", "") for row in productos_rubro],
+    )
+
+    productos_preview = []
+    total_afectados = 0
+    try:
+        if not proveedor_filtro:
+            raise ValueError("Debes seleccionar un proveedor.")
+        porcentaje = _parse_positive_percentage(porcentaje_raw)
+        productos_rows = [
+            dict(r)
+            for r in db.get_productos_por_proveedor_categoria(
+                proveedor_filtro,
+                categoria_filtro,
+                rubro=rubro_actual,
+            )
+        ]
+        productos_preview = _build_precios_preview_rows(productos_rows, porcentaje)
+        total_afectados = len(productos_preview)
+        if total_afectados == 0:
+            flash("No se encontraron productos para ese proveedor/categoría.", "warning")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+
+    return render_template(
+        "precios_proveedor.html",
+        proveedores=proveedores_visibles,
+        categorias=categorias_visibles,
+        proveedor_filtro=proveedor_filtro,
+        categoria_filtro=categoria_filtro,
+        porcentaje=porcentaje_raw,
+        productos_preview=productos_preview,
+        total_afectados=total_afectados,
+        rubro_actual=rubro_actual,
+    )
+
+
+@main_bp.route("/precios/proveedor/aplicar", methods=["POST"])
+@login_required
+def precios_proveedor_aplicar():
+    proveedor_filtro = (request.form.get("proveedor", "") or "").strip()
+    categoria_filtro = (request.form.get("categoria", "") or "").strip()
+    porcentaje_raw = (request.form.get("porcentaje", "") or "").strip()
+    cfg = db.get_config()
+    rubro_actual = get_rubro_actual(cfg)
+    try:
+        if not proveedor_filtro:
+            raise ValueError("Debes seleccionar un proveedor.")
+        porcentaje = _parse_positive_percentage(porcentaje_raw)
+        productos_rows = db.get_productos_por_proveedor_categoria(
+            proveedor_filtro,
+            categoria_filtro,
+            rubro=rubro_actual,
+        )
+        if not productos_rows:
+            flash("No se encontraron productos para ese proveedor/categoría.", "warning")
+            return redirect(
+                url_for(
+                    "precios_proveedor",
+                    proveedor=proveedor_filtro,
+                    categoria=categoria_filtro,
+                    porcentaje=porcentaje_raw,
+                )
+            )
+        afectados = db.aplicar_aumento_precios([row["id"] for row in productos_rows], porcentaje)
+        flash(f"Se actualizaron {afectados} productos correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(
+            url_for(
+                "precios_proveedor",
+                proveedor=proveedor_filtro,
+                categoria=categoria_filtro,
+                porcentaje=porcentaje_raw,
+            )
+        )
+
+    return redirect(
+        url_for(
+            "precios_proveedor",
+            proveedor=proveedor_filtro,
+            categoria=categoria_filtro,
+        )
     )
 
 

@@ -18,6 +18,10 @@
                     </p>
                 </div>
                 <div class="d-flex gap-2">
+                    <a href="{{ url_for('precios_proveedor', proveedor=proveedor.nombre) }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-percent me-1"></i>
+                        Actualizar precios
+                    </a>
                     <a href="{{ url_for('proveedor_facturas', pid=proveedor.id) }}" class="btn btn-primary">
                         <i class="fas fa-file-invoice-dollar me-1"></i>
                         Ver facturas
