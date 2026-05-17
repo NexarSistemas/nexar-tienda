@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Carga por lote — {{ app_display_name }}{% endblock %}
+{% block page_title %}<i class="fas fa-table me-2"></i>Carga Por Lote{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="alert alert-light border mb-4">
+        <strong>Rubro actual:</strong> {{ rubro_actual|capitalize }}.
+        Cada fila se creará como un producto individual. Útil para productos únicos con precios distintos.
+    </div>
+
+    <form method="POST" id="loteForm">
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Datos comunes</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="proveedor_habitual" class="form-label">Proveedor habitual</label>
+                        <select class="form-select" id="proveedor_habitual" name="proveedor_habitual">
+                            <option value="">Sin proveedor habitual</option>
+                            {% for proveedor in proveedores %}
+                            <option value="{{ proveedor.nombre }}" {% if common_data.proveedor_habitual == proveedor.nombre %}selected{% endif %}>
+                                {{ proveedor.nombre }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="categoria" class="form-label">Categoría</label>
+                        <select class="form-select" id="categoria" name="categoria" required>
+                            <option value="">Seleccionar categoría</option>
+                            {% for categoria in categorias %}
+                            <option value="{{ categoria }}" {% if common_data.categoria == categoria %}selected{% endif %}>
+                                {{ categoria }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="marca" class="form-label">Marca</label>
+                        <input type="text" class="form-control" id="marca" name="marca" value="{{ common_data.marca }}" placeholder="Opcional">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="unidad" class="form-label">Unidad</label>
+                        <select class="form-select" id="unidad" name="unidad">
+                            {% for unidad in unidades_disponibles %}
+                            <option value="{{ unidad }}" {% if unidad_actual == unidad %}selected{% endif %}>
+                                {% if unidad == 'kg' %}KG{% elif unidad == 'ml' %}ml{% else %}{{ unidad|capitalize }}{% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="stock_minimo" class="form-label">Stock mínimo</label>
+                        <input type="number" step="0.01" min="0" class="form-control" id="stock_minimo" name="stock_minimo" value="{{ common_data.stock_minimo }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="stock_maximo" class="form-label">Stock máximo</label>
+                        <input type="number" step="0.01" min="0" class="form-control" id="stock_maximo" name="stock_maximo" value="{{ common_data.stock_maximo }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Productos individuales</h5>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="agregarFilaBtn">
+                    <i class="fas fa-plus me-1"></i> Agregar fila
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered align-middle mb-0" id="tablaLote">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="min-width: 280px;">Descripción</th>
+                                <th style="min-width: 130px;">Costo</th>
+                                <th style="min-width: 140px;">Precio venta</th>
+                                <th style="min-width: 120px;">Stock inicial</th>
+                                <th style="min-width: 180px;">Código de barras</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in rows_data %}
+                            <tr>
+                                <td><input type="text" class="form-control" name="descripcion[]" value="{{ row.descripcion }}" placeholder="Ej: Mate camionero verde"></td>
+                                <td><input type="number" class="form-control" name="costo[]" step="0.01" min="0" value="{{ row.costo }}" placeholder="0.00"></td>
+                                <td><input type="number" class="form-control" name="precio_venta[]" step="0.01" min="0" value="{{ row.precio_venta }}" placeholder="0.00"></td>
+                                <td><input type="number" class="form-control" name="stock_actual[]" step="0.01" min="0.01" value="{{ row.stock_actual }}" placeholder="1"></td>
+                                <td><input type="text" class="form-control" name="codigo_barras[]" value="{{ row.codigo_barras }}" placeholder="Opcional"></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex gap-2 mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i> Guardar productos
+                    </button>
+                    <a href="{{ url_for('productos') }}" class="btn btn-outline-secondary">
+                        Cancelar
+                    </a>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const agregarFilaBtn = document.getElementById('agregarFilaBtn');
+    const tablaBody = document.querySelector('#tablaLote tbody');
+
+    if (!agregarFilaBtn || !tablaBody) return;
+
+    agregarFilaBtn.addEventListener('click', function () {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><input type="text" class="form-control" name="descripcion[]" placeholder="Ej: Mate camionero verde"></td>
+            <td><input type="number" class="form-control" name="costo[]" step="0.01" min="0" placeholder="0.00"></td>
+            <td><input type="number" class="form-control" name="precio_venta[]" step="0.01" min="0" placeholder="0.00"></td>
+            <td><input type="number" class="form-control" name="stock_actual[]" step="0.01" min="0.01" placeholder="1"></td>
+            <td><input type="text" class="form-control" name="codigo_barras[]" placeholder="Opcional"></td>
+        `;
+        tablaBody.appendChild(row);
+    });
+});
+</script>
+{% endblock %}
