@@ -41,10 +41,14 @@ def calcular_saldo_cliente_desde_movimientos(movimientos: Iterable[Mapping]) -> 
 
 
 def calcular_saldo_factura(factura: Mapping) -> float:
+    if str(_get_value(factura, "anulada", 0) or 0).strip() in {"1", "true", "True"}:
+        return 0.0
     return _to_float(_get_value(factura, "importe")) - _to_float(_get_value(factura, "pagado"))
 
 
 def calcular_estado_factura(factura: Mapping, hoy=None) -> str:
+    if str(_get_value(factura, "anulada", 0) or 0).strip() in {"1", "true", "True"}:
+        return "ANULADA"
     saldo = calcular_saldo_factura(factura)
     if saldo <= 0:
         return "PAGADA"

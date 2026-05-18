@@ -132,9 +132,17 @@
                                             <a href="{{ url_for('proveedor_facturas', pid=proveedor.id) }}" class="btn btn-sm btn-outline-info" title="Ver facturas"><i class="fas fa-file-invoice-dollar"></i></a>
                                             <a href="{{ url_for('proveedor_editar', pid=proveedor.id) }}" class="btn btn-sm btn-outline-warning" title="Editar"><i class="fas fa-edit"></i></a>
                                             {% if proveedor.activo %}
-                                            <form method="POST" action="{{ url_for('proveedor_eliminar', pid=proveedor.id) }}" class="d-inline" onsubmit="return confirm('¿Desactivar proveedor {{ proveedor.nombre }}?')">
-                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Desactivar"><i class="fas fa-user-times"></i></button>
-                                            </form>
+                                            <button
+                                                type="button"
+                                                class="btn btn-sm btn-outline-danger js-proveedor-desactivar"
+                                                title="Desactivar"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#modalDesactivarProveedor"
+                                                data-action="{{ url_for('proveedor_eliminar', pid=proveedor.id) }}"
+                                                data-proveedor-nombre="{{ proveedor.nombre }}"
+                                            >
+                                                <i class="fas fa-user-times"></i>
+                                            </button>
                                             {% endif %}
                                         </div>
                                     </td>
@@ -162,4 +170,49 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="modalDesactivarProveedor" tabindex="-1" aria-labelledby="modalDesactivarProveedorLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form id="formDesactivarProveedor" method="POST" class="modal-content border-warning">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="modalDesactivarProveedorLabel">
+                    <i class="fas fa-user-times me-2"></i>Desactivar proveedor
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">¿Querés desactivar el proveedor <strong id="proveedorDesactivarNombre">-</strong>?</p>
+                <div class="alert alert-warning mb-0">
+                    El proveedor no se borrará; quedará oculto o inactivo para nuevas operaciones.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-warning">
+                    <i class="fas fa-user-times me-2"></i>Desactivar proveedor
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const modal = document.getElementById('modalDesactivarProveedor');
+        const form = document.getElementById('formDesactivarProveedor');
+        const nombre = document.getElementById('proveedorDesactivarNombre');
+
+        if (!modal || !form || !nombre) return;
+
+        modal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            if (!button) return;
+
+            form.action = button.getAttribute('data-action') || '';
+            nombre.textContent = button.getAttribute('data-proveedor-nombre') || 'este proveedor';
+        });
+    });
+</script>
 {% endblock %}
