@@ -408,7 +408,13 @@ def init_db():
             tipo TEXT,
             monto REAL,
             motivo TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            gasto_id INTEGER,
+            anulado INTEGER DEFAULT 0,
+            anulada_at TEXT DEFAULT '',
+            anulada_por TEXT DEFAULT '',
+            motivo_anulacion TEXT DEFAULT '',
+            movimiento_origen_id INTEGER REFERENCES caja_movimientos(id)
         );
 
         CREATE TABLE IF NOT EXISTS caja_historial (
@@ -649,6 +655,16 @@ def init_db():
     columnas_cm = [r['name'] for r in c.execute("PRAGMA table_info(caja_movimientos)").fetchall()]
     if 'gasto_id' not in columnas_cm:
         c.execute("ALTER TABLE caja_movimientos ADD COLUMN gasto_id INTEGER")
+    if 'anulado' not in columnas_cm:
+        c.execute("ALTER TABLE caja_movimientos ADD COLUMN anulado INTEGER DEFAULT 0")
+    if 'anulada_at' not in columnas_cm:
+        c.execute("ALTER TABLE caja_movimientos ADD COLUMN anulada_at TEXT DEFAULT ''")
+    if 'anulada_por' not in columnas_cm:
+        c.execute("ALTER TABLE caja_movimientos ADD COLUMN anulada_por TEXT DEFAULT ''")
+    if 'motivo_anulacion' not in columnas_cm:
+        c.execute("ALTER TABLE caja_movimientos ADD COLUMN motivo_anulacion TEXT DEFAULT ''")
+    if 'movimiento_origen_id' not in columnas_cm:
+        c.execute("ALTER TABLE caja_movimientos ADD COLUMN movimiento_origen_id INTEGER REFERENCES caja_movimientos(id)")
 
     columnas_g = [r['name'] for r in c.execute("PRAGMA table_info(gastos)").fetchall()]
     if 'clasificacion' not in columnas_g:
@@ -3951,14 +3967,125 @@ def get_caja_abierta():
     return q("SELECT * FROM caja WHERE estado=1 ORDER BY id DESC LIMIT 1", fetchone=True)
 
 
+def get_caja_movimiento(mid):
+    """Obtiene un movimiento de caja con estado de su caja."""
+    return q(
+        """SELECT cm.*, c.estado as caja_estado, c.fecha_apertura, c.fecha_cierre
+        FROM caja_movimientos cm
+        LEFT JOIN caja c ON c.id = cm.caja_id
+        WHERE cm.id=?""",
+        (mid,),
+        fetchone=True,
+    )
+
+
+def get_caja_movimiento_activo_por_gasto(gasto_id):
+    """Devuelve el ultimo movimiento activo asociado a un gasto."""
+    return q(
+        """SELECT cm.*, c.estado as caja_estado, c.fecha_apertura, c.fecha_cierre
+        FROM caja_movimientos cm
+        LEFT JOIN caja c ON c.id = cm.caja_id
+        WHERE cm.gasto_id=? AND COALESCE(cm.anulado, 0)=0
+        ORDER BY cm.id DESC LIMIT 1""",
+        (gasto_id,),
+        fetchone=True,
+    )
+
+
+def crear_movimiento_caja(caja_id, tipo, monto, motivo, gasto_id=None, movimiento_origen_id=None):
+    """Crea un movimiento de caja inmutable."""
+    return q(
+        """INSERT INTO caja_movimientos
+        (caja_id,tipo,monto,motivo,gasto_id,movimiento_origen_id)
+        VALUES (?,?,?,?,?,?)""",
+        (caja_id, tipo, float(monto or 0), motivo, gasto_id, movimiento_origen_id),
+        fetchall=False,
+        commit=True,
+    )
+
+
+def registrar_movimiento_caja_abierta(tipo, monto, motivo, gasto_id=None, movimiento_origen_id=None):
+    """Registra un movimiento solo si hay una caja abierta."""
+    caja = get_caja_abierta()
+    if not caja:
+        raise ValueError("No hay una caja abierta para registrar movimientos.")
+    return crear_movimiento_caja(
+        caja["id"],
+        tipo,
+        monto,
+        motivo,
+        gasto_id=gasto_id,
+        movimiento_origen_id=movimiento_origen_id,
+    )
+
+
+def anular_caja_movimiento(mid, motivo, usuario="", permitir_vinculado_gasto=False):
+    """Marca un movimiento de caja como anulado sin borrarlo."""
+    movimiento = get_caja_movimiento(mid)
+    if not movimiento:
+        raise ValueError("El movimiento de caja indicado no existe.")
+    if int(movimiento["anulado"] or 0):
+        raise ValueError("El movimiento seleccionado ya está anulado.")
+    if int(movimiento["gasto_id"] or 0) > 0 and not permitir_vinculado_gasto:
+        raise ValueError("Este movimiento está vinculado a un gasto. Modificalo desde Gastos para conservar coherencia.")
+    if int(movimiento["caja_estado"] or 0) != 1:
+        raise ValueError("No se pueden anular movimientos de una caja cerrada.")
+    motivo_limpio = str(motivo or "").strip()
+    if not motivo_limpio:
+        raise ValueError("El motivo de anulación es obligatorio.")
+    marca_tiempo = datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    q(
+        """UPDATE caja_movimientos
+        SET anulado=1, anulada_at=?, anulada_por=?, motivo_anulacion=?
+        WHERE id=?""",
+        (marca_tiempo, str(usuario or "").strip(), motivo_limpio, mid),
+        commit=True,
+    )
+    return get_caja_movimiento(mid)
+
+
+def validar_operacion_gasto_caja(gid, nuevo_data=None, deleting=False):
+    """Bloquea cambios destructivos de gastos que impactan cajas cerradas."""
+    movimiento = get_caja_movimiento_activo_por_gasto(gid)
+    if not movimiento:
+        return
+    if int(movimiento["caja_estado"] or 0) == 1:
+        return
+    gasto = q("SELECT * FROM gastos WHERE id=?", (gid,), fetchone=True)
+    if not gasto:
+        return
+    if deleting:
+        raise ValueError("No podés eliminar este gasto porque impacta una caja cerrada.")
+    if not nuevo_data:
+        return
+    campos_sensibles = ("fecha", "medio_pago", "monto", "descripcion", "categoria")
+    for campo in campos_sensibles:
+        actual = str(gasto[campo] if gasto[campo] is not None else "").strip()
+        nuevo = str(nuevo_data.get(campo, "") if nuevo_data.get(campo) is not None else "").strip()
+        if campo == "monto":
+            try:
+                if float(actual or 0) != float(nuevo or 0):
+                    raise ValueError("No podés modificar este gasto porque impacta una caja cerrada.")
+            except ValueError:
+                raise ValueError("No podés modificar este gasto porque impacta una caja cerrada.")
+            continue
+        if actual != nuevo:
+            raise ValueError("No podés modificar este gasto porque impacta una caja cerrada.")
+
+
 def sync_gasto_caja_movimiento(gasto_id):
     """Sincroniza el gasto con caja si fue pagado en efectivo durante la caja abierta."""
     gasto = q("SELECT * FROM gastos WHERE id=?", (gasto_id,), fetchone=True)
-    movimiento = q("SELECT * FROM caja_movimientos WHERE gasto_id=? ORDER BY id DESC LIMIT 1", (gasto_id,), fetchone=True)
+    movimiento = get_caja_movimiento_activo_por_gasto(gasto_id)
 
     if not gasto:
         if movimiento:
-            q("DELETE FROM caja_movimientos WHERE id=?", (movimiento["id"],), commit=True)
+            anular_caja_movimiento(
+                movimiento["id"],
+                "Anulación automática por eliminación del gasto asociado.",
+                usuario="sistema",
+                permitir_vinculado_gasto=True,
+            )
         return
 
     caja = get_caja_abierta()
@@ -3967,22 +4094,43 @@ def sync_gasto_caja_movimiento(gasto_id):
     aplica_caja = bool(caja and medio_pago == "efectivo" and str(gasto["fecha"] or "") == fecha_caja)
     motivo = f"Gasto #{gasto_id}: {gasto['descripcion'] or gasto['categoria'] or 'Gasto operativo'}"
     monto = float(gasto["monto"] or 0)
+    movimiento_original_id = None
 
     if aplica_caja:
-        if movimiento:
-            q(
-                "UPDATE caja_movimientos SET caja_id=?, tipo='EGRESO', monto=?, motivo=? WHERE id=?",
-                (caja["id"], monto, motivo, movimiento["id"]),
-                commit=True,
+        reemplazar = bool(
+            movimiento
+            and (
+                int(movimiento["caja_id"] or 0) != int(caja["id"] or 0)
+                or str(movimiento["tipo"] or "").strip().upper() != "EGRESO"
+                or float(movimiento["monto"] or 0) != monto
+                or str(movimiento["motivo"] or "").strip() != motivo
             )
-        else:
-            q(
-                "INSERT INTO caja_movimientos (caja_id,tipo,monto,motivo,gasto_id) VALUES (?,?,?,?,?)",
-                (caja["id"], "EGRESO", monto, motivo, gasto_id),
-                commit=True,
+        )
+        if reemplazar:
+            movimiento_original_id = int(movimiento["id"] or 0)
+            anular_caja_movimiento(
+                movimiento["id"],
+                "Anulación automática por actualización del gasto asociado.",
+                usuario="sistema",
+                permitir_vinculado_gasto=True,
+            )
+            movimiento = None
+        if not movimiento:
+            crear_movimiento_caja(
+                caja["id"],
+                "EGRESO",
+                monto,
+                motivo,
+                gasto_id=gasto_id,
+                movimiento_origen_id=movimiento_original_id,
             )
     elif movimiento:
-        q("DELETE FROM caja_movimientos WHERE id=?", (movimiento["id"],), commit=True)
+        anular_caja_movimiento(
+            movimiento["id"],
+            "Anulación automática porque el gasto dejó de impactar caja.",
+            usuario="sistema",
+            permitir_vinculado_gasto=True,
+        )
 
 
 def init_caja_dia(fecha):
@@ -4036,8 +4184,23 @@ def get_gastos(search='', fecha_desde='', fecha_hasta='', limit=200):
     return q(sql, params)
 
 
+def validar_gasto_efectivo_contra_caja(data):
+    """Bloquea gastos en efectivo fuera de una caja abierta valida."""
+    medio_pago = str(data.get('medio_pago', '') or '').strip().lower()
+    if medio_pago != 'efectivo':
+        return
+    caja = get_caja_abierta()
+    if not caja:
+        raise ValueError("No podés registrar gastos con efectivo porque no hay una caja abierta.")
+    fecha_gasto = str(data.get('fecha', '') or '').strip()
+    fecha_caja = str(caja['fecha_apertura'] or '')[:10]
+    if fecha_gasto != fecha_caja:
+        raise ValueError("No podés registrar gastos con efectivo fuera de la caja abierta actual.")
+
+
 def add_gasto(data):
     """Agrega un gasto."""
+    validar_gasto_efectivo_contra_caja(data)
     categoria = data.get('categoria', '')
     necesario = normalizar_tipo_gasto(data.get('necesario'))
     if 'necesario' not in data:
@@ -4059,6 +4222,7 @@ def add_gasto(data):
 
 def update_gasto(gid, data):
     """Actualiza un gasto."""
+    validar_gasto_efectivo_contra_caja(data)
     categoria = data.get('categoria', '')
     necesario = normalizar_tipo_gasto(data.get('necesario'))
     if 'necesario' not in data:
