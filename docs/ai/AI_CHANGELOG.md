@@ -399,3 +399,28 @@ Implementar generación opcional de códigos de barras internos para productos n
 - Probar carga por lote con varios productos sin código.
 - Probar importación CSV con generación interna activada.
 - Verificar rechazo de códigos manuales duplicados sin guardado parcial.
+## 2026-05-18 â€” Codex â€” feature/reportes-demo
+
+### Tarea
+Implementar Prioridad 8 del roadmap: habilitar reportes en versiÃ³n demo.
+
+### Archivos modificados
+- `licensing/planes.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### QuÃ© se cambiÃ³
+- Se agregÃ³ el mÃ³dulo `reportes` al plan `DEMO` en el mapping central de planes.
+- Con ese cambio, la UI deja de ocultar "Resumen Mensual" y "EstadÃ­sticas Anuales" en demo, porque ambas pantallas ya dependen de `modulo_activo("reportes")`.
+- No se habilitaron exportaciones ni otros mÃ³dulos premium: `export`, `multiusuario`, `temporadas` y demÃ¡s siguen igual.
+- No fue necesario agregar un mÃ³dulo separado `estadisticas`, porque la ruta `/estadisticas` ya usa `require_modulo("reportes")`.
+
+### QuÃ© se probÃ³
+- RevisiÃ³n estÃ¡tica de `routes/main.py`: `/reportes`, `/estadisticas` y `rentabilidad_detallada` siguen protegidos por `require_modulo("reportes")`.
+- RevisiÃ³n estÃ¡tica de `templates/base.html`: la navegaciÃ³n de reportes ya depende de `modulo_activo("reportes")`, por lo que se habilita correctamente en demo.
+- ValidaciÃ³n local del mapping para confirmar que `DEMO` ahora resuelve `core` + `reportes`.
+
+### Pendiente de prueba manual
+- Abrir `/reportes` con licencia demo y confirmar carga correcta.
+- Abrir `/estadisticas` con licencia demo y confirmar carga correcta.
+- Verificar que "Mi plan" muestre `reportes` como mÃ³dulo habilitado en demo.
+- Confirmar que exportaciones sigan bloqueadas en demo.
