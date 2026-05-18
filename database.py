@@ -483,7 +483,11 @@ def init_db():
             importe REAL DEFAULT 0,
             pagado REAL DEFAULT 0,
             observaciones TEXT DEFAULT '',
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            anulada INTEGER DEFAULT 0,
+            anulada_at TEXT DEFAULT '',
+            anulada_por TEXT DEFAULT '',
+            motivo_anulacion TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS temporadas (
@@ -563,6 +567,14 @@ def init_db():
         c.execute("ALTER TABLE facturas_proveedores ADD COLUMN observaciones TEXT DEFAULT ''")
     if 'created_at' not in columnas_facturas:
         c.execute("ALTER TABLE facturas_proveedores ADD COLUMN created_at TEXT DEFAULT ''")
+    if 'anulada' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN anulada INTEGER DEFAULT 0")
+    if 'anulada_at' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN anulada_at TEXT DEFAULT ''")
+    if 'anulada_por' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN anulada_por TEXT DEFAULT ''")
+    if 'motivo_anulacion' not in columnas_facturas:
+        c.execute("ALTER TABLE facturas_proveedores ADD COLUMN motivo_anulacion TEXT DEFAULT ''")
 
     columnas_productos = [r['name'] for r in c.execute("PRAGMA table_info(productos)").fetchall()]
     if 'tipo_unidad' not in columnas_productos:
@@ -2846,7 +2858,7 @@ def get_factura_proveedor(factura_id):
 def get_factura_por_compra(compra_id):
     """Busca la factura comercial asociada a una compra."""
     return q(
-        "SELECT * FROM facturas_proveedores WHERE compra_id=? ORDER BY id DESC LIMIT 1",
+        "SELECT * FROM facturas_proveedores WHERE compra_id=? AND COALESCE(anulada, 0)=0 ORDER BY id DESC LIMIT 1",
         (compra_id,),
         fetchone=True,
     )
@@ -2890,6 +2902,8 @@ def actualizar_factura_proveedor(factura_id, numero_factura, fecha, fecha_vencim
     factura = get_factura_proveedor(factura_id)
     if not factura:
         raise ValueError("La factura indicada no existe.")
+    if int(factura["anulada"] or 0):
+        raise ValueError("No se puede editar una factura anulada.")
     importe = float(importe or 0)
     pagado_actual = float(factura["pagado"] or 0)
     if importe <= 0:
@@ -2917,6 +2931,8 @@ def registrar_pago_factura_proveedor(factura_id, monto):
     factura = get_factura_proveedor(factura_id)
     if not factura:
         raise ValueError("La factura indicada no existe.")
+    if int(factura["anulada"] or 0):
+        raise ValueError("No se puede registrar un pago sobre una factura anulada.")
     monto = float(monto or 0)
     if monto <= 0:
         raise ValueError("El monto del pago debe ser mayor a cero.")
@@ -2933,17 +2949,29 @@ def registrar_pago_factura_proveedor(factura_id, monto):
 
 
 def eliminar_factura_proveedor(factura_id):
-    """
-    Elimina una factura solo si no tiene pagos registrados.
+    """Compatibilidad: la eliminación física fue reemplazada por anulación segura."""
+    return anular_factura_proveedor(factura_id)
 
-    Con el esquema actual es la opcion mas segura sin agregar estados persistidos.
-    """
+
+def anular_factura_proveedor(factura_id, motivo='', usuario=''):
+    """Marca una factura como anulada sin borrar historial ni pagos."""
     factura = get_factura_proveedor(factura_id)
     if not factura:
         raise ValueError("La factura indicada no existe.")
+    if int(factura["anulada"] or 0):
+        raise ValueError("La factura ya está anulada.")
     if float(factura["pagado"] or 0) > 0:
-        raise ValueError("No se puede eliminar una factura con pagos registrados.")
-    q("DELETE FROM facturas_proveedores WHERE id=?", (factura_id,), commit=True)
+        raise ValueError("No se puede anular una factura con pagos registrados.")
+    motivo_limpio = str(motivo or "").strip()
+    if not motivo_limpio:
+        raise ValueError("Debés indicar un motivo para anular la factura.")
+    q(
+        """UPDATE facturas_proveedores
+        SET anulada=1, anulada_at=?, anulada_por=?, motivo_anulacion=?
+        WHERE id=?""",
+        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), str(usuario or "").strip(), motivo_limpio, factura_id),
+        commit=True,
+    )
 
 
 def crear_factura_desde_compra(compra_id, proveedor_id, total, numero_factura=None, fecha=None, fecha_vencimiento=None, observaciones=None, conn=None):
@@ -3018,6 +3046,7 @@ def get_facturas_proveedores_vencidas():
         """SELECT fp.*, p.nombre as proveedor_nombre
         FROM facturas_proveedores fp
         JOIN proveedores p ON p.id = fp.proveedor_id
+        WHERE COALESCE(fp.anulada, 0)=0
         ORDER BY COALESCE(fp.fecha_vencimiento, '') ASC, fp.id DESC"""
     )
     return [row for row in rows if calcular_estado_factura(row) == "VENCIDA"]
@@ -3033,6 +3062,7 @@ def get_facturas_proveedores_por_vencer(dias=7):
         """SELECT fp.*, p.nombre as proveedor_nombre
         FROM facturas_proveedores fp
         JOIN proveedores p ON p.id = fp.proveedor_id
+        WHERE COALESCE(fp.anulada, 0)=0
         ORDER BY COALESCE(fp.fecha_vencimiento, '') ASC, fp.id DESC"""
     )
     resultado = []
@@ -3055,13 +3085,13 @@ def get_facturas_proveedores_por_vencer(dias=7):
 
 def get_total_deuda_proveedores():
     """Suma la deuda comercial pendiente de todos los proveedores."""
-    rows = q("SELECT importe, pagado FROM facturas_proveedores")
+    rows = q("SELECT importe, pagado, anulada FROM facturas_proveedores WHERE COALESCE(anulada, 0)=0")
     return calcular_deuda_proveedor_desde_facturas(rows)
 
 
 def get_cantidad_facturas_proveedores_pendientes():
     """Cuenta facturas de proveedores con saldo pendiente."""
-    rows = q("SELECT importe, pagado FROM facturas_proveedores")
+    rows = q("SELECT importe, pagado, anulada FROM facturas_proveedores WHERE COALESCE(anulada, 0)=0")
     return sum(1 for row in rows if calcular_saldo_factura(row) > 0)
 
 

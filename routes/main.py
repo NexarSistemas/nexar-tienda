@@ -994,6 +994,10 @@ def _validate_purchase_cancel_authorization(form) -> tuple[bool, str]:
     return _validate_sensitive_operation_authorization(form, "anular la compra")
 
 
+def _validate_provider_invoice_cancel_authorization(form) -> tuple[bool, str]:
+    return _validate_sensitive_operation_authorization(form, "anular la factura")
+
+
 def _cart() -> list[dict]:
     return session.setdefault("cart", [])
 
@@ -3074,6 +3078,7 @@ def proveedor_facturas(pid):
         deuda_comercial=resumen_facturas["deuda_total"],
         resumen_facturas=resumen_facturas,
         facturas=facturas,
+        usuario_es_admin=_is_admin_role(session.get("user", {}).get("rol")),
     )
 
 
@@ -3108,6 +3113,9 @@ def proveedor_factura_nueva(pid):
 def proveedor_factura_editar(pid, factura_id):
     proveedor = _get_proveedor_or_404(pid)
     factura = _get_factura_proveedor_or_404(pid, factura_id)
+    if int(factura["anulada"] or 0):
+        flash("No se puede editar una factura anulada.", "warning")
+        return redirect(url_for("proveedor_facturas", pid=pid))
     if request.method == "POST":
         try:
             db.actualizar_factura_proveedor(
@@ -3135,7 +3143,10 @@ def proveedor_factura_editar(pid, factura_id):
 @login_required
 def proveedor_factura_pagar(pid, factura_id):
     _get_proveedor_or_404(pid)
-    _get_factura_proveedor_or_404(pid, factura_id)
+    factura = _get_factura_proveedor_or_404(pid, factura_id)
+    if int(factura["anulada"] or 0):
+        flash("No se puede registrar un pago sobre una factura anulada.", "warning")
+        return redirect(request.form.get("next") or url_for("proveedor_facturas", pid=pid))
     try:
         db.registrar_pago_factura_proveedor(
             factura_id,
@@ -3151,10 +3162,21 @@ def proveedor_factura_pagar(pid, factura_id):
 @login_required
 def proveedor_factura_eliminar(pid, factura_id):
     _get_proveedor_or_404(pid)
-    _get_factura_proveedor_or_404(pid, factura_id)
+    factura = _get_factura_proveedor_or_404(pid, factura_id)
+    ok, msg = _validate_provider_invoice_cancel_authorization(request.form)
+    if not ok:
+        flash(msg, "warning")
+        return redirect(request.form.get("next") or url_for("proveedor_facturas", pid=pid))
+    if int(factura["anulada"] or 0):
+        flash("La factura ya estaba anulada.", "warning")
+        return redirect(request.form.get("next") or url_for("proveedor_facturas", pid=pid))
     try:
-        db.eliminar_factura_proveedor(factura_id)
-        flash("Factura eliminada correctamente.", "success")
+        db.anular_factura_proveedor(
+            factura_id,
+            motivo=request.form.get("motivo_anulacion", ""),
+            usuario=session.get("user", {}).get("username", ""),
+        )
+        flash("Factura anulada correctamente. El historial se conservó.", "success")
     except ValueError as exc:
         flash(str(exc), "warning")
     return redirect(request.form.get("next") or url_for("proveedor_facturas", pid=pid))

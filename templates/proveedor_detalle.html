@@ -70,7 +70,7 @@
                     <div class="table-responsive">
                         <table class="table table-hover align-middle">
                             <thead class="table-light">
-                                <tr>
+                                <tr{% if factura.anulada %} class="table-warning-subtle"{% endif %}>
                                     <th>Numero</th>
                                     <th>Fecha</th>
                                     <th>Vencimiento</th>
@@ -90,7 +90,7 @@
                                     <td class="text-end">{{ factura.pagado | fmt_ars }}</td>
                                     <td class="text-end fw-bold {% if factura.saldo > 0 %}text-danger{% else %}text-success{% endif %}">{{ factura.saldo | fmt_ars }}</td>
                                     <td>
-                                        <span class="badge {% if factura.estado == 'VENCIDA' %}bg-danger{% elif factura.estado == 'POR VENCER' %}bg-warning text-dark{% elif factura.estado == 'PAGADA' %}bg-success{% else %}bg-secondary{% endif %}">
+                                        <span class="badge {% if factura.estado == 'ANULADA' %}bg-warning text-dark{% elif factura.estado == 'VENCIDA' %}bg-danger{% elif factura.estado == 'POR VENCER' %}bg-warning text-dark{% elif factura.estado == 'PAGADA' %}bg-success{% else %}bg-secondary{% endif %}">
                                             {{ factura.estado }}
                                         </span>
                                     </td>

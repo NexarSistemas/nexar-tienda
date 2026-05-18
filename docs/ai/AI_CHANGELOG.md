@@ -640,3 +640,58 @@ Mejorar UX de anulación de compras para igualarla a ventas.
 
 ### Pendientes
 - Confirmar manualmente apertura/cierre del modal, cancelación sin efectos y anulación correcta con contraseña y checkbox.
+## 2026-05-18 — Codex — feature/proveedores-anulacion-segura
+
+### Tarea
+Implementar anulación segura para facturas de proveedor y endurecer su manejo contable básico.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `services/cuentas_corrientes.py`
+- `templates/proveedor_facturas.html`
+- `templates/proveedor_detalle.html`
+- `tests/test_proveedor_facturas_anulacion.py`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregaron columnas seguras en `facturas_proveedores` para trazabilidad de anulación: `anulada`, `anulada_at`, `anulada_por` y `motivo_anulacion`.
+- El flujo principal dejó de borrar facturas físicamente y ahora usa `db.anular_factura_proveedor(...)`, conservando historial visible.
+- La anulación exige motivo obligatorio, impide doble anulación y bloquea facturas con pagos ya registrados para no romper deuda comercial.
+- Las facturas anuladas dejan de computar como deuda activa, vencidas o pendientes en los resúmenes principales del MVP.
+- Ya no se puede editar ni registrar pagos sobre facturas anuladas.
+- La UI ahora usa un modal Bootstrap responsable, muestra advertencias claras, conserva la factura en historial y deshabilita acciones peligrosas cuando corresponde.
+- Se agregaron tests mínimos para anulación sin pagos, bloqueo de doble anulación, conservación de historial y protección de facturas con pagos.
+- La auditoría quedó actualizada para reflejar qué quedó protegido y qué pendientes siguen abiertos en cuenta corriente proveedor.
+
+### Qué se probó
+- Validación sintáctica con `python -m py_compile database.py routes/main.py services/cuentas_corrientes.py`.
+- Tests unitarios con `python -m unittest tests.test_proveedor_facturas_anulacion`.
+
+### Pendientes
+- Confirmar manualmente el flujo visual del modal de anulación desde la ficha de proveedor.
+- Evaluar en una rama futura una trazabilidad más fina para pagos parciales y para `cc_proveedores_mov` legado si se profundiza la cuenta corriente proveedor.
+## 2026-05-18 — Codex — feature/proveedores-anulacion-segura UX proveedores
+
+### Tarea
+Reemplazar confirmaciones nativas del navegador por confirmación visual homogénea en Gestión de Proveedores.
+
+### Archivos modificados
+- `templates/proveedores.html`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se reemplazó el `confirm()` nativo usado al desactivar proveedores desde el listado por un modal Bootstrap reutilizable.
+- El modal ahora muestra el nombre del proveedor, la advertencia de que no se borra físicamente y botones claros de cancelar o confirmar.
+- Se mantuvo intacta la lógica backend: el formulario sigue enviando el mismo POST a `proveedor_eliminar`.
+- Se revisó el detalle de proveedor y no había allí confirmaciones nativas equivalentes para ajustar en este paso.
+- La auditoría quedó actualizada para reflejar que la desactivación de proveedores ya usa confirmación homogénea de Nexar.
+
+### Qué se probó
+- Revisión estática del template y del JavaScript del modal reutilizable.
+- Búsqueda local de `confirm(` y `alert(` en las vistas de proveedores para verificar que no queden popups nativos en este alcance.
+
+### Pendientes
+- Confirmar manualmente el flujo de desactivar proveedor desde el listado y la cancelación sin efectos visibles.

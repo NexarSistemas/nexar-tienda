@@ -106,7 +106,7 @@
                     </thead>
                     <tbody>
                         {% for factura in facturas %}
-                        <tr>
+                        <tr{% if factura.anulada %} class="table-warning-subtle"{% endif %}>
                             <td>{{ factura.numero_factura or ('Factura #' ~ factura.id) }}</td>
                             <td>{{ factura.fecha or '-' }}</td>
                             <td>{{ factura.fecha_vencimiento or '-' }}</td>
@@ -114,29 +114,47 @@
                             <td class="text-end">{{ factura.pagado | fmt_ars }}</td>
                             <td class="text-end fw-bold {% if factura.saldo > 0 %}text-danger{% else %}text-success{% endif %}">{{ factura.saldo | fmt_ars }}</td>
                             <td>
-                                <span class="badge {% if factura.estado == 'VENCIDA' %}bg-danger{% elif factura.estado == 'POR VENCER' %}bg-warning text-dark{% elif factura.estado == 'PAGADA' %}bg-success{% else %}bg-secondary{% endif %}">
+                                <span class="badge {% if factura.estado == 'ANULADA' %}bg-warning text-dark{% elif factura.estado == 'VENCIDA' %}bg-danger{% elif factura.estado == 'POR VENCER' %}bg-warning text-dark{% elif factura.estado == 'PAGADA' %}bg-success{% else %}bg-secondary{% endif %}">
                                     {{ factura.estado }}
                                 </span>
                             </td>
                             <td class="text-end">
                                 <div class="d-flex flex-column gap-2">
                                     <div class="btn-group justify-content-end" role="group">
+                                        {% if not factura.anulada %}
                                         <a href="{{ url_for('proveedor_factura_editar', pid=proveedor.id, factura_id=factura.id) }}" class="btn btn-sm btn-outline-warning">
                                             <i class="fas fa-edit"></i>
                                         </a>
-                                        <form method="POST" action="{{ url_for('proveedor_factura_eliminar', pid=proveedor.id, factura_id=factura.id) }}" onsubmit="return confirm('Eliminar factura {{ factura.numero_factura or factura.id }}?')">
-                                            <input type="hidden" name="next" value="{{ url_for('proveedor_facturas', pid=proveedor.id) }}">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger" {% if factura.pagado > 0 %}disabled title="No se puede eliminar una factura con pagos"{% endif %}>
-                                                <i class="fas fa-trash"></i>
-                                            </button>
-                                        </form>
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm btn-outline-warning"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalAnularFacturaProveedor"
+                                            data-action="{{ url_for('proveedor_factura_eliminar', pid=proveedor.id, factura_id=factura.id) }}"
+                                            data-numero="{{ factura.numero_factura or ('Factura #' ~ factura.id) }}"
+                                            data-fecha="{{ factura.fecha or '-' }}"
+                                            data-vencimiento="{{ factura.fecha_vencimiento or '-' }}"
+                                            data-importe="{{ factura.importe | fmt_ars }}"
+                                            data-pagado="{{ factura.pagado | fmt_ars }}"
+                                            data-saldo="{{ factura.saldo | fmt_ars }}"
+                                            {% if factura.pagado > 0 %}disabled title="No se puede anular una factura con pagos"{% else %}title="Anular factura"{% endif %}
+                                        >
+                                            <i class="fas fa-ban"></i>
+                                        </button>
+                                        {% else %}
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Factura ya anulada">
+                                            <i class="fas fa-ban"></i>
+                                        </button>
+                                        {% endif %}
                                     </div>
-                                    {% if factura.saldo > 0 %}
+                                    {% if factura.saldo > 0 and not factura.anulada %}
                                     <form method="POST" action="{{ url_for('proveedor_factura_pagar', pid=proveedor.id, factura_id=factura.id) }}" class="d-flex gap-2 justify-content-end">
                                         <input type="hidden" name="next" value="{{ url_for('proveedor_facturas', pid=proveedor.id) }}">
                                         <input type="number" name="monto" min="0.01" step="0.01" max="{{ '%.2f'|format(factura.saldo) }}" class="form-control form-control-sm" style="max-width: 130px;" placeholder="Pago">
                                         <button type="submit" class="btn btn-sm btn-outline-success">Pagar</button>
                                     </form>
+                                    {% elif factura.anulada %}
+                                    <small class="text-warning text-end">Factura anulada con historial conservado</small>
                                     {% else %}
                                     <small class="text-success text-end">Pago total registrado</small>
                                     {% endif %}
@@ -160,4 +178,105 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="modalAnularFacturaProveedor" tabindex="-1" aria-labelledby="modalAnularFacturaProveedorLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form id="formAnularFacturaProveedor" method="POST" class="modal-content border-warning">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="modalAnularFacturaProveedorLabel">
+                    <i class="fas fa-triangle-exclamation me-2"></i>Anular factura
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <strong>Importante:</strong><br>
+                    Anular esta factura conservará el historial y la quitará de la deuda comercial activa.<br>
+                    Esta acción no debe repetirse y no moverá pagos ya registrados.
+                </div>
+
+                <div class="mb-3">
+                    <div class="small text-muted">Factura seleccionada</div>
+                    <div class="fw-bold" id="facturaAnularNumero">-</div>
+                    <div class="small text-muted mt-2">
+                        <div><strong>Fecha:</strong> <span id="facturaAnularFecha">-</span></div>
+                        <div><strong>Vencimiento:</strong> <span id="facturaAnularVencimiento">-</span></div>
+                        <div><strong>Importe:</strong> <span id="facturaAnularImporte">-</span></div>
+                        <div><strong>Pagado:</strong> <span id="facturaAnularPagado">-</span></div>
+                        <div><strong>Saldo:</strong> <span id="facturaAnularSaldo">-</span></div>
+                    </div>
+                </div>
+
+                <input type="hidden" name="next" value="{{ url_for('proveedor_facturas', pid=proveedor.id) }}">
+
+                <div class="mb-3">
+                    <label class="form-label">Motivo de anulación</label>
+                    <textarea name="motivo_anulacion" class="form-control" rows="2" placeholder="Explicá por qué se anula esta factura." required></textarea>
+                </div>
+
+                {% if usuario_es_admin %}
+                <div class="mb-3">
+                    <label class="form-label">Contraseña del usuario logueado</label>
+                    <input type="password" name="current_password" class="form-control" autocomplete="current-password" required>
+                </div>
+                {% else %}
+                <div class="mb-3">
+                    <label class="form-label">Usuario administrador</label>
+                    <input type="text" name="admin_username" class="form-control" autocomplete="username" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Contraseña del administrador</label>
+                    <input type="password" name="admin_password" class="form-control" autocomplete="current-password" required>
+                </div>
+                {% endif %}
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="confirmo_responsabilidad" id="confirmoAnulacionFactura" value="1" required>
+                    <label class="form-check-label" for="confirmoAnulacionFactura">
+                        Confirmo que entiendo la advertencia y autorizo esta anulación.
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-warning">
+                    <i class="fas fa-ban me-2"></i>Anular factura
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const modal = document.getElementById('modalAnularFacturaProveedor');
+        const form = document.getElementById('formAnularFacturaProveedor');
+        if (!modal || !form) return;
+
+        const numero = document.getElementById('facturaAnularNumero');
+        const fecha = document.getElementById('facturaAnularFecha');
+        const vencimiento = document.getElementById('facturaAnularVencimiento');
+        const importe = document.getElementById('facturaAnularImporte');
+        const pagado = document.getElementById('facturaAnularPagado');
+        const saldo = document.getElementById('facturaAnularSaldo');
+
+        modal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            form.action = button.getAttribute('data-action') || '';
+            numero.textContent = button.getAttribute('data-numero') || '-';
+            fecha.textContent = button.getAttribute('data-fecha') || '-';
+            vencimiento.textContent = button.getAttribute('data-vencimiento') || '-';
+            importe.textContent = button.getAttribute('data-importe') || '-';
+            pagado.textContent = button.getAttribute('data-pagado') || '-';
+            saldo.textContent = button.getAttribute('data-saldo') || '-';
+            form.reset();
+            const nextInput = form.querySelector('input[name=\"next\"]');
+            if (nextInput) {
+                nextInput.value = '{{ url_for("proveedor_facturas", pid=proveedor.id) }}';
+            }
+        });
+    });
+</script>
 {% endblock %}

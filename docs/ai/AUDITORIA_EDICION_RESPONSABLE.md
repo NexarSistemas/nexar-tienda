@@ -11,7 +11,8 @@ Esta auditoría es documental. No modifica lógica funcional.
 - `productos`, `clientes`, `proveedores` y `categorías` ya tienen una base más segura porque priorizan desactivación sobre borrado físico.
 - `ventas` quedó corregido parcialmente con MVP de anulación segura: ya no debería borrarse físicamente desde el flujo principal, restaura stock y conserva historial.
 - `compras` quedó corregido parcialmente con MVP de anulación segura: ya no debería borrarse físicamente desde el flujo principal y solo se anula si no rompe stock ni deuda proveedor.
-- `facturas de proveedor` y `gastos` todavía tienen puntos de borrado físico o edición destructiva que pueden afectar trazabilidad histórica.
+- `facturas de proveedor` quedó corregido parcialmente con MVP de anulación segura: ya no debería borrarse físicamente desde el flujo principal y se bloquea si tiene pagos.
+- `gastos` todavía tiene puntos de borrado físico o edición destructiva que pueden afectar trazabilidad histórica.
 - `stock` permite ajuste manual con movimiento registrado, lo cual es bueno, pero sigue existiendo riesgo si en el futuro se habilita edición directa fuera de ese flujo.
 - `caja` permite apertura, movimientos y cierre, pero no tiene todavía bloqueo explícito de edición posterior ni reglas fuertes de inmutabilidad histórica.
 - `reportes` dependen de tablas operativas; por eso cualquier borrado físico en ventas, compras, gastos o stock impacta directo en resultados históricos.
@@ -32,7 +33,7 @@ Esta auditoría es documental. No modifica lógica funcional.
 | Clientes | Desactiva con `activo=0`; CC se reconstruye desde ventas faltantes | Bajo a medio | Mantener desactivación y evitar borrado físico con saldo o historial | Media |
 | Compras | MVP corregido: anula, conserva historial y revierte stock con guardas | Medio | Completar exclusión de anuladas en vistas secundarias y definir reversión segura para compras con factura proveedor | Muy alta |
 | Ventas | MVP corregido: anula, conserva historial y recompone stock | Medio | Completar exclusión de anuladas en todas las vistas/reportes secundarios y revisar compensaciones contables | Muy alta |
-| Facturas proveedor | Edita importes con guardas; elimina si no hay pagos | Alto | Preferir anulación/estado; no borrar físicamente facturas comerciales | Alta |
+| Facturas proveedor | MVP corregido: anula sin borrar y bloquea si hay pagos | Medio | Completar cobertura sobre reportes secundarios y definir estrategia futura para pagos parciales con trazabilidad más fina | Alta |
 | Caja diaria | Movimientos manuales y cierre sin bloqueo fuerte posterior | Medio a alto | Congelar cajas cerradas y registrar ajustes posteriores como asientos compensatorios | Alta |
 | Gastos | Edita y elimina físicamente; sincroniza con caja | Alto | Pasar a anulación o soft delete, sobre todo si afectó caja/reportes | Alta |
 | Reportes | Lectura derivada de datos vivos | Alto indirecto | Proteger orígenes; no “corregir reportes” tocando historia sin trazabilidad | Alta |
@@ -100,6 +101,7 @@ Esta auditoría es documental. No modifica lógica funcional.
   Existe referencia en stock/producto para proveedor habitual; desactivar proveedor no limpia automáticamente esa relación.
 - Qué debería pasar:
   Mantener soft delete. No borrar físicamente proveedores con compras, facturas o productos asociados. Si está inactivo, que siga visible en histórico.
+  La confirmación visual de desactivación ya usa modal homogéneo de Nexar en lugar de `confirm()` nativo del navegador.
 
 ### Compras
 
@@ -162,18 +164,34 @@ Esta auditoría es documental. No modifica lógica funcional.
 
 ### Facturas proveedor
 
+- Estado actual del MVP:
+  Corregido parcialmente. El flujo principal pasa por anulación segura en lugar de borrado físico.
 - Edición:
-  Se puede editar número, fechas, importe y observaciones. Ya hay una guarda útil: el importe no puede quedar por debajo de lo ya pagado.
+  Se puede editar número, fechas, importe y observaciones solo si la factura sigue activa. Ya existe la guarda de que el importe no puede quedar por debajo de lo ya pagado.
 - Eliminación:
-  Solo se permite si no tiene pagos registrados.
+  El MVP actual marca la factura con `anulada=1`, conserva historial, registra fecha/usuario/motivo y deja de contarla como deuda activa.
 - Pagos asociados:
-  El campo `pagado` protege parcialmente, pero todavía no hay un estado de anulación o un libro de eventos completo.
+  Mejorado por bloqueo seguro: si `pagado > 0`, la factura no se anula y no se toca el importe ya aplicado.
 - Deuda comercial:
-  Alto impacto. La factura es el soporte de deuda con proveedor.
+  Mejorado parcialmente: una factura anulada deja de computar como deuda comercial activa.
 - Cuenta corriente:
-  Aunque no exista una tabla separada tipo `cc_proveedores`, la factura hace de base para deuda.
+  La fuente principal sigue siendo `facturas_proveedores`; `cc_proveedores_mov` permanece como auxiliar legado y no se recalcula en este MVP.
+- Qué quedó protegido:
+  1. Ya no se borra físicamente la factura desde el flujo principal.
+  2. No se permite doble anulación.
+  3. No se permite editar ni registrar pagos sobre facturas anuladas.
+  4. No se permite anular facturas con pagos ya aplicados.
+- Qué sigue permitido:
+  1. Editar facturas activas sin pagos inconsistentes.
+  2. Registrar pagos sobre facturas activas.
+- Qué queda bloqueado o pendiente:
+  1. La anulación automática de facturas con pagos parciales o totales queda bloqueada en este MVP.
+  2. `cc_proveedores_mov` sigue como apoyo legado y puede requerir una estrategia futura más explícita si se profundiza la trazabilidad.
 - Qué debería pasar:
-  No eliminar físicamente facturas comerciales una vez emitidas o vinculadas a compra real. Preferir anulación con motivo, especialmente si ya impactaron gestión o reportes.
+  Mantener y completar este enfoque:
+  1. Editar factura: solo mientras siga activa.
+  2. Anular factura: registrar estado anulado con motivo obligatorio y bloquear si ya tiene pagos.
+  3. Eliminar físicamente: reservar solo para limpieza técnica excepcional.
 
 ### Caja
 
@@ -281,7 +299,7 @@ Esta auditoría es documental. No modifica lógica funcional.
 - `fix/stock-ajustes-responsables`
   Reforzar que todo cambio de stock pase por ajuste con motivo y dejar mejor trazabilidad.
 - `fix/facturas-proveedor-seguras`
-  Incorporar estado anulado y reglas de edición más claras según pagos/deuda.
+  MVP implementado parcialmente. Pendiente: evaluar si a futuro hace falta una bitácora explícita de pagos o ajustes compensatorios más detallados.
 - `fix/gastos-anulacion-caja`
   Evitar borrado físico de gastos que impactaron caja; usar anulación o asiento compensatorio.
 - `fix/caja-cierres-inmutables`
@@ -328,8 +346,9 @@ Esta auditoría es documental. No modifica lógica funcional.
 ### Facturas proveedor
 
 - Editar importe antes y después de registrar pagos parciales.
-- Intentar eliminar factura con pagos y confirmar bloqueo.
-- Eliminar factura sin pagos y revisar pérdida de trazabilidad.
+- Anular factura sin pagos y verificar que siga visible como historial.
+- Intentar anular factura ya anulada y confirmar bloqueo.
+- Intentar anular factura con pagos y confirmar bloqueo sin borrar historial ni tocar `pagado`.
 
 ### Caja
 
