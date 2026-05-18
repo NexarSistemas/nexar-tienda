@@ -31,11 +31,11 @@
   <div class="table-responsive">
     <table class="table table-sm mb-0">
       <thead class="table-light">
-        <tr><th>Fecha</th><th>Remito/Fact.</th><th>Proveedor</th><th>Producto</th><th>Cant.</th><th>Costo Unit.</th><th>Total</th><th>Deuda</th><th>Obs.</th><th>Acciones</th></tr>
+        <tr><th>Fecha</th><th>Remito/Fact.</th><th>Proveedor</th><th>Producto</th><th>Cant.</th><th>Costo Unit.</th><th>Total</th><th>Deuda</th><th>Estado</th><th>Obs.</th><th>Acciones</th></tr>
       </thead>
       <tbody>
       {% for c in compras %}
-        <tr>
+        <tr{% if c.anulada %} class="table-warning-subtle"{% endif %}>
           <td>{{ c.fecha }}</td>
           <td><code>{{ c.numero_remito or '-' }}</code></td>
           <td>{{ c.proveedor_nombre or '-' }}</td>
@@ -54,22 +54,108 @@
             <span class="badge bg-secondary">Contado</span>
             {% endif %}
           </td>
+          <td>
+            {% if c.anulada %}
+            <span class="badge bg-warning text-dark">Anulada</span>
+            {% else %}
+            <span class="badge bg-success">Activa</span>
+            {% endif %}
+          </td>
           <td><small>{{ c.observaciones or '' }}</small></td>
           <td class="text-center">
             <div class="btn-group" role="group">
               <a href="{{ url_for('compra_detalle', cid=c.id) }}" class="btn btn-sm btn-outline-primary" title="Ver detalle"><i class="fas fa-eye"></i></a>
+              {% if not c.anulada %}
               <a href="{{ url_for('main.compra_editar', cid=c.id) }}" class="btn btn-sm btn-outline-secondary" title="Editar"><i class="fas fa-edit"></i></a>
-              <form method="POST" action="{{ url_for('compra_eliminar', cid=c.id) }}" class="d-inline" onsubmit="return confirm('Eliminar compra #{{ c.id }}?')">
-                <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="fas fa-trash"></i></button>
-              </form>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-warning"
+                title="Anular"
+                data-bs-toggle="modal"
+                data-bs-target="#modalAnularCompra"
+                data-action="{{ url_for('compra_eliminar', cid=c.id) }}"
+                data-remito="{{ c.numero_remito or ('COMPRA-' ~ c.id) }}"
+                data-proveedor="{{ c.proveedor_nombre or '-' }}"
+                data-producto="{{ c.descripcion or '-' }}"
+                data-cantidad="{{ c.cantidad }}"
+                data-total="{{ c.total|fmt_ars }}"
+              ><i class="fas fa-ban"></i></button>
+              {% else %}
+              <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Compra ya anulada"><i class="fas fa-ban"></i></button>
+              {% endif %}
             </div>
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="10" class="empty-state"><i class="fas fa-shopping-cart"></i>Sin compras registradas</td></tr>
+        <tr><td colspan="11" class="empty-state"><i class="fas fa-shopping-cart"></i>Sin compras registradas</td></tr>
       {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<div class="modal fade" id="modalAnularCompra" tabindex="-1" aria-labelledby="modalAnularCompraLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form id="formAnularCompra" method="POST" class="modal-content border-warning">
+      <div class="modal-header bg-warning">
+        <h5 class="modal-title" id="modalAnularCompraLabel">
+          <i class="fas fa-triangle-exclamation me-2"></i>Anular compra
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <strong>Importante:</strong><br>
+          Anular esta compra restará del stock la cantidad ingresada y conservará el historial.<br>
+          Esta acción no debe repetirse.
+        </div>
+
+        <div class="mb-3">
+          <div class="small text-muted">Compra seleccionada</div>
+          <div class="fw-bold" id="compraAnularRemito">-</div>
+          <div class="small text-muted mt-2">
+            <div><strong>Proveedor:</strong> <span id="compraAnularProveedor">-</span></div>
+            <div><strong>Producto:</strong> <span id="compraAnularProducto">-</span></div>
+            <div><strong>Cantidad:</strong> <span id="compraAnularCantidad">-</span></div>
+            <div><strong>Total:</strong> <span id="compraAnularTotal">-</span></div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Motivo de anulación (opcional)</label>
+          <textarea name="motivo_anulacion" class="form-control" rows="2" placeholder="Ej.: remito duplicado, carga errónea o anulación de ingreso."></textarea>
+        </div>
+
+        {% if usuario_es_admin %}
+        <div class="mb-3">
+          <label class="form-label">Contraseña del usuario logueado</label>
+          <input type="password" name="current_password" class="form-control" autocomplete="current-password" required>
+        </div>
+        {% else %}
+        <div class="mb-3">
+          <label class="form-label">Usuario administrador</label>
+          <input type="text" name="admin_username" class="form-control" autocomplete="username" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Contraseña del administrador</label>
+          <input type="password" name="admin_password" class="form-control" autocomplete="current-password" required>
+        </div>
+        {% endif %}
+
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="confirmo_responsabilidad" id="confirmoAnulacionCompra" value="1" required>
+          <label class="form-check-label" for="confirmoAnulacionCompra">
+            Confirmo que entiendo la advertencia y autorizo esta anulación.
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-warning">
+          <i class="fas fa-ban me-2"></i>Anular compra
+        </button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -241,6 +327,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const crearProductoBtn = document.getElementById('btnCrearProducto');
     const crearProveedorBtn = document.getElementById('btnCrearProveedor');
     const compraModalEl = document.getElementById('compraModal');
+    const modalAnularCompraEl = document.getElementById('modalAnularCompra');
+    const formAnularCompra = document.getElementById('formAnularCompra');
     const proveedorModalEl = document.getElementById('proveedorModal');
     const condicionPago = document.getElementById('condicion_pago');
     const facturaProveedorFields = document.getElementById('facturaProveedorFields');
@@ -295,6 +383,25 @@ document.addEventListener('DOMContentLoaded', function () {
     proveedorForm.addEventListener('submit', syncProviderDraftFields);
     condicionPago.addEventListener('change', syncFacturaProveedorVisibility);
     syncFacturaProveedorVisibility();
+
+    if (modalAnularCompraEl && formAnularCompra) {
+        const remito = document.getElementById('compraAnularRemito');
+        const proveedor = document.getElementById('compraAnularProveedor');
+        const producto = document.getElementById('compraAnularProducto');
+        const cantidad = document.getElementById('compraAnularCantidad');
+        const total = document.getElementById('compraAnularTotal');
+
+        modalAnularCompraEl.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            formAnularCompra.action = button.getAttribute('data-action') || '';
+            remito.textContent = button.getAttribute('data-remito') || '-';
+            proveedor.textContent = button.getAttribute('data-proveedor') || '-';
+            producto.textContent = button.getAttribute('data-producto') || '-';
+            cantidad.textContent = button.getAttribute('data-cantidad') || '-';
+            total.textContent = button.getAttribute('data-total') || '-';
+            formAnularCompra.reset();
+        });
+    }
 
     {% if open_compra %}
     bootstrap.Modal.getOrCreateInstance(compraModalEl).show();

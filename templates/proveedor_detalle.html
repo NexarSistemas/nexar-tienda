@@ -210,7 +210,7 @@
                     <div class="table-responsive">
                         <table class="table table-hover">
                             <thead class="table-light">
-                                <tr><th>Fecha</th><th>Remito</th><th>Producto</th><th class="text-center">Cant.</th><th class="text-end">Costo</th><th class="text-end">Total</th><th>Observaciones</th></tr>
+                                <tr><th>Fecha</th><th>Remito</th><th>Producto</th><th class="text-center">Cant.</th><th class="text-end">Costo</th><th class="text-end">Total</th><th>Estado</th><th>Observaciones</th></tr>
                             </thead>
                             <tbody>
                                 {% for compra in historial_compras %}
@@ -221,6 +221,13 @@
                                     <td class="text-center">{{ compra.cantidad }}</td>
                                     <td class="text-end">{{ compra.costo_unitario | fmt_ars }}</td>
                                     <td class="text-end fw-bold">{{ compra.total | fmt_ars }}</td>
+                                    <td>
+                                        {% if compra.anulada %}
+                                        <span class="badge bg-warning text-dark">Anulada</span>
+                                        {% else %}
+                                        <span class="badge bg-success">Activa</span>
+                                        {% endif %}
+                                    </td>
                                     <td>{{ compra.observaciones or '-' }}</td>
                                 </tr>
                                 {% endfor %}

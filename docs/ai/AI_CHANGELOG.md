@@ -586,3 +586,57 @@ Implementar corrección de auditoría: ventas con anulación segura.
 ### Pendientes
 - Confirmar manualmente que una venta anulada no siga sumando en todas las vistas secundarias fuera del recorte MVP.
 - Definir una estrategia más formal para compensación de caja histórica si luego se requiere trazabilidad contable más estricta.
+
+## 2026-05-18 — Codex — fix/compras-anulacion-segura
+
+### Tarea
+Implementar corrección de auditoría: compras con anulación segura.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/compras.html`
+- `templates/compra_detalle.html`
+- `templates/proveedor_detalle.html`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregaron columnas seguras en `compras` para estado y trazabilidad de anulación: `anulada`, `anulada_at`, `anulada_por` y `motivo_anulacion`.
+- El flujo principal de compras dejó de borrar registros físicamente y ahora usa `db.anular_compra(...)`.
+- La anulación revierte stock una sola vez y registra movimiento `ANULACION_COMPRA`.
+- Si el stock actual no alcanza para revertir la cantidad ingresada, la anulación se bloquea con mensaje claro.
+- Si la compra tiene factura proveedor asociada, el MVP bloquea la anulación para no romper deuda comercial ni historial de proveedor.
+- La UI ahora muestra estado `Anulada`, deshabilita acciones sobre compras anuladas y cambia el copy de eliminación por anulación.
+- La auditoría quedó actualizada para marcar compras como corregido parcialmente con este MVP.
+
+### Qué se probó
+- Validación sintáctica con `python -m py_compile database.py routes/main.py`.
+- Revisión estática del flujo de compras, detalle de compra, historial en proveedor y validaciones de stock/factura asociada.
+
+### Pendientes
+- Confirmar manualmente los casos de anulación con stock suficiente, bloqueo por stock insuficiente y bloqueo por factura proveedor asociada.
+- Revisar futuras métricas o reportes derivados de compras si se agregan totales activos fuera del historial/listado actual.
+
+## 2026-05-18 — Codex — fix/compras-anulacion-segura UX responsable
+
+### Tarea
+Mejorar UX de anulación de compras para igualarla a ventas.
+
+### Archivos modificados
+- `routes/main.py`
+- `templates/compras.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se reemplazó el `confirm()` nativo del navegador por un modal Bootstrap integrado con el estilo de Nexar Comercio.
+- El modal ahora muestra datos de la compra seleccionada, permite cargar motivo opcional y exige checkbox de confirmación.
+- La ruta de anulación de compras ahora valida credenciales y confirmación con el mismo estándar responsable que ventas.
+- No se modificó la lógica backend de reversión de stock ni las guardas de anulación segura ya implementadas, salvo la validación mínima del POST.
+
+### Qué se probó
+- Validación sintáctica con `python -m py_compile routes/main.py`.
+- Revisión estática del modal, carga de data attributes y validación del POST.
+
+### Pendientes
+- Confirmar manualmente apertura/cierre del modal, cancelación sin efectos y anulación correcta con contraseña y checkbox.

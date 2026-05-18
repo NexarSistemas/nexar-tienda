@@ -384,7 +384,11 @@ def init_db():
             cantidad REAL DEFAULT 1,
             costo_unitario REAL DEFAULT 0,
             total REAL DEFAULT 0,
-            observaciones TEXT DEFAULT ''
+            observaciones TEXT DEFAULT '',
+            anulada INTEGER DEFAULT 0,
+            anulada_at TEXT DEFAULT '',
+            anulada_por TEXT DEFAULT '',
+            motivo_anulacion TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS caja (
@@ -608,6 +612,16 @@ def init_db():
             ), '')
             WHERE producto_id > 0"""
         )
+
+    columnas_compras = [r['name'] for r in c.execute("PRAGMA table_info(compras)").fetchall()]
+    if 'anulada' not in columnas_compras:
+        c.execute("ALTER TABLE compras ADD COLUMN anulada INTEGER DEFAULT 0")
+    if 'anulada_at' not in columnas_compras:
+        c.execute("ALTER TABLE compras ADD COLUMN anulada_at TEXT DEFAULT ''")
+    if 'anulada_por' not in columnas_compras:
+        c.execute("ALTER TABLE compras ADD COLUMN anulada_por TEXT DEFAULT ''")
+    if 'motivo_anulacion' not in columnas_compras:
+        c.execute("ALTER TABLE compras ADD COLUMN motivo_anulacion TEXT DEFAULT ''")
 
     # Verificar y agregar columnas de recuperación en usuarios
     columnas_u = [r['name'] for r in c.execute("PRAGMA table_info(usuarios)").fetchall()]
@@ -3181,12 +3195,12 @@ def get_historial_compras_proveedor(pid, limit=20):
 def get_estadisticas_proveedor(pid):
     """Obtiene estadísticas de un proveedor."""
     total_compras = q(
-        "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM compras WHERE proveedor_id=?",
+        "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM compras WHERE proveedor_id=? AND COALESCE(anulada, 0)=0",
         (pid,), fetchone=True
     )
 
     ultima_compra = q(
-        "SELECT fecha, total FROM compras WHERE proveedor_id=? ORDER BY fecha DESC LIMIT 1",
+        "SELECT fecha, total FROM compras WHERE proveedor_id=? AND COALESCE(anulada, 0)=0 ORDER BY fecha DESC LIMIT 1",
         (pid,), fetchone=True
     )
 
@@ -3557,31 +3571,58 @@ def update_compra(cid, data):
 
 
 def delete_compra(cid):
-    """Elimina una compra."""
-    compra_actual = get_compra(cid)
-    if not compra_actual:
-        return
+    """Compatibilidad: la eliminación física fue reemplazada por anulación segura."""
+    return anular_compra(cid)
 
-    factura_asociada = get_factura_por_compra(cid)
+
+def anular_compra(compra_id, motivo='', usuario=''):
+    """Marca una compra como anulada y revierte stock una sola vez."""
+    compra_actual = get_compra(compra_id)
+    if not compra_actual:
+        raise ValueError("La compra indicada no existe.")
+    if int(compra_actual["anulada"] or 0):
+        raise ValueError("La compra ya está anulada.")
+
+    factura_asociada = get_factura_por_compra(compra_id)
     if factura_asociada:
-        if float(factura_asociada["pagado"] or 0) > 0:
-            raise ValueError("No se puede eliminar una compra cuya factura asociada ya tiene pagos registrados.")
-        eliminar_factura_proveedor(int(factura_asociada["id"]))
+        raise ValueError("No se puede anular automáticamente una compra asociada a cuenta corriente proveedor. Anulá o ajustá primero la factura/proveedor.")
 
     conn = get_conn()
-    c = conn.cursor()
-    producto_id = int(compra_actual['producto_id'] or 0)
-    cantidad = float(compra_actual['cantidad'] or 0)
-    if producto_id > 0 and cantidad > 0:
-        stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
-        if stock:
+    try:
+        c = conn.cursor()
+        producto_id = int(compra_actual['producto_id'] or 0)
+        cantidad = float(compra_actual['cantidad'] or 0)
+        if producto_id > 0 and cantidad > 0:
+            stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
+            stock_actual = float(stock['stock_actual'] or 0) if stock else 0.0
+            if stock_actual < cantidad:
+                raise ValueError("No se puede anular porque el stock actual es menor a la cantidad ingresada. Ajustá stock o revisá movimientos.")
+            stock_nuevo = stock_actual - cantidad
             c.execute(
                 "UPDATE stock SET stock_actual=? WHERE producto_id=?",
-                (float(stock['stock_actual'] or 0) - cantidad, producto_id)
+                (stock_nuevo, producto_id)
             )
-    c.execute("DELETE FROM compras WHERE id=?", (cid,))
-    conn.commit()
-    conn.close()
+            c.execute(
+                """INSERT INTO stock_movimientos
+                (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo)
+                VALUES (?,?,?,?,?,?)""",
+                (producto_id, 'ANULACION_COMPRA', -cantidad, stock_actual, stock_nuevo, f'Anulación compra #{compra_id}'),
+            )
+
+        marca_tiempo = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        c.execute(
+            """UPDATE compras
+            SET anulada=1, anulada_at=?, anulada_por=?, motivo_anulacion=?
+            WHERE id=?""",
+            (marca_tiempo, str(usuario or '').strip(), str(motivo or '').strip(), compra_id),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def incrementar_stock_compra(producto_id, cantidad, compra_id=None):

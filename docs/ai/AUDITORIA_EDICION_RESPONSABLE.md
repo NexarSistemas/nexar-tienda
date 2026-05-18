@@ -10,7 +10,8 @@ Esta auditoría es documental. No modifica lógica funcional.
 
 - `productos`, `clientes`, `proveedores` y `categorías` ya tienen una base más segura porque priorizan desactivación sobre borrado físico.
 - `ventas` quedó corregido parcialmente con MVP de anulación segura: ya no debería borrarse físicamente desde el flujo principal, restaura stock y conserva historial.
-- `compras`, `facturas de proveedor` y `gastos` todavía tienen puntos de borrado físico o edición destructiva que pueden afectar trazabilidad histórica.
+- `compras` quedó corregido parcialmente con MVP de anulación segura: ya no debería borrarse físicamente desde el flujo principal y solo se anula si no rompe stock ni deuda proveedor.
+- `facturas de proveedor` y `gastos` todavía tienen puntos de borrado físico o edición destructiva que pueden afectar trazabilidad histórica.
 - `stock` permite ajuste manual con movimiento registrado, lo cual es bueno, pero sigue existiendo riesgo si en el futuro se habilita edición directa fuera de ese flujo.
 - `caja` permite apertura, movimientos y cierre, pero no tiene todavía bloqueo explícito de edición posterior ni reglas fuertes de inmutabilidad histórica.
 - `reportes` dependen de tablas operativas; por eso cualquier borrado físico en ventas, compras, gastos o stock impacta directo en resultados históricos.
@@ -29,7 +30,7 @@ Esta auditoría es documental. No modifica lógica funcional.
 | Stock | Ajuste manual cambia stock y registra movimiento | Medio | Mantener ajustes con movimiento y desalentar edición directa sin motivo | Alta |
 | Proveedores | Desactiva con `activo=0`; mantiene detalle y facturas | Bajo a medio | Mantener desactivación y revisar vínculo con deuda/facturas antes de cambios estructurales | Media |
 | Clientes | Desactiva con `activo=0`; CC se reconstruye desde ventas faltantes | Bajo a medio | Mantener desactivación y evitar borrado físico con saldo o historial | Media |
-| Compras | Puede editar metadatos seguros; eliminar revierte stock y borra compra | Alto | Cambiar a anulación o soft delete con reversión explícita y trazabilidad | Muy alta |
+| Compras | MVP corregido: anula, conserva historial y revierte stock con guardas | Medio | Completar exclusión de anuladas en vistas secundarias y definir reversión segura para compras con factura proveedor | Muy alta |
 | Ventas | MVP corregido: anula, conserva historial y recompone stock | Medio | Completar exclusión de anuladas en todas las vistas/reportes secundarios y revisar compensaciones contables | Muy alta |
 | Facturas proveedor | Edita importes con guardas; elimina si no hay pagos | Alto | Preferir anulación/estado; no borrar físicamente facturas comerciales | Alta |
 | Caja diaria | Movimientos manuales y cierre sin bloqueo fuerte posterior | Medio a alto | Congelar cajas cerradas y registrar ajustes posteriores como asientos compensatorios | Alta |
@@ -102,22 +103,27 @@ Esta auditoría es documental. No modifica lógica funcional.
 
 ### Compras
 
+- Estado actual del MVP:
+  Corregido parcialmente. El flujo principal pasa por anulación segura en lugar de borrado físico.
 - Edición:
   Hay un flujo “seguro” para editar solo metadatos: fecha, remito, proveedor y observaciones, sin recalcular stock ni modificar detalle.
 - Eliminación:
-  Elimina físicamente la compra. Si hay factura asociada sin pagos, la elimina también. Además descuenta stock restando la cantidad comprada.
+  El MVP actual marca la compra con `anulada=1`, conserva el registro, registra fecha/usuario/motivo y descuenta stock una sola vez al anular.
 - Impacto en stock:
-  Alto. Revertir stock por borrado físico puede dejar diferencias si hubo ventas posteriores o si el stock ya fue ajustado manualmente.
+  Mejorado parcialmente: si el stock actual no alcanza para revertir la cantidad ingresada, la anulación se bloquea.
 - Impacto en facturas proveedor:
-  Alto. La compra puede arrastrar eliminación de la factura asociada.
+  Mejorado por bloqueo seguro: si la compra tiene factura comercial asociada, el MVP no intenta revertirla automáticamente y rechaza la anulación.
 - Impacto en cuenta corriente:
-  Alto indirecto. Aunque la deuda se maneja por facturas, borrar compra vinculada cambia la trazabilidad del origen.
+  Mejorado parcialmente: la compra ya no se borra, pero queda pendiente una estrategia formal para compras ligadas a deuda proveedor.
 - Impacto en reportes:
-  Alto. Se pierde historial de abastecimiento, costos y márgenes.
+  Reducido en el historial principal porque la compra anulada sigue visible. Quedan pendientes filtros activos si más adelante aparecen totales o reportes derivados de compras.
 - Identificación:
-  Hoy eliminar compra revierte stock y borra registro, no anula.
+  El flujo principal ya no borra físicamente, pero todavía falta cobertura más amplia sobre facturas proveedor y métricas secundarias.
 - Comportamiento seguro recomendado:
-  No borrar físicamente compras operativas. Implementar “anulada” o soft delete con reversión controlada, dejando rastro de usuario, fecha y motivo.
+  Mantener y completar este enfoque:
+  1. Editar compra: limitar a metadatos seguros.
+  2. Anular compra: registrar estado anulado, revertir stock con movimiento y bloquear cuando haya deuda proveedor o stock insuficiente.
+  3. Eliminar físicamente: reservar solo para limpieza técnica excepcional.
 
 ### Ventas
 
@@ -270,8 +276,8 @@ Esta auditoría es documental. No modifica lógica funcional.
 
 - `fix/ventas-anulacion-segura`
   MVP implementado parcialmente. Pendiente: revisar cobertura total de reportes secundarios y definir estrategia formal de compensación de caja.
-- `fix/compras-edicion-responsable`
-  Limitar edición a metadatos seguros y migrar eliminación a anulación/soft delete con control de stock.
+- `fix/compras-anulacion-segura`
+  MVP implementado parcialmente. Pendiente: definir reversión segura cuando la compra ya generó factura proveedor o deuda comercial.
 - `fix/stock-ajustes-responsables`
   Reforzar que todo cambio de stock pase por ajuste con motivo y dejar mejor trazabilidad.
 - `fix/facturas-proveedor-seguras`
@@ -303,9 +309,11 @@ Esta auditoría es documental. No modifica lógica funcional.
 
 ### Compras
 
-- Editar una compra por flujo seguro y confirmar que no cambia stock.
-- Eliminar una compra sin pagos asociados y verificar cómo revierte stock.
-- Intentar eliminar compra con factura pagada y confirmar bloqueo.
+- Editar una compra activa por flujo seguro y confirmar que no cambia stock.
+- Crear compra, anularla y verificar que el stock baja exactamente la cantidad ingresada.
+- Intentar anular una compra ya anulada y confirmar bloqueo.
+- Crear compra, vender parte del stock e intentar anularla con stock insuficiente; debe bloquear.
+- Crear compra con factura proveedor y confirmar que la anulación se bloquea sin borrar historial.
 
 ### Ventas
 
