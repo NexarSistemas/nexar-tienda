@@ -960,9 +960,9 @@ def _enriquecer_items_reporte(items):
     return enriquecidos
 
 
-def _validate_sale_delete_authorization(form) -> tuple[bool, str]:
+def _validate_sensitive_operation_authorization(form, action_label: str) -> tuple[bool, str]:
     if not _as_bool(form.get("confirmo_responsabilidad")):
-        return False, "Debés confirmar la advertencia antes de anular la venta."
+        return False, f"Debés confirmar la advertencia antes de {action_label}."
 
     current_user = db.get_usuario_by_id(session.get("user", {}).get("id"))
     if not current_user:
@@ -984,6 +984,14 @@ def _validate_sale_delete_authorization(form) -> tuple[bool, str]:
     ):
         return False, "Las credenciales del administrador no son válidas."
     return True, ""
+
+
+def _validate_sale_delete_authorization(form) -> tuple[bool, str]:
+    return _validate_sensitive_operation_authorization(form, "anular la venta")
+
+
+def _validate_purchase_cancel_authorization(form) -> tuple[bool, str]:
+    return _validate_sensitive_operation_authorization(form, "anular la compra")
 
 
 def _cart() -> list[dict]:
@@ -2549,7 +2557,7 @@ def historial_eliminar(vid):
 @login_required
 def compras():
     draft = _purchase_draft_from_source(request.args)
-    return render_template("compras.html", compras=db.get_compras(request.args.get("q", ""), request.args.get("fecha_desde", ""), request.args.get("fecha_hasta", "")), buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), proveedores=db.get_proveedores(), productos=db.get_productos(), draft=draft, open_compra=_as_bool(request.args.get("open_compra")), created_product=_as_bool(request.args.get("created_product")), created_provider=_as_bool(request.args.get("created_provider")), hoy=date.today().isoformat())
+    return render_template("compras.html", compras=db.get_compras(request.args.get("q", ""), request.args.get("fecha_desde", ""), request.args.get("fecha_hasta", "")), buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), proveedores=db.get_proveedores(), productos=db.get_productos(), draft=draft, open_compra=_as_bool(request.args.get("open_compra")), created_product=_as_bool(request.args.get("created_product")), created_provider=_as_bool(request.args.get("created_provider")), hoy=date.today().isoformat(), usuario_es_admin=_is_admin_role(session.get("user", {}).get("rol")))
 
 
 @main_bp.route("/compras/nueva", methods=["GET", "POST"])
@@ -2604,6 +2612,9 @@ def compra_editar(cid):
     compra = db.get_compra(cid)
     if not compra:
         abort(404)
+    if int(compra["anulada"] or 0):
+        flash("No se puede editar una compra anulada.", "warning")
+        return redirect(url_for("compra_detalle", cid=cid))
 
     factura = db.get_factura_por_compra(cid)
     factura_tiene_pagos = bool(factura and float(factura["pagado"] or 0) > 0)
@@ -2667,15 +2678,28 @@ def compra_editar(cid):
 @main_bp.route("/compras/<int:cid>/eliminar", methods=["POST"])
 @login_required
 def compra_eliminar(cid):
+    ok, msg = _validate_purchase_cancel_authorization(request.form)
+    if not ok:
+        flash(msg, "warning")
+        return redirect(url_for("compras"))
     try:
-        db.delete_compra(cid)
-        flash("Compra eliminada.", "success")
+        compra = db.get_compra(cid)
+        if not compra:
+            flash("La compra indicada no existe.", "warning")
+            return redirect(url_for("compras"))
+        if int(compra["anulada"] or 0):
+            flash(f"La compra #{compra['id']} ya estaba anulada.", "warning")
+            return redirect(url_for("compras"))
+        db.anular_compra(
+            cid,
+            motivo=request.form.get("motivo_anulacion", ""),
+            usuario=session.get("user", {}).get("username", ""),
+        )
+        flash("Compra anulada correctamente. El stock fue ajustado.", "success")
         return redirect(url_for("compras"))
     except ValueError as exc:
         flash(str(exc), "warning")
         return redirect(url_for("compras"))
-    flash("✅ Compra eliminada.", "success")
-    return redirect(url_for("compras"))
 
 
 @main_bp.route("/caja")
