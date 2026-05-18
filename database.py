@@ -932,6 +932,58 @@ def debe_mostrar_aviso_rubro_pendiente():
     return get_rubro_configurado() is None and tiene_datos_operativos()
 
 
+def get_onboarding_context():
+    """Resume si conviene mostrar la guía liviana de primeros pasos."""
+    counts = q(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM productos WHERE activo=1) AS productos,
+            (SELECT COUNT(*) FROM proveedores WHERE activo=1) AS proveedores,
+            (SELECT COUNT(*) FROM ventas) AS ventas
+        """,
+        fetchone=True,
+    )
+    rubro_pendiente = get_rubro_configurado() is None
+    onboarding_oculto = _as_bool(get_config_valor("onboarding_oculto", "0"))
+    productos = int(counts["productos"] or 0)
+    proveedores = int(counts["proveedores"] or 0)
+    ventas = int(counts["ventas"] or 0)
+    pendientes = {
+        "rubro": rubro_pendiente,
+        "proveedores": proveedores == 0,
+        "productos": productos == 0,
+        "movimientos": ventas == 0,
+    }
+    reportes_listos = productos > 0 or ventas > 0
+    total_pasos = 5
+    completados = sum(
+        1
+        for completo in (
+            not pendientes["rubro"],
+            not pendientes["proveedores"],
+            not pendientes["productos"],
+            ventas > 0,
+            reportes_listos,
+        )
+        if completo
+    )
+    should_show = (not onboarding_oculto) and any(pendientes.values())
+    return {
+        "show": should_show,
+        "hidden": onboarding_oculto,
+        "rubro_pendiente": rubro_pendiente,
+        "productos": productos,
+        "proveedores": proveedores,
+        "ventas": ventas,
+        "compras_o_ventas": ventas,
+        "reportes_listos": reportes_listos,
+        "pendientes": pendientes,
+        "steps_completed": completados,
+        "steps_total": total_pasos,
+        "is_new_install": productos == 0 and proveedores == 0 and ventas == 0,
+    }
+
+
 # ─── LICENCIAS RSA ───────────────────────────────────────────────────────────
 #
 # Verificacion RSA usando SOLO stdlib Python (base64, hashlib).
