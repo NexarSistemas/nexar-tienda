@@ -695,3 +695,34 @@ Reemplazar confirmaciones nativas del navegador por confirmación visual homogéne
 
 ### Pendientes
 - Confirmar manualmente el flujo de desactivar proveedor desde el listado y la cancelación sin efectos visibles.
+## 2026-05-18 — Codex — feature/mejorar-config-ui-categorias corrección renombrado
+
+### Tarea
+Corregir el bug crítico de renombrado de categorías y limpiar duplicados de forma segura en configuración.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/config.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se corrigió `update_categoria(...)` para que renombre la categoría existente en lugar de crear una nueva y desactivar la anterior.
+- El renombrado ahora usa el `id` de la categoría cuando está disponible y conserva el estado activo/inactivo del registro original.
+- Se simplificó el submit del formulario inline en `config.html` para que Guardar y Enter envíen solo el form de renombre, sin mezclar acciones con activar/desactivar ni agregar categoría.
+- Se agregó limpieza segura de duplicados por nombre normalizado en categorías de productos, con migración de referencias de productos al nombre canónico y consolidación de filas sobrantes.
+- Se evitó que categorías base aparezcan también como `personalizada` en la configuración cuando en realidad corresponden al seed/base del rubro.
+- Se reforzó la validación para impedir nuevas categorías duplicadas en productos y en categorías de gasto, incluyendo variantes por mayúsculas, espacios y nombres normalizados.
+- También se consolidan duplicados existentes en categorías de gasto y se muestran mensajes claros cuando un nombre ya existe.
+
+### Qué se probó
+- Validación sintáctica con `python -B -m py_compile database.py routes/main.py`.
+- Prueba local con base temporal para verificar:
+  - deduplicación de categorías existentes
+  - renombrado por `id` sin crear una fila nueva
+  - conservación del estado activo
+  - migración de productos al nombre renombrado
+  - bloqueo de altas duplicadas en categorías de producto y gasto
+
+### Pendientes
+- Confirmar manualmente en UI el flujo completo de agregar, renombrar con Enter, renombrar con botón Guardar y activar/desactivar desde `config.html`.
