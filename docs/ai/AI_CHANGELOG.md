@@ -539,3 +539,19 @@ Corregir el preview de imÃ¡genes en catÃ¡logo para evitar recorte dentro de 
 - Confirmar que al hacer click en la miniatura se abre el modal con la imagen correcta.
 - Confirmar que el modal cierra bien desde botÃ³n cerrar y backdrop.
 - Verificar que la imagen ampliada no se corta y no ocupa toda la ventana.
+
+## 2026-05-18 — Codex — audit/edicion-responsable
+
+### Tarea
+Auditoría de edición responsable global.
+
+### Archivos modificados
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se documentaron riesgos de edición, eliminación, desactivación y anulación.
+- No se modificó lógica funcional.
+
+### Pendiente
+- Implementar correcciones en ramas pequeñas según prioridades detectadas.
