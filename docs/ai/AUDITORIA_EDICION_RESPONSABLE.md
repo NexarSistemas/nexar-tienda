@@ -197,10 +197,12 @@ Esta auditoría es documental. No modifica lógica funcional.
 
 - Movimientos:
   Permite ingresos/egresos manuales y además gastos en efectivo pueden sincronizarse como movimientos de caja.
+- Apertura operativa:
+  Desde Caja Operativa Fase 1, el sistema exige caja abierta antes de confirmar ventas y avisa cuando detecta una caja ya abierta al entrar.
 - Arqueos:
   El cierre guarda `saldo_final_real`, pero no aparece una conciliación fuerte ni bloqueo posterior.
 - Cierre de caja:
-  Marca `estado=0`, pero no se observan protecciones documentadas para impedir alteraciones indirectas posteriores.
+  Marca `estado=0`, pero no se observan protecciones documentadas para impedir alteraciones indirectas posteriores. Al salir de la app con una caja abierta ahora existe salida protegida: permite cerrar caja y salir, salir sin cerrar o cancelar, sin forzar cierres parciales.
 - Edición posterior:
   Riesgo medio a alto. Si se borra o edita un gasto que originó un movimiento de caja, la sincronización puede borrar o alterar ese movimiento aunque la caja histórica ya sea referencia cerrada.
 - Qué debería pasar:

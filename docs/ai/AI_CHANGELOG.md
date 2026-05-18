@@ -2,6 +2,101 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-18 - Codex - feature/caja-operativa-fase1 fix salida post cierre
+
+### Tarea
+Corregir el destino final luego de `Cerrar caja y salir` para evitar rutas placeholder o inexistentes.
+
+### Archivos modificados
+- `routes/main.py`
+- `app.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- La URL final posterior al cierre de caja ahora usa el endpoint namespaced real `main.salida_protegida_cerrar_app`.
+- Se agrego alias legacy para `salida_protegida_cerrar_app` y asi evitar caidas al handler `/en-construccion/...`.
+- Con esto, tanto la X de ventana como el boton `Cerrar sistema` comparten el mismo cierre final sin 404 ni placeholders.
+
+### Que se probo
+- Validacion de `url_for(...)` para `main.salida_protegida_cerrar_app` y `salida_protegida_cerrar_app`.
+- Validacion sintactica de Python en `app.py`, `routes/main.py` e `iniciar.py`.
+
+## 2026-05-18 - Codex - feature/caja-operativa-fase1 salida unificada
+
+### Tarea
+Unificar el flujo de salida protegida entre la X de la ventana y el boton interno `Cerrar sistema`.
+
+### Archivos modificados
+- `templates/base.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se centralizo la salida protegida en una unica funcion reutilizable del layout base.
+- La X de la ventana y el boton `Cerrar sistema` ahora usan el mismo modal y las mismas acciones cuando hay caja abierta.
+- Se elimino la confirmacion separada del boton interno para evitar comportamientos distintos entre ambos caminos de salida.
+- Se mantuvo la logica ya implementada: cerrar caja y salir, salir sin cerrar o cancelar.
+
+### Que se probo
+- Revision estatica del flujo compartido en `templates/base.html`.
+- Validacion sintactica de Python del proyecto principal para confirmar que no hubo regresiones colaterales.
+
+## 2026-05-18 - Codex - feature/caja-operativa-fase1 salida protegida
+
+### Tarea
+Completar la salida protegida de Nexar cuando hay caja abierta al cerrar la app.
+
+### Archivos modificados
+- `iniciar.py`
+- `routes/main.py`
+- `templates/base.html`
+- `docs/ai/AI_CHANGELOG.md`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+
+### Que se cambio
+- El interceptor de `pywebview` ahora solo bloquea el cierre nativo cuando hay una caja abierta. Con caja cerrada, la app puede salir normal.
+- El modal de salida protegida ahora muestra `Cerrar caja y salir`, `Salir sin cerrar` y `Cancelar`.
+- `Cerrar caja y salir` redirige al flujo real de cierre de caja ya existente, autoabre su modal y, si el cierre se concreta, apaga la app automaticamente.
+- Se agrego una salida protegida final que se ejecuta solo despues de cerrar caja con exito.
+- Si ya no hay caja abierta al intentar cerrar, el sistema muestra aviso y no apaga la app por error.
+
+### Que se probo
+- Validacion sintactica de Python en `app.py`, `routes/main.py` e `iniciar.py`.
+- Revision estatica del flujo desktop: cierre nativo, aviso, cierre de caja y apagado final.
+
+### Limitaciones
+- El cierre automatico posterior depende del flujo desktop con `pywebview`. En navegador externo sigue sin existir una intercepcion nativa equivalente del boton cerrar pestana.
+
+## 2026-05-18 - Codex - feature/caja-operativa-fase1
+
+### Tarea
+Implementar Caja Operativa Fase 1 con validacion previa a venta, aviso de caja abierta al entrar y recordatorio al intentar cerrar la app.
+
+### Archivos modificados
+- `app.py`
+- `routes/main.py`
+- `templates/base.html`
+- `templates/caja.html`
+- `templates/punto_venta.html`
+- `docs/ai/AI_CHANGELOG.md`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+
+### Que se cambio
+- El backend de ventas ahora rechaza `venta_finalizar` si no hay una caja abierta.
+- El Punto de Venta ahora muestra un modal SweetAlert2 con el mensaje `Necesitas abrir caja para realizar ventas.` y acciones `Abrir caja` y `Cancelar`.
+- `Abrir caja` lleva al flujo existente de caja, autoabre el modal de apertura y vuelve al POS al confirmar.
+- La app ahora muestra un aviso visual no invasivo cuando detecta una caja abierta al entrar, con fecha/hora de apertura y acciones `Continuar` o `Ir a caja`.
+- El recordatorio de cierre desktop ahora detecta caja abierta y ofrece `Cerrar caja`, `Salir sin cerrar` o `Cancelar`.
+- `Salir sin cerrar` usa el flujo interno de apagado rapido, por lo que la caja permanece abierta.
+- La pantalla de caja ahora acepta `next` seguro y `auto_open` para reutilizar los modales existentes de apertura/cierre.
+
+### Que se probo
+- Validacion sintactica de Python en `app.py`, `routes/main.py` e `iniciar.py`.
+- Revision estatica del flujo entre POS, caja, layout base y cierre desktop.
+
+### Limitaciones
+- El recordatorio al cerrar depende del flujo desktop con `pywebview` ya existente. En navegador externo no se puede interceptar el cierre nativo con el mismo control.
+- Al elegir `Cerrar caja` desde el recordatorio de salida, se redirige al flujo de cierre existente; no se automatiza el cierre de la app despues del arqueo.
+
 ## 2026-05-17 — ChatGPT — documentación inicial
 
 ### Tarea

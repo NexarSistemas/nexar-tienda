@@ -169,6 +169,13 @@ def _is_same_origin_local_request() -> bool:
     return True
 
 
+def _safe_next_url(value: str | None, fallback: str) -> str:
+    text = (value or "").strip()
+    if text.startswith("/") and not text.startswith("//"):
+        return text
+    return fallback
+
+
 def _validate_password(password: str) -> tuple[bool, str]:
     if len(password or "") < 6 or len(password or "") > 12:
         return False, "La contraseña debe tener entre 6 y 12 caracteres."
@@ -2296,7 +2303,13 @@ def temporada_eliminar(tid):
 @main_bp.route("/punto-venta")
 @login_required
 def punto_venta():
-    return render_template("punto_venta.html", clientes=db.get_clientes(), temporada=db.get_temporada_actual())
+    return render_template(
+        "punto_venta.html",
+        clientes=db.get_clientes(),
+        temporada=db.get_temporada_actual(),
+        caja_abierta=bool(_caja_abierta()),
+        caja_abrir_url=url_for("caja", auto_open="abrir", next=url_for("punto_venta")),
+    )
 
 
 @main_bp.route("/api/buscar_productos")
@@ -2392,6 +2405,9 @@ def venta_finalizar():
     cart = _cart()
     if not cart:
         flash("El carrito esta vacio.", "warning")
+        return redirect(url_for("punto_venta"))
+    if not _caja_abierta():
+        flash("Necesitás abrir caja para realizar ventas.", "warning")
         return redirect(url_for("punto_venta"))
     try:
         for item in cart:
@@ -2710,7 +2726,18 @@ def compra_eliminar(cid):
 @login_required
 def caja():
     caja_actual = _caja_abierta()
-    return render_template("caja.html", caja=caja_actual, movimientos=_caja_movimientos(caja_actual["id"]) if caja_actual else [], resumen=_caja_resumen(caja_actual), historial=db.q("SELECT * FROM caja WHERE estado=0 ORDER BY fecha_cierre DESC LIMIT 20"))
+    next_url = _safe_next_url(request.args.get("next"), url_for("caja"))
+    auto_open = (request.args.get("auto_open", "") or "").strip().lower()
+    return render_template(
+        "caja.html",
+        caja=caja_actual,
+        movimientos=_caja_movimientos(caja_actual["id"]) if caja_actual else [],
+        resumen=_caja_resumen(caja_actual),
+        historial=db.q("SELECT * FROM caja WHERE estado=0 ORDER BY fecha_cierre DESC LIMIT 20"),
+        next_url=next_url,
+        auto_open_abrir=auto_open == "abrir" and not caja_actual,
+        auto_open_cerrar=auto_open == "cerrar" and bool(caja_actual),
+    )
 
 
 @main_bp.route("/caja/abrir", methods=["POST"])
@@ -2719,7 +2746,7 @@ def caja_abrir():
     if not _caja_abierta():
         marca_tiempo = datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
         db.q("INSERT INTO caja (usuario_id,fecha_apertura,saldo_inicial,estado) VALUES (?,?,?,1)", (session["user"]["id"], marca_tiempo, float(request.form.get("saldo_inicial", 0) or 0)), commit=True)
-    return redirect(url_for("caja"))
+    return redirect(_safe_next_url(request.form.get("next"), url_for("caja")))
 
 
 @main_bp.route("/caja/movimiento", methods=["POST"])
@@ -2735,10 +2762,12 @@ def caja_movimiento():
 @login_required
 def caja_cerrar():
     caja_actual = _caja_abierta()
-    if caja_actual:
-        marca_tiempo = datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-        db.q("UPDATE caja SET fecha_cierre=?,saldo_final_real=?,estado=0 WHERE id=?", (marca_tiempo, float(request.form.get("saldo_real", 0) or 0), caja_actual["id"]), commit=True)
-    return redirect(url_for("caja"))
+    if not caja_actual:
+        flash("No hay una caja abierta para cerrar.", "warning")
+        return redirect(url_for("caja"))
+    marca_tiempo = datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    db.q("UPDATE caja SET fecha_cierre=?,saldo_final_real=?,estado=0 WHERE id=?", (marca_tiempo, float(request.form.get("saldo_real", 0) or 0), caja_actual["id"]), commit=True)
+    return redirect(_safe_next_url(request.form.get("next"), url_for("caja")))
 
 
 @main_bp.route("/gastos")
@@ -4331,7 +4360,29 @@ def logout():
 def desktop_close_warning():
     requested = bool(DESKTOP_STATE.get("close_warning_requested"))
     DESKTOP_STATE["close_warning_requested"] = False
-    return jsonify({"requested": requested})
+    caja_actual = _caja_abierta()
+    return jsonify({
+        "requested": requested,
+        "caja_abierta": bool(caja_actual),
+        "fecha_apertura": caja_actual["fecha_apertura"] if caja_actual else "",
+        "caja_url": url_for("caja", auto_open="cerrar"),
+        "caja_cerrar_y_salir_url": url_for("caja", auto_open="cerrar", next=url_for("main.salida_protegida_cerrar_app")),
+        "apagar_url": url_for("apagar_rapido"),
+    })
+
+
+@main_bp.route("/salida-protegida/cerrar-app")
+@login_required
+def salida_protegida_cerrar_app():
+    session.clear()
+    DESKTOP_STATE["user_logged_in"] = False
+    return render_template(
+        "apagado.html",
+        titulo="Caja cerrada",
+        mensaje="La caja se cerró correctamente y la aplicación se cerrará ahora.",
+        estado="Cerrando Nexar Comercio de forma segura...",
+        delay_ms=900,
+    )
 
 
 @main_bp.route("/apagar-rapido", methods=["POST"])
