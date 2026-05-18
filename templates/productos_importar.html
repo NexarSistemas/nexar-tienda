@@ -46,6 +46,22 @@
                             <div class="form-text">Último archivo procesado: {{ filename }}</div>
                             {% endif %}
                         </div>
+                        <div class="form-check mb-3">
+                            <input
+                                class="form-check-input"
+                                type="checkbox"
+                                value="1"
+                                id="generar_codigo_barras_interno"
+                                name="generar_codigo_barras_interno"
+                                {% if generar_codigo_barras_interno %}checked{% endif %}
+                            >
+                            <label class="form-check-label" for="generar_codigo_barras_interno">
+                                Generar códigos internos para productos sin código de barras
+                            </label>
+                            <div class="form-text">
+                                Nexar generará un código tipo <code>NXR00000001</code> solo en las filas que lleguen sin <code>codigo_barras</code>.
+                            </div>
+                        </div>
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-upload me-1"></i> Importar productos
@@ -104,6 +120,7 @@
                     <p class="mb-2"><code>descripcion</code>, <code>costo</code>, <code>precio_venta</code> y <code>stock_actual</code> son obligatorios.</p>
                     <p class="mb-2">Si <code>categoria</code> está vacía se usa la categoría por defecto del rubro actual.</p>
                     <p class="mb-2">Si <code>unidad</code> está vacía se usa <code>unidad</code>.</p>
+                    <p class="mb-2">Podés marcar la generación de códigos internos para completar automáticamente filas sin <code>codigo_barras</code>.</p>
                     <p class="mb-2">La plantilla se guardará en la carpeta <code>exports/plantillas</code> dentro de la aplicación.</p>
                     <p class="mb-2">También podés generarla en <code>Downloads</code>; si no existe, Nexar usa tu carpeta personal o la carpeta de la app.</p>
                     <p class="mb-0">Las filas completamente vacías se ignoran automáticamente.</p>

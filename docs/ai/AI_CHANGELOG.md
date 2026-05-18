@@ -367,3 +367,35 @@ Mejorar la detección de la carpeta Descargas/Downloads para generar la plantill
 ### Pendiente
 - Verificar generación en Linux con carpeta `Descargas`.
 - Verificar generación en entornos con `XDG_DOWNLOAD_DIR`.
+
+## 2026-05-17 — Codex — feature/codigos-barras-internos
+
+### Tarea
+Implementar generación opcional de códigos de barras internos para productos nuevos, edición, carga por lote e importación CSV.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/producto_form.html`
+- `templates/productos_lote.html`
+- `templates/productos_importar.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregó un correlativo interno `NXR00000001` basado en `config.siguiente_codigo_barras_interno`, con verificación de unicidad contra `productos.codigo_barras`.
+- `db.add_producto()` y `db.update_producto()` ahora generan el código interno solo cuando el usuario lo pide y el campo está vacío.
+- También se agregó validación centralizada para impedir códigos de barras manuales duplicados.
+- En alta y edición de producto se sumó el checkbox para generar código interno cuando no hay código de fábrica.
+- La carga por lote ahora permite generar códigos internos para filas sin código y valida duplicados manuales antes de crear productos.
+- La importación CSV agregó la misma opción y valida duplicados manuales por fila antes de importar, evitando guardados parciales.
+
+### Qué se probó
+- Validación sintáctica de Python.
+- Revisión estática del flujo de creación, edición, lote e importación con códigos manuales y autogenerados.
+
+### Pendiente
+- Crear producto nuevo sin código y confirmar generación `NXR...`.
+- Editar producto sin código y confirmar generación.
+- Probar carga por lote con varios productos sin código.
+- Probar importación CSV con generación interna activada.
+- Verificar rechazo de códigos manuales duplicados sin guardado parcial.

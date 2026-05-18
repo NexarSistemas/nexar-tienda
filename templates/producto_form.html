@@ -71,6 +71,7 @@
                         <!-- ─── CÓDIGO ─── -->
                         <div class="row">
                             <div class="col-md-6 mb-3">
+                                {% set codigo_barras_actual = producto['codigo_barras'] if producto else (prefill.codigo_barras if prefill else '') %}
                                 <label for="codigo_barras" class="form-label">Código de Barras</label>
                                 <input 
                                     type="text" 
@@ -78,8 +79,24 @@
                                     id="codigo_barras" 
                                     name="codigo_barras" 
                                     placeholder="Opcional"
-                                    value="{{ producto['codigo_barras'] if producto else (prefill.codigo_barras if prefill else '') }}"
+                                    value="{{ codigo_barras_actual }}"
                                 >
+                                <div class="form-check mt-2" id="generarCodigoBarrasContainer" {% if codigo_barras_actual %}style="display: none;"{% endif %}>
+                                    <input
+                                        class="form-check-input"
+                                        type="checkbox"
+                                        value="1"
+                                        id="generar_codigo_barras_interno"
+                                        name="generar_codigo_barras_interno"
+                                        {% if not producto and prefill and prefill.generar_codigo_barras_interno %}checked{% endif %}
+                                    >
+                                    <label class="form-check-label" for="generar_codigo_barras_interno">
+                                        Generar código de barras interno si está vacío
+                                    </label>
+                                    <div class="form-text">
+                                        Útil para productos sin código de fábrica. Nexar generará un código propio tipo <code>NXR00000001</code>.
+                                    </div>
+                                </div>
                             </div>
                             {% if producto %}
                             <div class="col-md-6 mb-3">
@@ -395,6 +412,9 @@
 document.addEventListener('DOMContentLoaded', function() {
     const costoInput = document.getElementById('costo');
     const precioInput = document.getElementById('precio_venta');
+    const codigoBarrasInput = document.getElementById('codigo_barras');
+    const generarCodigoContainer = document.getElementById('generarCodigoBarrasContainer');
+    const generarCodigoCheckbox = document.getElementById('generar_codigo_barras_interno');
     const margenObjetivoInput = document.getElementById('margen_objetivo');
     const precioSugeridoValue = document.getElementById('precioSugeridoValue');
     const usarPrecioSugerido = document.getElementById('usarPrecioSugerido');
@@ -456,8 +476,20 @@ document.addEventListener('DOMContentLoaded', function() {
         calcularMargen();
     }
 
+    function syncGeneracionInterna() {
+        if (!codigoBarrasInput || !generarCodigoContainer || !generarCodigoCheckbox) return;
+        const tieneCodigo = (codigoBarrasInput.value || '').trim() !== '';
+        generarCodigoContainer.style.display = tieneCodigo ? 'none' : '';
+        if (tieneCodigo) {
+            generarCodigoCheckbox.checked = false;
+        }
+    }
+
     costoInput.addEventListener('input', recalcularPrecios);
     precioInput.addEventListener('input', calcularMargen);
+    if (codigoBarrasInput) {
+        codigoBarrasInput.addEventListener('input', syncGeneracionInterna);
+    }
     margenObjetivoInput.addEventListener('input', calcularPrecioSugerido);
     usarPrecioSugerido.addEventListener('click', function () {
         const precioSugerido = calcularPrecioSugerido();
@@ -469,6 +501,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Calcular al cargar (edición)
     recalcularPrecios();
+    syncGeneracionInterna();
 
     // Validación del formulario
     document.getElementById('productForm').addEventListener('submit', function(e) {
