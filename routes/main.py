@@ -1553,17 +1553,26 @@ def recuperar_password():
 def dashboard():
     show_welcome = bool(session.pop("show_welcome", False))
     cfg = db.get_config()
+    onboarding_context = db.get_onboarding_context()
     return render_template(
         "dashboard.html",
         stats=db.get_dashboard_stats(),
         show_welcome=show_welcome,
         rubro_actual=get_rubro_actual(cfg),
+        onboarding_context=onboarding_context,
         mostrar_aviso_rubro_pendiente=db.debe_mostrar_aviso_rubro_pendiente(),
         resumen_financiero=db.get_resumen_dashboard_financiero(),
         facturas_vencidas=db.get_facturas_proveedores_vencidas_resumen(limit=5),
         facturas_por_vencer=db.get_facturas_proveedores_por_vencer_resumen(dias=7, limit=5),
         clientes_con_deuda=db.get_clientes_con_deuda(limit=5),
     )
+
+
+@main_bp.route("/dashboard/onboarding/ocultar", methods=["POST"])
+@login_required
+def dashboard_onboarding_ocultar():
+    db.set_config_valor("onboarding_oculto", "1")
+    return redirect(url_for("dashboard"))
 
 
 @main_bp.route("/configuracion/rubro-inicial", methods=["GET", "POST"])

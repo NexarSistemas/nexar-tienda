@@ -424,3 +424,33 @@ Implementar Prioridad 8 del roadmap: habilitar reportes en versiÃ³n demo.
 - Abrir `/estadisticas` con licencia demo y confirmar carga correcta.
 - Verificar que "Mi plan" muestre `reportes` como mÃ³dulo habilitado en demo.
 - Confirmar que exportaciones sigan bloqueadas en demo.
+
+## 2026-05-18 â€” Codex â€” feature/onboarding-inicial
+
+### Tarea
+Implementar Prioridad 9A del roadmap: onboarding inicial liviano en dashboard.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/dashboard.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### QuÃ© se cambiÃ³
+- Se agregÃ³ `get_onboarding_context()` para resumir estado inicial de la instalaciÃ³n usando cantidad de productos activos, proveedores activos, ventas, rubro confirmado y preferencia `onboarding_oculto`.
+- La ruta `dashboard()` ahora envÃ­a `onboarding_context` al template.
+- Se agregÃ³ una ruta POST para ocultar la guÃ­a y persistir `onboarding_oculto=1` en config.
+- El dashboard ahora muestra una card "Primeros pasos" solo cuando falta al menos uno de estos puntos: rubro, proveedor, producto o primera venta.
+- La card incluye accesos directos a configurar negocio, crear proveedor, crear producto, registrar compra/venta y ver reportes.
+- Si el plan no tiene reportes activos, la card evita mandar a una pantalla bloqueada y deriva a `Mi plan`.
+- La guÃ­a no bloquea la app ni obliga a completar ningÃºn paso.
+
+### QuÃ© se probÃ³
+- ValidaciÃ³n sintÃ¡ctica de Python con `python -m py_compile database.py routes/main.py`.
+- RevisiÃ³n estÃ¡tica del flujo de dashboard, ocultado de onboarding y render condicional del template.
+
+### Pendiente de prueba manual
+- Abrir dashboard en una instalaciÃ³n nueva y confirmar que aparece la card.
+- Ocultar la guÃ­a y verificar que no vuelva a mostrarse.
+- Probar un caso con proveedor/producto/ventas ya cargados y confirmar que la card solo aparezca si todavÃ­a falta algo.
+- Confirmar que el dashboard sigue cargando normal cuando no corresponde mostrar onboarding.

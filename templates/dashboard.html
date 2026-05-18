@@ -31,6 +31,154 @@
         </div>
     </div>
     {% endif %}
+    {% if onboarding_context.show %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-primary shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                <h5 class="mb-0"><i class="fas fa-map-signs me-2 text-primary"></i>Primeros pasos</h5>
+                                {% if onboarding_context.is_new_install %}
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Instalacion nueva</span>
+                                {% else %}
+                                <span class="badge bg-light text-muted border">{{ onboarding_context.steps_completed }}/{{ onboarding_context.steps_total }} completados</span>
+                                {% endif %}
+                            </div>
+                            <p class="text-muted mb-0">
+                                {% if onboarding_context.is_new_install %}
+                                Configura lo basico para empezar a usar Nexar Comercio sin perderte.
+                                {% else %}
+                                Ya avanzaste con la instalacion. Te dejamos una guia rapida con lo que todavia puede faltarte.
+                                {% endif %}
+                            </p>
+                        </div>
+                        <form method="POST" action="{{ url_for('main.dashboard_onboarding_ocultar') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                <i class="fas fa-eye-slash me-1"></i>Ocultar guia
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-lg-4 col-md-6">
+                            <div class="border rounded p-3 h-100">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <strong>1. Configurar negocio</strong>
+                                    {% if onboarding_context.pendientes.rubro %}
+                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                                    {% else %}
+                                    <span class="badge bg-success">Listo</span>
+                                    {% endif %}
+                                </div>
+                                <p class="small text-muted mb-3">
+                                    {% if onboarding_context.pendientes.rubro %}
+                                    Confirma el rubro del negocio para dejar la instalacion bien preparada.
+                                    {% else %}
+                                    El rubro principal del negocio ya quedo configurado.
+                                    {% endif %}
+                                </p>
+                                <a href="{{ url_for('configuracion_rubro_inicial') }}" class="btn btn-sm btn-outline-primary">Configurar negocio</a>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-4 col-md-6">
+                            <div class="border rounded p-3 h-100">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <strong>2. Crear proveedor</strong>
+                                    {% if onboarding_context.pendientes.proveedores %}
+                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                                    {% else %}
+                                    <span class="badge bg-success">{{ onboarding_context.proveedores }}</span>
+                                    {% endif %}
+                                </div>
+                                <p class="small text-muted mb-3">
+                                    {% if onboarding_context.pendientes.proveedores %}
+                                    Carga tu primer proveedor para facilitar compras y reposicion.
+                                    {% else %}
+                                    Ya tienes {{ onboarding_context.proveedores }} proveedor{% if onboarding_context.proveedores != 1 %}es{% endif %} activo{% if onboarding_context.proveedores != 1 %}s{% endif %}.
+                                    {% endif %}
+                                </p>
+                                <a href="{{ url_for('proveedor_nuevo') }}" class="btn btn-sm btn-outline-primary">Nuevo proveedor</a>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-4 col-md-6">
+                            <div class="border rounded p-3 h-100">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <strong>3. Crear producto</strong>
+                                    {% if onboarding_context.pendientes.productos %}
+                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                                    {% else %}
+                                    <span class="badge bg-success">{{ onboarding_context.productos }}</span>
+                                    {% endif %}
+                                </div>
+                                <p class="small text-muted mb-3">
+                                    {% if onboarding_context.pendientes.productos %}
+                                    Crea tu primer producto para empezar a vender o registrar compras.
+                                    {% else %}
+                                    Ya tienes {{ onboarding_context.productos }} producto{% if onboarding_context.productos != 1 %}s{% endif %} activo{% if onboarding_context.productos != 1 %}s{% endif %}.
+                                    {% endif %}
+                                </p>
+                                <a href="{{ url_for('producto_nuevo') }}" class="btn btn-sm btn-outline-primary">Nuevo producto</a>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-6 col-md-6">
+                            <div class="border rounded p-3 h-100">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <strong>4. Registrar movimiento</strong>
+                                    {% if onboarding_context.pendientes.movimientos %}
+                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                                    {% else %}
+                                    <span class="badge bg-success">{{ onboarding_context.ventas }}</span>
+                                    {% endif %}
+                                </div>
+                                <p class="small text-muted mb-3">
+                                    {% if onboarding_context.pendientes.movimientos %}
+                                    Haz tu primera compra o tu primera venta para empezar a ver resultados reales.
+                                    {% else %}
+                                    Ya hay {{ onboarding_context.ventas }} venta{% if onboarding_context.ventas != 1 %}s{% endif %} registrada{% if onboarding_context.ventas != 1 %}s{% endif %}.
+                                    {% endif %}
+                                </p>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <a href="{{ url_for('compras') }}" class="btn btn-sm btn-outline-primary">Nueva compra</a>
+                                    <a href="{{ url_for('punto_venta') }}" class="btn btn-sm btn-outline-primary">Punto de venta</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-6 col-md-6">
+                            <div class="border rounded p-3 h-100">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <strong>5. Ver reportes</strong>
+                                    {% if onboarding_context.reportes_listos %}
+                                    <span class="badge bg-success">Listo</span>
+                                    {% else %}
+                                    <span class="badge bg-info text-dark">Sugerido</span>
+                                    {% endif %}
+                                </div>
+                                <p class="small text-muted mb-3">
+                                    Revisa reportes y estadisticas para entender mejor ventas, gastos y rentabilidad.
+                                </p>
+                                <div class="d-flex flex-wrap gap-2">
+                                    {% if modulo_activo("reportes") %}
+                                    <a href="{{ url_for('reportes') }}" class="btn btn-sm btn-outline-primary">Ver reportes</a>
+                                    <a href="{{ url_for('estadisticas') }}" class="btn btn-sm btn-outline-primary">Ver estadisticas</a>
+                                    {% else %}
+                                    <a href="{{ url_for('mi_plan') }}" class="btn btn-sm btn-outline-primary">Activar reportes</a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 <div class="dashboard">
     <div class="row mb-4">
         <div class="col-md-3">
