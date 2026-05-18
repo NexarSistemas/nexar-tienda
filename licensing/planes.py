@@ -23,7 +23,7 @@ TIER_ALIASES = {
 
 
 PLANES = {
-    "DEMO": {"core"},
+    "DEMO": {"core", "reportes"},
     "BASICA": {"core", "clientes", "proveedores", "pos", "stock", "caja"},
     "PRO": {
         "core",
