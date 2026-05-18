@@ -134,7 +134,7 @@
             </div>
             {% if session['user']['rol'] in ['Administrador', 'admin'] %}
             <form id="form-apagar" method="POST" action="{{ url_for('apagar_sistema') }}" class="px-3">
-                <button type="button" onclick="confirmarApagado()" class="btn btn-sm btn-outline-danger w-100" style="font-size: .7rem;">
+                <button type="button" id="btn-cerrar-sistema" class="btn btn-sm btn-outline-danger w-100" style="font-size: .7rem;">
                     <i class="fas fa-power-off me-1"></i>Cerrar sistema
                 </button>
             </form>
@@ -236,6 +236,21 @@
                     {% endfor %}
                 {% endif %}
             {% endwith %}
+            {% if caja_abierta_actual %}
+                <div id="caja-abierta-notice" class="alert alert-warning shadow-sm d-none" data-caja-id="{{ caja_abierta_actual.id }}" role="alert">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                        <div>
+                            <strong>Hay una caja abierta.</strong>
+                            Se abrió el {{ caja_abierta_actual.fecha_apertura | date }}{% if caja_abierta_actual.fecha_apertura %} a las {{ caja_abierta_actual.fecha_apertura[11:16] }}{% endif %}.
+                            Podés continuar trabajando o revisar la caja.
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-dark" id="caja-abierta-continuar">Continuar</button>
+                            <a href="{{ url_for('caja') }}" class="btn btn-sm btn-dark" id="caja-abierta-ir">Ir a caja</a>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
         </div>
 
         <!-- ─── CONTENT ─── -->
@@ -253,6 +268,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
     <script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
+    <form id="form-apagar-desktop" method="POST" action="{{ url_for('apagar_rapido') }}" class="d-none"></form>
     <script>
         // Mostrar hora actual
         function updateTime() {
@@ -279,29 +295,111 @@
                     bsAlert.close();
                 }, 4000);
             });
-        });
 
-        function confirmarApagado() {
-            Swal.fire({
-                title: '¿Cerrar el sistema?',
-                text: 'Se cerrará la conexión con el servidor y todas las sesiones activas.',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#c62828',
-                cancelButtonColor: '#1e3a5f',
-                confirmButtonText: 'Sí, cerrar ahora',
-                cancelButtonText: 'Cancelar',
-                background: '#1a2a3f',
-                color: '#ffffff'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    document.getElementById('form-apagar').submit();
+            const cajaNotice = document.getElementById('caja-abierta-notice');
+            const cajaNoticeContinue = document.getElementById('caja-abierta-continuar');
+            const cajaNoticeGo = document.getElementById('caja-abierta-ir');
+            if (cajaNotice) {
+                const cajaId = cajaNotice.dataset.cajaId || '0';
+                const storageKey = 'nexar-caja-abierta-aviso-' + cajaId;
+                if (!sessionStorage.getItem(storageKey)) {
+                    cajaNotice.classList.remove('d-none');
                 }
-            });
-        }
+                if (cajaNoticeContinue) {
+                    cajaNoticeContinue.addEventListener('click', function () {
+                        sessionStorage.setItem(storageKey, '1');
+                        cajaNotice.remove();
+                    });
+                }
+                if (cajaNoticeGo) {
+                    cajaNoticeGo.addEventListener('click', function () {
+                        sessionStorage.setItem(storageKey, '1');
+                    });
+                }
+            }
+        });
 
         let cierreDesktopEnCurso = false;
         let cierreDesktopTimer = null;
+        let salidaProtegidaEnCurso = false;
+
+        async function ejecutarSalidaProtegida(opciones = {}) {
+            const submitFormId = opciones.submitFormId || 'form-apagar-desktop';
+            const bypassRequested = Boolean(opciones.bypassRequested);
+            const submitForm = document.getElementById(submitFormId);
+            if (!submitForm || salidaProtegidaEnCurso) {
+                return;
+            }
+            salidaProtegidaEnCurso = true;
+            try {
+                let data = null;
+                if (bypassRequested) {
+                    const response = await fetch('{{ url_for("desktop_close_warning") }}', {credentials: 'same-origin'});
+                    if (!response.ok) {
+                        throw new Error('No se pudo consultar el estado de salida.');
+                    }
+                    data = await response.json();
+                    data.requested = true;
+                } else {
+                    const response = await fetch('{{ url_for("desktop_close_warning") }}', {credentials: 'same-origin'});
+                    if (!response.ok) {
+                        throw new Error('No se pudo consultar el estado de salida.');
+                    }
+                    data = await response.json();
+                }
+
+                if (data.caja_abierta) {
+                    const aperturaTexto = data.fecha_apertura ? ' Caja abierta desde ' + data.fecha_apertura.slice(0, 16).replace('T', ' ') + '.' : '';
+                    const result = await Swal.fire({
+                        title: 'Todavía hay una caja abierta',
+                        text: 'Todavía hay una caja abierta. ¿Querés cerrarla antes de salir?' + aperturaTexto,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        showDenyButton: true,
+                        confirmButtonColor: '#1e3a5f',
+                        denyButtonColor: '#c62828',
+                        cancelButtonColor: '#6c757d',
+                        confirmButtonText: 'Cerrar caja y salir',
+                        denyButtonText: 'Salir sin cerrar',
+                        cancelButtonText: 'Cancelar',
+                        background: '#1a2a3f',
+                        color: '#ffffff'
+                    });
+                    if (result.isConfirmed) {
+                        window.location.href = data.caja_cerrar_y_salir_url || data.caja_url || '{{ url_for("caja") }}';
+                        return;
+                    }
+                    if (result.isDenied) {
+                        submitForm.submit();
+                        return;
+                    }
+                    if (opciones.reprogramarDesktop !== false) {
+                        programarRevisionCierreDesktop(5000);
+                    }
+                    return;
+                }
+
+                submitForm.submit();
+            } catch (_error) {
+                showAlertSalidaError();
+                if (opciones.reprogramarDesktop !== false) {
+                    programarRevisionCierreDesktop(10000);
+                }
+            } finally {
+                salidaProtegidaEnCurso = false;
+            }
+        }
+
+        function showAlertSalidaError() {
+            Swal.fire({
+                title: 'No se pudo cerrar el sistema',
+                text: 'Intentá nuevamente en unos segundos.',
+                icon: 'error',
+                confirmButtonColor: '#1e3a5f',
+                background: '#1a2a3f',
+                color: '#ffffff'
+            });
+        }
 
         function programarRevisionCierreDesktop(delay = 5000) {
             if (cierreDesktopTimer) {
@@ -322,6 +420,14 @@
                 const data = await response.json();
                 if (!data.requested) {
                     programarRevisionCierreDesktop(5000);
+                    return;
+                }
+                if (data.caja_abierta) {
+                    await ejecutarSalidaProtegida({
+                        submitFormId: 'form-apagar-desktop',
+                        bypassRequested: true,
+                        reprogramarDesktop: true,
+                    });
                     return;
                 }
                 Swal.fire({
@@ -353,6 +459,18 @@
         {% if 'user' in session %}
         programarRevisionCierreDesktop(5000);
         {% endif %}
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const btnCerrarSistema = document.getElementById('btn-cerrar-sistema');
+            if (btnCerrarSistema) {
+                btnCerrarSistema.addEventListener('click', function () {
+                    ejecutarSalidaProtegida({
+                        submitFormId: 'form-apagar',
+                        reprogramarDesktop: false,
+                    });
+                });
+            }
+        });
 
         {% if 'user' in session %}
         (function () {

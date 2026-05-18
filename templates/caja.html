@@ -137,6 +137,7 @@
 <div class="modal fade" id="modalAbrirCaja" tabindex="-1">
     <div class="modal-dialog">
         <form action="{{ url_for('caja_abrir') }}" method="POST" class="modal-content">
+            <input type="hidden" name="next" value="{{ next_url }}">
             <div class="modal-header bg-navy text-white">
                 <h5 class="modal-title">Abrir Caja</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -194,6 +195,7 @@
     <div class="modal-dialog">
         <form action="{{ url_for('caja_cerrar') }}" method="POST" class="modal-content">
             <input type="hidden" name="caja_id" value="{{ caja.id if caja else '' }}">
+            <input type="hidden" name="next" value="{{ next_url }}">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title">Cierre de Caja</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -215,4 +217,24 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    {% if auto_open_abrir %}
+    const modalAbrirCajaEl = document.getElementById('modalAbrirCaja');
+    if (modalAbrirCajaEl) {
+        bootstrap.Modal.getOrCreateInstance(modalAbrirCajaEl).show();
+    }
+    {% endif %}
+
+    {% if auto_open_cerrar %}
+    const modalCerrarCajaEl = document.getElementById('modalCerrarCaja');
+    if (modalCerrarCajaEl) {
+        bootstrap.Modal.getOrCreateInstance(modalCerrarCajaEl).show();
+    }
+    {% endif %}
+});
+</script>
 {% endblock %}

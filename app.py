@@ -90,6 +90,7 @@ def create_app() -> Flask:
         lic_status = get_licencia_status() if "user" in session else None
         config = db.get_config()
         rubro_actual = get_rubro_actual(config)
+        caja_abierta_actual = db.get_caja_abierta() if "user" in session else None
 
         return {
             "get_config_valor": get_config_valor,
@@ -106,6 +107,7 @@ def create_app() -> Flask:
                 if lic_status and get_update_access_context(lic_status).get("puede_actualizar")
                 else {"available": False}
             ),
+            "caja_abierta_actual": caja_abierta_actual,
             "csrf_token": csrf_token,
         }
 
@@ -354,6 +356,7 @@ def create_app() -> Flask:
         "acerca",
         "logout",
         "desktop_close_warning",
+        "salida_protegida_cerrar_app",
         "apagar_rapido",
         "apagar_sistema",
         "shutdown",

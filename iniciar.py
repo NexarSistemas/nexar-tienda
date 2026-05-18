@@ -225,9 +225,9 @@ if __name__ == "__main__":
 
             def handle_closing(self):
                 try:
-                    from routes.main import DESKTOP_STATE
+                    from routes.main import DESKTOP_STATE, _caja_abierta
 
-                    if not self.allow_close and DESKTOP_STATE.get("user_logged_in"):
+                    if not self.allow_close and DESKTOP_STATE.get("user_logged_in") and _caja_abierta():
                         DESKTOP_STATE["close_warning_requested"] = True
                         return False
                 except Exception:
