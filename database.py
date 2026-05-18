@@ -282,6 +282,7 @@ def init_db():
             codigo_barras TEXT DEFAULT '',
             descripcion TEXT NOT NULL,
             marca TEXT DEFAULT '',
+            imagen TEXT DEFAULT '',
             categoria TEXT DEFAULT '',
             unidad TEXT DEFAULT 'Unidad',
             por_peso INTEGER DEFAULT 0,
@@ -567,6 +568,8 @@ def init_db():
             SET created_at = COALESCE(NULLIF(fecha, ''), DATE('now'))
             WHERE COALESCE(created_at, '') = ''"""
         )
+    if 'imagen' not in columnas_productos:
+        c.execute("ALTER TABLE productos ADD COLUMN imagen TEXT DEFAULT ''")
     c.execute("CREATE INDEX IF NOT EXISTS idx_facturas_proveedores_compra_id ON facturas_proveedores(compra_id)")
 
     # Verificar y agregar columna 'interes_financiacion' en 'ventas' (Paso 15)
@@ -2404,6 +2407,7 @@ def add_producto(data):
     codigo = next_codigo()
     rubro_actual = get_rubro_actual(get_config())
     proveedor_habitual = str(data.get('proveedor_habitual') or '').strip()
+    imagen = str(data.get('imagen') or '').strip()
     codigo_barras = _resolve_codigo_barras_for_save(data)
     unidad_seleccionada = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
     tipo_unidad = get_unidad_interna(unidad_seleccionada)
@@ -2419,9 +2423,9 @@ def add_producto(data):
     c = conn.cursor()
     c.execute(
         """INSERT INTO productos
-        (codigo_interno,codigo_barras,descripcion,marca,categoria,unidad,tipo_unidad,permite_fraccionado,rubro,por_peso,costo,precio_venta,iva,activo)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)""",
-        (codigo, codigo_barras, data['descripcion'], data.get('marca', ''),
+        (codigo_interno,codigo_barras,descripcion,marca,imagen,categoria,unidad,tipo_unidad,permite_fraccionado,rubro,por_peso,costo,precio_venta,iva,activo)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)""",
+        (codigo, codigo_barras, data['descripcion'], data.get('marca', ''), imagen,
          data.get('categoria') or get_categoria_default(rubro_actual), unidad, tipo_unidad, permite_fraccionado,
          data.get('rubro') or rubro_actual, 1 if es_fraccionable else int(data.get('por_peso', 0)),
          float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'))
@@ -2441,6 +2445,11 @@ def update_producto(pid, data):
     producto_actual = get_producto(pid)
     rubro_actual = get_rubro_actual(get_config())
     codigo_barras = _resolve_codigo_barras_for_save(data, exclude_id=pid)
+    imagen_guardada = (
+        str(data.get('imagen') or '').strip()
+        if 'imagen' in data
+        else str((producto_actual['imagen'] if producto_actual else '') or '').strip()
+    )
     unidad_seleccionada = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
     tipo_unidad = get_unidad_interna(unidad_seleccionada)
     unidad = get_unidad_label(unidad_seleccionada)
@@ -2451,9 +2460,9 @@ def update_producto(pid, data):
         or str((producto_actual['rubro'] if producto_actual else '') or '').strip().lower()
     )
     q(
-        """UPDATE productos SET codigo_barras=?,descripcion=?,marca=?,categoria=?,unidad=?,tipo_unidad=?,
+        """UPDATE productos SET codigo_barras=?,descripcion=?,marca=?,imagen=?,categoria=?,unidad=?,tipo_unidad=?,
         permite_fraccionado=?,rubro=?,por_peso=?,costo=?,precio_venta=?,iva=?,activo=? WHERE id=?""",
-        (codigo_barras, data['descripcion'], data.get('marca', ''),
+        (codigo_barras, data['descripcion'], data.get('marca', ''), imagen_guardada,
          data.get('categoria') or get_categoria_default(rubro_actual), unidad, tipo_unidad, permite_fraccionado,
          rubro_guardado or None, 1 if es_fraccionable else int(data.get('por_peso', 0)),
          float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'),

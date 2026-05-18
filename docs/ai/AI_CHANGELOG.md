@@ -454,3 +454,88 @@ Implementar Prioridad 9A del roadmap: onboarding inicial liviano en dashboard.
 - Ocultar la guÃ­a y verificar que no vuelva a mostrarse.
 - Probar un caso con proveedor/producto/ventas ya cargados y confirmar que la card solo aparezca si todavÃ­a falta algo.
 - Confirmar que el dashboard sigue cargando normal cuando no corresponde mostrar onboarding.
+## 2026-05-18 â€” Codex â€” feature/imagenes-catalogo
+
+### Tarea
+Implementar Prioridad 10A del roadmap: imÃ¡genes en catÃ¡logo MVP.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/producto_form.html`
+- `templates/productos.html`
+- `static/uploads/productos/.gitkeep`
+- `.gitignore`
+- `docs/ai/AI_CHANGELOG.md`
+
+### QuÃ© se cambiÃ³
+- Se agregÃ³ la columna segura `productos.imagen` en la creaciÃ³n inicial de la tabla y en la migraciÃ³n con `PRAGMA table_info(productos)` + `ALTER TABLE` para bases existentes.
+- Se agregÃ³ guardado local de imÃ¡genes bajo `static/uploads/productos/`, usando nombre Ãºnico con `uuid`, extensiones permitidas (`.jpg`, `.jpeg`, `.png`, `.webp`) y `secure_filename`.
+- Alta de producto ahora acepta archivo de imagen y guarda la ruta relativa `uploads/productos/...` en `productos.imagen`.
+- EdiciÃ³n de producto ahora muestra la imagen actual, permite reemplazarla y conserva la anterior si no se sube una nueva.
+- El catÃ¡logo ahora muestra una miniatura de 48x48 por producto y un placeholder simple cuando no hay imagen.
+- Se versionÃ³ la carpeta de uploads con `.gitkeep` y se ignoraron las imÃ¡genes reales subidas por usuario en `.gitignore`.
+- No se implementÃ³ borrado automÃ¡tico de archivos anteriores ni integraciÃ³n con cÃ¡mara/telÃ©fono en este MVP.
+
+### QuÃ© se probÃ³
+- ValidaciÃ³n sintÃ¡ctica de Python con `python -m py_compile database.py routes/main.py`.
+- RevisiÃ³n estÃ¡tica del flujo de alta, ediciÃ³n, validaciÃ³n de extensiones, persistencia de ruta relativa y render de miniaturas en catÃ¡logo.
+
+### Pendiente de prueba manual
+- Caso A: crear producto con imagen, guardarlo, ver miniatura en catÃ¡logo y ver imagen actual al editar.
+- Caso B: crear producto sin imagen y verificar placeholder en catÃ¡logo.
+- Caso C: editar producto con imagen sin subir nueva y confirmar que conserva la anterior.
+- Caso D: editar producto con imagen, subir una nueva y confirmar que cambia la miniatura.
+- Caso E: intentar subir un `.txt` y verificar mensaje claro sin guardar imagen invÃ¡lida.
+## 2026-05-18 â€” Codex â€” feature/imagenes-catalogo mejora visual
+
+### Tarea
+Mejorar Prioridad 10A: normalizaciÃ³n visual y preview de imÃ¡genes en catÃ¡logo.
+
+### Archivos modificados
+- `routes/main.py`
+- `templates/producto_form.html`
+- `templates/productos.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### QuÃ© se cambiÃ³
+- Se agregÃ³ texto de ayuda mÃ¡s claro en el formulario con tamaÃ±o recomendado `800 x 800 px`, formatos admitidos y aclaraciÃ³n de que la app ordena la vista del catÃ¡logo.
+- La imagen actual en ediciÃ³n ahora se muestra con lÃ­mite visual razonable y `object-fit: contain`, evitando previews gigantes o deformadas.
+- Las miniaturas del catÃ¡logo se normalizaron a `56 x 56 px`, con borde y placeholder uniforme cuando el producto no tiene imagen.
+- Se agregÃ³ preview ampliado al pasar el mouse sobre una miniatura, con popover acotado y vista mÃ¡xima aproximada de `360 x 360 px`.
+- En pantallas chicas el popover ampliado se oculta para no tapar la interfaz.
+- En backend se agregÃ³ validaciÃ³n simple de tamaÃ±o para rechazar archivos mayores a `3 MB`.
+- No se agregÃ³ Pillow ni redimensionado automÃ¡tico porque `requirements.txt` no lo incluye hoy.
+
+### QuÃ© se probÃ³
+- ValidaciÃ³n sintÃ¡ctica de Python con `python -m py_compile database.py routes/main.py`.
+- RevisiÃ³n estÃ¡tica del render del formulario, miniaturas uniformes, popover ampliado y lÃ­mite de 3 MB.
+
+### Pendiente de prueba manual
+- Verificar que la miniatura uniforme no rompa el ancho de la tabla del catÃ¡logo.
+- Confirmar que el popover ampliado aparece al pasar el mouse y no supera visualmente el tamaÃ±o esperado.
+- Confirmar que en mÃ³vil o ventana angosta el popover no molesta.
+- Intentar subir una imagen mayor a 3 MB y validar el mensaje de error.
+## 2026-05-18 â€” Codex â€” feature/imagenes-catalogo correccion preview modal
+
+### Tarea
+Corregir el preview de imÃ¡genes en catÃ¡logo para evitar recorte dentro de la tabla responsive.
+
+### Archivos modificados
+- `templates/productos.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### QuÃ© se cambiÃ³
+- Se reemplazÃ³ el preview ampliado por hover dentro de la tabla por apertura mediante modal Bootstrap al hacer click en la miniatura.
+- La miniatura se mantuvo uniforme en `56 x 56 px` con `object-fit: cover`, borde redondeado y cursor `zoom-in`.
+- Cada imagen real ahora carga sus datos en un Ãºnico modal reutilizable con tÃ­tulo por producto.
+- Se eliminÃ³ la dependencia visual del popover hover que se cortaba por `table-responsive` o contenedores de la card.
+- Los productos sin imagen siguen mostrando placeholder y no disparan modal.
+
+### QuÃ© se probÃ³
+- RevisiÃ³n estÃ¡tica del template y del JavaScript que abre/cierra el modal Bootstrap.
+
+### Pendiente de prueba manual
+- Confirmar que al hacer click en la miniatura se abre el modal con la imagen correcta.
+- Confirmar que el modal cierra bien desde botÃ³n cerrar y backdrop.
+- Verificar que la imagen ampliada no se corta y no ocupa toda la ventana.
