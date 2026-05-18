@@ -13,6 +13,7 @@ import sqlite3
 import os
 import hashlib
 import json
+import unicodedata
 from datetime import datetime, date, timedelta
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -1678,30 +1679,84 @@ def get_categorias():
 
 
 def _normalize_categoria_nombre(nombre) -> str:
-    return str(nombre or "").strip()
+    return " ".join(str(nombre or "").strip().split())
+
+
+def _normalize_name_key(nombre) -> str:
+    texto = _normalize_categoria_nombre(nombre)
+    if not texto:
+        return ""
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
+    return texto.lower()
+
+
+def _categoria_nombre_key(nombre) -> str:
+    return _normalize_name_key(nombre)
+
+
+def _get_base_categorias_map():
+    categorias_base = {}
+    for rubro in get_rubros_disponibles(include_future=True):
+        for categoria in get_categorias_disponibles(rubro):
+            nombre = _normalize_categoria_nombre(categoria)
+            key = _categoria_nombre_key(nombre)
+            if key and key not in categorias_base:
+                categorias_base[key] = nombre
+    return categorias_base
+
+
+def _get_categoria_rows():
+    return q("SELECT id, nombre, activa FROM categorias ORDER BY id")
+
+
+def _sync_productos_categoria_nombre(nombre_actual, nuevo_nombre):
+    actual_key = _categoria_nombre_key(nombre_actual)
+    nuevo = _normalize_categoria_nombre(nuevo_nombre)
+    if not actual_key or not nuevo:
+        return
+    rows = q("SELECT id, TRIM(COALESCE(categoria, '')) AS categoria FROM productos")
+    for row in rows:
+        categoria = _normalize_categoria_nombre(row["categoria"])
+        if categoria and _categoria_nombre_key(categoria) == actual_key and categoria != nuevo:
+            q(
+                "UPDATE productos SET categoria=? WHERE id=?",
+                (nuevo, row["id"]),
+                commit=True,
+            )
+
+
+def _get_productos_categoria_variantes():
+    variantes = {}
+    rows = q("SELECT id, TRIM(COALESCE(categoria, '')) AS categoria FROM productos")
+    for row in rows:
+        categoria = _normalize_categoria_nombre(row["categoria"])
+        if not categoria:
+            continue
+        key = _categoria_nombre_key(categoria)
+        if key:
+            variantes.setdefault(key, []).append({"id": row["id"], "categoria": categoria})
+    return variantes
 
 
 def _find_categoria_row(nombre):
-    nombre_limpio = _normalize_categoria_nombre(nombre)
-    if not nombre_limpio:
+    key = _categoria_nombre_key(nombre)
+    if not key:
         return None
-    return q(
-        "SELECT * FROM categorias WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?)) ORDER BY id LIMIT 1",
-        (nombre_limpio,),
-        fetchone=True,
-    )
+    for row in _get_categoria_rows():
+        if _categoria_nombre_key(row["nombre"]) == key:
+            return row
+    return None
+
+
+def _find_categoria_row_by_id(categoria_id):
+    if not str(categoria_id or "").strip():
+        return None
+    return q("SELECT id, nombre, activa FROM categorias WHERE id=?", (categoria_id,), fetchone=True)
 
 
 def _categoria_base_existe(nombre) -> bool:
-    nombre_limpio = _normalize_categoria_nombre(nombre)
-    if not nombre_limpio:
-        return False
-    for rubro in get_rubros_disponibles(include_future=True):
-        if nombre_limpio.lower() in {
-            str(cat).strip().lower() for cat in get_categorias_disponibles(rubro)
-        }:
-            return True
-    return False
+    return _categoria_nombre_key(nombre) in _get_base_categorias_map()
 
 
 def _upsert_categoria_estado(nombre, activa):
@@ -1772,12 +1827,13 @@ def count_productos_por_categoria(nombre, rubro_actual=None):
 def get_categorias_configuracion(rubro_actual):
     """Devuelve categorías configurables con estado, origen y cantidad de productos."""
     categorias_map = {}
+    categorias_base = _get_base_categorias_map()
 
-    def ensure_entry(nombre, *, activa=True, origen=None):
+    def ensure_entry(nombre, *, activa=True, origen=None, categoria_id=None):
         nombre_limpio = _normalize_categoria_nombre(nombre)
         if not nombre_limpio:
             return None
-        key = nombre_limpio.lower()
+        key = _categoria_nombre_key(nombre_limpio)
         existed = key in categorias_map
         entry = categorias_map.setdefault(
             key,
@@ -1788,6 +1844,7 @@ def get_categorias_configuracion(rubro_actual):
                 "es_base": False,
                 "es_personalizada": False,
                 "es_usada": False,
+                "id": categoria_id,
             },
         )
         if origen == "base":
@@ -1798,6 +1855,8 @@ def get_categorias_configuracion(rubro_actual):
             entry["es_usada"] = True
         if origen != "usada":
             entry["nombre"] = nombre_limpio
+        if categoria_id and not entry.get("id"):
+            entry["id"] = categoria_id
         if origen in {"base", "personalizada"} or not existed:
             entry["activa"] = bool(activa)
         return entry
@@ -1806,10 +1865,18 @@ def get_categorias_configuracion(rubro_actual):
         ensure_entry(categoria, activa=True, origen="base")
 
     for row in get_categorias_personalizadas(activo_only=False):
-        entry = ensure_entry(row["nombre"], activa=bool(row["activa"]), origen="personalizada")
+        nombre_limpio = _normalize_categoria_nombre(row["nombre"])
+        key = _categoria_nombre_key(nombre_limpio)
+        es_base = key in categorias_base
+        entry = ensure_entry(
+            categorias_base.get(key, nombre_limpio),
+            activa=bool(row["activa"]),
+            origen=None if es_base else "personalizada",
+            categoria_id=row["id"],
+        )
         if entry:
             entry["activa"] = bool(row["activa"])
-            entry["nombre"] = _normalize_categoria_nombre(row["nombre"])
+            entry["nombre"] = categorias_base.get(key, nombre_limpio)
 
     for row in get_categorias_usadas(rubro_actual):
         ensure_entry(row["nombre"], activa=True, origen="usada")
@@ -1862,6 +1929,7 @@ def _append_condition(base: str, condition: str) -> str:
 
 def add_categoria(nombre):
     """Agrega o reactiva una categoría."""
+    cleanup_categorias_duplicadas()
     nombre_limpio = _normalize_categoria_nombre(nombre)
     if not nombre_limpio:
         raise ValueError("Ingresá un nombre de categoría.")
@@ -1885,8 +1953,9 @@ def add_categoria(nombre):
     )
 
 
-def update_categoria(nombre_actual, nuevo_nombre):
+def update_categoria(nombre_actual, nuevo_nombre, categoria_id=None):
     """Renombra una categoría y actualiza productos relacionados."""
+    cleanup_categorias_duplicadas()
     nombre_actual_limpio = _normalize_categoria_nombre(nombre_actual)
     nuevo_nombre_limpio = _normalize_categoria_nombre(nuevo_nombre)
     if not nombre_actual_limpio:
@@ -1894,63 +1963,41 @@ def update_categoria(nombre_actual, nuevo_nombre):
     if not nuevo_nombre_limpio:
         raise ValueError("Ingresá un nuevo nombre de categoría.")
 
-    existente_actual = _find_categoria_row(nombre_actual_limpio)
+    existente_actual = _find_categoria_row_by_id(categoria_id) or _find_categoria_row(nombre_actual_limpio)
+    if not existente_actual:
+        raise ValueError("No se encontró la categoría a renombrar.")
+
+    nombre_actual_limpio = _normalize_categoria_nombre(existente_actual["nombre"])
     existente_nuevo = _find_categoria_row(nuevo_nombre_limpio)
     if (
         existente_nuevo
-        and (
-            not existente_actual
-            or int(existente_nuevo["id"]) != int(existente_actual["id"])
-        )
-        and nuevo_nombre_limpio.lower() != nombre_actual_limpio.lower()
+        and int(existente_nuevo["id"]) != int(existente_actual["id"])
+        and _categoria_nombre_key(nuevo_nombre_limpio) != _categoria_nombre_key(nombre_actual_limpio)
     ):
         raise ValueError("Ya existe otra categoría con ese nombre.")
 
-    if nombre_actual_limpio.lower() == nuevo_nombre_limpio.lower():
-        if existente_actual:
-            q(
-                "UPDATE categorias SET nombre=?, activa=1 WHERE id=?",
-                (nuevo_nombre_limpio, existente_actual["id"]),
-                commit=True,
-            )
+    if _categoria_nombre_key(nombre_actual_limpio) == _categoria_nombre_key(nuevo_nombre_limpio):
         q(
-            "UPDATE productos SET categoria=? WHERE LOWER(TRIM(COALESCE(categoria, ''))) = LOWER(TRIM(?))",
-            (nuevo_nombre_limpio, nombre_actual_limpio),
+            "UPDATE categorias SET nombre=? WHERE id=?",
+            (nuevo_nombre_limpio, existente_actual["id"]),
             commit=True,
         )
+        _sync_productos_categoria_nombre(nombre_actual_limpio, nuevo_nombre_limpio)
         return
 
-    conn = get_conn()
-    try:
-        c = conn.cursor()
-        c.execute(
-            "UPDATE productos SET categoria=? WHERE LOWER(TRIM(COALESCE(categoria, ''))) = LOWER(TRIM(?))",
-            (nuevo_nombre_limpio, nombre_actual_limpio),
-        )
-        if existente_nuevo:
-            c.execute(
-                "UPDATE categorias SET nombre=?, activa=1 WHERE id=?",
-                (nuevo_nombre_limpio, existente_nuevo["id"]),
-            )
-        else:
-            c.execute(
-                "INSERT INTO categorias (nombre, activa) VALUES (?, 1)",
-                (nuevo_nombre_limpio,),
-            )
-        if existente_actual:
-            c.execute("UPDATE categorias SET activa=0 WHERE id=?", (existente_actual["id"],))
-        else:
-            c.execute(
-                "INSERT INTO categorias (nombre, activa) VALUES (?, 0)",
-                (nombre_actual_limpio,),
-            )
-        conn.commit()
-    finally:
-        conn.close()
+    activa_actual = int(existente_actual["activa"] or 0)
+    q(
+        "UPDATE categorias SET nombre=?, activa=? WHERE id=?",
+        (nuevo_nombre_limpio, activa_actual, existente_actual["id"]),
+        commit=True,
+    )
+    _sync_productos_categoria_nombre(nombre_actual_limpio, nuevo_nombre_limpio)
+    cleanup_categorias_duplicadas()
 
 
 def set_categoria_activa(nombre, activa):
     """Activa o desactiva una categoría sin tocar productos existentes."""
+    cleanup_categorias_duplicadas()
     nombre_limpio = _normalize_categoria_nombre(nombre)
     if not nombre_limpio:
         raise ValueError("La categoría es obligatoria.")
@@ -1977,14 +2024,14 @@ def get_gasto_categorias():
     keys = set()
     for cat in categorias:
         if isinstance(cat, dict):
-            nombre = str(cat.get('nombre', '')).strip()
+            nombre = _normalize_categoria_nombre(cat.get('nombre', ''))
             tipo = normalizar_tipo_gasto(cat.get('tipo'))
         else:
-            nombre = str(cat).strip()
+            nombre = _normalize_categoria_nombre(cat)
             tipo = 'Necesario'
         if not nombre:
             continue
-        key = nombre.lower()
+        key = _normalize_name_key(nombre)
         if key in keys:
             continue
         keys.add(key)
@@ -1997,14 +2044,14 @@ def set_gasto_categorias(categorias):
     keys = set()
     for cat in categorias:
         if isinstance(cat, dict):
-            nombre = str(cat.get('nombre', '')).strip()
+            nombre = _normalize_categoria_nombre(cat.get('nombre', ''))
             tipo = normalizar_tipo_gasto(cat.get('tipo'))
         else:
-            nombre = str(cat).strip()
+            nombre = _normalize_categoria_nombre(cat)
             tipo = 'Necesario'
         if not nombre:
             continue
-        key = nombre.lower()
+        key = _normalize_name_key(nombre)
         if key in keys:
             continue
         keys.add(key)
@@ -2050,29 +2097,135 @@ def get_tipo_gasto_categoria(nombre_categoria):
 
 def add_gasto_categoria(nombre, tipo='Necesario'):
     """Agrega una categoría de gastos al listado configurable."""
+    cleanup_gasto_categorias_duplicadas()
+    nombre_limpio = _normalize_categoria_nombre(nombre)
+    if not nombre_limpio:
+        raise ValueError("Ingresá un nombre de categoría de gasto.")
     categorias = get_gasto_categorias()
-    if nombre.strip().lower() not in [c['nombre'].lower() for c in categorias]:
-        categorias.append({'nombre': nombre.strip(), 'tipo': normalizar_tipo_gasto(tipo)})
-        set_gasto_categorias(categorias)
+    if _normalize_name_key(nombre_limpio) in {_normalize_name_key(c['nombre']) for c in categorias}:
+        raise ValueError("La categoría de gasto ya existe.")
+    categorias.append({'nombre': nombre_limpio, 'tipo': normalizar_tipo_gasto(tipo)})
+    set_gasto_categorias(categorias)
 
 def delete_gasto_categoria(nombre):
     """Elimina una categoría de gastos del listado configurable."""
-    categorias = [c for c in get_gasto_categorias() if c['nombre'].lower() != nombre.strip().lower()]
+    clave = _normalize_name_key(nombre)
+    categorias = [c for c in get_gasto_categorias() if _normalize_name_key(c['nombre']) != clave]
     set_gasto_categorias(categorias)
 
 def update_gasto_categoria(nombre_actual, nuevo_nombre, tipo='Necesario'):
     """Renombra una categoría de gastos y actualiza registros relacionados."""
-    actual = nombre_actual.strip()
-    nuevo = nuevo_nombre.strip()
+    cleanup_gasto_categorias_duplicadas()
+    actual = _normalize_categoria_nombre(nombre_actual)
+    nuevo = _normalize_categoria_nombre(nuevo_nombre)
+    if not actual:
+        raise ValueError("La categoría actual es obligatoria.")
+    if not nuevo:
+        raise ValueError("Ingresá un nuevo nombre para la categoría de gasto.")
     tipo_normalizado = normalizar_tipo_gasto(tipo)
     categorias = get_gasto_categorias()
+    clave_actual = _normalize_name_key(actual)
+    clave_nuevo = _normalize_name_key(nuevo)
+    if clave_actual != clave_nuevo and clave_nuevo in {_normalize_name_key(c['nombre']) for c in categorias}:
+        raise ValueError("Ya existe otra categoría de gasto con ese nombre.")
+    if clave_actual not in {_normalize_name_key(c['nombre']) for c in categorias}:
+        raise ValueError("No se encontró la categoría de gasto a renombrar.")
     categorias = [
-        {'nombre': nuevo, 'tipo': tipo_normalizado} if c['nombre'].lower() == actual.lower() else c
+        {'nombre': nuevo, 'tipo': tipo_normalizado} if _normalize_name_key(c['nombre']) == clave_actual else c
         for c in categorias
     ]
     set_gasto_categorias(categorias)
     q("UPDATE gastos SET categoria=? WHERE LOWER(categoria)=LOWER(?)", (nuevo, actual), commit=True)
     q("UPDATE gastos SET necesario=? WHERE LOWER(categoria)=LOWER(?)", (tipo_normalizado, nuevo), commit=True)
+
+
+def cleanup_categorias_duplicadas():
+    """Consolida filas duplicadas de categorías y normaliza referencias de productos."""
+    base_map = _get_base_categorias_map()
+    rows = _get_categoria_rows()
+    productos_variantes = _get_productos_categoria_variantes()
+    grupos = {}
+    for row in rows:
+        key = _categoria_nombre_key(row["nombre"])
+        if key:
+            grupos.setdefault(key, []).append(row)
+
+    cambios = 0
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        for key, group in grupos.items():
+            canonical_name = base_map.get(key) or _normalize_categoria_nombre(group[0]["nombre"])
+            keeper = min(group, key=lambda item: int(item["id"]))
+            activa = 1 if any(int(item["activa"] or 0) for item in group) else 0
+            if (
+                _normalize_categoria_nombre(keeper["nombre"]) != canonical_name
+                or int(keeper["activa"] or 0) != activa
+            ):
+                c.execute(
+                    "UPDATE categorias SET nombre=?, activa=? WHERE id=?",
+                    (canonical_name, activa, keeper["id"]),
+                )
+            for row in group:
+                row_name = _normalize_categoria_nombre(row["nombre"])
+                if row_name and row_name != canonical_name:
+                    for producto in productos_variantes.get(key, []):
+                        if producto["categoria"] != canonical_name:
+                            c.execute(
+                                "UPDATE productos SET categoria=? WHERE id=?",
+                                (canonical_name, producto["id"]),
+                            )
+            duplicate_ids = [int(item["id"]) for item in group if int(item["id"]) != int(keeper["id"])]
+            if duplicate_ids:
+                placeholders = ",".join("?" for _ in duplicate_ids)
+                c.execute(f"DELETE FROM categorias WHERE id IN ({placeholders})", tuple(duplicate_ids))
+                cambios += len(duplicate_ids)
+        conn.commit()
+    finally:
+        conn.close()
+
+    cleanup_gasto_categorias_duplicadas()
+    return cambios
+
+
+def cleanup_gasto_categorias_duplicadas():
+    """Consolida categorías de gasto duplicadas por nombre normalizado."""
+    cfg = get_config()
+    raw = cfg.get('gastos_categorias', '')
+    try:
+        categorias = json.loads(raw) if raw else []
+    except Exception:
+        categorias = []
+    if not categorias:
+        categorias = DEFAULT_GASTO_CATEGORIAS[:]
+
+    canonicas = []
+    cambios = 0
+    vistos = {}
+    for cat in categorias:
+        if isinstance(cat, dict):
+            nombre = _normalize_categoria_nombre(cat.get("nombre", ""))
+            tipo = normalizar_tipo_gasto(cat.get("tipo"))
+        else:
+            nombre = _normalize_categoria_nombre(cat)
+            tipo = 'Necesario'
+        if not nombre:
+            continue
+        key = _normalize_name_key(nombre)
+        if key in vistos:
+            q(
+                "UPDATE gastos SET categoria=? WHERE LOWER(TRIM(COALESCE(categoria, ''))) = LOWER(TRIM(?))",
+                (vistos[key]["nombre"], nombre),
+                commit=True,
+            )
+            cambios += 1
+            continue
+        item = {"nombre": nombre, "tipo": tipo}
+        vistos[key] = item
+        canonicas.append(item)
+    if cambios or len(canonicas) != len(categorias):
+        set_gasto_categorias(canonicas)
+    return cambios
 
 
 # ─── USUARIOS ────────────────────────────────────────────────────────────────

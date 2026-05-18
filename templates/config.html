@@ -111,16 +111,23 @@
 
                     <div class="list-group list-group-flush border-top">
                         {% for cat in categorias_configurables %}
-                        <div class="list-group-item px-0">
-                            <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
-                                <div>
-                                    <div class="fw-semibold">{{ cat.nombre }}</div>
-                                    <div class="small text-muted">
-                                        {% if cat.productos_count == 1 %}
-                                        Usada en 1 producto
-                                        {% else %}
-                                        Usada en {{ cat.productos_count }} productos
-                                        {% endif %}
+                        <div tabindex="0" class="list-group-item px-0 config-category-item {% if not cat.activa %}config-category-inactive{% endif %}">
+                            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+                                <div class="flex-grow-1">
+                                    <div class="d-flex justify-content-between align-items-start gap-3">
+                                        <div>
+                                            <div class="fw-semibold">{{ cat.nombre }}</div>
+                                            <div class="small text-muted">
+                                                {% if cat.productos_count == 1 %}
+                                                Usada en 1 producto
+                                                {% else %}
+                                                Usada en {{ cat.productos_count }} productos
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <span class="badge {% if cat.activa %}bg-success-subtle text-success{% else %}bg-warning-subtle text-warning{% endif %}">
+                                            {{ 'Activa' if cat.activa else 'Inactiva' }}
+                                        </span>
                                     </div>
                                     <div class="d-flex flex-wrap gap-1 mt-2">
                                         {% for origen in cat.origen.split('/') %}
@@ -128,24 +135,30 @@
                                             {{ origen|capitalize }}
                                         </span>
                                         {% endfor %}
-                                        <span class="badge {% if cat.activa %}bg-success-subtle text-success{% else %}bg-warning-subtle text-warning{% endif %}">
-                                            {{ 'Activa' if cat.activa else 'Inactiva' }}
-                                        </span>
                                     </div>
                                 </div>
-                                <form action="{{ url_for('config_categoria_toggle') }}" method="POST">
-                                    <input type="hidden" name="nombre" value="{{ cat.nombre }}">
-                                    <input type="hidden" name="activa" value="{{ 0 if cat.activa else 1 }}">
-                                    <button type="submit" class="btn btn-sm {% if cat.activa %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
-                                        {{ 'Desactivar' if cat.activa else 'Activar' }}
-                                    </button>
-                                </form>
+                                <div class="config-row-actions d-flex flex-column flex-md-row align-items-start gap-2">
+                                    <form action="{{ url_for('config_categoria_toggle') }}" method="POST" class="d-flex">
+                                        <input type="hidden" name="nombre" value="{{ cat.nombre }}">
+                                        <input type="hidden" name="activa" value="{{ 0 if cat.activa else 1 }}">
+                                        <button type="submit" class="btn btn-sm btn-link text-secondary ms-0 p-0 small-action">
+                                            {{ 'Desactivar' if cat.activa else 'Activar' }}
+                                        </button>
+                                    </form>
+
+                                    <div class="view-mode d-flex align-items-center">
+                                        <button type="button" data-target="rename-prod-{{ loop.index0 }}" class="btn btn-link btn-sm p-0 action-link rename-btn">✏ Renombrar</button>
+                                    </div>
+
+                                    <form id="rename-prod-{{ loop.index0 }}" action="{{ url_for('config_categoria_editar') }}" method="POST" class="rename-form d-none d-flex flex-column flex-md-row gap-2 align-items-start w-100">
+                                        <input type="hidden" name="categoria_id" value="{{ cat.id or '' }}">
+                                        <input type="hidden" name="nombre_actual" value="{{ cat.nombre }}">
+                                        <input type="text" name="nuevo_nombre" class="form-control form-control-sm flex-grow-1" value="{{ cat.nombre }}" required>
+                                        <button class="btn btn-sm btn-primary" type="submit">Guardar</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary cancel-btn">Cancelar</button>
+                                    </form>
+                                </div>
                             </div>
-                            <form action="{{ url_for('config_categoria_editar') }}" method="POST" class="d-flex gap-2">
-                                <input type="hidden" name="nombre_actual" value="{{ cat.nombre }}">
-                                <input type="text" name="nuevo_nombre" class="form-control form-control-sm" value="{{ cat.nombre }}" required>
-                                <button class="btn btn-sm btn-outline-secondary" type="submit">Renombrar</button>
-                            </form>
                         </div>
                         {% endfor %}
                     </div>
@@ -170,28 +183,36 @@
 
                     <div class="list-group list-group-flush border-top">
                         {% for cat in categorias_gastos %}
-                        <div class="list-group-item px-0">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <span>
-                                    {{ cat.nombre }}
-                                    <span class="badge {% if cat.tipo == 'Prescindible' %}bg-warning-subtle text-warning{% else %}bg-success-subtle text-success{% endif %}">
-                                        {{ cat.tipo }}
-                                    </span>
-                                </span>
-                                <form action="{{ url_for('config_gasto_categoria_eliminar') }}" method="POST" onsubmit="return confirm('¿Eliminar la categoría de gasto «{{ cat.nombre }}»?')">
-                                    <input type="hidden" name="nombre" value="{{ cat.nombre }}">
-                                    <button type="submit" class="btn btn-sm btn-link text-danger"><i class="fas fa-trash"></i></button>
-                                </form>
+                        <div tabindex="0" class="list-group-item px-0 config-category-item">
+                            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+                                <div class="flex-grow-1">
+                                    <div class="d-flex justify-content-between align-items-start gap-3">
+                                        <div>
+                                            <div class="fw-semibold">{{ cat.nombre }}</div>
+                                            <div class="small text-muted">Categoría de gasto</div>
+                                        </div>
+                                        <span class="badge {% if cat.tipo == 'Prescindible' %}bg-warning-subtle text-warning{% else %}bg-success-subtle text-success{% endif %}">
+                                            {{ cat.tipo }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="config-row-actions d-flex flex-column flex-md-row align-items-start gap-2 w-100">
+                                    <div class="view-mode d-flex align-items-center w-100">
+                                        <button type="button" data-target="rename-gasto-{{ loop.index0 }}" class="btn btn-link btn-sm p-0 action-link rename-btn">✏ Renombrar</button>
+                                    </div>
+
+                                    <form id="rename-gasto-{{ loop.index0 }}" action="{{ url_for('config_gasto_categoria_editar') }}" method="POST" class="rename-form d-none d-flex flex-column flex-md-row gap-2 align-items-start w-100">
+                                        <input type="hidden" name="nombre_actual" value="{{ cat.nombre }}">
+                                        <input type="text" name="nuevo_nombre" class="form-control form-control-sm flex-grow-1" value="{{ cat.nombre }}" required>
+                                        <select name="tipo" class="form-select form-select-sm" style="min-width: 145px; max-width: 155px;">
+                                            <option value="Necesario" {% if cat.tipo == 'Necesario' %}selected{% endif %}>Necesario</option>
+                                            <option value="Prescindible" {% if cat.tipo == 'Prescindible' %}selected{% endif %}>Prescindible</option>
+                                        </select>
+                                        <button class="btn btn-sm btn-primary" type="submit">Guardar</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary cancel-btn">Cancelar</button>
+                                    </form>
+                                </div>
                             </div>
-                            <form action="{{ url_for('config_gasto_categoria_editar') }}" method="POST" class="d-flex gap-2">
-                                <input type="hidden" name="nombre_actual" value="{{ cat.nombre }}">
-                                <input type="text" name="nuevo_nombre" class="form-control form-control-sm" value="{{ cat.nombre }}" required>
-                                <select name="tipo" class="form-select form-select-sm" style="max-width: 140px;">
-                                    <option value="Necesario" {% if cat.tipo == 'Necesario' %}selected{% endif %}>Necesario</option>
-                                    <option value="Prescindible" {% if cat.tipo == 'Prescindible' %}selected{% endif %}>Prescindible</option>
-                                </select>
-                                <button class="btn btn-sm btn-outline-secondary" type="submit">Modificar</button>
-                            </form>
                         </div>
                         {% endfor %}
                     </div>
@@ -214,5 +235,106 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+    .config-category-item {
+        transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        border-radius: 0.75rem;
+        padding: 0.9rem 0.75rem;
+        border: 1px solid transparent;
+    }
+    .config-category-item + .config-category-item {
+        margin-top: 0.5rem;
+    }
+    .config-category-item:hover,
+    .config-category-item:focus-visible,
+    .config-category-item:focus-within {
+        background-color: rgba(15, 83, 173, 0.04);
+        border-color: rgba(15, 83, 173, 0.16);
+        box-shadow: 0 10px 18px rgba(15, 83, 173, 0.06);
+        outline: none;
+    }
+    .config-category-item:focus-visible {
+        outline: 3px solid rgba(59, 130, 246, 0.18);
+        outline-offset: 2px;
+    }
+    .config-category-inactive {
+        background-color: rgba(248, 249, 250, 0.85);
+    }
+    .config-category-inactive .fw-semibold,
+    .config-category-inactive .small.text-muted {
+        color: #6c757d;
+    }
+    .config-row-actions {
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(4px);
+        transition: all 0.2s ease;
+        min-width: 210px;
+    }
+    .config-category-item:focus-within .config-row-actions,
+    .config-category-item:hover .config-row-actions {
+        opacity: 1;
+        visibility: visible;
+        transform: none;
+    }
+    .config-row-actions form {
+        margin-bottom: 0;
+    }
+    .config-row-actions .form-control {
+        min-width: 0;
+    }
+    .action-link{
+        color: var(--accent);
+        font-weight: 500;
+        text-decoration: none;
+        padding: 0 6px;
+    }
+    .small-action { font-size: .85rem; }
+    .rename-form.d-none { display: none !important; }
+    .rename-form { display: flex; }
+    @media (max-width: 767.98px) {
+        .config-category-item {
+            padding: 1rem 0.5rem;
+        }
+        .config-row-actions {
+            opacity: 1;
+            visibility: visible;
+            transform: none;
+            width: 100%;
+        }
+    }
+</style>
+{% endblock %}
 {% block extra_js %}
+<script>
+document.addEventListener('click', function(e){
+    if(e.target && e.target.classList.contains('rename-btn')){
+        var targetId = e.target.getAttribute('data-target');
+        var form = document.getElementById(targetId);
+        if(!form) return;
+        var container = e.target.closest('.config-category-item');
+        // hide view-mode elements
+        container && container.querySelectorAll('.view-mode').forEach(function(v){ v.classList.add('d-none'); });
+        form.classList.remove('d-none');
+        var input = form.querySelector('input[name="nuevo_nombre"]');
+        input && input.focus();
+    }
+    if(e.target && e.target.classList.contains('cancel-btn')){
+        var container = e.target.closest('.config-category-item');
+        if(!container) return;
+        container.querySelectorAll('.rename-form').forEach(function(f){ f.classList.add('d-none'); });
+        container.querySelectorAll('.view-mode').forEach(function(v){ v.classList.remove('d-none'); });
+    }
+});
+
+document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){
+        document.querySelectorAll('.config-category-item').forEach(function(container){
+            container.querySelectorAll('.rename-form').forEach(function(f){ f.classList.add('d-none'); });
+            container.querySelectorAll('.view-mode').forEach(function(v){ v.classList.remove('d-none'); });
+        });
+    }
+});
+</script>
 {% endblock %}

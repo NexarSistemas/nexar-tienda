@@ -3351,6 +3351,7 @@ def perfil():
 @main_bp.route("/config", methods=["GET", "POST"])
 @admin_required
 def config():
+    db.cleanup_categorias_duplicadas()
     if request.method == "POST":
         data = request.form.to_dict()
         data["ticket_mostrar_iva"] = "1" if _as_bool(data.get("ticket_mostrar_iva")) else "0"
@@ -3648,6 +3649,7 @@ def config_categoria_editar():
         db.update_categoria(
             request.form.get("nombre_actual", ""),
             request.form.get("nuevo_nombre", ""),
+            request.form.get("categoria_id", ""),
         )
         flash("Categoría actualizada correctamente.", "success")
     except ValueError as exc:
@@ -3685,7 +3687,11 @@ def config_categoria_eliminar():
 @main_bp.route("/config/gasto-categoria", methods=["POST"])
 @admin_required
 def config_gasto_categoria():
-    db.add_gasto_categoria(request.form.get("nombre", ""), request.form.get("tipo", "Necesario"))
+    try:
+        db.add_gasto_categoria(request.form.get("nombre", ""), request.form.get("tipo", "Necesario"))
+        flash("Categoría de gasto guardada correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
     return redirect(url_for("config"))
 
 
@@ -3699,7 +3705,15 @@ def config_gasto_categoria_eliminar():
 @main_bp.route("/config/gasto-categoria/editar", methods=["POST"])
 @admin_required
 def config_gasto_categoria_editar():
-    db.update_gasto_categoria(request.form.get("nombre_actual", ""), request.form.get("nuevo_nombre", ""), request.form.get("tipo", "Necesario"))
+    try:
+        db.update_gasto_categoria(
+            request.form.get("nombre_actual", ""),
+            request.form.get("nuevo_nombre", ""),
+            request.form.get("tipo", "Necesario"),
+        )
+        flash("Categoría de gasto actualizada correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
     return redirect(url_for("config"))
 
 
