@@ -635,6 +635,7 @@ def init_db():
         ('dias_alerta_cliente', '15'),
         ('siguiente_ticket', '1001'),
         ('siguiente_codigo', '1'),
+        ('siguiente_codigo_barras_interno', '1'),
         ('backup_intervalo_h', '24'),
         ('backup_keep', '10'),
         ('backup_dir', ''),
@@ -1498,6 +1499,60 @@ def next_codigo():
     return new_code
 
 
+def _codigo_barras_flag_enabled(value) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "on", "yes", "si"}
+
+
+def codigo_barras_exists(codigo_barras, exclude_id=None) -> bool:
+    """Indica si el código de barras ya está asignado a otro producto."""
+    codigo = str(codigo_barras or "").strip()
+    if not codigo:
+        return False
+    sql = "SELECT id FROM productos WHERE TRIM(COALESCE(codigo_barras, '')) = ?"
+    params = [codigo]
+    if exclude_id is not None:
+        sql += " AND id <> ?"
+        params.append(exclude_id)
+    return q(sql, tuple(params), fetchone=True) is not None
+
+
+def next_codigo_barras_interno():
+    """Genera el próximo código de barras interno disponible."""
+    conn = get_conn()
+    c = conn.cursor()
+    try:
+        row = c.execute(
+            "SELECT valor FROM config WHERE clave='siguiente_codigo_barras_interno'"
+        ).fetchone()
+        siguiente = int((row["valor"] if row else "1") or 1)
+        while True:
+            codigo = f"NXR{siguiente:08d}"
+            existe = c.execute(
+                "SELECT 1 FROM productos WHERE TRIM(COALESCE(codigo_barras, '')) = ? LIMIT 1",
+                (codigo,),
+            ).fetchone()
+            if not existe:
+                c.execute(
+                    "INSERT OR REPLACE INTO config VALUES ('siguiente_codigo_barras_interno', ?)",
+                    (str(siguiente + 1),),
+                )
+                conn.commit()
+                return codigo
+            siguiente += 1
+    finally:
+        conn.close()
+
+
+def _resolve_codigo_barras_for_save(data, *, exclude_id=None) -> str:
+    codigo_barras = str(data.get("codigo_barras") or "").strip()
+    generar_interno = _codigo_barras_flag_enabled(data.get("generar_codigo_barras")) or _codigo_barras_flag_enabled(data.get("generar_codigo_barras_interno"))
+    if not codigo_barras and generar_interno:
+        codigo_barras = next_codigo_barras_interno()
+    if codigo_barras and codigo_barras_exists(codigo_barras, exclude_id=exclude_id):
+        raise ValueError("Ya existe un producto con ese código de barras.")
+    return codigo_barras
+
+
 # ─── TICKET AUTOMÁTICO ───────────────────────────────────────────────────────
 
 def next_ticket():
@@ -2297,6 +2352,7 @@ def add_producto(data):
     codigo = next_codigo()
     rubro_actual = get_rubro_actual(get_config())
     proveedor_habitual = str(data.get('proveedor_habitual') or '').strip()
+    codigo_barras = _resolve_codigo_barras_for_save(data)
     unidad_seleccionada = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
     tipo_unidad = get_unidad_interna(unidad_seleccionada)
     unidad = get_unidad_label(unidad_seleccionada)
@@ -2313,7 +2369,7 @@ def add_producto(data):
         """INSERT INTO productos
         (codigo_interno,codigo_barras,descripcion,marca,categoria,unidad,tipo_unidad,permite_fraccionado,rubro,por_peso,costo,precio_venta,iva,activo)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)""",
-        (codigo, data.get('codigo_barras', ''), data['descripcion'], data.get('marca', ''),
+        (codigo, codigo_barras, data['descripcion'], data.get('marca', ''),
          data.get('categoria') or get_categoria_default(rubro_actual), unidad, tipo_unidad, permite_fraccionado,
          data.get('rubro') or rubro_actual, 1 if es_fraccionable else int(data.get('por_peso', 0)),
          float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'))
@@ -2332,6 +2388,7 @@ def update_producto(pid, data):
     """Actualiza un producto."""
     producto_actual = get_producto(pid)
     rubro_actual = get_rubro_actual(get_config())
+    codigo_barras = _resolve_codigo_barras_for_save(data, exclude_id=pid)
     unidad_seleccionada = normalizar_unidad(data.get('tipo_unidad') or data.get('unidad'), rubro=rubro_actual)
     tipo_unidad = get_unidad_interna(unidad_seleccionada)
     unidad = get_unidad_label(unidad_seleccionada)
@@ -2344,7 +2401,7 @@ def update_producto(pid, data):
     q(
         """UPDATE productos SET codigo_barras=?,descripcion=?,marca=?,categoria=?,unidad=?,tipo_unidad=?,
         permite_fraccionado=?,rubro=?,por_peso=?,costo=?,precio_venta=?,iva=?,activo=? WHERE id=?""",
-        (data.get('codigo_barras', ''), data['descripcion'], data.get('marca', ''),
+        (codigo_barras, data['descripcion'], data.get('marca', ''),
          data.get('categoria') or get_categoria_default(rubro_actual), unidad, tipo_unidad, permite_fraccionado,
          rubro_guardado or None, 1 if es_fraccionable else int(data.get('por_peso', 0)),
          float(data.get('costo', 0)), float(data.get('precio_venta', 0)), data.get('iva', '21%'),

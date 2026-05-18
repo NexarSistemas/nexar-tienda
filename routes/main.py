@@ -254,6 +254,27 @@ def _normalizar_csv_header(value: str) -> str:
     return str(value or "").strip().lower()
 
 
+def _normalizar_codigo_barras(value) -> str:
+    return str(value or "").strip()
+
+
+def _validar_codigos_barras_manuales(filas: list[dict], errores: list[str], *, row_label_key: str) -> None:
+    vistos: dict[str, str] = {}
+    for fila in filas:
+        codigo = _normalizar_codigo_barras(fila.get("codigo_barras"))
+        if not codigo:
+            continue
+        codigo_key = codigo.lower()
+        row_label = str(fila.get(row_label_key) or "fila")
+        if codigo_key in vistos:
+            errores.append(f"{row_label}: el código de barras '{codigo}' está repetido dentro de la carga.")
+            continue
+        if db.codigo_barras_exists(codigo):
+            errores.append(f"{row_label}: ya existe un producto con el código de barras '{codigo}'.")
+            continue
+        vistos[codigo_key] = row_label
+
+
 def _parse_float_csv(value, field_name: str, row_number: int, *, allow_zero: bool = True, must_be_positive: bool = False) -> float:
     texto = str(value or "").strip().replace(",", ".")
     if texto == "":
@@ -315,6 +336,7 @@ def _validar_fila_importacion_producto(row: dict[str, str], row_number: int, rub
         "stock_maximo": str(stock_maximo),
         "tipo_unidad": unidad,
         "unidad": unidad,
+        "_row_label": f"Fila {row_number}",
     }
 
 
@@ -1653,6 +1675,7 @@ def productos_lote():
             "unidad": "unidad",
             "stock_minimo": "5",
             "stock_maximo": "50",
+            "generar_codigo_barras_interno": "",
         }
 
     def _blank_row():
@@ -1675,6 +1698,7 @@ def productos_lote():
             "unidad": (request.form.get("unidad", "unidad") or "unidad").strip(),
             "stock_minimo": (request.form.get("stock_minimo", "5") or "5").strip(),
             "stock_maximo": (request.form.get("stock_maximo", "50") or "50").strip(),
+            "generar_codigo_barras_interno": "1" if _as_bool(request.form.get("generar_codigo_barras_interno")) else "",
         }
         descripciones = request.form.getlist("descripcion[]")
         costos = request.form.getlist("costo[]")
@@ -1748,6 +1772,7 @@ def productos_lote():
 
             filas_validas.append(
                 {
+                    "row_label": f"Fila {idx + 1}",
                     "descripcion": row["descripcion"],
                     "costo": str(costo_num),
                     "precio_venta": str(precio_num),
@@ -1776,6 +1801,8 @@ def productos_lote():
         if not filas_validas and not errores:
             errores.append("Cargá al menos una fila válida para crear productos.")
 
+        _validar_codigos_barras_manuales(filas_validas, errores, row_label_key="row_label")
+
         if filas_validas:
             current_count = int(db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"] or 0)
             check = db.check_license_limits("productos", current_count + len(filas_validas))
@@ -1798,6 +1825,7 @@ def productos_lote():
                         "stock_maximo": str(stock_maximo_num),
                         "tipo_unidad": common_data["unidad"],
                         "unidad": common_data["unidad"],
+                        "generar_codigo_barras_interno": common_data["generar_codigo_barras_interno"],
                     }
                 )
             flash(f"Se crearon {len(filas_validas)} productos.", "success")
@@ -1833,8 +1861,10 @@ def productos_importar():
     rubro_actual = get_rubro_actual(cfg)
     import_errors: list[str] = []
     filename = ""
+    generar_codigo_barras_interno = False
 
     if request.method == "POST":
+        generar_codigo_barras_interno = _as_bool(request.form.get("generar_codigo_barras_interno"))
         archivo = request.files.get("archivo_csv")
         if not archivo or not str(archivo.filename or "").strip():
             import_errors.append("Seleccioná un archivo CSV para importar.")
@@ -1889,6 +1919,8 @@ def productos_importar():
                 if not import_errors and not filas_validas:
                     import_errors.append("El CSV no contiene filas válidas para importar.")
 
+        _validar_codigos_barras_manuales(filas_validas, import_errors, row_label_key="_row_label")
+
         if filas_validas:
             current_count = int(db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"] or 0)
             check = db.check_license_limits("productos", current_count + len(filas_validas))
@@ -1897,6 +1929,8 @@ def productos_importar():
 
         if not import_errors and filas_validas:
             for fila in filas_validas:
+                if generar_codigo_barras_interno:
+                    fila["generar_codigo_barras_interno"] = "1"
                 db.add_producto(fila)
             flash(f"Se importaron {len(filas_validas)} productos.", "success")
             return redirect(url_for("productos"))
@@ -1911,6 +1945,7 @@ def productos_importar():
         template_dir=str(_get_productos_import_template_dir()),
         template_filename=PRODUCTOS_IMPORT_TEMPLATE_FILENAME,
         template_destino=request.form.get("destino", "app") if request.method == "POST" else "app",
+        generar_codigo_barras_interno=generar_codigo_barras_interno,
     )
 
 
@@ -1969,6 +2004,7 @@ def producto_nuevo():
         "codigo_barras": (request.values.get("prefill_codigo_barras", "") or "").strip(),
         "costo": (request.values.get("prefill_costo", "") or "").strip(),
         "proveedor_habitual": proveedor_habitual_prefill,
+        "generar_codigo_barras_interno": "1" if _as_bool(request.values.get("generar_codigo_barras_interno")) else "",
     }
     if request.method == "POST":
         if not _limit_allows("productos"):
@@ -1995,10 +2031,11 @@ def producto_nuevo():
         flash("Producto creado.", "success")
         if desde_compra:
             draft_compra["producto_id"] = str(nuevo_id)
+            producto_creado = db.get_producto(nuevo_id)
             if not draft_compra.get("producto_descripcion"):
                 draft_compra["producto_descripcion"] = request.form.get("descripcion", "")
             if not draft_compra.get("codigo_barras"):
-                draft_compra["codigo_barras"] = request.form.get("codigo_barras", "")
+                draft_compra["codigo_barras"] = (producto_creado["codigo_barras"] if producto_creado else request.form.get("codigo_barras", "")) or ""
             if not draft_compra.get("costo_unitario"):
                 draft_compra["costo_unitario"] = request.form.get("costo", "")
             return redirect(url_for("compra_nueva", **_purchase_draft_query(draft_compra, created_product="1")))
