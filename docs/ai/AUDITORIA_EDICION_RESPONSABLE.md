@@ -9,7 +9,8 @@ Esta auditoría es documental. No modifica lógica funcional.
 ## Resumen ejecutivo
 
 - `productos`, `clientes`, `proveedores` y `categorías` ya tienen una base más segura porque priorizan desactivación sobre borrado físico.
-- `ventas`, `compras`, `facturas de proveedor` y `gastos` todavía tienen puntos de borrado físico o edición destructiva que pueden afectar trazabilidad histórica.
+- `ventas` quedó corregido parcialmente con MVP de anulación segura: ya no debería borrarse físicamente desde el flujo principal, restaura stock y conserva historial.
+- `compras`, `facturas de proveedor` y `gastos` todavía tienen puntos de borrado físico o edición destructiva que pueden afectar trazabilidad histórica.
 - `stock` permite ajuste manual con movimiento registrado, lo cual es bueno, pero sigue existiendo riesgo si en el futuro se habilita edición directa fuera de ese flujo.
 - `caja` permite apertura, movimientos y cierre, pero no tiene todavía bloqueo explícito de edición posterior ni reglas fuertes de inmutabilidad histórica.
 - `reportes` dependen de tablas operativas; por eso cualquier borrado físico en ventas, compras, gastos o stock impacta directo en resultados históricos.
@@ -29,7 +30,7 @@ Esta auditoría es documental. No modifica lógica funcional.
 | Proveedores | Desactiva con `activo=0`; mantiene detalle y facturas | Bajo a medio | Mantener desactivación y revisar vínculo con deuda/facturas antes de cambios estructurales | Media |
 | Clientes | Desactiva con `activo=0`; CC se reconstruye desde ventas faltantes | Bajo a medio | Mantener desactivación y evitar borrado físico con saldo o historial | Media |
 | Compras | Puede editar metadatos seguros; eliminar revierte stock y borra compra | Alto | Cambiar a anulación o soft delete con reversión explícita y trazabilidad | Muy alta |
-| Ventas | Eliminar borra venta, detalle, CC asociada y revierte stock | Muy alto | Implementar anulación segura; evitar borrado físico operativo | Muy alta |
+| Ventas | MVP corregido: anula, conserva historial y recompone stock | Medio | Completar exclusión de anuladas en todas las vistas/reportes secundarios y revisar compensaciones contables | Muy alta |
 | Facturas proveedor | Edita importes con guardas; elimina si no hay pagos | Alto | Preferir anulación/estado; no borrar físicamente facturas comerciales | Alta |
 | Caja diaria | Movimientos manuales y cierre sin bloqueo fuerte posterior | Medio a alto | Congelar cajas cerradas y registrar ajustes posteriores como asientos compensatorios | Alta |
 | Gastos | Edita y elimina físicamente; sincroniza con caja | Alto | Pasar a anulación o soft delete, sobre todo si afectó caja/reportes | Alta |
@@ -120,20 +121,22 @@ Esta auditoría es documental. No modifica lógica funcional.
 
 ### Ventas
 
+- Estado actual del MVP:
+  Corregido parcialmente. El flujo principal pasa por anulación segura en lugar de borrado físico.
 - Historial:
   Existe historial con ticket y detalle.
 - Eliminación/anulación:
-  Hoy `delete_venta` hace borrado físico: repone stock, borra `stock_movimientos`, borra movimientos de cuenta corriente asociados, borra detalle y luego borra la venta.
+  El MVP actual marca la venta con `anulada=1`, conserva `ventas` y `ventas_detalle`, registra fecha/usuario/motivo de anulación, repone stock y crea movimiento de stock de anulación.
 - Impacto en stock:
-  Muy alto. Recompone stock directamente.
+  Controlado en el flujo principal: la reposición ocurre una sola vez si la venta no estaba anulada.
 - Impacto en caja:
-  Alto. La venta es un hecho económico; si la caja del día ya fue usada para control, el borrado deja desalineado el negocio aunque la tabla caja no se toque explícitamente.
+  Mejorado para métricas principales porque caja y dashboard dejan de sumar ventas anuladas en los totales visibles, pero no hay todavía asiento compensatorio persistente de caja.
 - Impacto en cuenta corriente cliente:
-  Alto. El borrado elimina movimientos de `cc_clientes_mov` asociados.
+  Mejorado parcialmente: no se borran movimientos y, si existía el cargo de cuenta corriente, se agrega una compensación simple por anulación.
 - Impacto en reportes:
-  Muy alto. Desaparece facturación histórica.
+  Reducido en reportes principales: dashboard, historial, reportes y rentabilidad principal ya filtran anuladas en el MVP. Quedan pendientes revisiones de vistas secundarias o futuras consultas nuevas.
 - Recomendación:
-  Diferenciar claramente:
+  Mantener y completar este enfoque:
   1. Editar venta: evitar en MVP salvo metadatos inocuos.
   2. Anular venta: registrar estado anulado, reponer stock con movimiento específico y compensar CC/caja.
   3. Eliminar físicamente: reservar solo para limpieza técnica excepcional.
@@ -266,7 +269,7 @@ Esta auditoría es documental. No modifica lógica funcional.
 ## Recomendaciones de implementación por ramas
 
 - `fix/ventas-anulacion-segura`
-  Reemplazar borrado físico por estado anulado, reposición de stock con movimiento específico y compensación de CC.
+  MVP implementado parcialmente. Pendiente: revisar cobertura total de reportes secundarios y definir estrategia formal de compensación de caja.
 - `fix/compras-edicion-responsable`
   Limitar edición a metadatos seguros y migrar eliminación a anulación/soft delete con control de stock.
 - `fix/stock-ajustes-responsables`

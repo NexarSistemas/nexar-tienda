@@ -249,6 +249,7 @@
                                     <th>Resumen Artículos</th>
                                     <th class="text-end">Total Factura</th>
                                     <th>Medio Pago</th>
+                                    <th>Estado</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -265,6 +266,13 @@
                                     <td class="text-end fw-bold">${{ "%.2f"|format(venta.total) }}</td>
                                     <td>
                                         <span class="badge bg-secondary">{{ venta.medio_pago }}</span>
+                                    </td>
+                                    <td>
+                                        {% if venta.anulada %}
+                                        <span class="badge bg-warning text-dark">Anulada</span>
+                                        {% else %}
+                                        <span class="badge bg-success">Activa</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}

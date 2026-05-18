@@ -349,7 +349,11 @@ def init_db():
             total REAL DEFAULT 0,
             interes_financiacion REAL DEFAULT 0,
             vendedor TEXT DEFAULT '',
-            temporada TEXT DEFAULT ''
+            temporada TEXT DEFAULT '',
+            anulada INTEGER DEFAULT 0,
+            anulada_at TEXT DEFAULT '',
+            anulada_por TEXT DEFAULT '',
+            motivo_anulacion TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS ventas_detalle (
@@ -576,6 +580,14 @@ def init_db():
     columnas_v = [r['name'] for r in c.execute("PRAGMA table_info(ventas)").fetchall()]
     if 'interes_financiacion' not in columnas_v:
         c.execute("ALTER TABLE ventas ADD COLUMN interes_financiacion REAL DEFAULT 0")
+    if 'anulada' not in columnas_v:
+        c.execute("ALTER TABLE ventas ADD COLUMN anulada INTEGER DEFAULT 0")
+    if 'anulada_at' not in columnas_v:
+        c.execute("ALTER TABLE ventas ADD COLUMN anulada_at TEXT DEFAULT ''")
+    if 'anulada_por' not in columnas_v:
+        c.execute("ALTER TABLE ventas ADD COLUMN anulada_por TEXT DEFAULT ''")
+    if 'motivo_anulacion' not in columnas_v:
+        c.execute("ALTER TABLE ventas ADD COLUMN motivo_anulacion TEXT DEFAULT ''")
 
     columnas_vd = [r['name'] for r in c.execute("PRAGMA table_info(ventas_detalle)").fetchall()]
     if 'costo_unitario' not in columnas_vd:
@@ -2685,6 +2697,7 @@ def reconciliar_cc_clientes_desde_ventas():
         FROM ventas v
         LEFT JOIN cc_clientes_mov m ON m.venta_id = v.id
         WHERE v.cliente_id > 0
+          AND COALESCE(v.anulada, 0) = 0
           AND LOWER(v.medio_pago) = LOWER('Cuenta Corriente')
           AND m.id IS NULL
         ORDER BY v.id
@@ -2720,13 +2733,13 @@ def get_estadisticas_cliente(cid):
     """Obtiene estadísticas de un cliente."""
     # Total de compras
     total_compras = q(
-        "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM ventas WHERE cliente_id=?",
+        "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM ventas WHERE cliente_id=? AND COALESCE(anulada, 0)=0",
         (cid,), fetchone=True
     )
 
     # Última compra
     ultima_compra = q(
-        "SELECT fecha, total FROM ventas WHERE cliente_id=? ORDER BY fecha DESC LIMIT 1",
+        "SELECT fecha, total FROM ventas WHERE cliente_id=? AND COALESCE(anulada, 0)=0 ORDER BY fecha DESC LIMIT 1",
         (cid,), fetchone=True
     )
 
@@ -3289,31 +3302,86 @@ def crear_venta(items, cliente_nombre, medio_pago, descuento_adicional, vendedor
 
 
 def delete_venta(venta_id):
-    """Elimina una venta y sus registros asociados, restaurando el stock."""
+    """Compatibilidad: la eliminación física fue reemplazada por anulación segura."""
+    return anular_venta(venta_id)
+
+
+def anular_venta(venta_id, motivo='', usuario=''):
+    """Marca una venta como anulada y restaura stock una sola vez."""
     conn = get_conn()
     try:
         c = conn.cursor()
         venta = c.execute("SELECT * FROM ventas WHERE id=?", (venta_id,)).fetchone()
         if not venta:
-            return False
+            raise ValueError("La venta indicada no existe.")
+        if int(venta["anulada"] or 0):
+            raise ValueError("La venta ya está anulada.")
 
         items = c.execute("SELECT * FROM ventas_detalle WHERE venta_id=?", (venta_id,)).fetchall()
+        motivo_movimiento = f"Anulación venta #{venta_id}"
         for item in items:
             producto_id = int(item["producto_id"] or 0)
             cantidad = float(item["cantidad"] or 0)
             if producto_id <= 0 or cantidad <= 0:
                 continue
 
-            stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
+            stock = c.execute("SELECT stock_actual, stock_minimo, stock_maximo, proveedor_habitual FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
             if stock:
                 stock_anterior = float(stock["stock_actual"] or 0)
                 stock_nuevo = stock_anterior + cantidad
                 c.execute("UPDATE stock SET stock_actual=? WHERE producto_id=?", (stock_nuevo, producto_id))
+            else:
+                stock_anterior = 0.0
+                stock_nuevo = cantidad
+                c.execute(
+                    "INSERT INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo, proveedor_habitual) VALUES (?,?,?,?,?)",
+                    (producto_id, stock_nuevo, 5, 50, ""),
+                )
 
-        c.execute("DELETE FROM stock_movimientos WHERE motivo=?", (f"Venta #{venta_id}",))
-        c.execute("DELETE FROM cc_clientes_mov WHERE venta_id=?", (venta_id,))
-        c.execute("DELETE FROM ventas_detalle WHERE venta_id=?", (venta_id,))
-        c.execute("DELETE FROM ventas WHERE id=?", (venta_id,))
+            c.execute(
+                """INSERT INTO stock_movimientos
+                (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo)
+                VALUES (?,?,?,?,?,?)""",
+                (producto_id, 'ANULACION_VENTA', cantidad, stock_anterior, stock_nuevo, motivo_movimiento),
+            )
+
+        if (
+            int(venta["cliente_id"] or 0) > 0
+            and str(venta["medio_pago"] or "").strip().lower() == "cuenta corriente"
+        ):
+            movimiento_original = c.execute(
+                "SELECT id FROM cc_clientes_mov WHERE venta_id=? AND LOWER(tipo)=LOWER('Venta') LIMIT 1",
+                (venta_id,),
+            ).fetchone()
+            movimiento_compensacion = c.execute(
+                "SELECT id FROM cc_clientes_mov WHERE venta_id=? AND LOWER(tipo)=LOWER('Anulación venta') LIMIT 1",
+                (venta_id,),
+            ).fetchone()
+            if movimiento_original and not movimiento_compensacion:
+                c.execute(
+                    """INSERT INTO cc_clientes_mov
+                    (cliente_id, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones, venta_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        int(venta["cliente_id"] or 0),
+                        venta["fecha"] or datetime.now().strftime('%Y-%m-%d'),
+                        "Anulación venta",
+                        f"TCK-{venta['numero_ticket']}",
+                        0,
+                        float(venta["total"] or 0),
+                        '',
+                        str(motivo or "Compensación automática por anulación de venta.").strip(),
+                        venta_id,
+                    ),
+                )
+
+        marca_tiempo = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        c.execute(
+            """UPDATE ventas
+            SET anulada=1, anulada_at=?, anulada_por=?, motivo_anulacion=?
+            WHERE id=?""",
+            (marca_tiempo, str(usuario or '').strip(), str(motivo or '').strip(), venta_id),
+        )
         conn.commit()
         return True
     except Exception:
@@ -3855,13 +3923,18 @@ def fmt_ars(valor):
     return f"${valor:,.2f}"
 
 
+def _ventas_activas_cond(alias="v"):
+    """Condicion SQL reusable para excluir ventas anuladas."""
+    return f"COALESCE({alias}.anulada, 0) = 0"
+
+
 def get_dashboard_stats():
     """Calcula estadísticas para dashboard."""
     hoy = date.today().isoformat()
 
     # Ventas del día
     ventas_hoy = q(
-        "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM ventas WHERE fecha=?",
+        f"SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM ventas WHERE fecha=? AND {_ventas_activas_cond('ventas')}",
         (hoy,), fetchone=True
     )
 
@@ -3869,7 +3942,7 @@ def get_dashboard_stats():
     alertas = get_alertas_count()
 
     # Últimas ventas
-    ultimas_ventas = q("SELECT * FROM ventas ORDER BY fecha DESC, id DESC LIMIT 5")
+    ultimas_ventas = q(f"SELECT * FROM ventas WHERE {_ventas_activas_cond('ventas')} ORDER BY fecha DESC, id DESC LIMIT 5")
 
     # Temporada actual
     temporada = get_temporada_actual()
@@ -3951,6 +4024,7 @@ def get_stats_rentabilidad(mes_actual=None, rubro=None):
         SELECT COALESCE(SUM(v.total), 0) as total
         FROM ventas v
         WHERE v.fecha LIKE ?
+          AND {_ventas_activas_cond('v')}
           AND EXISTS (
               SELECT 1
               FROM ventas_detalle vd
@@ -3968,7 +4042,7 @@ def get_stats_rentabilidad(mes_actual=None, rubro=None):
         FROM ventas_detalle vd
         JOIN ventas v ON v.id = vd.venta_id
         LEFT JOIN productos p ON p.id = vd.producto_id
-        WHERE v.fecha LIKE ? AND {rubro_cond}
+        WHERE v.fecha LIKE ? AND {_ventas_activas_cond('v')} AND {rubro_cond}
     """, (f"{mes_actual}%", *rubro_params), fetchone=True)['total_costo']
 
     gastos_rows = q(
@@ -4017,8 +4091,9 @@ def get_top_productos_vendidos(limit=5, rubro=None):
                SUM(vd.cantidad) as total_vendido,
                SUM(vd.subtotal) as recaudado
         FROM ventas_detalle vd
+        JOIN ventas v ON v.id = vd.venta_id
         LEFT JOIN productos p ON p.id = vd.producto_id
-        WHERE {rubro_cond}
+        WHERE {_ventas_activas_cond('v')} AND {rubro_cond}
         GROUP BY
             vd.producto_id,
             COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre'),
@@ -4037,6 +4112,7 @@ def get_ventas_por_mes(year, rubro=None):
                ROUND(SUM(v.total), 2) as total
         FROM ventas v
         WHERE strftime('%Y', v.fecha) = ?
+          AND {_ventas_activas_cond('v')}
           AND EXISTS (
               SELECT 1
               FROM ventas_detalle vd
@@ -4056,6 +4132,7 @@ def get_ventas_por_semana(semanas=8, rubro=None):
                COUNT(*) as tickets
         FROM ventas v
         WHERE v.fecha >= date('now', '-{semanas * 7} days')
+          AND {_ventas_activas_cond('v')}
           AND EXISTS (
               SELECT 1
               FROM ventas_detalle vd
@@ -4075,6 +4152,7 @@ def get_ventas_por_medio_pago(year, mes, rubro=None):
                ROUND(SUM(v.total), 2) as total
         FROM ventas v
         WHERE strftime('%Y', v.fecha) = ? AND strftime('%m', v.fecha) = ?
+          AND {_ventas_activas_cond('v')}
           AND EXISTS (
               SELECT 1
               FROM ventas_detalle vd
@@ -4091,6 +4169,7 @@ def get_ventas_por_temporada(rubro=None):
         SELECT v.temporada as nombre, COUNT(v.id) as cant, ROUND(SUM(v.total), 2) as total
         FROM ventas v
         WHERE v.temporada != ''
+          AND {_ventas_activas_cond('v')}
           AND EXISTS (
               SELECT 1
               FROM ventas_detalle vd
@@ -4107,8 +4186,9 @@ def get_ventas_por_categoria(rubro=None):
         SELECT COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
                ROUND(SUM(vd.subtotal), 2) as total
         FROM ventas_detalle vd
+        JOIN ventas v ON v.id = vd.venta_id
         LEFT JOIN productos p ON vd.producto_id = p.id
-        WHERE {rubro_cond}
+        WHERE {_ventas_activas_cond('v')} AND {rubro_cond}
         GROUP BY COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria')
         ORDER BY total DESC
     """, tuple(rubro_params))
@@ -4121,6 +4201,7 @@ def get_top_productos_analisis(limit=15, desde='', hasta='', rubro=None):
     if desde and hasta:
         condicion = "WHERE v.fecha BETWEEN ? AND ?"
         params = [desde, hasta]
+    condicion = _append_condition(condicion, _ventas_activas_cond("v"))
     condicion = _append_condition(condicion, rubro_cond)
     return q(f"""
         SELECT COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre') as descripcion,
@@ -4159,6 +4240,7 @@ def get_resumen_rentabilidad_periodo(desde='', hasta='', rubro=None):
     if desde and hasta:
         condicion = "WHERE v.fecha BETWEEN ? AND ?"
         params = [desde, hasta]
+    condicion = _append_condition(condicion, _ventas_activas_cond("v"))
     condicion = _append_condition(condicion, rubro_cond)
     row = q(f"""
         SELECT ROUND(COALESCE(SUM(vd.subtotal), 0), 2) as ingresos,
@@ -4230,6 +4312,7 @@ def get_rentabilidad_detallada_articulos(desde='', hasta='', rubro=None):
     if desde and hasta:
         condicion = "WHERE v.fecha BETWEEN ? AND ?"
         params = [desde, hasta]
+    condicion = _append_condition(condicion, _ventas_activas_cond("v"))
     condicion = _append_condition(condicion, rubro_cond)
 
     rows = q(f"""
@@ -4294,6 +4377,7 @@ def get_rentabilidad_detallada_periodos(granularidad='diario', desde='', hasta='
         condicion_ventas = "WHERE v.fecha BETWEEN ? AND ?"
         condicion_gastos = "WHERE fecha BETWEEN ? AND ?"
         params = [desde, hasta]
+    condicion_ventas = _append_condition(condicion_ventas, _ventas_activas_cond("v"))
     condicion_ventas = _append_condition(condicion_ventas, rubro_cond)
 
     ventas_rows = q(f"""
@@ -4377,6 +4461,7 @@ def get_composicion_gastos_rentabilidad(granularidad='mensual', desde='', hasta=
         condicion_ventas = "WHERE v.fecha BETWEEN ? AND ?"
         condicion_gastos = "WHERE fecha BETWEEN ? AND ?"
         params = [desde, hasta]
+    condicion_ventas = _append_condition(condicion_ventas, _ventas_activas_cond("v"))
     condicion_ventas = _append_condition(condicion_ventas, f"EXISTS (SELECT 1 FROM ventas_detalle vd LEFT JOIN productos p ON p.id = vd.producto_id WHERE vd.venta_id = v.id AND {rubro_cond})")
 
     ventas_rows = q(f"""
@@ -4491,9 +4576,10 @@ def get_bottom_productos(limit=10, rubro=None):
     return q(f"""
         SELECT p.descripcion, p.categoria,
                COALESCE(NULLIF(p.unidad, ''), NULLIF(p.tipo_unidad, ''), 'unidad') as unidad,
-               COALESCE(SUM(vd.cantidad), 0) as unidades
+               COALESCE(SUM(CASE WHEN COALESCE(v.anulada, 0) = 0 THEN vd.cantidad ELSE 0 END), 0) as unidades
         FROM productos p
         LEFT JOIN ventas_detalle vd ON p.id = vd.producto_id
+        LEFT JOIN ventas v ON v.id = vd.venta_id
         WHERE p.activo = 1 AND {rubro_cond}
         GROUP BY p.id ORDER BY unidades ASC LIMIT ?
     """, (*rubro_params, limit))
@@ -4508,7 +4594,7 @@ def get_rentabilidad_historica(rubro=None):
         FROM ventas v
         JOIN ventas_detalle vd ON v.id = vd.venta_id
         LEFT JOIN productos p ON vd.producto_id = p.id
-        WHERE v.fecha >= date('now', '-6 months') AND {rubro_cond}
+        WHERE v.fecha >= date('now', '-6 months') AND {_ventas_activas_cond('v')} AND {rubro_cond}
         GROUP BY mes ORDER BY mes
     """, tuple(rubro_params))
 

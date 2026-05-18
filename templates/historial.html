@@ -6,7 +6,7 @@
 <div class="container-fluid py-4">
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-white">
-            <h5 class="mb-0">Filtros de Búsqueda</h5>
+            <h5 class="mb-0">Filtros de Busqueda</h5>
         </div>
         <div class="card-body">
             <form method="GET" class="row g-3">
@@ -55,7 +55,7 @@
         <div class="col-md-4">
             <div class="card bg-success text-white shadow-sm">
                 <div class="card-body">
-                    <h6 class="card-title text-uppercase small opacity-75">Total Recaudado</h6>
+                    <h6 class="card-title text-uppercase small opacity-75">Total Activo Recaudado</h6>
                     <h4 class="mb-0">{{ total_filtro | fmt_ars }}</h4>
                 </div>
             </div>
@@ -73,40 +73,54 @@
                             <th>Fecha</th>
                             <th>Cliente</th>
                             <th>Medio Pago</th>
+                            <th>Estado</th>
                             <th class="text-end">Total</th>
                             <th class="text-center">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for venta in ventas %}
-                        <tr>
+                        <tr{% if venta.anulada %} class="table-warning-subtle"{% endif %}>
                             <td>{{ venta.id }}</td>
                             <td>#{{ venta.numero_ticket }}</td>
                             <td>{{ venta.fecha | date }}</td>
                             <td>{{ venta.cliente_nombre }}</td>
                             <td><span class="badge bg-secondary">{{ venta.medio_pago }}</span></td>
+                            <td>
+                                {% if venta.anulada %}
+                                <span class="badge bg-warning text-dark">Anulada</span>
+                                {% else %}
+                                <span class="badge bg-success">Activa</span>
+                                {% endif %}
+                            </td>
                             <td class="text-end fw-bold">{{ venta.total | fmt_ars }}</td>
                             <td class="text-center">
                                 <a href="{{ url_for('historial_detalle', vid=venta.id) }}" class="btn btn-sm btn-outline-primary" title="Ver Ticket">
                                     <i class="fas fa-receipt"></i>
                                 </a>
+                                {% if not venta.anulada %}
                                 <button
                                     type="button"
-                                    class="btn btn-sm btn-outline-danger ms-1"
-                                    title="Eliminar venta"
+                                    class="btn btn-sm btn-outline-warning ms-1"
+                                    title="Anular venta"
                                     data-bs-toggle="modal"
                                     data-bs-target="#modalEliminarVenta"
                                     data-delete-url="{{ url_for('historial_eliminar', vid=venta.id) }}"
                                     data-ticket="#{{ venta.numero_ticket }}"
                                     data-total="{{ venta.total | fmt_ars }}"
                                 >
-                                    <i class="fas fa-trash"></i>
+                                    <i class="fas fa-ban"></i>
                                 </button>
+                                {% else %}
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" disabled title="Venta ya anulada">
+                                    <i class="fas fa-ban"></i>
+                                </button>
+                                {% endif %}
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center py-5 text-muted">
+                            <td colspan="8" class="text-center py-5 text-muted">
                                 <i class="fas fa-search fa-3x mb-3"></i>
                                 <p>No se encontraron ventas con los filtros aplicados.</p>
                             </td>
@@ -121,18 +135,18 @@
 
 <div class="modal fade" id="modalEliminarVenta" tabindex="-1" aria-labelledby="modalEliminarVentaLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <form id="formEliminarVenta" method="POST" class="modal-content border-danger">
-            <div class="modal-header bg-danger text-white">
+        <form id="formEliminarVenta" method="POST" class="modal-content border-warning">
+            <div class="modal-header bg-warning">
                 <h5 class="modal-title" id="modalEliminarVentaLabel">
-                    <i class="fas fa-triangle-exclamation me-2"></i>Eliminar venta
+                    <i class="fas fa-triangle-exclamation me-2"></i>Anular venta
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-danger">
-                    <strong>¡ADVERTENCIA!</strong><br>
-                    Esta acción eliminará permanentemente la venta y todos sus historiales asociados.<br><br>
-                    Usted asume la total responsabilidad por esta pérdida de datos. NexarSistemas no se hace responsable.
+                <div class="alert alert-warning">
+                    <strong>Importante:</strong><br>
+                    Anular esta venta restaurara el stock y conservara el historial.<br>
+                    Esta accion no debe repetirse.
                 </div>
 
                 <div class="mb-3">
@@ -140,9 +154,14 @@
                     <div class="fw-bold"><span id="ventaEliminarTicket">-</span> · <span id="ventaEliminarTotal">-</span></div>
                 </div>
 
+                <div class="mb-3">
+                    <label class="form-label">Motivo de anulacion (opcional)</label>
+                    <textarea name="motivo_anulacion" class="form-control" rows="2" placeholder="Ej.: ticket cargado por error, devolucion total o duplicado."></textarea>
+                </div>
+
                 {% if usuario_es_admin %}
                 <div class="mb-3">
-                    <label class="form-label">Contraseña del usuario logueado</label>
+                    <label class="form-label">Contrasena del usuario logueado</label>
                     <input type="password" name="current_password" class="form-control" autocomplete="current-password" required>
                 </div>
                 {% else %}
@@ -151,7 +170,7 @@
                     <input type="text" name="admin_username" class="form-control" autocomplete="username" required>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Contraseña del administrador</label>
+                    <label class="form-label">Contrasena del administrador</label>
                     <input type="password" name="admin_password" class="form-control" autocomplete="current-password" required>
                 </div>
                 {% endif %}
@@ -159,14 +178,14 @@
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" name="confirmo_responsabilidad" id="confirmoResponsabilidad" value="1" required>
                     <label class="form-check-label" for="confirmoResponsabilidad">
-                        Confirmo que entiendo la advertencia y acepto la responsabilidad por este borrado.
+                        Confirmo que entiendo la advertencia y autorizo esta anulacion.
                     </label>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="submit" class="btn btn-danger">
-                    <i class="fas fa-trash me-2"></i>Eliminar definitivamente
+                <button type="submit" class="btn btn-warning">
+                    <i class="fas fa-ban me-2"></i>Anular venta
                 </button>
             </div>
         </form>

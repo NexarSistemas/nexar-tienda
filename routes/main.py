@@ -962,7 +962,7 @@ def _enriquecer_items_reporte(items):
 
 def _validate_sale_delete_authorization(form) -> tuple[bool, str]:
     if not _as_bool(form.get("confirmo_responsabilidad")):
-        return False, "Debés confirmar la advertencia de responsabilidad antes de borrar la venta."
+        return False, "Debés confirmar la advertencia antes de anular la venta."
 
     current_user = db.get_usuario_by_id(session.get("user", {}).get("id"))
     if not current_user:
@@ -1415,7 +1415,7 @@ def _caja_resumen(caja_row) -> dict:
     if not caja_row:
         return {"ventas": 0, "ingresos": 0, "egresos": 0, "total": 0}
     fecha = str(caja_row["fecha_apertura"])[:10]
-    ventas = db.q("SELECT COALESCE(SUM(total),0) as total FROM ventas WHERE fecha=? AND medio_pago='Efectivo'", (fecha,), fetchone=True)
+    ventas = db.q("SELECT COALESCE(SUM(total),0) as total FROM ventas WHERE fecha=? AND medio_pago='Efectivo' AND COALESCE(anulada, 0)=0", (fecha,), fetchone=True)
     movs = _caja_movimientos(caja_row["id"])
     ingresos = sum(float(m["monto"] or 0) for m in movs if m["tipo"] == "INGRESO")
     egresos = sum(float(m["monto"] or 0) for m in movs if m["tipo"] == "EGRESO")
@@ -2505,7 +2505,7 @@ def historial():
         fecha_hasta=fecha_hasta,
         medio_pago_seleccionado=medio_pago,
         medios_pago_disponibles=medios,
-        total_filtro=sum(float(v["total"] or 0) for v in ventas),
+        total_filtro=sum(float(v["total"] or 0) for v in ventas if not int(v["anulada"] or 0)),
         usuario_es_admin=_is_admin_role(session.get("user", {}).get("rol")),
     )
 
@@ -2524,13 +2524,24 @@ def historial_eliminar(vid):
         flash(f"❌ {msg}", "danger")
         return redirect(url_for("historial"))
 
-    venta = db.q("SELECT id, numero_ticket FROM ventas WHERE id=?", (vid,), fetchone=True)
+    venta = db.q("SELECT id, numero_ticket, anulada FROM ventas WHERE id=?", (vid,), fetchone=True)
     if not venta:
         flash("❌ La venta indicada no existe.", "danger")
         return redirect(url_for("historial"))
+    if int(venta["anulada"] or 0):
+        flash(f"⚠️ La venta #{venta['numero_ticket']} ya estaba anulada.", "warning")
+        return redirect(url_for("historial"))
 
-    db.delete_venta(vid)
-    flash(f"✅ Venta #{venta['numero_ticket']} eliminada junto con sus historiales asociados.", "success")
+    try:
+        db.anular_venta(
+            vid,
+            motivo=request.form.get("motivo_anulacion", ""),
+            usuario=session.get("user", {}).get("username", ""),
+        )
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("historial"))
+    flash(f"✅ Venta #{venta['numero_ticket']} anulada correctamente. El stock fue restaurado.", "success")
     return redirect(url_for("historial"))
 
 
@@ -3152,6 +3163,7 @@ def reportes():
         SELECT v.fecha as dia, ROUND(SUM(v.total),2) as monto
         FROM ventas v
         WHERE v.fecha >= date('now','-6 days')
+          AND COALESCE(v.anulada, 0)=0
           AND EXISTS (
               SELECT 1
               FROM ventas_detalle vd

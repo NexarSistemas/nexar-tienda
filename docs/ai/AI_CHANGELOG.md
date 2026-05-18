@@ -555,3 +555,34 @@ AuditorÃ­a de ediciÃ³n responsable global.
 
 ### Pendiente
 - Implementar correcciones en ramas pequeÃ±as segÃºn prioridades detectadas.
+
+## 2026-05-18 — Codex — fix/ventas-anulacion-segura
+
+### Tarea
+Implementar corrección de auditoría: ventas con anulación segura.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/historial.html`
+- `templates/ticket.html`
+- `templates/cliente_detalle.html`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregaron columnas seguras en `ventas` para estado y trazabilidad de anulación: `anulada`, `anulada_at`, `anulada_por` y `motivo_anulacion`.
+- El flujo principal del historial dejó de borrar ventas físicamente y ahora usa `db.anular_venta(...)`.
+- La anulación restaura stock una sola vez, conserva `ventas` y `ventas_detalle`, y registra movimiento de stock de anulación.
+- Si la venta tenía impacto en cuenta corriente y existía el movimiento original, se agrega una compensación simple sin borrar historial.
+- Se filtraron ventas anuladas en dashboard, caja resumida y reportes/rentabilidad principales del MVP.
+- La UI ahora muestra estado `Anulada`, impide reanular desde el listado y actualiza el modal de confirmación para hablar de anulación y no de borrado.
+- La auditoría quedó actualizada para marcar ventas como corregido parcialmente con este MVP.
+
+### Qué se probó
+- Validación sintáctica con `python -m py_compile database.py routes/main.py`.
+- Revisión estática de historial, ticket, detalle de cliente y consultas principales de ventas/reportes.
+
+### Pendientes
+- Confirmar manualmente que una venta anulada no siga sumando en todas las vistas secundarias fuera del recorte MVP.
+- Definir una estrategia más formal para compensación de caja histórica si luego se requiere trazabilidad contable más estricta.

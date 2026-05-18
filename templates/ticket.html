@@ -19,6 +19,9 @@
                     <div class="ticket-badge-block">
                         <div class="ticket-number">Ticket #{{ venta.numero_ticket }}</div>
                         <div class="ticket-internal">Venta interna #{{ venta_id }}</div>
+                        {% if venta.anulada %}
+                        <div class="ticket-internal" style="background:#fff3cd;color:#7c5700;">Venta anulada</div>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="ticket-business-grid">
@@ -52,6 +55,20 @@
                 <div class="ticket-season">
                     <span class="label">Temporada</span>
                     <strong>{{ venta.temporada }}</strong>
+                </div>
+                {% endif %}
+
+                {% if venta.anulada %}
+                <div class="ticket-season" style="border-left-color:#d97706;background:#fff7ed;">
+                    <span class="label">Estado</span>
+                    <strong>Anulada{% if venta.anulada_at %} · {{ venta.anulada_at }}{% endif %}</strong>
+                    {% if venta.anulada_por or venta.motivo_anulacion %}
+                    <div class="small text-muted mt-2">
+                        {% if venta.anulada_por %}Por: {{ venta.anulada_por }}{% endif %}
+                        {% if venta.anulada_por and venta.motivo_anulacion %} · {% endif %}
+                        {% if venta.motivo_anulacion %}Motivo: {{ venta.motivo_anulacion }}{% endif %}
+                    </div>
+                    {% endif %}
                 </div>
                 {% endif %}
 
