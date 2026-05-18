@@ -196,26 +196,26 @@ Esta auditoría es documental. No modifica lógica funcional.
 ### Caja
 
 - Movimientos:
-  Permite ingresos/egresos manuales y además gastos en efectivo pueden sincronizarse como movimientos de caja.
+  Permite ingresos/egresos manuales y además gastos en efectivo pueden sincronizarse como movimientos de caja. Desde Caja Segura Fase 2, los movimientos ya no deben editarse ni borrarse físicamente: se anulan con motivo y el historial queda visible.
 - Apertura operativa:
   Desde Caja Operativa Fase 1, el sistema exige caja abierta antes de confirmar ventas y avisa cuando detecta una caja ya abierta al entrar.
 - Arqueos:
   El cierre guarda `saldo_final_real`, pero no aparece una conciliación fuerte ni bloqueo posterior.
 - Cierre de caja:
-  Marca `estado=0`, pero no se observan protecciones documentadas para impedir alteraciones indirectas posteriores. Al salir de la app con una caja abierta ahora existe salida protegida: permite cerrar caja y salir, salir sin cerrar o cancelar, sin forzar cierres parciales.
+  Marca `estado=0`, pero no se observan protecciones documentadas para impedir alteraciones indirectas posteriores. Al salir de la app con una caja abierta ahora existe salida protegida: permite cerrar caja y salir, salir sin cerrar o cancelar, sin forzar cierres parciales. Ademas, la fase 2 bloquea anulaciones de movimientos y resincronizaciones de gastos cuando la caja ya esta cerrada.
 - Edición posterior:
-  Riesgo medio a alto. Si se borra o edita un gasto que originó un movimiento de caja, la sincronización puede borrar o alterar ese movimiento aunque la caja histórica ya sea referencia cerrada.
+  Riesgo medio a alto, pero ahora mas contenido: si un gasto impactó una caja cerrada, sus cambios sensibles o su eliminación quedan bloqueados para no reescribir movimientos históricos en silencio.
 - Qué debería pasar:
   Una caja cerrada debería considerarse congelada. Las correcciones posteriores deberían entrar como ajustes compensatorios, no reescritura silenciosa del pasado.
 
 ### Gastos
 
 - Edición:
-  Permite cambiar fecha, categoría, clasificación, descripción, monto, medio de pago y otros datos.
+  Permite cambiar fecha, categoría, clasificación, descripción, monto, medio de pago y otros datos, pero ya no puede mutar en silencio un movimiento de caja cerrada ni convertirse en gasto en efectivo fuera de una caja abierta válida.
 - Eliminación:
   Hoy hace borrado físico.
 - Caja:
-  Existe sincronización con `caja_movimientos`. Si el gasto desaparece o cambia de condiciones, el movimiento de caja puede actualizarse o borrarse.
+  Existe sincronización con `caja_movimientos`. Desde Caja Segura Fase 2B, un gasto en efectivo exige caja abierta y fecha compatible con la caja actual; si no, el guardado se bloquea. Además, si el gasto ya impactó una caja cerrada, no puede reescribir ese movimiento histórico.
 - Reportes:
   Alto impacto. Borrar un gasto modifica resultados históricos.
 - Qué debería pasar:

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container">
+    {% set form_data = gasto_form if gasto_form else gasto %}
     <div class="row justify-content-center">
         <div class="col-md-8">
             <div class="card shadow">
@@ -11,20 +12,20 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Fecha</label>
-                            <input type="date" name="fecha" class="form-control" value="{{ gasto.fecha if gasto else hoy }}" required>
+                            <input type="date" name="fecha" class="form-control" value="{{ form_data.fecha if form_data and form_data.fecha else hoy }}" required>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Categoría</label>
                             <select name="categoria" class="form-select" required>
                                 {% for cat in categorias_gastos %}
-                                <option value="{{ cat.nombre }}" {% if gasto and gasto.categoria == cat.nombre %}selected{% endif %}>{{ cat.nombre }} ({{ cat.tipo }})</option>
+                                <option value="{{ cat.nombre }}" {% if form_data and form_data.categoria == cat.nombre %}selected{% endif %}>{{ cat.nombre }} ({{ cat.tipo }})</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Clasificación contable</label>
                             <select name="clasificacion" class="form-select" required>
-                                {% set clasificacion_actual = gasto.clasificacion if gasto and gasto.clasificacion else 'Operativo' %}
+                                {% set clasificacion_actual = form_data.clasificacion if form_data and form_data.clasificacion else 'Operativo' %}
                                 {% for clasificacion in clasificaciones_gastos %}
                                 <option value="{{ clasificacion }}" {% if clasificacion_actual == clasificacion %}selected{% endif %}>{{ clasificacion }}</option>
                                 {% endfor %}
@@ -33,26 +34,26 @@
                         </div>
                         <div class="col-12">
                             <label class="form-label">Descripción / Concepto</label>
-                            <input type="text" name="descripcion" class="form-control" placeholder="Ej: Pago internet Abril" value="{{ gasto.descripcion if gasto else '' }}" required>
+                            <input type="text" name="descripcion" class="form-control" placeholder="Ej: Pago internet Abril" value="{{ form_data.descripcion if form_data else '' }}" required>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Monto</label>
                             <div class="input-group">
                                 <span class="input-group-text">$</span>
-                                <input type="number" step="0.01" name="monto" class="form-control" value="{{ gasto.monto if gasto else '' }}" required>
+                                <input type="number" step="0.01" name="monto" class="form-control" value="{{ form_data.monto if form_data else '' }}" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Medio de Pago</label>
                             <select name="medio_pago" class="form-select">
-                                <option value="Efectivo" {% if gasto and gasto.medio_pago == 'Efectivo' %}selected{% endif %}>Efectivo (Resta de Caja)</option>
-                                <option value="Banco / Transferencia" {% if gasto and gasto.medio_pago == 'Banco / Transferencia' %}selected{% endif %}>Banco / Transferencia</option>
-                                <option value="Tarjeta" {% if gasto and gasto.medio_pago == 'Tarjeta' %}selected{% endif %}>Tarjeta</option>
+                                <option value="Efectivo" {% if form_data and form_data.medio_pago == 'Efectivo' %}selected{% endif %}>Efectivo (Resta de Caja)</option>
+                                <option value="Banco / Transferencia" {% if form_data and form_data.medio_pago == 'Banco / Transferencia' %}selected{% endif %}>Banco / Transferencia</option>
+                                <option value="Tarjeta" {% if form_data and form_data.medio_pago == 'Tarjeta' %}selected{% endif %}>Tarjeta</option>
                             </select>
                         </div>
                         <div class="col-12">
                             <label class="form-label">Proveedor / Beneficiario</label>
-                            {% set proveedor_actual = gasto.proveedor if gasto and gasto.proveedor else '' %}
+                            {% set proveedor_actual = form_data.proveedor if form_data and form_data.proveedor else '' %}
                             {% set proveedor_en_lista = proveedores | selectattr('nombre', 'equalto', proveedor_actual) | list | length > 0 %}
                             <select name="proveedor_id" id="proveedor_id" class="form-select">
                                 <option value="">Sin proveedor</option>
@@ -71,7 +72,7 @@
                         </div>
                         <div class="col-12">
                             <label class="form-label">Observaciones</label>
-                            <textarea name="observaciones" class="form-control" rows="2">{{ gasto.observaciones if gasto else '' }}</textarea>
+                            <textarea name="observaciones" class="form-control" rows="2">{{ form_data.observaciones if form_data else '' }}</textarea>
                         </div>
                     </div>
                     <div class="mt-4 d-flex gap-2">

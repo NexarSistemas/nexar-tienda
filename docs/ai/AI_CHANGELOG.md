@@ -2,6 +2,62 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-18 - Codex - feature/caja-segura-fase2 bloqueo gasto efectivo y detalle caja cerrada
+
+### Tarea
+Bloquear gastos en efectivo fuera de caja abierta y agregar consulta de caja cerrada en solo lectura.
+
+### Archivos modificados
+- `app.py`
+- `database.py`
+- `routes/main.py`
+- `templates/caja.html`
+- `templates/gasto_form.html`
+- `docs/ai/AI_CHANGELOG.md`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+
+### Que se cambio
+- Los gastos con `medio_pago=Efectivo` ahora exigen una caja abierta valida; si no existe, se bloquean con el mensaje `No podes registrar gastos con efectivo porque no hay una caja abierta.`
+- Tambien se bloquean gastos en efectivo cuya fecha no coincide con la caja abierta actual, para evitar movimientos sobre cajas cerradas o fuera de jornada.
+- El bloqueo se aplica tanto en rutas de gastos como en `database.add_gasto()` y `database.update_gasto()`.
+- Se agrego una vista minima de detalle de caja cerrada en solo lectura, accesible desde el historial de cierres.
+- La vista cerrada muestra apertura, cierre, saldo inicial, ingresos, egresos, movimientos, anulados visibles y saldo final, sin permitir agregar ni anular movimientos.
+
+### Que se probo
+- Validacion sintactica con `python3 -m py_compile app.py routes/main.py database.py iniciar.py`.
+- Prueba sobre DB temporal para cubrir: bloqueo de gasto efectivo sin caja abierta, permiso de gasto no efectivo, permiso de gasto efectivo con caja abierta, bloqueo de gasto efectivo con caja cerrada y render de caja cerrada en solo lectura.
+
+## 2026-05-18 - Codex - feature/caja-segura-fase2
+
+### Tarea
+Implementar Caja Segura Fase 2 con movimientos inmutables, anulacion responsable y proteccion de cajas cerradas.
+
+### Archivos modificados
+- `app.py`
+- `database.py`
+- `routes/main.py`
+- `templates/caja.html`
+- `docs/ai/AI_CHANGELOG.md`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+
+### Que se cambio
+- `caja_movimientos` ahora incorpora campos minimos de trazabilidad para anulacion: `anulado`, `anulada_at`, `anulada_por`, `motivo_anulacion` y `movimiento_origen_id`.
+- Se agregaron helpers de base para crear movimientos inmutables, registrar movimientos solo con caja abierta, buscar movimientos activos por gasto y anular movimientos sin borrarlos.
+- El resumen de caja ahora excluye movimientos anulados para no sumar importes invalidados.
+- La pantalla de Caja muestra movimientos anulados como historicos visibles y agrega modal Nexar para `Anular movimiento` con motivo obligatorio.
+- Los movimientos manuales ya no se editan ni borran: solo pueden anularse una vez y solo mientras la caja siga abierta.
+- Los movimientos vinculados a gastos no se pueden anular desde Caja; deben corregirse desde Gastos para mantener coherencia.
+- La sincronizacion gasto-caja dejo de hacer `UPDATE` o `DELETE` destructivo sobre `caja_movimientos`: ahora anula el movimiento previo y crea uno nuevo solo si corresponde.
+- Los gastos que impactaron una caja cerrada quedan bloqueados para cambios sensibles o eliminacion, evitando reescritura historica de caja.
+
+### Que se probo
+- Validacion sintactica con `python3 -m py_compile app.py routes/main.py database.py iniciar.py`.
+- Prueba automatizada sobre DB temporal para cubrir creacion, anulacion, doble anulacion, saldo coherente, bloqueo sin caja abierta, bloqueo sobre caja cerrada y resincronizacion segura de gastos.
+
+### Casos dudosos / alcance
+- No se agrego reapertura de caja ni compensaciones contables avanzadas; la fase se limita a congelar historia y anular responsablemente con cambios minimos.
+- Los reportes contables generales siguen leyendo `gastos`; en esta fase se protegio especificamente la coherencia de caja y la reescritura silenciosa de sus movimientos.
+
 ## 2026-05-18 - Codex - feature/caja-operativa-fase1 fix salida post cierre
 
 ### Tarea

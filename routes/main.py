@@ -1047,6 +1047,22 @@ def _resolver_proveedor_gasto(data: dict) -> dict | None:
     return data
 
 
+def _validar_gasto_efectivo_contra_caja(data: dict) -> bool:
+    medio_pago = str(data.get("medio_pago", "") or "").strip().lower()
+    if medio_pago != "efectivo":
+        return True
+    caja_actual = _caja_abierta()
+    if not caja_actual:
+        flash("No podés registrar gastos con efectivo porque no hay una caja abierta.", "warning")
+        return False
+    fecha_gasto = str(data.get("fecha", "") or "").strip()
+    fecha_caja = str(caja_actual["fecha_apertura"] or "")[:10]
+    if fecha_gasto != fecha_caja:
+        flash("No podés registrar gastos con efectivo fuera de la caja abierta actual.", "warning")
+        return False
+    return True
+
+
 def _backup_list() -> list[dict]:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     items = []
@@ -1436,8 +1452,8 @@ def _caja_resumen(caja_row) -> dict:
     fecha = str(caja_row["fecha_apertura"])[:10]
     ventas = db.q("SELECT COALESCE(SUM(total),0) as total FROM ventas WHERE fecha=? AND medio_pago='Efectivo' AND COALESCE(anulada, 0)=0", (fecha,), fetchone=True)
     movs = _caja_movimientos(caja_row["id"])
-    ingresos = sum(float(m["monto"] or 0) for m in movs if m["tipo"] == "INGRESO")
-    egresos = sum(float(m["monto"] or 0) for m in movs if m["tipo"] == "EGRESO")
+    ingresos = sum(float(m["monto"] or 0) for m in movs if m["tipo"] == "INGRESO" and not int(m["anulado"] or 0))
+    egresos = sum(float(m["monto"] or 0) for m in movs if m["tipo"] == "EGRESO" and not int(m["anulado"] or 0))
     total = float(caja_row["saldo_inicial"] or 0) + float(ventas["total"] or 0) + ingresos - egresos
     return {"ventas": float(ventas["total"] or 0), "ingresos": ingresos, "egresos": egresos, "total": total}
 
@@ -2737,6 +2753,29 @@ def caja():
         next_url=next_url,
         auto_open_abrir=auto_open == "abrir" and not caja_actual,
         auto_open_cerrar=auto_open == "cerrar" and bool(caja_actual),
+        solo_lectura=False,
+    )
+
+
+@main_bp.route("/caja/<int:cid>")
+@login_required
+def caja_detalle(cid):
+    caja_row = db.q("SELECT * FROM caja WHERE id=?", (cid,), fetchone=True)
+    if not caja_row:
+        flash("La caja indicada no existe.", "warning")
+        return redirect(url_for("caja"))
+    if int(caja_row["estado"] or 0) == 1:
+        return redirect(url_for("caja"))
+    return render_template(
+        "caja.html",
+        caja=caja_row,
+        movimientos=_caja_movimientos(caja_row["id"]),
+        resumen=_caja_resumen(caja_row),
+        historial=db.q("SELECT * FROM caja WHERE estado=0 ORDER BY fecha_cierre DESC LIMIT 20"),
+        next_url=url_for("caja"),
+        auto_open_abrir=False,
+        auto_open_cerrar=False,
+        solo_lectura=True,
     )
 
 
@@ -2753,8 +2792,29 @@ def caja_abrir():
 @login_required
 def caja_movimiento():
     caja_actual = _caja_abierta()
-    if caja_actual:
-        db.q("INSERT INTO caja_movimientos (caja_id,tipo,monto,motivo) VALUES (?,?,?,?)", (caja_actual["id"], request.form.get("tipo", "INGRESO"), float(request.form.get("monto", 0) or 0), request.form.get("motivo", "")), commit=True)
+    if not caja_actual:
+        flash("No hay una caja abierta para registrar movimientos.", "warning")
+        return redirect(url_for("caja"))
+    db.registrar_movimiento_caja_abierta(
+        request.form.get("tipo", "INGRESO"),
+        float(request.form.get("monto", 0) or 0),
+        request.form.get("motivo", ""),
+    )
+    return redirect(url_for("caja"))
+
+
+@main_bp.route("/caja/movimiento/<int:mid>/anular", methods=["POST"])
+@login_required
+def caja_movimiento_anular(mid):
+    motivo = (request.form.get("motivo_anulacion", "") or "").strip()
+    if not motivo:
+        flash("El motivo de anulación es obligatorio.", "warning")
+        return redirect(url_for("caja"))
+    try:
+        db.anular_caja_movimiento(mid, motivo, usuario=session.get("user", {}).get("username", ""))
+        flash("Movimiento de caja anulado correctamente. El historial fue conservado.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
     return redirect(url_for("caja"))
 
 
@@ -2792,7 +2852,32 @@ def gasto_nuevo():
                 accion="Nuevo",
                 hoy=datetime.now().strftime("%Y-%m-%d"),
             )
-        db.add_gasto(data)
+        if not _validar_gasto_efectivo_contra_caja(data):
+            return render_template(
+                "gasto_form.html",
+                gasto=None,
+                categorias_gastos=db.get_gasto_categorias(),
+                clasificaciones_gastos=db.get_gasto_clasificaciones(),
+                proveedores=db.get_proveedores(),
+                accion="Nuevo",
+                hoy=data.get("fecha") or datetime.now().strftime("%Y-%m-%d"),
+                gasto_form=data,
+            )
+        try:
+            db.add_gasto(data)
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return render_template(
+                "gasto_form.html",
+                gasto=None,
+                categorias_gastos=db.get_gasto_categorias(),
+                clasificaciones_gastos=db.get_gasto_clasificaciones(),
+                proveedores=db.get_proveedores(),
+                accion="Nuevo",
+                hoy=data.get("fecha") or datetime.now().strftime("%Y-%m-%d"),
+                gasto_form=data,
+            )
+        flash("✅ Gasto registrado.", "success")
         return redirect(url_for("gastos"))
     return render_template(
         "gasto_form.html",
@@ -2801,6 +2886,7 @@ def gasto_nuevo():
         proveedores=db.get_proveedores(),
         accion="Nuevo",
         hoy=datetime.now().strftime("%Y-%m-%d"),
+        gasto_form=None,
     )
 
 
@@ -2822,8 +2908,47 @@ def gasto_editar(gid):
                 proveedores=db.get_proveedores(),
                 accion="Editar",
                 hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
+                gasto_form=request.form,
             )
-        db.update_gasto(gid, data)
+        if not _validar_gasto_efectivo_contra_caja(data):
+            return render_template(
+                "gasto_form.html",
+                gasto=gasto,
+                categorias_gastos=db.get_gasto_categorias(),
+                clasificaciones_gastos=db.get_gasto_clasificaciones(),
+                proveedores=db.get_proveedores(),
+                accion="Editar",
+                hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
+                gasto_form=data,
+            )
+        try:
+            db.validar_operacion_gasto_caja(gid, data)
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return render_template(
+                "gasto_form.html",
+                gasto=gasto,
+                categorias_gastos=db.get_gasto_categorias(),
+                clasificaciones_gastos=db.get_gasto_clasificaciones(),
+                proveedores=db.get_proveedores(),
+                accion="Editar",
+                hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
+                gasto_form=data,
+            )
+        try:
+            db.update_gasto(gid, data)
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return render_template(
+                "gasto_form.html",
+                gasto=gasto,
+                categorias_gastos=db.get_gasto_categorias(),
+                clasificaciones_gastos=db.get_gasto_clasificaciones(),
+                proveedores=db.get_proveedores(),
+                accion="Editar",
+                hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
+                gasto_form=data,
+            )
         flash("✅ Gasto actualizado.", "success")
         return redirect(url_for("gastos"))
     return render_template(
@@ -2834,13 +2959,19 @@ def gasto_editar(gid):
         proveedores=db.get_proveedores(),
         accion="Editar",
         hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
+        gasto_form=None,
     )
 
 
 @main_bp.route("/gastos/<int:gid>/eliminar", methods=["POST"])
 @login_required
 def gasto_eliminar(gid):
-    db.delete_gasto(gid)
+    try:
+        db.validar_operacion_gasto_caja(gid, deleting=True)
+        db.delete_gasto(gid)
+        flash("✅ Gasto eliminado.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
     return redirect(url_for("gastos"))
 
 
