@@ -3,6 +3,33 @@
 {% block title %}Productos — {{ app_display_name }}{% endblock %}
 {% block page_title %}<i class="fas fa-boxes me-2"></i>Catálogo de Productos{% endblock %}
 
+{% block extra_css %}
+<style>
+.product-thumb,
+.product-thumb-placeholder {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+}
+
+.product-thumb {
+    object-fit: cover;
+    display: block;
+    cursor: zoom-in;
+}
+
+.product-thumb-placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+}
+
+</style>
+{% endblock %}
+
 {% block topbar_actions %}
 <div class="d-flex gap-2">
     {% if modulo_activo("export") %}
@@ -80,6 +107,7 @@
             <table class="table table-hover mb-0" id="productos-table">
                 <thead>
                     <tr>
+                        <th>Imagen</th>
                         <th>Código</th>
                         <th>Descripción</th>
                         <th>Categoría</th>
@@ -98,6 +126,21 @@
                             data-proveedor="{{ (producto['proveedor_habitual'] or '')|lower }}"
                             data-search="{{ producto['codigo_interno']|lower }} {{ producto['descripcion']|lower }} {{ producto['categoria']|lower }} {{ (producto['proveedor_habitual'] or '')|lower }}"
                         >
+                            <td>
+                                {% if producto['imagen'] %}
+                                <img
+                                    src="{{ url_for('static', filename=producto['imagen']) }}"
+                                    class="product-thumb js-product-image"
+                                    data-img-src="{{ url_for('static', filename=producto['imagen']) }}"
+                                    data-product-name="{{ producto['descripcion'] }}"
+                                    alt="Imagen de {{ producto['descripcion'] }}"
+                                >
+                                {% else %}
+                                <div class="product-thumb-placeholder">
+                                    <i class="fas fa-image"></i>
+                                </div>
+                                {% endif %}
+                            </td>
                             <td>
                                 <code>{{ producto['codigo_interno'] }}</code>
                             </td>
@@ -135,7 +178,7 @@
                         {% endfor %}
                     {% else %}
                     <tr>
-                        <td colspan="7" class="text-center text-muted py-4">
+                        <td colspan="8" class="text-center text-muted py-4">
                             <i class="fas fa-inbox fa-2x mb-2" style="display: block; opacity: 0.3;"></i>
                             No hay productos registrados
                         </td>
@@ -195,6 +238,21 @@
 </div>
 
 <!-- ─── MODAL DE CONFIRMACIÓN DE ELIMINACIÓN ─── -->
+
+<div class="modal fade" id="imagenProductoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imagenProductoTitulo">Imagen del producto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="imagenProductoPreview" src="" alt="Imagen producto" class="img-fluid rounded" style="max-height: 70vh; object-fit: contain;">
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="confirmDelete" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -228,6 +286,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const proveedorFilter = document.getElementById('proveedor-filter');
     const table = document.getElementById('productos-table');
     const rows = table.querySelectorAll('tbody tr');
+    const imageModal = document.getElementById('imagenProductoModal');
+    const imageModalPreview = document.getElementById('imagenProductoPreview');
+    const imageModalTitle = document.getElementById('imagenProductoTitulo');
 
     // Modal de confirmación
     const confirmModal = document.getElementById('confirmDelete');
@@ -239,6 +300,21 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('product-name').textContent = name;
         document.getElementById('deleteForm').action = `/productos/${id}/eliminar`;
     });
+
+    if (imageModal && imageModalPreview && imageModalTitle) {
+        document.querySelectorAll('.js-product-image').forEach((img) => {
+            img.addEventListener('click', function () {
+                const src = this.dataset.imgSrc;
+                const name = this.dataset.productName || 'Producto';
+
+                imageModalPreview.src = src;
+                imageModalPreview.alt = 'Imagen de ' + name;
+                imageModalTitle.textContent = name;
+
+                bootstrap.Modal.getOrCreateInstance(imageModal).show();
+            });
+        });
+    }
 
     // Búsqueda en tiempo real
     function filterRows() {

@@ -84,3 +84,5 @@ scripts/*
 
 ### --- carpeta de exportación de productos --- ###
 exports/*
+static/uploads/productos/*
+!static/uploads/productos/.gitkeep

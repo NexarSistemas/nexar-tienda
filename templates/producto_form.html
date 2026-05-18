@@ -2,6 +2,19 @@
 
 {% block title %}{{ accion }} Producto — {{ app_display_name }}{% endblock %}
 
+{% block extra_css %}
+<style>
+.producto-imagen-actual {
+    max-width: 260px;
+    max-height: 260px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    background: #f8fafc;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="producto-form-container">
     <div class="row mb-4">
@@ -17,7 +30,7 @@
         <div class="col-lg-8">
             <div class="card">
                 <div class="card-body">
-                    <form method="POST" id="productForm" novalidate>
+                    <form method="POST" id="productForm" novalidate enctype="multipart/form-data">
                         {% if from_compra %}
                         <input type="hidden" name="return_to" value="compra_nueva">
                         {% for field, value in draft_compra.items() %}
@@ -52,6 +65,36 @@
                                 placeholder="Ej: Indumentaria San Juan"
                                 value="{{ producto['marca'] if producto else '' }}"
                             >
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="imagen" class="form-label">Imagen del producto</label>
+                            <input
+                                type="file"
+                                class="form-control"
+                                id="imagen"
+                                name="imagen"
+                                accept="image/png,image/jpeg,image/webp"
+                            >
+                            <div class="form-text">TamaÃ±o recomendado: 800 x 800 px. Formatos permitidos: JPG, PNG o WEBP. La app ajustarÃ¡ la vista para mantener el catÃ¡logo ordenado.</div>
+                            {% if producto and producto['imagen'] %}
+                            <div class="mt-3">
+                                <div class="small text-muted mb-2">Imagen actual</div>
+                                <img
+                                    src="{{ url_for('static', filename=producto['imagen']) }}"
+                                    alt="Imagen actual de {{ producto['descripcion'] }}"
+                                    class="border rounded producto-imagen-actual"
+                                >
+                                <div class="small text-muted mt-2">Si subes otra imagen, reemplazara la actual.</div>
+                            </div>
+                            {% else %}
+                            <div class="mt-3">
+                                <div class="small text-muted mb-2">Sin imagen cargada</div>
+                                <div class="d-inline-flex align-items-center justify-content-center border rounded bg-light text-muted" style="width: 120px; height: 120px;">
+                                    <i class="fas fa-image fa-2x"></i>
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
 
                         <div class="mb-3">

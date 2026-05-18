@@ -12,6 +12,7 @@ import sys
 import threading
 import platform
 import webbrowser
+from uuid import uuid4
 from datetime import date, datetime, timedelta
 from functools import wraps
 from io import BytesIO, StringIO
@@ -19,6 +20,7 @@ from pathlib import Path
 
 import database as db
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from werkzeug.utils import secure_filename
 from licensing.planes import (
     PLANES,
     get_commercial_plan_options,
@@ -139,6 +141,9 @@ PRODUCTOS_IMPORT_REQUIRED_COLUMNS = {
     "stock_actual",
 }
 PRODUCTOS_IMPORT_TEMPLATE_FILENAME = "plantilla_productos_nexar.csv"
+PRODUCTOS_UPLOAD_SUBDIR = Path("uploads") / "productos"
+PRODUCTOS_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+PRODUCTOS_IMAGE_MAX_BYTES = 3 * 1024 * 1024
 
 
 def _as_bool(value) -> bool:
@@ -342,6 +347,34 @@ def _validar_fila_importacion_producto(row: dict[str, str], row_number: int, rub
 
 def _get_productos_import_template_dir() -> Path:
     return get_exports_dir() / "plantillas"
+
+
+def _save_producto_image(file_storage) -> str:
+    filename = str(getattr(file_storage, "filename", "") or "").strip()
+    if not filename:
+        return ""
+
+    safe_name = secure_filename(filename)
+    suffix = Path(safe_name).suffix.lower()
+    if not safe_name or suffix not in PRODUCTOS_IMAGE_EXTENSIONS:
+        raise ValueError("La imagen debe ser JPG, JPEG, PNG o WEBP.")
+
+    try:
+        file_storage.stream.seek(0, os.SEEK_END)
+        file_size = file_storage.stream.tell()
+        file_storage.stream.seek(0)
+    except Exception:
+        file_size = 0
+    if file_size <= 0:
+        raise ValueError("La imagen seleccionada esta vacia o no se pudo leer.")
+    if file_size > PRODUCTOS_IMAGE_MAX_BYTES:
+        raise ValueError("Imagen demasiado grande. Usa una imagen de hasta 3 MB.")
+
+    relative_path = (PRODUCTOS_UPLOAD_SUBDIR / f"producto_{uuid4().hex}{suffix}").as_posix()
+    save_path = Path(current_app.static_folder) / Path(relative_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    file_storage.save(save_path)
+    return relative_path
 
 
 def _build_productos_import_template_csv() -> str:
@@ -2021,6 +2054,7 @@ def producto_nuevo():
                 return redirect(url_for("compra_nueva", **_purchase_draft_query(draft_compra)))
             return redirect(url_for("productos"))
         data = request.form.to_dict()
+        imagen = request.files.get("imagen")
         if desde_compra:
             data["stock_actual"] = "0"
             if not str(data.get("proveedor_habitual") or "").strip():
@@ -2033,6 +2067,9 @@ def producto_nuevo():
                     if proveedor:
                         data["proveedor_habitual"] = str(proveedor["nombre"] or "").strip()
         try:
+            imagen_relativa = _save_producto_image(imagen)
+            if imagen_relativa:
+                data["imagen"] = imagen_relativa
             nuevo_id = db.add_producto(data)
         except ValueError as exc:
             flash(str(exc), "warning")
@@ -2089,6 +2126,7 @@ def producto_editar(pid):
         return redirect(url_for("productos"))
     if request.method == "POST":
         data = request.form.to_dict()
+        imagen = request.files.get("imagen")
         data["activo"] = 1 if _as_bool(data.get("activo", "1")) else 0
         producto_validacion = dict(producto)
         producto_validacion["permite_fraccionado"] = int(data.get("permite_fraccionado", 0) or 0)
@@ -2118,6 +2156,9 @@ def producto_editar(pid):
             else float(stock["stock_maximo"] if stock else 50)
         )
         try:
+            imagen_relativa = _save_producto_image(imagen)
+            if imagen_relativa:
+                data["imagen"] = imagen_relativa
             nuevo_stock = db.validar_cantidad_producto(producto_validacion, stock_actual_base, campo="stock")
             db.update_producto(pid, data)
         except ValueError as exc:
