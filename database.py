@@ -242,6 +242,54 @@ def qm(statements):
 _db_initialized = False
 
 
+def registrar_auditoria(accion, entidad, entidad_id=0, detalle='', motivo='', usuario=''):
+    """Registra una accion critica en la bitacora de auditoria."""
+    marca_tiempo = datetime.now().replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    return q(
+        """INSERT INTO auditoria
+        (fecha, usuario, accion, entidad, entidad_id, detalle, motivo)
+        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            marca_tiempo,
+            str(usuario or '').strip(),
+            str(accion or '').strip(),
+            str(entidad or '').strip(),
+            int(entidad_id or 0),
+            str(detalle or '').strip(),
+            str(motivo or '').strip(),
+        ),
+        commit=True,
+    )
+
+
+def get_auditoria(accion='', entidad='', fecha_desde='', fecha_hasta='', limit=300):
+    """Devuelve registros de auditoria filtrables para vista de solo lectura."""
+    sql = "SELECT * FROM auditoria WHERE 1=1"
+    params = []
+    if accion:
+        sql += " AND accion = ?"
+        params.append(str(accion).strip())
+    if entidad:
+        sql += " AND entidad = ?"
+        params.append(str(entidad).strip())
+    if fecha_desde:
+        sql += " AND substr(fecha, 1, 10) >= ?"
+        params.append(str(fecha_desde).strip())
+    if fecha_hasta:
+        sql += " AND substr(fecha, 1, 10) <= ?"
+        params.append(str(fecha_hasta).strip())
+    sql += " ORDER BY fecha DESC, id DESC LIMIT ?"
+    params.append(int(limit or 300))
+    return q(sql, tuple(params))
+
+
+def get_auditoria_filtros():
+    """Devuelve opciones simples para filtros de auditoria."""
+    acciones = [row["accion"] for row in q("SELECT DISTINCT accion FROM auditoria WHERE TRIM(COALESCE(accion, '')) != '' ORDER BY accion")]
+    entidades = [row["entidad"] for row in q("SELECT DISTINCT entidad FROM auditoria WHERE TRIM(COALESCE(entidad, '')) != '' ORDER BY entidad")]
+    return {"acciones": acciones, "entidades": entidades}
+
+
 def init_db():
     """Inicializa la BD con todas las tablas necesarias para Nexar Tienda."""
     global _db_initialized
@@ -531,6 +579,17 @@ def init_db():
             tipo TEXT DEFAULT 'ActualizaciÃ³n',
             titulo TEXT NOT NULL,
             descripcion TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS auditoria (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT DEFAULT CURRENT_TIMESTAMP,
+            usuario TEXT DEFAULT '',
+            accion TEXT DEFAULT '',
+            entidad TEXT DEFAULT '',
+            entidad_id INTEGER DEFAULT 0,
+            detalle TEXT DEFAULT '',
+            motivo TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS roles (
@@ -3077,6 +3136,14 @@ def anular_movimiento_cliente(mid, motivo, usuario=''):
         (marca_tiempo, str(usuario or '').strip(), motivo_limpio, mid),
         commit=True,
     )
+    registrar_auditoria(
+        "ANULACION_CC_CLIENTE",
+        "cc_cliente",
+        mid,
+        detalle=f"{movimiento['tipo'] or 'Movimiento'} · Cliente #{int(movimiento['cliente_id'] or 0)} · Comprobante: {movimiento['numero_comprobante'] or 'Sin comprobante'}",
+        motivo=motivo_limpio,
+        usuario=usuario,
+    )
     return get_movimiento_cliente(mid)
 
 
@@ -3339,6 +3406,14 @@ def anular_factura_proveedor(factura_id, motivo='', usuario=''):
         WHERE id=?""",
         (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), str(usuario or "").strip(), motivo_limpio, factura_id),
         commit=True,
+    )
+    registrar_auditoria(
+        "ANULACION_FACTURA_PROVEEDOR",
+        "factura_proveedor",
+        factura_id,
+        detalle=f"Proveedor #{int(factura['proveedor_id'] or 0)} · Factura: {factura['numero_factura'] or f'#{factura_id}'} · Importe: {float(factura['importe'] or 0):.2f}",
+        motivo=motivo_limpio,
+        usuario=usuario,
     )
 
 
@@ -3798,6 +3873,14 @@ def anular_venta(venta_id, motivo='', usuario=''):
             (marca_tiempo, str(usuario or '').strip(), str(motivo or '').strip(), venta_id),
         )
         conn.commit()
+        registrar_auditoria(
+            "ANULACION_VENTA",
+            "venta",
+            venta_id,
+            detalle=f"Ticket #{venta['numero_ticket'] or venta_id} · Cliente: {venta['cliente_nombre'] or 'Mostrador'} · Total: {float(venta['total'] or 0):.2f}",
+            motivo=motivo,
+            usuario=usuario,
+        )
         return True
     except Exception:
         conn.rollback()
@@ -4018,6 +4101,14 @@ def anular_compra(compra_id, motivo='', usuario=''):
             (marca_tiempo, str(usuario or '').strip(), str(motivo or '').strip(), compra_id),
         )
         conn.commit()
+        registrar_auditoria(
+            "ANULACION_COMPRA",
+            "compra",
+            compra_id,
+            detalle=f"Remito: {compra_actual['numero_remito'] or f'#{compra_id}'} · Proveedor: {compra_actual['proveedor_nombre'] or 'Sin proveedor'} · Total: {float(compra_actual['total'] or 0):.2f}",
+            motivo=motivo,
+            usuario=usuario,
+        )
         return True
     except Exception:
         conn.rollback()
@@ -4483,6 +4574,14 @@ def anular_gasto(gid, motivo='', usuario=''):
         WHERE id=?""",
         (marca_tiempo, str(usuario or "").strip(), motivo_limpio, gid),
         commit=True,
+    )
+    registrar_auditoria(
+        "ANULACION_GASTO",
+        "gasto",
+        gid,
+        detalle=f"{gasto['categoria'] or 'Sin categoria'} · {gasto['descripcion'] or 'Sin descripcion'} · {float(gasto['monto'] or 0):.2f}",
+        motivo=motivo_limpio,
+        usuario=usuario,
     )
     return get_gasto(gid)
 

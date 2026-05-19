@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Auditoría - {{ app_display_name }}{% endblock %}
+{% block page_title %}<i class="fas fa-clipboard-list me-2"></i>Auditoría{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Acción</label>
+                    <select name="accion" class="form-select">
+                        <option value="">Todas</option>
+                        {% for item in acciones %}
+                        <option value="{{ item }}" {% if accion == item %}selected{% endif %}>{{ item }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Entidad</label>
+                    <select name="entidad" class="form-select">
+                        <option value="">Todas</option>
+                        {% for item in entidades %}
+                        <option value="{{ item }}" {% if entidad == item %}selected{% endif %}>{{ item }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Desde</label>
+                    <input type="date" name="fecha_desde" class="form-control" value="{{ fecha_desde }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" name="fecha_hasta" class="form-control" value="{{ fecha_hasta }}">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Registro de acciones críticas</h5>
+            <span class="badge bg-secondary-subtle text-secondary">Solo lectura</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Usuario</th>
+                        <th>Acción</th>
+                        <th>Entidad</th>
+                        <th>Detalle</th>
+                        <th>Motivo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in registros %}
+                    <tr>
+                        <td>{{ item.fecha }}</td>
+                        <td>{{ item.usuario or 'Sistema' }}</td>
+                        <td><span class="badge bg-info-subtle text-info">{{ item.accion }}</span></td>
+                        <td>{{ item.entidad }}{% if item.entidad_id %} #{{ item.entidad_id }}{% endif %}</td>
+                        <td>{{ item.detalle or '-' }}</td>
+                        <td>{{ item.motivo or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="fas fa-clipboard fa-3x mb-3"></i>
+                            <p class="mb-0">No hay registros de auditoría para los filtros seleccionados.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
