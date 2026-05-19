@@ -52,6 +52,7 @@ from services.mercadopago_checkout import (
     build_external_reference,
     create_checkout_preference,
     get_price_for_plan,
+    plan_supports_checkout,
 )
 from services.license_sdk import (
     get_current_hwid,
@@ -475,7 +476,10 @@ def _has_checkout_license(license_info: dict[str, object] | None = None) -> bool
         license_info.get("key", ""),
         stored_license.get("license_key", ""),
     )
-    return bool(license_key)
+    if license_key:
+        return True
+    normalized_tier = normalize_plan(license_info.get("tier", "DEMO"), default="DEMO")
+    return normalized_tier in {"DEMO", "SIN_PLAN"}
 
 
 def _get_plan_actions_context(
@@ -514,9 +518,17 @@ def _get_available_checkout_plans(license_info: dict[str, object] | None) -> lis
     if not _has_checkout_license(license_info):
         return []
     actions = _get_plan_actions_context(license_info, tiene_checkout=True)
-    available: list[str] = list(actions.get("planes_comprables", []))
+    available: list[str] = [
+        plan for plan in actions.get("planes_comprables", [])
+        if plan_supports_checkout(plan)
+    ]
     renewal_plan = str(actions.get("plan_renovable", "") or "").strip()
-    if actions.get("puede_renovar") and renewal_plan and renewal_plan not in available:
+    if (
+        actions.get("puede_renovar")
+        and renewal_plan
+        and renewal_plan not in available
+        and plan_supports_checkout(renewal_plan)
+    ):
         available.append(renewal_plan)
     return available
 
@@ -542,6 +554,16 @@ def _resolve_requested_checkout_plan(license_info: dict[str, object] | None) -> 
     if normalized_plan in available_plans:
         return normalized_plan
     return ""
+
+
+def _resolve_checkout_request_type(license_info: dict[str, object] | None) -> str:
+    license_info = license_info or {}
+    stored_license = cargar_licencia() or {}
+    license_key = _first_non_empty(
+        license_info.get("key", ""),
+        stored_license.get("license_key", ""),
+    )
+    return "cambio_plan" if license_key else "alta_licencia"
 
 
 def _get_license_holder_profile(license_info: dict[str, object] | None = None) -> dict[str, str]:
@@ -650,6 +672,7 @@ def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response,
     license_info = db.get_license_info()
     available_plans = _get_available_checkout_plans(license_info)
     plan_destino = _resolve_requested_checkout_plan(license_info)
+    tipo_solicitud = _resolve_checkout_request_type(license_info)
     requested_plan = ""
     if request.is_json:
         body = request.get_json(silent=True) or {}
@@ -678,7 +701,7 @@ def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response,
         )
 
     license_key = str(license_info.get("key", "") or "").strip()
-    if not license_key:
+    if tipo_solicitud == "cambio_plan" and not license_key:
         return None, (
             jsonify({
                 "ok": False,
@@ -700,16 +723,36 @@ def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response,
 
     producto = get_license_product()
     precio = get_price_for_plan(plan_destino)
-    external_reference = build_external_reference(license_key, producto, plan_destino)
+    usuario = session.get("user", {})
+    machine_id, machine_details = generate_activation_id(usuario.get("username", ""))
+    activation_id = get_current_hwid() or machine_id
+    external_reference = build_external_reference(
+        producto=producto,
+        plan_destino=plan_destino,
+        tipo_solicitud=tipo_solicitud,
+        license_key=license_key,
+        activation_id=activation_id,
+    )
+    logger.info(
+        "Checkout preparado tipo=%s plan_actual=%s plan_destino=%s licencia=%s activation_id=%s",
+        tipo_solicitud,
+        license_info.get("tier", "DEMO"),
+        plan_destino,
+        _mask_license_key(license_key),
+        activation_id[:12],
+    )
     return {
         "license_info": license_info,
         "available_plans": available_plans,
         "plan_destino": plan_destino,
+        "tipo_solicitud": tipo_solicitud,
         "license_key": license_key,
+        "activation_id": activation_id,
         "holder_profile": holder_profile,
         "producto": producto,
         "precio": precio,
         "external_reference": external_reference,
+        "machine_details": machine_details,
     }, None
 
 
@@ -731,6 +774,8 @@ def _create_checkout_init_point() -> tuple[str | None, dict[str, object] | None,
     assert checkout_context is not None
     license_key = str(checkout_context["license_key"])
     plan_destino = str(checkout_context["plan_destino"])
+    tipo_solicitud = str(checkout_context["tipo_solicitud"])
+    activation_id = str(checkout_context["activation_id"])
 
     try:
         init_point = create_checkout_preference(
@@ -740,11 +785,15 @@ def _create_checkout_init_point() -> tuple[str | None, dict[str, object] | None,
             external_reference=str(checkout_context["external_reference"]),
             license_key=license_key,
             email_titular=str(checkout_context["holder_profile"]["email"]),
+            activation_id=activation_id,
+            tipo_solicitud=tipo_solicitud,
         )
     except MercadoPagoCheckoutError as exc:
         logger.warning(
-            "Checkout Mercado Pago rechazado licencia=%s plan_destino=%s error=%s",
+            "Checkout Mercado Pago rechazado tipo=%s licencia=%s activation_id=%s plan_destino=%s error=%s",
+            tipo_solicitud,
             _mask_license_key(license_key),
+            activation_id[:12],
             plan_destino,
             exc,
         )
@@ -757,8 +806,10 @@ def _create_checkout_init_point() -> tuple[str | None, dict[str, object] | None,
         )
     except Exception:
         logger.exception(
-            "Checkout Mercado Pago fallo inesperado licencia=%s plan_destino=%s",
+            "Checkout Mercado Pago fallo inesperado tipo=%s licencia=%s activation_id=%s plan_destino=%s",
+            tipo_solicitud,
             _mask_license_key(license_key),
+            activation_id[:12],
             plan_destino,
         )
         return None, checkout_context, (
@@ -770,8 +821,10 @@ def _create_checkout_init_point() -> tuple[str | None, dict[str, object] | None,
         )
 
     logger.info(
-        "Checkout Mercado Pago listo licencia=%s plan_actual=%s plan_destino=%s",
+        "Checkout Mercado Pago listo tipo=%s licencia=%s activation_id=%s plan_actual=%s plan_destino=%s",
+        tipo_solicitud,
         _mask_license_key(license_key),
+        activation_id[:12],
         checkout_context["license_info"].get("tier", "DEMO"),
         plan_destino,
     )
@@ -3853,9 +3906,7 @@ def mi_plan_solicitar_upgrade():
             return redirect(url_for("main.mi_plan"))
 
     license_key = str(license_info.get("key", "") or "").strip()
-    if not license_key:
-        flash("No se encontrÃ³ una licencia activa para enviar el cambio de plan.", "warning")
-        return redirect(url_for("main.mi_plan"))
+    tipo_solicitud = "cambio_plan" if license_key else "alta_licencia"
 
     cfg = db.get_config()
     usuario = session.get("user", {})
@@ -3884,7 +3935,7 @@ def mi_plan_solicitar_upgrade():
             usuario.get("telefono"),
             cfg.get("telefono", ""),
         ),
-        "tipo_solicitud": "cambio_plan",
+        "tipo_solicitud": tipo_solicitud,
         "origen": "mi_plan",
         "plan_actual": plan_actual,
         "plan_destino": plan_solicitado,
@@ -3893,9 +3944,20 @@ def mi_plan_solicitar_upgrade():
         "machine_details": machine_details,
     }
 
+    logger.info(
+        "Solicitud manual de licencia tipo=%s plan_actual=%s plan_destino=%s licencia=%s activation_id=%s",
+        tipo_solicitud,
+        plan_actual,
+        plan_solicitado,
+        _mask_license_key(license_key),
+        activation_id[:12],
+    )
     result = create_upgrade_request(payload)
     if result.get("ok"):
-        flash("Solicitud de cambio de plan enviada.", "success")
+        flash(
+            "Solicitud de cambio de plan enviada." if tipo_solicitud == "cambio_plan" else "Solicitud de alta de licencia enviada.",
+            "success",
+        )
     else:
         flash(result.get("message", "No se pudo enviar la solicitud de actualizaciÃ³n."), "danger")
     return redirect(url_for("main.mi_plan"))

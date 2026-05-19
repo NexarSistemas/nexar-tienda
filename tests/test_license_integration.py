@@ -225,6 +225,21 @@ class LicenseIntegrationTests(unittest.TestCase):
         actions = get_plan_actions("DEMO", tiene_checkout=False)
         self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "FULL"])
 
+    def test_checkout_disponible_en_demo_sin_license_key(self):
+        self.assertTrue(self.routes_main._has_checkout_license({"tier": "DEMO", "key": ""}))
+        self.assertEqual(
+            self.routes_main._get_available_checkout_plans({"tier": "DEMO", "key": ""}),
+            ["PRO", "FULL"],
+        )
+
+    def test_checkout_muestra_basica_en_demo_si_tiene_precio_configurado(self):
+        self.assertTrue(self.routes_main._has_checkout_license({"tier": "DEMO", "key": ""}))
+        with mock.patch.object(self.routes_main, "plan_supports_checkout", side_effect=lambda plan: plan in {"BASICA", "PRO", "FULL"}):
+            self.assertEqual(
+                self.routes_main._get_available_checkout_plans({"tier": "DEMO", "key": ""}),
+                ["BASICA", "PRO", "FULL"],
+            )
+
     def test_basica_muestra_pro_y_full(self):
         actions = get_plan_actions("BASICA")
         self.assertEqual(actions["planes_comprables"], ["PRO", "FULL"])
@@ -325,6 +340,54 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(normalize_plan("PRO"), "PRO")
         self.assertEqual(normalize_plan("FULL"), "FULL")
         self.assertEqual(normalize_plan("MENSUAL_FULL"), "FULL")
+
+    def test_build_checkout_context_permite_alta_licencia_desde_demo(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/checkout", method="POST", json={"plan_destino": "PRO"}):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO", "key": "", "expirada": False}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"license_owner_name": "Admin", "license_owner_email": "admin@test.com", "license_owner_phone": ""}), \
+                 mock.patch.object(self.routes_main, "cargar_licencia", return_value={}), \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-TEST-123", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-TEST-123"):
+                context, error_response = self.routes_main._build_checkout_context()
+
+        self.assertIsNone(error_response)
+        self.assertEqual(context["tipo_solicitud"], "alta_licencia")
+        self.assertEqual(context["activation_id"], "NXID-TEST-123")
+        self.assertEqual(context["plan_destino"], "PRO")
+        self.assertEqual(context["license_key"], "")
+        self.assertTrue(str(context["external_reference"]).startswith("ALTA|NXID-TEST-123|"))
+
+    def test_solicitud_manual_desde_demo_envia_alta_licencia(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/solicitar-upgrade", method="POST", data={"plan_destino": "FULL"}):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin", "nombre_completo": "Administrador"}
+            captured = {}
+
+            def _fake_create_upgrade_request(payload):
+                captured.update(payload)
+                return {"ok": True}
+
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO", "key": "", "owner_name": "", "owner_email": ""}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"nombre_negocio": "Nexar Test", "email_contacto": "admin@test.com", "telefono": "123"}), \
+                 mock.patch.object(self.routes_main, "cargar_licencia", return_value={}), \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-456", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-456"), \
+                 mock.patch.object(self.routes_main, "create_upgrade_request", side_effect=_fake_create_upgrade_request):
+                response = self.routes_main.mi_plan_solicitar_upgrade()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(captured["tipo_solicitud"], "alta_licencia")
+        self.assertEqual(captured["activation_id"], "NXID-DEMO-456")
+        self.assertEqual(captured["plan_destino"], "FULL")
+        self.assertEqual(captured["license_key"], "")
 
     def test_pro_no_colapsa_a_full(self):
         pro_modules = get_modulos_plan("PRO")
