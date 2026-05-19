@@ -121,7 +121,7 @@
                             <td class="text-end">
                                 <div class="d-flex flex-column gap-2">
                                     <div class="btn-group justify-content-end" role="group">
-                                        {% if not factura.anulada %}
+                                        {% if not factura.anulada and usuario_es_admin %}
                                         <a href="{{ url_for('proveedor_factura_editar', pid=proveedor.id, factura_id=factura.id) }}" class="btn btn-sm btn-outline-warning">
                                             <i class="fas fa-edit"></i>
                                         </a>
@@ -140,6 +140,10 @@
                                             {% if factura.pagado > 0 %}disabled title="No se puede anular una factura con pagos"{% else %}title="Anular factura"{% endif %}
                                         >
                                             <i class="fas fa-ban"></i>
+                                        </button>
+                                        {% elif not factura.anulada %}
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Solo administradores pueden ajustar o anular facturas">
+                                            <i class="fas fa-lock"></i>
                                         </button>
                                         {% else %}
                                         <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Factura ya anulada">

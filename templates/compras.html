@@ -67,6 +67,7 @@
               <a href="{{ url_for('compra_detalle', cid=c.id) }}" class="btn btn-sm btn-outline-primary" title="Ver detalle"><i class="fas fa-eye"></i></a>
               {% if not c.anulada %}
               <a href="{{ url_for('main.compra_editar', cid=c.id) }}" class="btn btn-sm btn-outline-secondary" title="Editar"><i class="fas fa-edit"></i></a>
+              {% if usuario_es_admin %}
               <button
                 type="button"
                 class="btn btn-sm btn-outline-warning"
@@ -80,6 +81,9 @@
                 data-cantidad="{{ c.cantidad }}"
                 data-total="{{ c.total|fmt_ars }}"
               ><i class="fas fa-ban"></i></button>
+              {% else %}
+              <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Solo administradores pueden anular compras"><i class="fas fa-lock"></i></button>
+              {% endif %}
               {% else %}
               <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Compra ya anulada"><i class="fas fa-ban"></i></button>
               {% endif %}

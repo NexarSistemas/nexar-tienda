@@ -32,6 +32,7 @@
 
 {% block topbar_actions %}
 <div class="d-flex gap-2">
+    {% if (session['user']['rol']|lower) != 'vendedor' %}
     {% if modulo_activo("export") %}
     <div class="dropdown">
         <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
@@ -60,6 +61,7 @@
     <a href="{{ url_for('producto_nuevo') }}" class="btn btn-sm btn-primary">
         <i class="fas fa-plus me-1"></i> Nuevo Producto
     </a>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -166,12 +168,18 @@
                             </td>
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
+                                    {% if (session['user']['rol']|lower) != 'vendedor' %}
                                     <a href="{{ url_for('producto_editar', pid=producto['id']) }}" class="btn btn-outline-primary" title="Editar">
                                         <i class="fas fa-edit"></i>
                                     </a>
                                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmDelete" data-id="{{ producto['id'] }}" data-name="{{ producto['descripcion'] }}" title="Eliminar">
                                         <i class="fas fa-trash"></i>
                                     </button>
+                                    {% else %}
+                                    <button type="button" class="btn btn-outline-secondary" disabled title="No tenés permisos para editar productos">
+                                        <i class="fas fa-lock"></i>
+                                    </button>
+                                    {% endif %}
                                 </div>
                             </td>
                         </tr>

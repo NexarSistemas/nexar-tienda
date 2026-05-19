@@ -106,7 +106,7 @@
                             <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Gasto ya anulado">
                                 <i class="fas fa-ban"></i>
                             </button>
-                            {% else %}
+                            {% elif usuario_es_admin %}
                             <button type="button" class="btn btn-sm btn-outline-secondary me-1" disabled title="Los gastos registrados no se editan">
                                 <i class="fas fa-lock"></i>
                             </button>
@@ -124,6 +124,10 @@
                                 data-descripcion="{{ g.descripcion or 'Sin descripción' }}"
                             >
                                 <i class="fas fa-ban me-1"></i>Anular
+                            </button>
+                            {% else %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Solo administradores pueden anular gastos">
+                                <i class="fas fa-lock"></i>
                             </button>
                             {% endif %}
                         </td>

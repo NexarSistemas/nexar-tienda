@@ -986,3 +986,35 @@ Implementar un MVP de auditoria visual para acciones criticas ya protegidas, con
 ### Casos dudosos / alcance
 - No existia mecanismo previo de auditoria, por eso se creo una tabla minima nueva en vez de agregar una solucion mas grande.
 - El MVP registra anulacion de factura de proveedor como caso representativo de proveedor protegido; no agrega todavia una bitacora completa para todos los movimientos auxiliares de `cc_proveedores_mov`.
+
+## 2026-05-19 - feature/permisos-basicos
+
+### Tarea
+Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutilizando la sesion y los roles existentes.
+
+### Archivos modificados
+- `routes/main.py`
+- `templates/historial.html`
+- `templates/compras.html`
+- `templates/gastos.html`
+- `templates/cliente_detalle.html`
+- `templates/proveedor_facturas.html`
+- `tests/test_permisos_basicos.py`
+- `docs/ai/AI_CHANGELOG.md`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+
+### Que se cambio
+- Se reutilizo el esquema actual de roles y se tomo como admin a `Administrador/admin`; el resto de roles operan como empleado para este MVP.
+- Las anulaciones criticas y el ajuste de factura de proveedor quedaron validadas en backend con `@admin_required`.
+- Se cerro la autorizacion sensible que antes permitia a un no-admin anular usando credenciales de otro admin; ahora solo un admin logueado puede confirmar con su propia contrasena.
+- La UI oculta o reemplaza por candado los botones de anulacion no permitidos en ventas, compras, gastos, cuenta corriente cliente y facturas de proveedor.
+- La vista `/auditoria` se mantiene solo para admin y el flujo operativo de empleado para registrar cobros no se bloqueo.
+
+### Que se probo
+- Validacion sintactica con `python -m py_compile routes/main.py tests/test_permisos_basicos.py`.
+- Tests unitarios con `python -m unittest tests.test_permisos_basicos tests.test_gastos_seguros tests.test_cc_clientes_anulacion tests.test_auditoria_visual tests.test_reportes_historicos_coherentes`.
+- Casos cubiertos: admin puede anular gasto, empleado no puede anular venta/compra/gasto/movimiento CC/factura proveedor, empleado no accede a auditoria y empleado puede registrar cobros.
+
+### Casos dudosos / alcance
+- No se agrego un catalogo nuevo de roles para evitar refactor; el MVP se apoya en los roles ya presentes (`Administrador`, `Vendedor`, `Encargado`) y reconoce tambien `admin` por compatibilidad.
+- Se protegieron solo las acciones criticas pedidas; no se endurecieron otros permisos operativos fuera de alcance.

@@ -44,29 +44,36 @@
             <a class="nav-link {% if request.endpoint == 'punto_venta' %}active{% endif %}" href="{{ url_for('punto_venta') }}">
                 <i class="fas fa-shopping-cart"></i> Punto de Venta
             </a>
+            {% if (session['user']['rol']|lower) != 'vendedor' %}
             <a class="nav-link {% if request.endpoint == 'historial' %}active{% endif %}" href="{{ url_for('historial') }}">
                 <i class="fas fa-history"></i> Historial
             </a>
             <a class="nav-link {% if request.endpoint in ['compras', 'compra_nueva', 'compra_detalle'] %}active{% endif %}" href="{{ url_for('compras') }}">
                 <i class="fas fa-truck"></i> Compras
             </a>
+            {% endif %}
 
             <div class="nav-label">Finanzas</div>
             <a class="nav-link {% if request.endpoint == 'caja' %}active{% endif %}" href="{{ url_for('caja') }}">
                 <i class="fas fa-cash-register"></i> Caja Diaria
             </a>
+            {% if (session['user']['rol']|lower) != 'vendedor' %}
             <a class="nav-link {% if request.endpoint == 'gastos' %}active{% endif %}" href="{{ url_for('gastos') }}">
                 <i class="fas fa-file-invoice-dollar"></i> Gastos
             </a>
+            {% endif %}
 
             <div class="nav-label">Cuentas Corrientes</div>
             <a class="nav-link {% if request.endpoint in ['clientes', 'cliente_nuevo', 'cliente_editar', 'cliente_detalle'] %}active{% endif %}" href="{{ url_for('clientes') }}">
                 <i class="fas fa-users"></i> Clientes
             </a>
+            {% if (session['user']['rol']|lower) != 'vendedor' %}
             <a class="nav-link {% if request.endpoint in ['proveedores', 'proveedor_nuevo', 'proveedor_editar', 'proveedor_detalle', 'proveedor_facturas', 'proveedor_factura_nueva', 'proveedor_factura_editar'] %}active{% endif %}" href="{{ url_for('proveedores') }}">
                 <i class="fas fa-industry"></i> Proveedores
             </a>
+            {% endif %}
 
+            {% if (session['user']['rol']|lower) != 'vendedor' %}
             <div class="nav-label">Informes</div>
             {% if modulo_activo("reportes") %}
             <a class="nav-link {% if request.endpoint == 'reportes' %}active{% endif %}" href="{{ url_for('reportes') }}">
@@ -88,14 +95,17 @@
             </a>
             {% endif %}
             {% endif %}
+            {% endif %}
 
             <div class="nav-label">Sistema</div>
             <a class="nav-link {% if request.endpoint == 'perfil' %}active{% endif %}" href="{{ url_for('perfil') }}">
                 <i class="fas fa-user-circle"></i> Mi Perfil
             </a>
+            {% if (session['user']['rol']|lower) != 'vendedor' %}
             <a class="nav-link {% if request.endpoint == 'config' %}active{% endif %}" href="{{ url_for('config') }}">
                 <i class="fas fa-cog"></i> Configuración
             </a>
+            {% endif %}
             <a class="nav-link {% if request.endpoint == 'mi_plan' %}active{% endif %}" href="{{ url_for('mi_plan') }}">
                 <i class="fas fa-layer-group"></i> Mi plan
             </a>
@@ -131,7 +141,7 @@
                     </div>
                     <div style="color:#94a3b8; font-size:.72rem;">{{ session['user']['rol'] }}</div>
                 </div>
-                <a href="{{ url_for('logout') }}" style="color:#ef9a9a; text-decoration: none; font-size: .85rem;" title="Cerrar sesión">
+                <a href="{{ url_for('logout') }}" id="logout-link" style="color:#ef9a9a; text-decoration: none; font-size: .85rem;" title="Cerrar sesión">
                     <i class="fas fa-sign-out-alt"></i>
                 </a>
             </div>
@@ -272,6 +282,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
     <script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
     <form id="form-apagar-desktop" method="POST" action="{{ url_for('apagar_rapido') }}" class="d-none"></form>
+    <form id="form-logout-force" method="GET" action="{{ url_for('logout') }}" class="d-none">
+        <input type="hidden" name="force" value="1">
+    </form>
     <script>
         // Mostrar hora actual
         function updateTime() {
@@ -465,12 +478,56 @@
 
         document.addEventListener('DOMContentLoaded', function () {
             const btnCerrarSistema = document.getElementById('btn-cerrar-sistema');
+            const logoutLink = document.getElementById('logout-link');
+            const logoutForceForm = document.getElementById('form-logout-force');
             if (btnCerrarSistema) {
                 btnCerrarSistema.addEventListener('click', function () {
                     ejecutarSalidaProtegida({
                         submitFormId: 'form-apagar',
                         reprogramarDesktop: false,
                     });
+                });
+            }
+            if (logoutLink && logoutForceForm) {
+                logoutLink.addEventListener('click', async function (event) {
+                    event.preventDefault();
+                    try {
+                        const response = await fetch('{{ url_for("desktop_close_warning") }}', {credentials: 'same-origin'});
+                        if (!response.ok) {
+                            window.location.href = logoutLink.href;
+                            return;
+                        }
+                        const data = await response.json();
+                        if (!data.caja_abierta) {
+                            window.location.href = logoutLink.href;
+                            return;
+                        }
+                        const aperturaTexto = data.fecha_apertura ? ' Caja abierta desde ' + data.fecha_apertura.slice(0, 16).replace('T', ' ') + '.' : '';
+                        const result = await Swal.fire({
+                            title: 'Todavía hay una caja abierta',
+                            text: 'Si cerrás la sesión, la caja seguirá abierta.' + aperturaTexto,
+                            icon: 'warning',
+                            showCancelButton: true,
+                            showDenyButton: true,
+                            confirmButtonColor: '#c62828',
+                            denyButtonColor: '#1e3a5f',
+                            cancelButtonColor: '#6c757d',
+                            confirmButtonText: 'Cerrar sesión igual',
+                            denyButtonText: 'Ir a caja',
+                            cancelButtonText: 'Cancelar',
+                            background: '#1a2a3f',
+                            color: '#ffffff'
+                        });
+                        if (result.isConfirmed) {
+                            logoutForceForm.submit();
+                            return;
+                        }
+                        if (result.isDenied) {
+                            window.location.href = data.caja_url || '{{ url_for("caja") }}';
+                        }
+                    } catch (_error) {
+                        window.location.href = logoutLink.href;
+                    }
                 });
             }
         });

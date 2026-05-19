@@ -19,10 +19,12 @@
                     </p>
                 </div>
                 <div>
+                    {% if usuario_puede_editar_cliente %}
                     <a href="{{ url_for('cliente_editar', cid=cliente.id) }}" class="btn btn-outline-warning me-2">
                         <i class="fas fa-edit me-1"></i>
                         Editar
                     </a>
+                    {% endif %}
                     <a href="{{ url_for('clientes') }}" class="btn btn-outline-secondary">
                         <i class="fas fa-arrow-left me-1"></i>
                         Volver
@@ -191,10 +193,12 @@
                         <i class="fas fa-history me-2"></i>
                         Movimientos de Cuenta Corriente
                     </h5>
+                    {% if usuario_puede_editar_cliente %}
                     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoMovimiento">
                         <i class="fas fa-plus me-1"></i>
                         Nuevo Movimiento
                     </button>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     {% if movimientos %}
@@ -261,7 +265,7 @@
                                         <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Este movimiento se corrige desde Ventas">
                                             <i class="fas fa-lock"></i>
                                         </button>
-                                        {% else %}
+                                        {% elif usuario_es_admin %}
                                         <button
                                             type="button"
                                             class="btn btn-sm btn-outline-danger js-anular-movimiento"
@@ -278,6 +282,10 @@
                                             data-cliente="{{ cliente.nombre }}"
                                         >
                                             <i class="fas fa-ban me-1"></i>Anular
+                                        </button>
+                                        {% else %}
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Solo administradores pueden anular movimientos">
+                                            <i class="fas fa-lock"></i>
                                         </button>
                                         {% endif %}
                                     </td>

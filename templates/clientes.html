@@ -3,9 +3,11 @@
 {% block page_title %}<i class="fas fa-users me-2"></i>Gestión de Clientes{% endblock %}
 
 {% block topbar_actions %}
+{% if usuario_puede_editar_clientes %}
 <a href="{{ url_for('cliente_nuevo') }}" class="btn btn-sm btn-primary">
     <i class="fas fa-plus me-2"></i>Nuevo Cliente
 </a>
+{% endif %}
 {% endblock %}
 
 {% block extra_css %}
@@ -130,9 +132,15 @@
                                 <a href="{{ url_for('cliente_detalle', cid=cliente.id) }}" class="btn btn-sm btn-outline-info" title="Ver Detalle">
                                     <i class="fas fa-eye"></i>
                                 </a>
+                                {% if usuario_puede_editar_clientes %}
                                 <a href="{{ url_for('cliente_editar', cid=cliente.id) }}" class="btn btn-sm btn-outline-primary" title="Editar">
                                     <i class="fas fa-edit"></i>
                                 </a>
+                                {% else %}
+                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="No tenés permisos para editar clientes">
+                                    <i class="fas fa-lock"></i>
+                                </button>
+                                {% endif %}
                             </td>
                         </tr>
                         {% else %}
