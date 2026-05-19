@@ -242,16 +242,17 @@ def qm(statements):
 _db_initialized = False
 
 
-def registrar_auditoria(accion, entidad, entidad_id=0, detalle='', motivo='', usuario=''):
+def registrar_auditoria(accion, entidad, entidad_id=0, detalle='', motivo='', usuario='', rol=''):
     """Registra una accion critica en la bitacora de auditoria."""
     marca_tiempo = datetime.now().replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     return q(
         """INSERT INTO auditoria
-        (fecha, usuario, accion, entidad, entidad_id, detalle, motivo)
-        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (fecha, usuario, rol, accion, entidad, entidad_id, detalle, motivo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             marca_tiempo,
             str(usuario or '').strip(),
+            str(rol or '').strip(),
             str(accion or '').strip(),
             str(entidad or '').strip(),
             int(entidad_id or 0),
@@ -585,6 +586,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             fecha TEXT DEFAULT CURRENT_TIMESTAMP,
             usuario TEXT DEFAULT '',
+            rol TEXT DEFAULT '',
             accion TEXT DEFAULT '',
             entidad TEXT DEFAULT '',
             entidad_id INTEGER DEFAULT 0,
@@ -919,6 +921,11 @@ def init_db():
     """)
 
     conn.commit()
+
+    auditoria_columns = [row["name"] for row in c.execute("PRAGMA table_info(auditoria)").fetchall()]
+    if "rol" not in auditoria_columns:
+        c.execute("ALTER TABLE auditoria ADD COLUMN rol TEXT DEFAULT ''")
+        conn.commit()
     conn.close()
     _restrict_file(DB_PATH)
 
@@ -3104,7 +3111,7 @@ def registrar_pago_cliente(
     )
 
 
-def anular_movimiento_cliente(mid, motivo, usuario=''):
+def anular_movimiento_cliente(mid, motivo, usuario='', rol=''):
     """Anula un movimiento de cuenta corriente cliente sin borrar historial."""
     movimiento = get_movimiento_cliente(mid)
     if not movimiento:
@@ -3143,6 +3150,7 @@ def anular_movimiento_cliente(mid, motivo, usuario=''):
         detalle=f"{movimiento['tipo'] or 'Movimiento'} · Cliente #{int(movimiento['cliente_id'] or 0)} · Comprobante: {movimiento['numero_comprobante'] or 'Sin comprobante'}",
         motivo=motivo_limpio,
         usuario=usuario,
+        rol=rol,
     )
     return get_movimiento_cliente(mid)
 
@@ -3388,7 +3396,7 @@ def eliminar_factura_proveedor(factura_id):
     return anular_factura_proveedor(factura_id)
 
 
-def anular_factura_proveedor(factura_id, motivo='', usuario=''):
+def anular_factura_proveedor(factura_id, motivo='', usuario='', rol=''):
     """Marca una factura como anulada sin borrar historial ni pagos."""
     factura = get_factura_proveedor(factura_id)
     if not factura:
@@ -3414,6 +3422,7 @@ def anular_factura_proveedor(factura_id, motivo='', usuario=''):
         detalle=f"Proveedor #{int(factura['proveedor_id'] or 0)} · Factura: {factura['numero_factura'] or f'#{factura_id}'} · Importe: {float(factura['importe'] or 0):.2f}",
         motivo=motivo_limpio,
         usuario=usuario,
+        rol=rol,
     )
 
 
@@ -3796,7 +3805,7 @@ def delete_venta(venta_id):
     return anular_venta(venta_id)
 
 
-def anular_venta(venta_id, motivo='', usuario=''):
+def anular_venta(venta_id, motivo='', usuario='', rol=''):
     """Marca una venta como anulada y restaura stock una sola vez."""
     conn = get_conn()
     try:
@@ -3880,6 +3889,7 @@ def anular_venta(venta_id, motivo='', usuario=''):
             detalle=f"Ticket #{venta['numero_ticket'] or venta_id} · Cliente: {venta['cliente_nombre'] or 'Mostrador'} · Total: {float(venta['total'] or 0):.2f}",
             motivo=motivo,
             usuario=usuario,
+            rol=rol,
         )
         return True
     except Exception:
@@ -4059,7 +4069,7 @@ def delete_compra(cid):
     return anular_compra(cid)
 
 
-def anular_compra(compra_id, motivo='', usuario=''):
+def anular_compra(compra_id, motivo='', usuario='', rol=''):
     """Marca una compra como anulada y revierte stock una sola vez."""
     compra_actual = get_compra(compra_id)
     if not compra_actual:
@@ -4108,6 +4118,7 @@ def anular_compra(compra_id, motivo='', usuario=''):
             detalle=f"Remito: {compra_actual['numero_remito'] or f'#{compra_id}'} · Proveedor: {compra_actual['proveedor_nombre'] or 'Sin proveedor'} · Total: {float(compra_actual['total'] or 0):.2f}",
             motivo=motivo,
             usuario=usuario,
+            rol=rol,
         )
         return True
     except Exception:
@@ -4543,7 +4554,7 @@ def update_gasto(gid, data):
     raise ValueError("Los gastos registrados no se editan para conservar caja y reportes. Anulalo y cargalo nuevamente.")
 
 
-def anular_gasto(gid, motivo='', usuario=''):
+def anular_gasto(gid, motivo='', usuario='', rol=''):
     """Anula un gasto sin borrarlo para conservar historial y coherencia."""
     gasto = get_gasto(gid)
     if not gasto:
@@ -4582,6 +4593,7 @@ def anular_gasto(gid, motivo='', usuario=''):
         detalle=f"{gasto['categoria'] or 'Sin categoria'} · {gasto['descripcion'] or 'Sin descripcion'} · {float(gasto['monto'] or 0):.2f}",
         motivo=motivo_limpio,
         usuario=usuario,
+        rol=rol,
     )
     return get_gasto(gid)
 

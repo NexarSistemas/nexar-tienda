@@ -51,6 +51,7 @@
                     <tr>
                         <th>Fecha</th>
                         <th>Usuario</th>
+                        <th>Rol</th>
                         <th>Acción</th>
                         <th>Entidad</th>
                         <th>Detalle</th>
@@ -62,6 +63,7 @@
                     <tr>
                         <td>{{ item.fecha }}</td>
                         <td>{{ item.usuario or 'Sistema' }}</td>
+                        <td>{{ item.rol or '-' }}</td>
                         <td><span class="badge bg-info-subtle text-info">{{ item.accion }}</span></td>
                         <td>{{ item.entidad }}{% if item.entidad_id %} #{{ item.entidad_id }}{% endif %}</td>
                         <td>{{ item.detalle or '-' }}</td>
@@ -69,7 +71,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="text-center py-5 text-muted">
+                        <td colspan="7" class="text-center py-5 text-muted">
                             <i class="fas fa-clipboard fa-3x mb-3"></i>
                             <p class="mb-0">No hay registros de auditoría para los filtros seleccionados.</p>
                         </td>

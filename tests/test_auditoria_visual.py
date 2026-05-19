@@ -42,6 +42,22 @@ class AuditoriaVisualTests(unittest.TestCase):
             security_question="color",
             security_answer="azul",
         )
+        self.encargado_id = self.database.add_usuario(
+            "encargado",
+            "1234",
+            "Encargado",
+            "Encargado Test",
+            security_question="mascota",
+            security_answer="luna",
+        )
+        self.vendedor_id = self.database.add_usuario(
+            "vendedor",
+            "1234",
+            "Vendedor",
+            "Vendedor Test",
+            security_question="comida",
+            security_answer="pizza",
+        )
 
         self.cliente_id = self.database.add_cliente(
             {
@@ -83,6 +99,9 @@ class AuditoriaVisualTests(unittest.TestCase):
             (self.user_id, f"{fecha} 09:00:00", 0, 0),
             commit=True,
         )
+
+    def _acciones_auditoria(self):
+        return self.database.get_auditoria(limit=100)
 
     def _crear_venta_fiada(self, fecha="2026-05-19", total=300):
         venta_id = self.database.crear_venta(
@@ -173,6 +192,7 @@ class AuditoriaVisualTests(unittest.TestCase):
             detalle="Servicios · Internet · 80.00",
             motivo="Carga duplicada",
             usuario="admin",
+            rol="admin",
         )
 
         with self.app.test_request_context("/auditoria"):
@@ -183,6 +203,93 @@ class AuditoriaVisualTests(unittest.TestCase):
         self.assertIn("Registro de acciones críticas", html)
         self.assertIn("ANULACION_GASTO", html)
         self.assertIn("Carga duplicada", html)
+        self.assertIn("Rol", html)
+        self.assertIn("admin", html)
+
+    def test_login_logout_registran_usuario_y_rol_para_admin_encargado_y_vendedor(self):
+        casos = [
+            ("admin", "admin", self.user_id, "Administrador Test"),
+            ("encargado", "Encargado", self.encargado_id, "Encargado Test"),
+            ("vendedor", "Vendedor", self.vendedor_id, "Vendedor Test"),
+        ]
+
+        for username, rol, uid, nombre in casos:
+            with self.app.test_request_context(
+                "/login",
+                method="POST",
+                data={"username": username, "password": "1234"},
+            ):
+                response_login = self.routes_main.login()
+                self.assertEqual(response_login.status_code, 302)
+
+            with self.app.test_request_context("/logout?force=1"):
+                session["user"] = {
+                    "id": uid,
+                    "rol": rol,
+                    "username": username,
+                    "nombre_completo": nombre,
+                }
+                response_logout = self.routes_main.logout()
+                self.assertEqual(response_logout.status_code, 302)
+
+        auditoria = self._acciones_auditoria()
+        login_rows = [row for row in auditoria if row["accion"] == "LOGIN"]
+        logout_rows = [row for row in auditoria if row["accion"] == "LOGOUT"]
+
+        self.assertEqual({row["usuario"] for row in login_rows}, {"admin", "encargado", "vendedor"})
+        self.assertEqual({row["rol"] for row in login_rows}, {"admin", "Encargado", "Vendedor"})
+        self.assertEqual({row["usuario"] for row in logout_rows}, {"admin", "encargado", "vendedor"})
+        self.assertEqual({row["rol"] for row in logout_rows}, {"admin", "Encargado", "Vendedor"})
+
+    def test_config_y_clientes_registran_auditoria_legible(self):
+        with self.app.test_request_context(
+            "/config",
+            method="POST",
+            data={"nombre_negocio": "Nexar Test", "ticket_mostrar_iva": "1"},
+        ):
+            self._set_admin_session()
+            response_config = self.routes_main.config()
+        self.assertEqual(response_config.status_code, 302)
+
+        with self.app.test_request_context(
+            "/clientes/nuevo",
+            method="POST",
+            data={
+                "nombre": "Cliente Auditoria",
+                "dni_cuit": "",
+                "telefono": "",
+                "email": "",
+                "limite_credito": "0",
+                "activo": "1",
+            },
+        ):
+            self._set_admin_session()
+            response_nuevo = self.routes_main.cliente_nuevo()
+        self.assertEqual(response_nuevo.status_code, 302)
+
+        cliente = self.database.q("SELECT * FROM clientes WHERE nombre=?", ("Cliente Auditoria",), fetchone=True)
+        self.assertIsNotNone(cliente)
+
+        with self.app.test_request_context(
+            f"/clientes/{cliente['id']}/editar",
+            method="POST",
+            data={
+                "nombre": "Cliente Auditoria Editado",
+                "dni_cuit": "",
+                "telefono": "",
+                "email": "",
+                "limite_credito": "0",
+                "activo": "1",
+            },
+        ):
+            self._set_admin_session()
+            response_editar = self.routes_main.cliente_editar(int(cliente["id"]))
+        self.assertEqual(response_editar.status_code, 302)
+
+        acciones = self._acciones_auditoria()
+        self.assertTrue(any(row["accion"] == "EDICION_CONFIG" and row["usuario"] == "admin" for row in acciones))
+        self.assertTrue(any(row["accion"] == "ALTA_CLIENTE" and row["detalle"] == "Cliente Auditoria" for row in acciones))
+        self.assertTrue(any(row["accion"] == "EDICION_CLIENTE" and "Cliente Auditoria Editado" in row["detalle"] for row in acciones))
 
 
 if __name__ == "__main__":

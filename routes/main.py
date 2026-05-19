@@ -817,6 +817,19 @@ def vendedor_forbidden(view):
     return wrapped
 
 
+def _auditar_accion(accion: str, entidad: str, entidad_id: int = 0, detalle: str = "", motivo: str = "") -> None:
+    usuario = session.get("user", {}) if "user" in session else {}
+    db.registrar_auditoria(
+        accion,
+        entidad,
+        entidad_id,
+        detalle=detalle,
+        motivo=motivo,
+        usuario=usuario.get("username", ""),
+        rol=usuario.get("rol", ""),
+    )
+
+
 def _build_rubro_cards():
     return [
         {
@@ -1552,6 +1565,12 @@ def login():
         session["user"] = {"id": user["id"], "username": user["username"], "nombre_completo": user["nombre_completo"] or user["username"], "rol": user["rol"]}
         session["show_welcome"] = True
         DESKTOP_STATE["user_logged_in"] = True
+        _auditar_accion(
+            "LOGIN",
+            "sesion",
+            int(user["id"] or 0),
+            detalle=f"Inicio de sesion de {user['username']} ({user['rol']})",
+        )
         if not user["security_question"] or not user["security_answer_hash"]:
             flash("âš ï¸ Antes de continuar, configurÃ¡ tu pregunta y respuesta secreta.", "warning")
             return redirect(url_for("configurar_recuperacion", next=request.form.get("next", "")))
@@ -2121,6 +2140,7 @@ def producto_nuevo():
         except ValueError as exc:
             flash(str(exc), "warning")
             return redirect(request.url)
+        _auditar_accion("ALTA_PRODUCTO", "producto", int(nuevo_id or 0), detalle=f"{request.form.get('descripcion', '').strip() or 'Producto'}")
         flash("Producto creado.", "success")
         if desde_compra:
             draft_compra["producto_id"] = str(nuevo_id)
@@ -2212,6 +2232,7 @@ def producto_editar(pid):
             flash(str(exc), "warning")
             return redirect(request.url)
         db.update_stock_item(pid, nuevo_stock, stock_minimo_base, stock_maximo_base, data.get("proveedor_habitual", ""))
+        _auditar_accion("EDICION_PRODUCTO", "producto", pid, detalle=f"{data.get('descripcion', producto['descripcion']) or 'Producto'}")
         flash("Producto actualizado.", "success")
         return redirect(url_for("productos"))
     cfg = db.get_config()
@@ -2275,6 +2296,7 @@ def stock_ajustar(pid):
             return redirect(request.url)
         db.update_stock_item(pid, nuevo, float(request.form.get("stock_minimo", 5)), float(request.form.get("stock_maximo", 50)), request.form.get("proveedor_habitual", ""))
         db.q("INSERT INTO stock_movimientos (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo) VALUES (?,?,?,?,?,?)", (pid, "AJUSTE", nuevo - anterior, anterior, nuevo, request.form.get("motivo", "Ajuste manual")), commit=True)
+        _auditar_accion("AJUSTE_STOCK", "stock", pid, detalle=f"{producto['descripcion'] or 'Producto'} Â· {anterior:.2f} -> {nuevo:.2f}", motivo=request.form.get("motivo", "Ajuste manual"))
         flash("âœ… Stock actualizado.", "success")
         return redirect(url_for("stock"))
     return render_template(
@@ -2459,6 +2481,8 @@ def venta_finalizar():
     venta_id = db.crear_venta(cart, cliente_nombre, medio_pago, float(request.form.get("descuento_adicional", 0) or 0), session["user"]["username"], cliente_id=cliente_id, temporada=(db.get_temporada_actual() or {}).get("nombre", ""))
     db.reconciliar_cc_clientes_desde_ventas()
     db.decrementar_stock_venta(venta_id)
+    venta = db.q("SELECT numero_ticket, total, cliente_nombre, medio_pago FROM ventas WHERE id=?", (venta_id,), fetchone=True)
+    _auditar_accion("VENTA_REGISTRADA", "venta", venta_id, detalle=f"Ticket #{venta['numero_ticket'] if venta else venta_id} Â· Cliente: {(venta['cliente_nombre'] if venta else cliente_nombre) or 'Mostrador'} Â· Medio: {(venta['medio_pago'] if venta else medio_pago) or medio_pago} Â· Total: {float((venta['total'] if venta else 0) or 0):.2f}")
     _clear_cart()
     flash("Venta registrada.", "success")
     return redirect(url_for("ticket", vid=venta_id))
@@ -2594,6 +2618,7 @@ def historial_eliminar(vid):
             vid,
             motivo=request.form.get("motivo_anulacion", ""),
             usuario=session.get("user", {}).get("username", ""),
+            rol=session.get("user", {}).get("rol", ""),
         )
     except ValueError as exc:
         flash(str(exc), "warning")
@@ -2632,11 +2657,12 @@ def compra_nueva():
             "observaciones_factura": data.get("observaciones_factura", ""),
         }
         try:
+            compra_id = 0
             if condicion_pago == "cuenta_corriente":
-                db.add_compra_con_factura(data, factura_data)
+                compra_id = int(db.add_compra_con_factura(data, factura_data) or 0)
                 flash("Compra registrada y factura comercial creada.", "success")
             else:
-                db.add_compra(data)
+                compra_id = int(db.add_compra(data) or 0)
                 flash("Compra registrada.", "success")
         except ValueError as exc:
             flash(str(exc), "warning")
@@ -2644,6 +2670,7 @@ def compra_nueva():
         except Exception:
             flash("No se pudo registrar la compra correctamente.", "danger")
             return redirect(url_for("compras", **_purchase_draft_query(_purchase_draft_from_source(request.form), open_compra="1")))
+        _auditar_accion("COMPRA_REGISTRADA", "compra", 0, detalle=f"Remito: {data.get('numero_remito', '') or 'Sin remito'} Â· Proveedor: {data.get('proveedor_nombre', '') or 'Sin proveedor'} Â· Total: {float(data.get('total', 0) or 0):.2f}")
         flash("âœ… Compra registrada.", "success")
         return redirect(url_for("compras"))
     return redirect(url_for("compras"))
@@ -2743,6 +2770,7 @@ def compra_eliminar(cid):
             cid,
             motivo=request.form.get("motivo_anulacion", ""),
             usuario=session.get("user", {}).get("username", ""),
+            rol=session.get("user", {}).get("rol", ""),
         )
         flash("Compra anulada correctamente. El stock fue ajustado.", "success")
         return redirect(url_for("compras"))
@@ -2805,6 +2833,7 @@ def caja_abrir():
             caja_id,
             detalle=f"Caja abierta con saldo inicial {saldo_inicial:.2f}",
             usuario=session.get("user", {}).get("username", ""),
+            rol=session.get("user", {}).get("rol", ""),
         )
     return redirect(_safe_next_url(request.form.get("next"), url_for("caja")))
 
@@ -2855,6 +2884,7 @@ def caja_cerrar():
         int(caja_actual["id"] or 0),
         detalle=f"Caja cerrada con saldo real {saldo_real:.2f}",
         usuario=session.get("user", {}).get("username", ""),
+        rol=session.get("user", {}).get("rol", ""),
     )
     return redirect(_safe_next_url(request.form.get("next"), url_for("caja")))
 
@@ -2894,7 +2924,7 @@ def gasto_nuevo():
                 gasto_form=data,
             )
         try:
-            db.add_gasto(data)
+            gasto_id = int(db.add_gasto(data) or 0)
         except ValueError as exc:
             flash(str(exc), "warning")
             return render_template(
@@ -2908,6 +2938,12 @@ def gasto_nuevo():
                 gasto_form=data,
             )
         flash("âœ… Gasto registrado.", "success")
+        _auditar_accion(
+            "GASTO_REGISTRADO",
+            "gasto",
+            gasto_id,
+            detalle=f"{data.get('categoria', '') or 'Sin categoria'} · {data.get('descripcion', '') or 'Sin descripcion'} · {float(data.get('monto', 0) or 0):.2f}",
+        )
         return redirect(url_for("gastos"))
     return render_template(
         "gasto_form.html",
@@ -2942,6 +2978,7 @@ def gasto_eliminar(gid):
             gid,
             request.form.get("motivo_anulacion", ""),
             usuario=session.get("user", {}).get("username", ""),
+            rol=session.get("user", {}).get("rol", ""),
         )
         flash("Gasto anulado correctamente. El historial fue conservado.", "success")
     except ValueError as exc:
@@ -2962,7 +2999,13 @@ def cliente_nuevo():
     if request.method == "POST":
         if not _limit_allows("clientes"):
             return redirect(url_for("clientes"))
-        db.add_cliente(request.form.to_dict())
+        nuevo_id = int(db.add_cliente(request.form.to_dict()) or 0)
+        _auditar_accion(
+            "ALTA_CLIENTE",
+            "cliente",
+            nuevo_id,
+            detalle=request.form.get("nombre", "").strip() or "Cliente",
+        )
         return redirect(url_for("clientes"))
     return render_template("cliente_form.html", cliente=None, accion="Crear")
 
@@ -2975,6 +3018,12 @@ def cliente_editar(cid):
         data = request.form.to_dict()
         data["activo"] = 1 if _as_bool(data.get("activo")) else 0
         db.update_cliente(cid, data)
+        _auditar_accion(
+            "EDICION_CLIENTE",
+            "cliente",
+            cid,
+            detalle=data.get("nombre", cliente["nombre"] if cliente else "") or "Cliente",
+        )
         return redirect(url_for("cliente_detalle", cid=cid))
     return render_template("cliente_form.html", cliente=cliente, accion="Editar")
 
@@ -3042,6 +3091,7 @@ def cliente_anular_movimiento(cid, mid):
             mid,
             request.form.get("motivo_anulacion", ""),
             usuario=session.get("user", {}).get("username", ""),
+            rol=session.get("user", {}).get("rol", ""),
         )
         flash("Movimiento anulado correctamente. El historial fue conservado.", "success")
     except ValueError as exc:
@@ -3365,6 +3415,7 @@ def proveedor_factura_eliminar(pid, factura_id):
             factura_id,
             motivo=request.form.get("motivo_anulacion", ""),
             usuario=session.get("user", {}).get("username", ""),
+            rol=session.get("user", {}).get("rol", ""),
         )
         flash("Factura anulada correctamente. El historial se conservÃ³.", "success")
     except ValueError as exc:
@@ -3571,6 +3622,12 @@ def config():
         data.pop("rubro_negocio", None)
         data.pop("rubro_negocio_confirmado", None)
         db.set_config(data)
+        _auditar_accion(
+            "EDICION_CONFIG",
+            "configuracion",
+            0,
+            detalle=f"Claves actualizadas: {', '.join(sorted(data.keys()))}",
+        )
         return redirect(url_for("config"))
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
@@ -4024,6 +4081,13 @@ def usuario_nuevo():
             flash(f"âŒ {msg}", "danger")
         else:
             db.add_usuario(request.form.get("username", ""), request.form.get("password", ""), request.form.get("rol", "Vendedor"), request.form.get("nombre_completo", ""))
+            nuevo_usuario = db.get_usuario_by_username(request.form.get("username", ""))
+            _auditar_accion(
+                "ALTA_USUARIO",
+                "usuario",
+                int(nuevo_usuario["id"] or 0) if nuevo_usuario else 0,
+                detalle=f"{request.form.get('username', '').strip()} ({request.form.get('rol', 'Vendedor').strip()})",
+            )
             return redirect(url_for("usuarios"))
     return render_template("usuario_form.html", usuario=None, roles=db.get_roles(), accion="Nuevo")
 
@@ -4049,6 +4113,12 @@ def usuario_editar(uid):
             flash("âš ï¸ No podÃ©s quitar el rol al Ãºltimo administrador activo.", "warning")
             return redirect(url_for("usuarios"))
         db.update_usuario(uid, {"rol": nuevo_rol, "nombre_completo": request.form.get("nombre_completo", usuario["nombre_completo"]), "activo": activo})
+        _auditar_accion(
+            "EDICION_USUARIO",
+            "usuario",
+            uid,
+            detalle=f"{usuario['username']} -> rol {nuevo_rol} · activo {activo}",
+        )
         return redirect(url_for("usuarios"))
     return render_template("usuario_form.html", usuario=usuario, roles=db.get_roles(), accion="Editar")
 
@@ -4071,6 +4141,12 @@ def usuario_toggle_activo(uid):
         return redirect(url_for("usuarios"))
 
     db.set_usuario_activo(uid, nuevo_estado)
+    _auditar_accion(
+        "CAMBIO_ESTADO_USUARIO",
+        "usuario",
+        uid,
+        detalle=f"{user['username']} -> {'activo' if nuevo_estado else 'inactivo'}",
+    )
     flash("âœ… Usuario activado." if nuevo_estado else "âœ… Usuario desactivado.", "success")
     return redirect(url_for("usuarios"))
 
@@ -4089,6 +4165,12 @@ def usuario_eliminar(uid):
     if user["rol"] in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
         flash("âš ï¸ No podÃ©s eliminar el Ãºltimo administrador activo.", "warning")
         return redirect(url_for("usuarios"))
+    _auditar_accion(
+        "ELIMINACION_USUARIO",
+        "usuario",
+        uid,
+        detalle=f"{user['username']} ({user['rol']})",
+    )
     db.delete_usuario(uid)
     flash("âœ… Usuario eliminado definitivamente.", "success")
     return redirect(url_for("usuarios"))
@@ -4537,6 +4619,13 @@ def logout():
     if "user" in session and _caja_abierta() and not _as_bool(request.args.get("force")):
         flash("Hay una caja abierta. Confirmá explícitamente el cierre de sesión o revisá la caja antes de salir.", "warning")
         return redirect(url_for("dashboard"))
+    if "user" in session:
+        _auditar_accion(
+            "LOGOUT",
+            "sesion",
+            int(session.get("user", {}).get("id") or 0),
+            detalle=f"Cierre de sesion de {session.get('user', {}).get('username', '')}",
+        )
     session.clear()
     DESKTOP_STATE["user_logged_in"] = False
     return redirect(url_for("login"))
