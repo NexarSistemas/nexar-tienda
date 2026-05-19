@@ -452,7 +452,11 @@ def init_db():
             proveedor TEXT DEFAULT '',
             necesario TEXT DEFAULT 'SI (necesario)',
             comprobante TEXT DEFAULT '',
-            observaciones TEXT DEFAULT ''
+            observaciones TEXT DEFAULT '',
+            anulado INTEGER DEFAULT 0,
+            anulada_at TEXT DEFAULT '',
+            anulada_por TEXT DEFAULT '',
+            motivo_anulacion TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS cc_clientes_mov (
@@ -697,6 +701,14 @@ def init_db():
                 ELSE 'Operativo'
             END"""
         )
+    if 'anulado' not in columnas_g:
+        c.execute("ALTER TABLE gastos ADD COLUMN anulado INTEGER DEFAULT 0")
+    if 'anulada_at' not in columnas_g:
+        c.execute("ALTER TABLE gastos ADD COLUMN anulada_at TEXT DEFAULT ''")
+    if 'anulada_por' not in columnas_g:
+        c.execute("ALTER TABLE gastos ADD COLUMN anulada_por TEXT DEFAULT ''")
+    if 'motivo_anulacion' not in columnas_g:
+        c.execute("ALTER TABLE gastos ADD COLUMN motivo_anulacion TEXT DEFAULT ''")
 
     # â”€â”€â”€ ConfiguraciÃ³n por defecto â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     defaults = [
@@ -4278,6 +4290,16 @@ def sync_gasto_caja_movimiento(gasto_id):
             )
         return
 
+    if int(gasto["anulado"] or 0):
+        if movimiento:
+            anular_caja_movimiento(
+                movimiento["id"],
+                "Anulación automática por anulación del gasto asociado.",
+                usuario="sistema",
+                permitir_vinculado_gasto=True,
+            )
+        return
+
     caja = get_caja_abierta()
     fecha_caja = str(caja["fecha_apertura"])[:10] if caja else ""
     medio_pago = str(gasto["medio_pago"] or "").strip().lower()
@@ -4374,6 +4396,16 @@ def get_gastos(search='', fecha_desde='', fecha_hasta='', limit=200):
     return q(sql, params)
 
 
+def get_gasto(gid):
+    """Obtiene un gasto por ID."""
+    return q("SELECT * FROM gastos WHERE id=?", (gid,), fetchone=True)
+
+
+def _gastos_activos_cond(alias=''):
+    prefijo = f"{alias}." if alias else ""
+    return f"COALESCE({prefijo}anulado, 0)=0"
+
+
 def validar_gasto_efectivo_contra_caja(data):
     """Bloquea gastos en efectivo fuera de una caja abierta valida."""
     medio_pago = str(data.get('medio_pago', '') or '').strip().lower()
@@ -4412,28 +4444,52 @@ def add_gasto(data):
 
 def update_gasto(gid, data):
     """Actualiza un gasto."""
-    validar_gasto_efectivo_contra_caja(data)
-    categoria = data.get('categoria', '')
-    necesario = normalizar_tipo_gasto(data.get('necesario'))
-    if 'necesario' not in data:
-        necesario = get_tipo_gasto_categoria(categoria)
-    clasificacion = normalizar_clasificacion_gasto(data.get('clasificacion'), categoria)
+    gasto_actual = get_gasto(gid)
+    if not gasto_actual:
+        raise ValueError("El gasto indicado no existe.")
+    if int(gasto_actual["anulado"] or 0):
+        raise ValueError("El gasto seleccionado ya está anulado.")
+    raise ValueError("Los gastos registrados no se editan para conservar caja y reportes. Anulalo y cargalo nuevamente.")
+
+
+def anular_gasto(gid, motivo='', usuario=''):
+    """Anula un gasto sin borrarlo para conservar historial y coherencia."""
+    gasto = get_gasto(gid)
+    if not gasto:
+        raise ValueError("El gasto indicado no existe.")
+    if int(gasto["anulado"] or 0):
+        raise ValueError("El gasto seleccionado ya está anulado.")
+
+    motivo_limpio = str(motivo or "").strip()
+    if not motivo_limpio:
+        raise ValueError("El motivo de anulación es obligatorio.")
+
+    movimiento = get_caja_movimiento_activo_por_gasto(gid)
+    if movimiento and int(movimiento["caja_estado"] or 0) != 1:
+        raise ValueError("No podés anular este gasto porque impacta una caja cerrada.")
+
+    if movimiento:
+        anular_caja_movimiento(
+            int(movimiento["id"]),
+            f"Anulación de gasto #{gid}: {motivo_limpio}",
+            usuario=str(usuario or "").strip(),
+            permitir_vinculado_gasto=True,
+        )
+
+    marca_tiempo = datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     q(
-        """UPDATE gastos SET fecha=?,tipo=?,categoria=?,clasificacion=?,descripcion=?,monto=?,iva_incluido=?,
-        medio_pago=?,proveedor=?,necesario=?,comprobante=?,observaciones=? WHERE id=?""",
-        (data.get('fecha', datetime.now().strftime('%Y-%m-%d')), data.get('tipo', 'Gasto'),
-         categoria, clasificacion, data.get('descripcion', ''), float(data.get('monto', 0)),
-         int(data.get('iva_incluido', 1)), data.get('medio_pago', 'Efectivo'), data.get('proveedor', ''),
-         necesario, data.get('comprobante', ''), data.get('observaciones', ''), gid),
-        commit=True
+        """UPDATE gastos
+        SET anulado=1, anulada_at=?, anulada_por=?, motivo_anulacion=?
+        WHERE id=?""",
+        (marca_tiempo, str(usuario or "").strip(), motivo_limpio, gid),
+        commit=True,
     )
-    sync_gasto_caja_movimiento(gid)
+    return get_gasto(gid)
 
 
 def delete_gasto(gid):
-    """Elimina un gasto."""
-    q("DELETE FROM gastos WHERE id=?", (gid,), commit=True)
-    sync_gasto_caja_movimiento(gid)
+    """Compatibilidad: los gastos ya no se eliminan físicamente."""
+    raise ValueError("Los gastos ya no se eliminan. Usá anulación responsable para conservar historial.")
 
 
 # â”€â”€â”€ TEMPORADAS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -4627,7 +4683,7 @@ def get_stats_rentabilidad(mes_actual=None, rubro=None):
         """SELECT COALESCE(clasificacion, 'Operativo') as clasificacion,
                   COALESCE(SUM(monto), 0) as total
         FROM gastos
-        WHERE fecha LIKE ?
+        WHERE fecha LIKE ? AND COALESCE(anulado, 0)=0
         GROUP BY COALESCE(clasificacion, 'Operativo')""",
         (f"{mes_actual}%",),
     )
@@ -4863,8 +4919,10 @@ def _resumen_gastos_periodo(desde='', hasta=''):
     params = []
     condicion = ""
     if desde and hasta:
-        condicion = "WHERE fecha BETWEEN ? AND ?"
+        condicion = f"WHERE fecha BETWEEN ? AND ? AND {_gastos_activos_cond()}"
         params = [desde, hasta]
+    else:
+        condicion = f"WHERE {_gastos_activos_cond()}"
     rows = q(f"""
         SELECT COALESCE(clasificacion, 'Operativo') as clasificacion,
                ROUND(COALESCE(SUM(monto), 0), 2) as total
@@ -4953,8 +5011,10 @@ def get_rentabilidad_detallada_periodos(granularidad='diario', desde='', hasta='
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     if desde and hasta:
         condicion_ventas = "WHERE v.fecha BETWEEN ? AND ?"
-        condicion_gastos = "WHERE fecha BETWEEN ? AND ?"
+        condicion_gastos = f"WHERE fecha BETWEEN ? AND ? AND {_gastos_activos_cond()}"
         params = [desde, hasta]
+    else:
+        condicion_gastos = f"WHERE {_gastos_activos_cond()}"
     condicion_ventas = _append_condition(condicion_ventas, _ventas_activas_cond("v"))
     condicion_ventas = _append_condition(condicion_ventas, rubro_cond)
 
@@ -5037,8 +5097,10 @@ def get_composicion_gastos_rentabilidad(granularidad='mensual', desde='', hasta=
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     if desde and hasta:
         condicion_ventas = "WHERE v.fecha BETWEEN ? AND ?"
-        condicion_gastos = "WHERE fecha BETWEEN ? AND ?"
+        condicion_gastos = f"WHERE fecha BETWEEN ? AND ? AND {_gastos_activos_cond()}"
         params = [desde, hasta]
+    else:
+        condicion_gastos = f"WHERE {_gastos_activos_cond()}"
     condicion_ventas = _append_condition(condicion_ventas, _ventas_activas_cond("v"))
     condicion_ventas = _append_condition(condicion_ventas, f"EXISTS (SELECT 1 FROM ventas_detalle vd LEFT JOIN productos p ON p.id = vd.producto_id WHERE vd.venta_id = v.id AND {rubro_cond})")
 
@@ -5128,8 +5190,10 @@ def get_gastos_por_categoria_periodo(desde='', hasta=''):
     params = []
     condicion = ""
     if desde and hasta:
-        condicion = "WHERE fecha BETWEEN ? AND ?"
+        condicion = f"WHERE fecha BETWEEN ? AND ? AND {_gastos_activos_cond()}"
         params = [desde, hasta]
+    else:
+        condicion = f"WHERE {_gastos_activos_cond()}"
     return q(f"""
         SELECT COALESCE(NULLIF(categoria, ''), 'Sin categoria') as categoria,
                COALESCE(clasificacion, 'Operativo') as clasificacion,

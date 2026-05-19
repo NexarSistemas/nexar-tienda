@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Gastos — {{ app_display_name }}{% endblock %}
+{% block title %}Gastos - {{ app_display_name }}{% endblock %}
 {% block page_title %}<i class="fas fa-file-invoice-dollar me-2"></i>Gastos Operativos{% endblock %}
 
 {% block topbar_actions %}
@@ -73,12 +73,20 @@
                 </thead>
                 <tbody>
                     {% for g in gastos %}
-                    <tr>
-                        <td>{{ g.fecha | date }}</td>
-                        <td><span class="badge bg-info-subtle text-info">{{ g.categoria }}</span></td>
+                    <tr{% if g.anulado %} class="table-warning-subtle"{% endif %}>
                         <td>
-                            <strong>{{ g.descripcion }}</strong><br>
-                            <small class="text-muted">{{ g.proveedor }}</small>
+                            {{ g.fecha | date }}
+                            {% if g.anulado %}
+                            <div><small class="text-warning fw-semibold">Anulado</small></div>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-info-subtle text-info">{{ g.categoria or 'Sin categoría' }}</span></td>
+                        <td>
+                            <strong>{{ g.descripcion or 'Sin descripción' }}</strong><br>
+                            <small class="text-muted">{{ g.proveedor or 'Sin proveedor' }}</small>
+                            {% if g.motivo_anulacion %}
+                            <div><small class="text-muted">Motivo anulación: {{ g.motivo_anulacion }}</small></div>
+                            {% endif %}
                         </td>
                         <td>
                             <span class="badge {% if g.necesario == 'Prescindible' %}bg-warning-subtle text-warning{% else %}bg-success-subtle text-success{% endif %}">
@@ -91,24 +99,38 @@
                                 {{ clasificacion }}
                             </span>
                         </td>
-                        <td>{{ g.medio_pago }}</td>
-                        <td class="text-end fw-bold text-danger">{{ g.monto | fmt_ars }}</td>
+                        <td>{{ g.medio_pago or 'No registrado' }}</td>
+                        <td class="text-end fw-bold {% if g.anulado %}text-muted text-decoration-line-through{% else %}text-danger{% endif %}">{{ g.monto | fmt_ars }}</td>
                         <td class="text-center">
-                            {% if session['user']['rol'] in ['Administrador', 'admin'] %}
-                            <a href="{{ url_for('gasto_editar', gid=g.id) }}" class="btn btn-sm btn-outline-primary me-1" title="Editar gasto">
-                                <i class="fas fa-pen"></i>
-                            </a>
+                            {% if g.anulado %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Gasto ya anulado">
+                                <i class="fas fa-ban"></i>
+                            </button>
+                            {% else %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary me-1" disabled title="Los gastos registrados no se editan">
+                                <i class="fas fa-lock"></i>
+                            </button>
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-danger js-anular-gasto"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modalAnularGasto"
+                                data-anular-url="{{ url_for('gasto_eliminar', gid=g.id) }}"
+                                data-gasto-id="{{ g.id }}"
+                                data-fecha="{{ g.fecha or 'No registrada' }}"
+                                data-categoria="{{ g.categoria or 'Sin categoría' }}"
+                                data-medio-pago="{{ g.medio_pago or 'No registrado' }}"
+                                data-importe="{{ '%.2f'|format(g.monto or 0) }}"
+                                data-descripcion="{{ g.descripcion or 'Sin descripción' }}"
+                            >
+                                <i class="fas fa-ban me-1"></i>Anular
+                            </button>
                             {% endif %}
-                            <form action="{{ url_for('gasto_eliminar', gid=g.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este registro de gasto?');">
-                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </form>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                            <td colspan="8" class="text-center py-5 text-muted">
+                        <td colspan="8" class="text-center py-5 text-muted">
                             <i class="fas fa-search fa-3x mb-3"></i>
                             <p>No se encontraron gastos registrados.</p>
                         </td>
@@ -119,4 +141,91 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="modalAnularGasto" tabindex="-1" aria-labelledby="modalAnularGastoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="POST" id="formAnularGasto">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title" id="modalAnularGastoLabel">Anular gasto</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2 text-danger fw-semibold">El gasto no se borrará. Quedará anulado para conservar historial.</p>
+                    <div class="rounded border bg-light p-3 small">
+                        <div><strong>Fecha:</strong> <span id="anular-gasto-fecha">-</span></div>
+                        <div><strong>Categoría:</strong> <span id="anular-gasto-categoria">-</span></div>
+                        <div><strong>Medio de pago:</strong> <span id="anular-gasto-medio">-</span></div>
+                        <div><strong>Importe:</strong> $<span id="anular-gasto-importe">-</span></div>
+                        <div><strong>Descripción:</strong> <span id="anular-gasto-descripcion">-</span></div>
+                    </div>
+                    <div class="mt-3">
+                        <label for="motivo_anulacion_gasto" class="form-label">Motivo de anulación</label>
+                        <textarea id="motivo_anulacion_gasto" name="motivo_anulacion" class="form-control" rows="3" placeholder="Explicá por qué se anula este gasto." required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger" id="btnConfirmarAnularGasto" disabled>Confirmar anulación</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = document.getElementById('modalAnularGasto');
+    const form = document.getElementById('formAnularGasto');
+    const btnConfirmar = document.getElementById('btnConfirmarAnularGasto');
+    const motivo = document.getElementById('motivo_anulacion_gasto');
+    const campos = {
+        fecha: document.getElementById('anular-gasto-fecha'),
+        categoria: document.getElementById('anular-gasto-categoria'),
+        medio: document.getElementById('anular-gasto-medio'),
+        importe: document.getElementById('anular-gasto-importe'),
+        descripcion: document.getElementById('anular-gasto-descripcion')
+    };
+
+    function resetModal() {
+        form.setAttribute('action', '');
+        btnConfirmar.disabled = true;
+        motivo.value = '';
+        campos.fecha.textContent = '-';
+        campos.categoria.textContent = '-';
+        campos.medio.textContent = '-';
+        campos.importe.textContent = '-';
+        campos.descripcion.textContent = '-';
+    }
+
+    function cargarDesdeBoton(button) {
+        const url = button?.dataset?.anularUrl || '';
+        const gastoId = button?.dataset?.gastoId || '';
+        form.setAttribute('action', url);
+        campos.fecha.textContent = button?.dataset?.fecha || 'No registrada';
+        campos.categoria.textContent = button?.dataset?.categoria || 'Sin categoría';
+        campos.medio.textContent = button?.dataset?.medioPago || 'No registrado';
+        campos.importe.textContent = button?.dataset?.importe || '0.00';
+        campos.descripcion.textContent = button?.dataset?.descripcion || 'Sin descripción';
+        btnConfirmar.disabled = !(url && gastoId);
+    }
+
+    document.querySelectorAll('.js-anular-gasto').forEach(function (button) {
+        button.addEventListener('click', function (event) {
+            resetModal();
+            cargarDesdeBoton(event.currentTarget);
+        });
+    });
+
+    if (modal) {
+        modal.addEventListener('hidden.bs.modal', resetModal);
+        modal.addEventListener('show.bs.modal', function (event) {
+            resetModal();
+            cargarDesdeBoton(event.relatedTarget);
+        });
+    }
+});
+</script>
 {% endblock %}
