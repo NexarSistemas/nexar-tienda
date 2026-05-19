@@ -304,6 +304,7 @@ def create_app() -> Flask:
         "cliente_editar",
         "cliente_detalle",
         "cliente_agregar_movimiento",
+        "cliente_anular_movimiento",
         "cliente_eliminar",
         "proveedores",
         "proveedor_nuevo",

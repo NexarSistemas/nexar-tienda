@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="container-fluid">
-    <!-- ─── HEADER ─── -->
+    <!-- Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ HEADER Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ -->
     <div class="row mb-4">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
@@ -32,7 +32,7 @@
         </div>
     </div>
 
-    <!-- ─── INFO BÁSICA Y SALDO ─── -->
+    <!-- Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ INFO BÃƒÂSICA Y SALDO Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ -->
     <div class="row mb-4">
         <div class="col-md-8">
             <div class="card">
@@ -131,6 +131,36 @@
                 </div>
                 <div class="card-body">
                     <div class="row text-center">
+                        <div class="col-md-6 d-none">
+                            <label for="medio_pago" class="form-label">Medio de Pago</label>
+                            <select class="form-select" id="medio_pago" name="medio_pago">
+                                <option value="Efectivo">Efectivo</option>
+                                <option value="Transferencia">Transferencia</option>
+                                <option value="DÃƒÆ’Ã‚Â©bito">DÃƒÆ’Ã‚Â©bito</option>
+                                <option value="CrÃƒÆ’Ã‚Â©dito">CrÃƒÆ’Ã‚Â©dito</option>
+                                <option value="QR">QR</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 d-none">
+                            <label for="medio_pago" class="form-label">Medio de Pago</label>
+                            <select class="form-select" id="medio_pago" name="medio_pago">
+                                <option value="Efectivo">Efectivo</option>
+                                <option value="Transferencia">Transferencia</option>
+                                <option value="DÃƒÆ’Ã‚Â©bito">DÃƒÆ’Ã‚Â©bito</option>
+                                <option value="CrÃƒÆ’Ã‚Â©dito">CrÃƒÆ’Ã‚Â©dito</option>
+                                <option value="QR">QR</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 d-none">
+                            <label for="medio_pago" class="form-label">Medio de Pago</label>
+                            <select class="form-select" id="medio_pago" name="medio_pago">
+                                <option value="Efectivo">Efectivo</option>
+                                <option value="Transferencia">Transferencia</option>
+                                <option value="DÃƒÆ’Ã‚Â©bito">DÃƒÆ’Ã‚Â©bito</option>
+                                <option value="CrÃƒÆ’Ã‚Â©dito">CrÃƒÆ’Ã‚Â©dito</option>
+                                <option value="QR">QR</option>
+                            </select>
+                        </div>
                         <div class="col-6">
                             <div class="h4 mb-0 text-primary">{{ estadisticas.total_compras }}</div>
                             <small class="text-muted">Compras</small>
@@ -152,7 +182,7 @@
         </div>
     </div>
 
-    <!-- ─── MOVIMIENTOS DE CUENTA CORRIENTE ─── -->
+    <!-- MOVIMIENTOS DE CUENTA CORRIENTE -->
     <div class="row mb-4">
         <div class="col-12">
             <div class="card">
@@ -179,17 +209,24 @@
                                     <th class="text-end">Haber</th>
                                     <th class="text-end">Saldo</th>
                                     <th>Observaciones</th>
+                                    <th class="text-end">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% set running_saldo = namespace(val=saldo) %}
                                 {% for movimiento in movimientos %}
-                                <tr>
+                                <tr{% if movimiento.anulado %} class="table-warning-subtle"{% endif %}>
                                     <td>{{ movimiento.fecha }}</td>
                                     <td>
                                         <span class="badge bg-{{ 'danger' if 'Venta' in movimiento.tipo else 'success' if 'Pago' in movimiento.tipo else 'info' }}">
                                             {{ movimiento.tipo }}
                                         </span>
+                                        {% if movimiento.anulado %}
+                                        <div><small class="text-warning">Anulado</small></div>
+                                        {% endif %}
+                                        {% if movimiento.medio_pago %}
+                                        <div><small class="text-muted">{{ movimiento.medio_pago }}</small></div>
+                                        {% endif %}
                                     </td>
                                     <td>{{ movimiento.numero_comprobante or '-' }}</td>
                                     <td class="text-end">
@@ -209,9 +246,45 @@
                                     <td class="text-end fw-bold {{ 'text-danger' if running_saldo.val > 0 else 'text-success' if running_saldo.val < 0 else 'text-muted' }}">
                                         ${{ "%.2f"|format(running_saldo.val) }}
                                     </td>
-                                    <td>{{ movimiento.observaciones or '-' }}</td>
+                                    <td>
+                                        {{ movimiento.observaciones or '-' }}
+                                        {% if movimiento.motivo_anulacion %}
+                                        <div><small class="text-muted">Motivo anulación: {{ movimiento.motivo_anulacion }}</small></div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if movimiento.anulado %}
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Movimiento ya anulado">
+                                            <i class="fas fa-ban"></i>
+                                        </button>
+                                        {% elif movimiento.venta_id or movimiento.tipo in ['Venta', 'Anulación venta'] %}
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Este movimiento se corrige desde Ventas">
+                                            <i class="fas fa-lock"></i>
+                                        </button>
+                                        {% else %}
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm btn-outline-danger js-anular-movimiento"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalAnularMovimiento"
+                                            data-anular-url="{{ url_for('main.cliente_anular_movimiento', cid=cliente.id, mid=movimiento.id) }}"
+                                            data-movimiento-id="{{ movimiento.id }}"
+                                            data-movimiento-tipo="{{ movimiento.tipo }}"
+                                            data-medio-pago="{{ movimiento.medio_pago or 'No registrado' }}"
+                                            data-fecha="{{ movimiento.fecha }}"
+                                            data-observacion="{{ movimiento.observaciones or 'No registrado' }}"
+                                            data-comprobante="{{ movimiento.numero_comprobante or movimiento.observaciones or 'Sin comprobante' }}"
+                                            data-importe="{{ '%.2f'|format(movimiento.haber if movimiento.haber > 0 else movimiento.debe) }}"
+                                            data-cliente="{{ cliente.nombre }}"
+                                        >
+                                            <i class="fas fa-ban me-1"></i>Anular
+                                        </button>
+                                        {% endif %}
+                                    </td>
                                 </tr>
+                                {% if not movimiento.anulado %}
                                 {% set running_saldo.val = running_saldo.val - (movimiento.debe - movimiento.haber) %}
+                                {% endif %}
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -227,7 +300,7 @@
         </div>
     </div>
 
-    <!-- ─── HISTORIAL DE VENTAS ─── -->
+    <!-- HISTORIAL DE VENTAS -->
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -291,11 +364,12 @@
     </div>
 </div>
 
-<!-- ─── MODAL NUEVO MOVIMIENTO ─── -->
+<!-- MODAL NUEVO MOVIMIENTO -->
 <div class="modal fade" id="modalNuevoMovimiento" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="{{ url_for('cliente_agregar_movimiento', cid=cliente.id) }}">
+                <input type="hidden" name="medio_pago" value="Efectivo">
                 <div class="modal-header">
                     <h5 class="modal-title">
                         <i class="fas fa-plus me-2"></i>
@@ -305,15 +379,18 @@
                 </div>
                 <div class="modal-body">
                     <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="fecha" class="form-label">Fecha</label>
+                            <input type="date" class="form-control" id="fecha" name="fecha" value="{{ today or '' }}">
+                        </div>
                         <div class="col-12">
                             <label for="tipo" class="form-label">Tipo de Movimiento</label>
                             <select class="form-select" id="tipo" name="tipo" required>
-                                <option value="">Seleccionar...</option>
-                                <option value="Venta">Venta</option>
                                 <option value="Pago">Pago</option>
                                 <option value="Ajuste">Ajuste</option>
                                 <option value="Nota de Crédito">Nota de Crédito</option>
                             </select>
+                            <div class="form-text">Las ventas fiadas se generan desde el Punto de Venta para conservar deuda e historial.</div>
                         </div>
                         <div class="col-12">
                             <label for="numero_comprobante" class="form-label">Número de Comprobante</label>
@@ -338,10 +415,156 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Agregar Movimiento</button>
+                    <button type="submit" class="btn btn-primary">Registrar Movimiento</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
+<div class="modal fade" id="modalAnularMovimiento" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="formAnularMovimiento">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-ban text-danger me-2"></i>
+                        Anular movimiento
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2 text-danger fw-semibold">El movimiento no se borrará. Quedará anulado para conservar historial.</p>
+                    <div class="small text-muted mb-3">
+                        <input type="hidden" id="anular_movimiento_id" value="">
+                        <div><strong>Movimiento:</strong> <span data-anular-movimiento>No registrado</span></div>
+                        <div><strong>Tipo:</strong> <span data-anular-tipo>No registrado</span></div>
+                        <div><strong>Fecha:</strong> <span data-anular-fecha>No registrado</span></div>
+                        <div><strong>Cliente:</strong> <span data-anular-cliente>No registrado</span></div>
+                        <div><strong>Comprobante:</strong> <span data-anular-comprobante>Sin comprobante</span></div>
+                        <div><strong>Importe:</strong> $<span data-anular-importe>0.00</span></div>
+                        <div><strong>Observación:</strong> <span data-anular-observacion>No registrado</span></div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="motivo_anulacion_movimiento" class="form-label">Motivo de anulación</label>
+                        <textarea id="motivo_anulacion_movimiento" name="motivo_anulacion" class="form-control" rows="3" placeholder="Explicá por qué se anula este movimiento." required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger" id="btnConfirmarAnularMovimiento">Confirmar anulación</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const tipoSelect = document.getElementById('tipo');
+    const debeInput = document.getElementById('debe');
+    const haberInput = document.getElementById('haber');
+    const medioPagoWrapper = document.getElementById('medioPagoWrapper');
+    const medioPagoSelect = document.getElementById('medio_pago');
+    const modalAnular = document.getElementById('modalAnularMovimiento');
+    const formAnular = document.getElementById('formAnularMovimiento');
+    const motivoAnulacion = document.getElementById('motivo_anulacion_movimiento');
+    const btnConfirmarAnular = document.getElementById('btnConfirmarAnularMovimiento');
+    const movimientoIdInput = document.getElementById('anular_movimiento_id');
+
+    function setModalAnularValue(selector, value, fallback) {
+        const node = modalAnular ? modalAnular.querySelector(selector) : null;
+        if (!node) return;
+        const text = String(value || '').trim();
+        node.textContent = text || fallback;
+    }
+
+    function cargarModalAnular(trigger) {
+        if (!modalAnular || !formAnular || !trigger) return;
+        const action = (trigger.getAttribute('data-anular-url') || '').trim();
+        const movimientoId = (trigger.getAttribute('data-movimiento-id') || '').trim();
+        const movimiento = (trigger.getAttribute('data-movimiento-tipo') || '').trim();
+        const tipo = (trigger.getAttribute('data-medio-pago') || '').trim();
+        const fecha = (trigger.getAttribute('data-fecha') || '').trim();
+        const cliente = (trigger.getAttribute('data-cliente') || '').trim();
+        const comprobante = (trigger.getAttribute('data-comprobante') || '').trim();
+        const importe = (trigger.getAttribute('data-importe') || '').trim();
+        const observacion = (trigger.getAttribute('data-observacion') || '').trim();
+        const tieneMovimientoValido = Boolean(action && movimientoId);
+
+        formAnular.action = action;
+        if (movimientoIdInput) {
+            movimientoIdInput.value = movimientoId;
+        }
+        setModalAnularValue('[data-anular-movimiento]', movimiento, 'No registrado');
+        setModalAnularValue('[data-anular-tipo]', tipo, 'No registrado');
+        setModalAnularValue('[data-anular-fecha]', fecha, 'No registrado');
+        setModalAnularValue('[data-anular-cliente]', cliente, 'No registrado');
+        setModalAnularValue('[data-anular-comprobante]', comprobante, 'Sin comprobante');
+        setModalAnularValue('[data-anular-importe]', importe, '0.00');
+        setModalAnularValue('[data-anular-observacion]', observacion, 'No registrado');
+
+        if (motivoAnulacion) {
+            motivoAnulacion.value = '';
+        }
+        if (btnConfirmarAnular) {
+            btnConfirmarAnular.disabled = !tieneMovimientoValido;
+        }
+    }
+
+    function syncMovimientoForm() {
+        if (!tipoSelect) return;
+        const esPago = tipoSelect.value === 'Pago';
+        if (debeInput) {
+            debeInput.readOnly = esPago;
+            if (esPago) {
+                debeInput.value = '';
+            }
+        }
+        if (medioPagoWrapper) {
+            medioPagoWrapper.style.display = esPago ? '' : 'none';
+        }
+        if (haberInput) {
+            haberInput.placeholder = esPago ? 'Monto cobrado' : '0.00';
+        }
+        if (medioPagoSelect) {
+            medioPagoSelect.required = esPago;
+        }
+    }
+
+    if (tipoSelect) {
+        tipoSelect.addEventListener('change', syncMovimientoForm);
+        syncMovimientoForm();
+    }
+
+    if (modalAnular) {
+        document.querySelectorAll('.js-anular-movimiento').forEach(function (button) {
+            button.addEventListener('click', function (event) {
+                cargarModalAnular(event.currentTarget);
+            });
+        });
+
+        modalAnular.addEventListener('show.bs.modal', function (event) {
+            const trigger = event.relatedTarget;
+            if (!trigger) return;
+            cargarModalAnular(trigger);
+        });
+    }
+
+    if (formAnular) {
+        formAnular.addEventListener('submit', function (event) {
+            const movimientoId = movimientoIdInput ? String(movimientoIdInput.value || '').trim() : '';
+            const action = String(formAnular.action || '').trim();
+            if (!movimientoId || !action) {
+                event.preventDefault();
+                if (btnConfirmarAnular) {
+                    btnConfirmarAnular.disabled = true;
+                }
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

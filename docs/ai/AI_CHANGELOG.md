@@ -877,3 +877,32 @@ Corregir el bug crítico de renombrado de categorías y limpiar duplicados de form
 
 ### Pendientes
 - Confirmar manualmente en UI el flujo completo de agregar, renombrar con Enter, renombrar con botón Guardar y activar/desactivar desde `config.html`.
+## 2026-05-19 - Codex - feature/cc-clientes-segura
+
+### Tarea
+Implementar proteccion operativa MVP para Cuenta Corriente Clientes con anulacion responsable, historial visible y coherencia basica con caja.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/cliente_detalle.html`
+- `tests/test_cc_clientes_anulacion.py`
+- `docs/ai/AI_CHANGELOG.md`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+
+### Que se cambio
+- `cc_clientes_mov` ahora incorpora trazabilidad minima de anulacion: `medio_pago`, `anulado`, `anulada_at`, `anulada_por`, `motivo_anulacion`, `caja_movimiento_id` y `movimiento_origen_id`, con migracion segura para bases existentes.
+- La deuda de clientes y los listados/resumenes principales ahora calculan saldo solo con movimientos activos, sin borrar historial anulado.
+- Los pagos de clientes dejan de ser simples movimientos genericos: ahora validan importe, conservan historial y, si son en efectivo, generan un `INGRESO` en caja abierta para mantener caja y cuenta corriente alineadas.
+- La anulacion de movimientos de clientes exige motivo obligatorio, impide doble anulacion y bloquea movimientos originados por ventas fiadas para que esas correcciones sigan pasando por Historial de ventas.
+- Al anular un pago con movimiento de caja asociado, tambien se anula su movimiento de caja relacionado, evitando desalineacion u orfandad.
+- El detalle del cliente ahora muestra movimientos anulados en historial visible, deshabilita acciones no permitidas y agrega modal Nexar homogeneo para anular con el aviso: `El movimiento no se borrara. Quedara anulado para conservar historial.`
+
+### Que se probo
+- Validacion sintactica con `python -m py_compile database.py routes/main.py`.
+- Tests unitarios con `python -m unittest tests.test_cc_clientes_anulacion`.
+- Casos cubiertos: venta fiada, registracion de pago, anulacion de pago, bloqueo de doble anulacion, restauracion correcta del saldo, anulacion relacionada de caja y compensacion de deuda al anular la venta fiada.
+
+### Casos dudosos / alcance
+- El MVP mantiene el formulario manual de movimientos para ajustes/notas de credito, pero endurece especificamente pagos y movimientos originados por ventas. No incorpora todavia una bitacora avanzada de edicion ni medios de pago diferenciados en UI para cada ajuste manual.
+- La UI del detalle cliente quedo protegida sin rehacer la pantalla completa; si despues se profundiza la cuenta corriente, conviene limpiar el formulario heredado y especializar mas el flujo de cobros.

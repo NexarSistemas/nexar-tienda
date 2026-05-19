@@ -1,12 +1,12 @@
 """
-Nexar Tienda — database.py
-Conexión, tablas y consultas SQLite.
+Nexar Tienda â€” database.py
+ConexiÃ³n, tablas y consultas SQLite.
 
-Basado en Nexar Almacén, adaptado para tienda de regalos:
-  - Sistema de licencias RSA + Token Base64 (mismo esquema que Almacén)
-  - Categorías propias de tienda (bijouterie, mates, regalos, etc.)
-  - Módulo de temporadas (Día de la Madre, Navidad, etc.)
-  - Sistema de backups automáticos desde el inicio
+Basado en Nexar AlmacÃ©n, adaptado para tienda de regalos:
+  - Sistema de licencias RSA + Token Base64 (mismo esquema que AlmacÃ©n)
+  - CategorÃ­as propias de tienda (bijouterie, mates, regalos, etc.)
+  - MÃ³dulo de temporadas (DÃ­a de la Madre, Navidad, etc.)
+  - Sistema de backups automÃ¡ticos desde el inicio
 """
 
 import sqlite3
@@ -38,7 +38,7 @@ from services.rubros import (
 )
 from services.paths import get_database_path
 
-# ─── TIER LIMITS (SISTEMA DE LICENCIAS) ──────────────────────────────────────
+# â”€â”€â”€ TIER LIMITS (SISTEMA DE LICENCIAS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Define limites de productos, clientes y proveedores por tipo de licencia
 TIER_LIMITS = {
     "DEMO": {
@@ -175,7 +175,7 @@ GASTO_CLASIFICACIONES = ("Operativo", "Impuesto", "Financiero", "Otro")
 RUBRO_CONFIG_KEY = "rubro_negocio"
 RUBRO_CONFIRMADO_CONFIG_KEY = "rubro_negocio_confirmado"
 
-# ─── RUTA DE LA BASE DE DATOS ────────────────────────────────────────────────
+# â”€â”€â”€ RUTA DE LA BASE DE DATOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 DB_PATH = str(get_database_path())
 
@@ -190,10 +190,10 @@ def _restrict_file(path):
         pass
 
 
-# ─── CONEXIÓN ─────────────────────────────────────────────────────────────────
+# â”€â”€â”€ CONEXIÃ“N â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_conn():
-    """Devuelve una conexión SQLite con Row factory y claves foráneas activas."""
+    """Devuelve una conexiÃ³n SQLite con Row factory y claves forÃ¡neas activas."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -202,12 +202,12 @@ def get_conn():
 
 def q(sql, params=(), fetchall=True, fetchone=False, commit=False):
     """
-    Función única para ejecutar consultas SQL.
+    FunciÃ³n Ãºnica para ejecutar consultas SQL.
 
     Ejemplos:
         q("SELECT * FROM productos")
         q("SELECT * FROM productos WHERE id=?", (1,), fetchone=True)
-        q("INSERT INTO ...", (...,), commit=True)  → devuelve lastrowid
+        q("INSERT INTO ...", (...,), commit=True)  â†’ devuelve lastrowid
     """
     conn = get_conn()
     try:
@@ -225,7 +225,7 @@ def q(sql, params=(), fetchall=True, fetchone=False, commit=False):
 
 
 def qm(statements):
-    """Ejecuta múltiples statements en una transacción."""
+    """Ejecuta mÃºltiples statements en una transacciÃ³n."""
     conn = get_conn()
     try:
         c = conn.cursor()
@@ -237,7 +237,7 @@ def qm(statements):
         conn.close()
 
 
-# ─── INICIALIZACIÓN ──────────────────────────────────────────────────────────
+# â”€â”€â”€ INICIALIZACIÃ“N â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _db_initialized = False
 
@@ -464,8 +464,15 @@ def init_db():
             numero_comprobante TEXT DEFAULT '',
             debe REAL DEFAULT 0,
             haber REAL DEFAULT 0,
+            medio_pago TEXT DEFAULT '',
             vencimiento TEXT DEFAULT '',
-            observaciones TEXT DEFAULT ''
+            observaciones TEXT DEFAULT '',
+            anulado INTEGER DEFAULT 0,
+            anulada_at TEXT DEFAULT '',
+            anulada_por TEXT DEFAULT '',
+            motivo_anulacion TEXT DEFAULT '',
+            caja_movimiento_id INTEGER REFERENCES caja_movimientos(id) ON DELETE SET NULL,
+            movimiento_origen_id INTEGER REFERENCES cc_clientes_mov(id) ON DELETE SET NULL
         );
 
         CREATE TABLE IF NOT EXISTS cc_proveedores_mov (
@@ -517,7 +524,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             version TEXT NOT NULL,
             fecha TEXT NOT NULL,
-            tipo TEXT DEFAULT 'Actualización',
+            tipo TEXT DEFAULT 'ActualizaciÃ³n',
             titulo TEXT NOT NULL,
             descripcion TEXT DEFAULT ''
         );
@@ -549,11 +556,25 @@ def init_db():
         );
     """)
 
-    # ─── MIGRACIONES MANUALES (Para bases de datos existentes) ───────────────
+    # â”€â”€â”€ MIGRACIONES MANUALES (Para bases de datos existentes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Verificar y agregar columna 'venta_id' en 'cc_clientes_mov'
     columnas_cc = [r['name'] for r in c.execute("PRAGMA table_info(cc_clientes_mov)").fetchall()]
     if 'venta_id' not in columnas_cc:
         c.execute("ALTER TABLE cc_clientes_mov ADD COLUMN venta_id INTEGER REFERENCES ventas(id) ON DELETE SET NULL")
+    if 'medio_pago' not in columnas_cc:
+        c.execute("ALTER TABLE cc_clientes_mov ADD COLUMN medio_pago TEXT DEFAULT ''")
+    if 'anulado' not in columnas_cc:
+        c.execute("ALTER TABLE cc_clientes_mov ADD COLUMN anulado INTEGER DEFAULT 0")
+    if 'anulada_at' not in columnas_cc:
+        c.execute("ALTER TABLE cc_clientes_mov ADD COLUMN anulada_at TEXT DEFAULT ''")
+    if 'anulada_por' not in columnas_cc:
+        c.execute("ALTER TABLE cc_clientes_mov ADD COLUMN anulada_por TEXT DEFAULT ''")
+    if 'motivo_anulacion' not in columnas_cc:
+        c.execute("ALTER TABLE cc_clientes_mov ADD COLUMN motivo_anulacion TEXT DEFAULT ''")
+    if 'caja_movimiento_id' not in columnas_cc:
+        c.execute("ALTER TABLE cc_clientes_mov ADD COLUMN caja_movimiento_id INTEGER REFERENCES caja_movimientos(id) ON DELETE SET NULL")
+    if 'movimiento_origen_id' not in columnas_cc:
+        c.execute("ALTER TABLE cc_clientes_mov ADD COLUMN movimiento_origen_id INTEGER REFERENCES cc_clientes_mov(id) ON DELETE SET NULL")
 
     columnas_facturas = [r['name'] for r in c.execute("PRAGMA table_info(facturas_proveedores)").fetchall()]
     if 'proveedor_id' not in columnas_facturas:
@@ -642,7 +663,7 @@ def init_db():
     if 'motivo_anulacion' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN motivo_anulacion TEXT DEFAULT ''")
 
-    # Verificar y agregar columnas de recuperación en usuarios
+    # Verificar y agregar columnas de recuperaciÃ³n en usuarios
     columnas_u = [r['name'] for r in c.execute("PRAGMA table_info(usuarios)").fetchall()]
     if 'security_question' not in columnas_u:
         c.execute("ALTER TABLE usuarios ADD COLUMN security_question TEXT")
@@ -677,7 +698,7 @@ def init_db():
             END"""
         )
 
-    # ─── Configuración por defecto ────────────────────────────────────────────
+    # â”€â”€â”€ ConfiguraciÃ³n por defecto â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     defaults = [
         ('nombre_negocio', 'Mi Tienda'),
         ('direccion', ''),
@@ -701,7 +722,7 @@ def init_db():
         (RUBRO_CONFIG_KEY, ''),
         (RUBRO_CONFIRMADO_CONFIG_KEY, '0'),
         ('gastos_categorias', json.dumps(DEFAULT_GASTO_CATEGORIAS, ensure_ascii=False)),
-        # ─── SISTEMA DE LICENCIAS RSA ─────────────────────────────────────────
+        # â”€â”€â”€ SISTEMA DE LICENCIAS RSA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         ('demo_mode', '1'),                 # 1=demo, 0=licencia activa
         ('demo_install_date', ''),          # Fecha de primer arranque (demo)
         ('demo_dias', '30'),                # Dias de prueba gratuita
@@ -725,7 +746,7 @@ def init_db():
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO config VALUES (?,?)", (k, v))
 
-    # ─── DEMO por defecto (sistema RSA) ──────────────────────────────────────
+    # â”€â”€â”€ DEMO por defecto (sistema RSA) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     lic_tier = c.execute("SELECT valor FROM config WHERE clave='license_tier'").fetchone()
     if not lic_tier or not lic_tier['valor']:
         c.execute("INSERT OR REPLACE INTO config VALUES ('license_tier','DEMO')")
@@ -737,18 +758,18 @@ def init_db():
             (datetime.now().date().isoformat(),)
         )
 
-    # ─── Generar machine_id ──────────────────────────────────────────────────
+    # â”€â”€â”€ Generar machine_id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     mid = c.execute("SELECT valor FROM config WHERE clave='machine_id'").fetchone()
     if not mid:
         import uuid
         machine_id = str(uuid.uuid4()).replace('-', '').upper()[:16]
         c.execute("INSERT INTO config VALUES ('machine_id',?)", (machine_id,))
 
-    # ─── Roles y Permisos Iniciales (Paso 13) ────────────────────────────────
+    # â”€â”€â”€ Roles y Permisos Iniciales (Paso 13) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     roles_data = [
         ('Administrador', 'Acceso total al sistema'),
-        ('Encargado', 'Gestión de stock, compras y caja'),
-        ('Vendedor', 'Acceso limitado a ventas y búsqueda de productos'),
+        ('Encargado', 'GestiÃ³n de stock, compras y caja'),
+        ('Vendedor', 'Acceso limitado a ventas y bÃºsqueda de productos'),
     ]
     for nombre, desc in roles_data:
         c.execute("INSERT OR IGNORE INTO roles (nombre, descripcion) VALUES (?,?)", (nombre, desc))
@@ -758,7 +779,7 @@ def init_db():
         ('pos.acceso', 'Acceder al punto de venta'),
         ('stock.ver', 'Ver el inventario'),
         ('stock.ajustar', 'Realizar ajustes de stock (Admin/Encargado)'),
-        ('reportes.ver', 'Ver reportes de rentabilidad y estadísticas'),
+        ('reportes.ver', 'Ver reportes de rentabilidad y estadÃ­sticas'),
         ('caja.abrir_cerrar', 'Abrir y cerrar la caja diaria'),
         ('gastos.gestionar', 'Registrar y eliminar gastos operativos'),
         ('compras.gestionar', 'Registrar compras a proveedores'),
@@ -766,7 +787,7 @@ def init_db():
     for clave, desc in permisos_data:
         c.execute("INSERT OR IGNORE INTO permisos (clave, descripcion) VALUES (?,?)", (clave, desc))
 
-    # Asignación básica de permisos a Vendedor (ejemplo)
+    # AsignaciÃ³n bÃ¡sica de permisos a Vendedor (ejemplo)
     vendedor_rol = c.execute("SELECT id FROM roles WHERE nombre='Vendedor'").fetchone()
     if vendedor_rol:
         permisos_vendedor = ['pos.acceso', 'stock.ver', 'dashboard.ver']
@@ -776,7 +797,7 @@ def init_db():
                 c.execute("INSERT OR IGNORE INTO roles_permisos (rol_id, permiso_id) VALUES (?,?)",
                           (vendedor_rol['id'], p_id['id']))
 
-    # ─── Categorías iniciales de tienda ──────────────────────────────────────
+    # â”€â”€â”€ CategorÃ­as iniciales de tienda â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     cats = [
         'Bijouterie',
         'Mates y Termos',
@@ -785,19 +806,19 @@ def init_db():
         'Accesorios',
         'Productos de Temporada',
         'Navidad',
-        'Día de la Madre',
-        'Día del Padre',
+        'DÃ­a de la Madre',
+        'DÃ­a del Padre',
         'Otros',
     ]
     for cat in cats:
         c.execute("INSERT OR IGNORE INTO categorias (nombre) VALUES (?)", (cat,))
 
-    # ─── Temporadas iniciales ────────────────────────────────────────────────
+    # â”€â”€â”€ Temporadas iniciales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     seasons = [
-        ('Navidad', 'Adornos y regalos navideños', '2026-11-01', '2026-12-31'),
-        ('Día de la Madre', 'Especiales para mamá', '2026-10-01', '2026-10-31'),
-        ('Día del Padre', 'Especiales para papá', '2026-06-01', '2026-06-30'),
-        ('Año Nuevo', 'Regalos y accesorios año nuevo', '2026-12-20', '2027-01-31'),
+        ('Navidad', 'Adornos y regalos navideÃ±os', '2026-11-01', '2026-12-31'),
+        ('DÃ­a de la Madre', 'Especiales para mamÃ¡', '2026-10-01', '2026-10-31'),
+        ('DÃ­a del Padre', 'Especiales para papÃ¡', '2026-06-01', '2026-06-30'),
+        ('AÃ±o Nuevo', 'Regalos y accesorios aÃ±o nuevo', '2026-12-20', '2027-01-31'),
     ]
     for nombre, desc, inicio, fin in seasons:
         c.execute(
@@ -805,7 +826,7 @@ def init_db():
             (nombre, desc, inicio, fin)
         )
 
-    # ─── Mapeo de Tiers a Módulos (para integración modular) ─────────────────
+    # â”€â”€â”€ Mapeo de Tiers a MÃ³dulos (para integraciÃ³n modular) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     tier_modules_map = [
         (tier, json.dumps(sorted(modules)))
         for tier, modules in TIER_MODULES_MAP.items()
@@ -818,7 +839,7 @@ def init_db():
 
     _seed_changelog(c)
 
-    # ─── Reparar stock ───────────────────────────────────────────────────────
+    # â”€â”€â”€ Reparar stock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     c.execute("""
         INSERT OR IGNORE INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo)
         SELECT id, 0, 5, 50 FROM productos
@@ -838,68 +859,68 @@ def _seed_changelog(c):
         return
 
     entries = [
-        ('0.1.0', '2026-03-29', 'Nueva función',
+        ('0.1.0', '2026-03-29', 'Nueva funciÃ³n',
          'Estructura base de Nexar Tienda',
-         'Proyecto inicial basado en Nexar Almacén adaptado para tienda de regalos.'),
-        ('0.1.1', '2026-03-29', 'Nueva función',
-         'Módulos completos y sistema de backups',
-         'Se agregaron todas las tablas: Productos, Stock, Ventas, Clientes, Proveedores, Caja, Gastos, Temporadas. Sistema de backups automáticos.'),
+         'Proyecto inicial basado en Nexar AlmacÃ©n adaptado para tienda de regalos.'),
+        ('0.1.1', '2026-03-29', 'Nueva funciÃ³n',
+         'MÃ³dulos completos y sistema de backups',
+         'Se agregaron todas las tablas: Productos, Stock, Ventas, Clientes, Proveedores, Caja, Gastos, Temporadas. Sistema de backups automÃ¡ticos.'),
         ('1.0.0', '2026-04-07', 'Lanzamiento Oficial',
-         'Paso 10: Caja y Liquidación Diaria',
-         'Implementación completa de control de caja, movimientos de efectivo, arqueo diario e integración automática con POS.'),
-        ('1.1.0', '2026-04-07', 'Nueva función',
+         'Paso 10: Caja y LiquidaciÃ³n Diaria',
+         'ImplementaciÃ³n completa de control de caja, movimientos de efectivo, arqueo diario e integraciÃ³n automÃ¡tica con POS.'),
+        ('1.1.0', '2026-04-07', 'Nueva funciÃ³n',
          'Paso 11: Gastos Operativos',
-         'Registro de gastos operativos con integración a caja diaria y categorización de egresos.'),
-        ('1.2.0', '2026-04-07', 'Nueva función',
+         'Registro de gastos operativos con integraciÃ³n a caja diaria y categorizaciÃ³n de egresos.'),
+        ('1.2.0', '2026-04-07', 'Nueva funciÃ³n',
          'Paso 12: Estadísticas Avanzadas',
-         'Dashboard con gráficos interactivos, análisis de rentabilidad y top de productos vendidos.'),
-        ('1.3.0', '2026-04-08', 'Nueva función',
-         'Paso 13: Gestión de Usuarios y Permisos',
-         'Implementación de sistema RBAC, control de accesos granulares y administración de usuarios.'),
-        ('1.4.0', '2026-04-09', 'Nueva función',
-         'Paso 14: Gestión de Temporadas',
-         'CRUD completo de temporadas y vinculación de productos estacionales.'),
-        ('1.5.0', '2026-04-10', 'Nueva función',
+         'Dashboard con grÃ¡ficos interactivos, anÃ¡lisis de rentabilidad y top de productos vendidos.'),
+        ('1.3.0', '2026-04-08', 'Nueva funciÃ³n',
+         'Paso 13: GestiÃ³n de Usuarios y Permisos',
+         'ImplementaciÃ³n de sistema RBAC, control de accesos granulares y administraciÃ³n de usuarios.'),
+        ('1.4.0', '2026-04-09', 'Nueva funciÃ³n',
+         'Paso 14: GestiÃ³n de Temporadas',
+         'CRUD completo de temporadas y vinculaciÃ³n de productos estacionales.'),
+        ('1.5.0', '2026-04-10', 'Nueva funciÃ³n',
          'Paso 15: Temporadas - Rutas y CRUD',
-         'Implementación completa de las rutas para gestión de temporadas, formularios de edición y filtrado dinámico en el POS.'),
-        ('1.6.0', '2026-04-11', 'Nueva función',
-         'Paso 16: Módulo de Respaldo (UI)',
-         'Panel de gestión de copias de seguridad con opciones de descarga, restauración y configuración de frecuencia.'),
-        ('1.7.0', '2026-04-12', 'Nueva función',
-         'Paso 17: Configuración del Sistema',
-         'Panel para personalizar datos del negocio, comportamiento de tickets y gestión de categorías de productos.'),
-        ('1.8.0', '2026-04-13', 'Nueva función',
+         'ImplementaciÃ³n completa de las rutas para gestiÃ³n de temporadas, formularios de ediciÃ³n y filtrado dinÃ¡mico en el POS.'),
+        ('1.6.0', '2026-04-11', 'Nueva funciÃ³n',
+         'Paso 16: MÃ³dulo de Respaldo (UI)',
+         'Panel de gestiÃ³n de copias de seguridad con opciones de descarga, restauraciÃ³n y configuraciÃ³n de frecuencia.'),
+        ('1.7.0', '2026-04-12', 'Nueva funciÃ³n',
+         'Paso 17: ConfiguraciÃ³n del Sistema',
+         'Panel para personalizar datos del negocio, comportamiento de tickets y gestiÃ³n de categorÃ­as de productos.'),
+        ('1.8.0', '2026-04-13', 'Nueva funciÃ³n',
          'Paso 18: Historial de Ventas',
-         'Listado de todas las ventas con filtros de búsqueda, fecha y medio de pago, y detalle para reimpresión de tickets.'),
+         'Listado de todas las ventas con filtros de bÃºsqueda, fecha y medio de pago, y detalle para reimpresiÃ³n de tickets.'),
         ('1.8.1', '2026-04-13', 'Mejora',
          'Clientes: Interfaz y Límite de Crédito',
-         'Mejoras en la interfaz de clientes con tarjetas interactivas y columna de límite de crédito.'),
-        ('1.9.0', '2026-04-14', 'Nueva función',
-         'Paso 19: Estadísticas avanzadas y Análisis',
-         'Implementación de dashboard financiero anual, análisis de rentabilidad por producto/categoría y gráficos interactivos.'),
-        ('1.10.0', '2026-04-15', 'Nueva función',
-         'Paso 20: Exportación de catálogo (Excel y PDF)',
-         'Generación de archivos Excel (.xlsx) y listas de precios en PDF para el catálogo de productos.'),
-        ('1.11.0', '2026-04-16', 'Nueva función',
-         'Paso 21: Páginas Informativas',
-         'Implementación de secciones de Ayuda, Changelog y Acerca de para mejorar la experiencia del usuario.'),
-        ('1.11.1', '2026-04-16', 'Corrección',
+         'Mejoras en la interfaz de clientes con tarjetas interactivas y columna de lÃ­mite de crÃ©dito.'),
+        ('1.9.0', '2026-04-14', 'Nueva funciÃ³n',
+         'Paso 19: Estadísticas avanzadas y AnÃ¡lisis',
+         'ImplementaciÃ³n de dashboard financiero anual, anÃ¡lisis de rentabilidad por producto/categorÃ­a y grÃ¡ficos interactivos.'),
+        ('1.10.0', '2026-04-15', 'Nueva funciÃ³n',
+         'Paso 20: ExportaciÃ³n de catÃ¡logo (Excel y PDF)',
+         'GeneraciÃ³n de archivos Excel (.xlsx) y listas de precios en PDF para el catÃ¡logo de productos.'),
+        ('1.11.0', '2026-04-16', 'Nueva funciÃ³n',
+         'Paso 21: PÃ¡ginas Informativas',
+         'ImplementaciÃ³n de secciones de Ayuda, Changelog y Acerca de para mejorar la experiencia del usuario.'),
+        ('1.11.1', '2026-04-16', 'CorrecciÃ³n',
          'Fix: Atributo get_ventas_historial',
-         'Corrección de error de atributo faltante en el módulo de base de datos para el historial de ventas.'),
-        ('1.12.0', '2026-04-17', 'Nueva función',
+         'CorrecciÃ³n de error de atributo faltante en el mÃ³dulo de base de datos para el historial de ventas.'),
+        ('1.12.0', '2026-04-17', 'Nueva funciÃ³n',
          'Paso 22: Apagado controlado',
-         'Implementación de cierre seguro del servidor Flask desde la interfaz administrativa.'),
+         'ImplementaciÃ³n de cierre seguro del servidor Flask desde la interfaz administrativa.'),
         ('1.12.1', '2026-04-18', 'Mejora',
-         'Automatización y Seguridad',
-         'Adición de scripts de configuración y aplicación del estándar de seguridad para SECRET_KEY.'),
-        ('1.22.0', '2026-04-15', 'Nueva función', 'Gestión Inteligente de Suscripción PRO',
-         'Implementación de degradación automática a BÁSICA al vencer PRO y sistema de alertas preventivas (5 días y 1 día antes).'),
-        ('1.23.0', '2026-04-15', 'Nueva función', 'Anti-Reinstalación de Demo',
-         'Implementación de un mecanismo que persiste la fecha de inicio del período de prueba en un archivo externo (`telemetry.bin`), evitando que el contador de la demo se reinicie al reinstalar la aplicación o eliminar la base de datos.'),
-        ('1.24.0', '2026-04-18', 'Nueva función', 'Licencias Supabase y Build Distribuible',
-         'Integración del SDK nexar_licencias en builds PyInstaller, soporte de licencias Demo/Básica/Mensual Full con multi-PC, recuperación obligatoria para usuarios nuevos e instalador Windows con aceptación de licencia.'),
+         'AutomatizaciÃ³n y Seguridad',
+         'AdiciÃ³n de scripts de configuraciÃ³n y aplicaciÃ³n del estÃ¡ndar de seguridad para SECRET_KEY.'),
+        ('1.22.0', '2026-04-15', 'Nueva funciÃ³n', 'GestiÃ³n Inteligente de SuscripciÃ³n PRO',
+         'ImplementaciÃ³n de degradaciÃ³n automÃ¡tica a BÃSICA al vencer PRO y sistema de alertas preventivas (5 dÃ­as y 1 dÃ­a antes).'),
+        ('1.23.0', '2026-04-15', 'Nueva funciÃ³n', 'Anti-ReinstalaciÃ³n de Demo',
+         'ImplementaciÃ³n de un mecanismo que persiste la fecha de inicio del perÃ­odo de prueba en un archivo externo (`telemetry.bin`), evitando que el contador de la demo se reinicie al reinstalar la aplicaciÃ³n o eliminar la base de datos.'),
+        ('1.24.0', '2026-04-18', 'Nueva funciÃ³n', 'Licencias Supabase y Build Distribuible',
+         'IntegraciÃ³n del SDK nexar_licencias en builds PyInstaller, soporte de licencias Demo/BÃ¡sica/Mensual Full con multi-PC, recuperaciÃ³n obligatoria para usuarios nuevos e instalador Windows con aceptaciÃ³n de licencia.'),
         ('1.24.1', '2026-04-18', 'Seguridad', 'Hardening de Seguridad',
-         'Protección CSRF centralizada, hash seguro para respuestas de recuperación, permisos restrictivos para archivos locales y restauración de respaldos con validación SQLite y backup previo.'),
+         'ProtecciÃ³n CSRF centralizada, hash seguro para respuestas de recuperaciÃ³n, permisos restrictivos para archivos locales y restauraciÃ³n de respaldos con validaciÃ³n SQLite y backup previo.'),
     ]
     for ver, fecha, tipo, titulo, desc in entries:
         c.execute(
@@ -908,16 +929,16 @@ def _seed_changelog(c):
         )
 
 
-# ─── CONFIG ──────────────────────────────────────────────────────────────────
+# â”€â”€â”€ CONFIG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_config():
-    """Devuelve dict con toda la configuración."""
+    """Devuelve dict con toda la configuraciÃ³n."""
     rows = q("SELECT clave, valor FROM config")
     return {r['clave']: r['valor'] for r in rows}
 
 
 def get_config_valor(clave: str, default=None):
-    """Devuelve una configuración puntual con fallback."""
+    """Devuelve una configuraciÃ³n puntual con fallback."""
     row = q("SELECT valor FROM config WHERE clave=?", (clave,), fetchone=True)
     if not row:
         return default
@@ -926,7 +947,7 @@ def get_config_valor(clave: str, default=None):
 
 
 def set_config_valor(clave: str, valor):
-    """Persiste una configuración puntual."""
+    """Persiste una configuraciÃ³n puntual."""
     q(
         "INSERT OR REPLACE INTO config VALUES (?,?)",
         (clave, "" if valor is None else str(valor)),
@@ -991,7 +1012,7 @@ def debe_mostrar_aviso_rubro_pendiente():
 
 
 def get_onboarding_context():
-    """Resume si conviene mostrar la guía liviana de primeros pasos."""
+    """Resume si conviene mostrar la guÃ­a liviana de primeros pasos."""
     counts = q(
         """
         SELECT
@@ -1042,7 +1063,7 @@ def get_onboarding_context():
     }
 
 
-# ─── LICENCIAS RSA ───────────────────────────────────────────────────────────
+# â”€â”€â”€ LICENCIAS RSA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #
 # Verificacion RSA usando SOLO stdlib Python (base64, hashlib).
 # Sin cryptography, sin rsa, sin pyasn1.
@@ -1137,7 +1158,7 @@ def _tda_rsa_verify(message: bytes, signature: bytes) -> bool:
     "firma invalida" cuando el problema real es la clave ausente.
     """
     # _load_tda_pubkey() lanza RuntimeError si no encuentra el archivo.
-    # Lo dejamos propagar — no lo atrapamos aqui.
+    # Lo dejamos propagar â€” no lo atrapamos aqui.
     n, e = _load_tda_pubkey()
 
     try:
@@ -1208,7 +1229,7 @@ def get_demo_status() -> dict:
 def get_license_tier_from_db() -> str:
     """
     Obtiene el tier de licencia desde la tabla config.
-    Normaliza aliases y retorna el tier canónico.
+    Normaliza aliases y retorna el tier canÃ³nico.
     """
     try:
         cfg = get_config()
@@ -1220,8 +1241,8 @@ def get_license_tier_from_db() -> str:
 
 def get_modulos_from_tier(tier: str = None) -> set[str]:
     """
-    Obtiene el conjunto de módulos asociados a un tier de licencia.
-    Si no encuentra el tier, devuelve módulos para DEMO.
+    Obtiene el conjunto de mÃ³dulos asociados a un tier de licencia.
+    Si no encuentra el tier, devuelve mÃ³dulos para DEMO.
     """
     if not tier:
         tier = get_license_tier_from_db()
@@ -1247,7 +1268,7 @@ def get_modulos_from_tier(tier: str = None) -> set[str]:
 
 
 def _extract_license_modules(license_data: dict | None) -> list[str]:
-    """Extrae módulos remotos canónicos desde payloads del SDK."""
+    """Extrae mÃ³dulos remotos canÃ³nicos desde payloads del SDK."""
     if not isinstance(license_data, dict):
         return []
 
@@ -1321,7 +1342,7 @@ def get_license_info() -> dict:
         'demo_mode':   cfg.get('demo_mode', '1'),
         'support':     bool(limits.get('support')) if tier != "SIN_PLAN" else False,
         'updates':     bool(limits.get('updates')) if tier != "SIN_PLAN" else False,
-        # Campos de notificación de vencimiento
+        # Campos de notificaciÃ³n de vencimiento
         'pro_days':    full_days,
         'pro_vencido': snapshot["plan_original"] == "PRO" and snapshot["expirada"],
         'pro_expires_soon':     full_days == 5,
@@ -1415,19 +1436,19 @@ def validar_licencia_rsa(token_b64: str) -> tuple:
         except ValueError:
             return False, "La firma digital del token esta corrupta.", None
 
-        # ── Reconstruir payload exactamente igual que el generador ─────────
+        # â”€â”€ Reconstruir payload exactamente igual que el generador â”€â”€â”€â”€â”€â”€â”€â”€â”€
         #
-        # CRÍTICO: estos campos, su orden (sort_keys=True) y los separadores
+        # CRÃTICO: estos campos, su orden (sort_keys=True) y los separadores
         # JSON deben coincidir byte a byte con lo que firma create_tienda_license()
         # en license_manager.py.
         #
         # Reglas del generador:
         #   - Usa json.dumps con separadores por defecto: (', ', ': ')
-        #   - SIEMPRE incluye expires_at aunque sea None → "expires_at": null
+        #   - SIEMPRE incluye expires_at aunque sea None â†’ "expires_at": null
         #     (BASICA tiene None; PRO tiene "YYYY-MM-DD")
         #
         payload_dict = {
-            "expires_at":  data.get("expires_at"),   # None → null (BASICA) | "YYYY-MM-DD" (PRO)
+            "expires_at":  data.get("expires_at"),   # None â†’ null (BASICA) | "YYYY-MM-DD" (PRO)
             "hardware_id": data["hardware_id"],
             "license_key": data["license_key"],
             "max_machines": data["max_machines"],
@@ -1440,7 +1461,7 @@ def validar_licencia_rsa(token_b64: str) -> tuple:
             payload_bytes = _json.dumps(payload_dict, sort_keys=True).encode()
             verificado = _tda_rsa_verify(payload_bytes, signature)
         except RuntimeError as key_err:
-            # La clave pública no se encontró en ninguna ubicación esperada.
+            # La clave pÃºblica no se encontrÃ³ en ninguna ubicaciÃ³n esperada.
             return (
                 False,
                 f"Clave publica RSA no encontrada.\n"
@@ -1479,7 +1500,7 @@ def activar_licencia(token_b64: str) -> tuple:
 
     Regla de negocio:
       - TDA_BASICA: activa directamente y marca 'basica_activada' = '1'.
-      - TDA_PRO: solo se puede activar si antes se activó BASICA.
+      - TDA_PRO: solo se puede activar si antes se activÃ³ BASICA.
         Si BASICA nunca fue activada, devuelve error explicativo.
 
     Retorna: (ok: bool, mensaje: str)
@@ -1490,14 +1511,14 @@ def activar_licencia(token_b64: str) -> tuple:
 
     tier = normalize_license_plan(data.get("tier", "BASICA"))
 
-    # ── Regla: Mensual Full requiere BASICA previa en el flujo legacy RSA ────
+    # â”€â”€ Regla: Mensual Full requiere BASICA previa en el flujo legacy RSA â”€â”€â”€â”€
     if tier == "FULL":
         cfg = get_config()
         if cfg.get("basica_activada", "0") != "1":
             return (
                 False,
-                "Para activar la licencia Mensual Full primero debés activar la licencia BÁSICA.\n"
-                "Contactá al desarrollador para obtener tu token BÁSICA.",
+                "Para activar la licencia Mensual Full primero debÃ©s activar la licencia BÃSICA.\n"
+                "ContactÃ¡ al desarrollador para obtener tu token BÃSICA.",
             )
 
     expires_at = data.get("expires_at") or ""
@@ -1515,7 +1536,7 @@ def activar_licencia(token_b64: str) -> tuple:
         'license_updates':        '1' if TIER_LIMITS[tier].get('updates') else '0',
     }
 
-    # ── Marcar BASICA como activada (necesario para poder activar PRO luego) ─
+    # â”€â”€ Marcar BASICA como activada (necesario para poder activar PRO luego) â”€
     if tier == "BASICA":
         updates['basica_activada'] = '1'
 
@@ -1590,10 +1611,10 @@ def check_license_limits(limit_key: str, current_count: int = None) -> dict:
     }
 
 
-# ─── CÓDIGOS AUTOMÁTICOS ─────────────────────────────────────────────────────
+# â”€â”€â”€ CÃ“DIGOS AUTOMÃTICOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def next_codigo():
-    """Genera next código de producto único."""
+    """Genera next cÃ³digo de producto Ãºnico."""
     conn = get_conn()
     c = conn.cursor()
     row = c.execute(
@@ -1614,7 +1635,7 @@ def _codigo_barras_flag_enabled(value) -> bool:
 
 
 def codigo_barras_exists(codigo_barras, exclude_id=None) -> bool:
-    """Indica si el código de barras ya está asignado a otro producto."""
+    """Indica si el cÃ³digo de barras ya estÃ¡ asignado a otro producto."""
     codigo = str(codigo_barras or "").strip()
     if not codigo:
         return False
@@ -1627,7 +1648,7 @@ def codigo_barras_exists(codigo_barras, exclude_id=None) -> bool:
 
 
 def next_codigo_barras_interno():
-    """Genera el próximo código de barras interno disponible."""
+    """Genera el prÃ³ximo cÃ³digo de barras interno disponible."""
     conn = get_conn()
     c = conn.cursor()
     try:
@@ -1659,38 +1680,38 @@ def _resolve_codigo_barras_for_save(data, *, exclude_id=None) -> str:
     if not codigo_barras and generar_interno:
         codigo_barras = next_codigo_barras_interno()
     if codigo_barras and codigo_barras_exists(codigo_barras, exclude_id=exclude_id):
-        raise ValueError("Ya existe un producto con ese código de barras.")
+        raise ValueError("Ya existe un producto con ese cÃ³digo de barras.")
     return codigo_barras
 
 
-# ─── TICKET AUTOMÁTICO ───────────────────────────────────────────────────────
+# â”€â”€â”€ TICKET AUTOMÃTICO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def next_ticket():
-    """Devuelve el próximo número de ticket y lo actualiza en la configuración.
-    Asegura que el número de ticket siempre sea mayor que el último registrado en ventas."""
+    """Devuelve el prÃ³ximo nÃºmero de ticket y lo actualiza en la configuraciÃ³n.
+    Asegura que el nÃºmero de ticket siempre sea mayor que el Ãºltimo registrado en ventas."""
     conn = get_conn()
     c = conn.cursor()
 
-    # Obtener el último número de ticket de la tabla de ventas
+    # Obtener el Ãºltimo nÃºmero de ticket de la tabla de ventas
     last_sale_ticket = c.execute("SELECT MAX(numero_ticket) as max FROM ventas").fetchone()['max'] or 0
 
-    # Obtener el siguiente número de ticket de la configuración
+    # Obtener el siguiente nÃºmero de ticket de la configuraciÃ³n
     cfg_next_ticket = int(c.execute("SELECT valor FROM config WHERE clave='siguiente_ticket'").fetchone()['valor'] or 1001)
 
-    # El próximo ticket debe ser el mayor entre el último de ventas + 1 y el de la configuración
+    # El prÃ³ximo ticket debe ser el mayor entre el Ãºltimo de ventas + 1 y el de la configuraciÃ³n
     next_num = max(last_sale_ticket + 1, cfg_next_ticket)
 
-    # Actualizar la configuración para el siguiente ticket
+    # Actualizar la configuraciÃ³n para el siguiente ticket
     c.execute("INSERT OR REPLACE INTO config VALUES ('siguiente_ticket', ?)", (str(next_num + 1),))
     conn.commit()
     conn.close()
     return next_num
 
 
-# ─── CATEGORÍAS ──────────────────────────────────────────────────────────────
+# â”€â”€â”€ CATEGORÃAS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_categorias():
-    """Devuelve lista de categorías activas."""
+    """Devuelve lista de categorÃ­as activas."""
     return [r['nombre'] for r in q("SELECT nombre FROM categorias WHERE activa=1 ORDER BY nombre")]
 
 
@@ -1795,7 +1816,7 @@ def _upsert_categoria_estado(nombre, activa):
 
 
 def get_categorias_personalizadas(activo_only=True):
-    """Devuelve categorías personalizadas de la tabla categorias."""
+    """Devuelve categorÃ­as personalizadas de la tabla categorias."""
     sql = "SELECT id, nombre, activa FROM categorias"
     params = []
     if activo_only:
@@ -1805,7 +1826,7 @@ def get_categorias_personalizadas(activo_only=True):
 
 
 def get_categorias_usadas(rubro_actual=None):
-    """Devuelve categorías usadas actualmente en productos activos."""
+    """Devuelve categorÃ­as usadas actualmente en productos activos."""
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro_actual)
     return q(
         f"""
@@ -1821,7 +1842,7 @@ def get_categorias_usadas(rubro_actual=None):
 
 
 def count_productos_por_categoria(nombre, rubro_actual=None):
-    """Cuenta productos activos asociados a una categoría."""
+    """Cuenta productos activos asociados a una categorÃ­a."""
     nombre_limpio = _normalize_categoria_nombre(nombre)
     if not nombre_limpio:
         return 0
@@ -1841,7 +1862,7 @@ def count_productos_por_categoria(nombre, rubro_actual=None):
 
 
 def get_categorias_configuracion(rubro_actual):
-    """Devuelve categorías configurables con estado, origen y cantidad de productos."""
+    """Devuelve categorÃ­as configurables con estado, origen y cantidad de productos."""
     categorias_map = {}
     categorias_base = _get_base_categorias_map()
 
@@ -1915,7 +1936,7 @@ def get_categorias_configuracion(rubro_actual):
 
 
 def get_categorias_configurables(rubro_actual, categoria_actual=""):
-    """Devuelve categorías visibles para formularios de productos."""
+    """Devuelve categorÃ­as visibles para formularios de productos."""
     categoria_actual_limpia = _normalize_categoria_nombre(categoria_actual)
     categoria_actual_key = categoria_actual_limpia.lower()
     resultado = []
@@ -1944,15 +1965,15 @@ def _append_condition(base: str, condition: str) -> str:
 
 
 def add_categoria(nombre):
-    """Agrega o reactiva una categoría."""
+    """Agrega o reactiva una categorÃ­a."""
     cleanup_categorias_duplicadas()
     nombre_limpio = _normalize_categoria_nombre(nombre)
     if not nombre_limpio:
-        raise ValueError("Ingresá un nombre de categoría.")
+        raise ValueError("IngresÃ¡ un nombre de categorÃ­a.")
     existente = _find_categoria_row(nombre_limpio)
     if existente:
         if int(existente["activa"] or 0):
-            raise ValueError("La categoría ya existe.")
+            raise ValueError("La categorÃ­a ya existe.")
         q(
             "UPDATE categorias SET nombre=?, activa=1 WHERE id=?",
             (nombre_limpio, existente["id"]),
@@ -1960,7 +1981,7 @@ def add_categoria(nombre):
         )
         return
     if _categoria_base_existe(nombre_limpio):
-        raise ValueError("La categoría ya existe.")
+        raise ValueError("La categorÃ­a ya existe.")
     q(
         "INSERT INTO categorias (nombre, activa) VALUES (?, 1)",
         (nombre_limpio,),
@@ -1970,18 +1991,18 @@ def add_categoria(nombre):
 
 
 def update_categoria(nombre_actual, nuevo_nombre, categoria_id=None):
-    """Renombra una categoría y actualiza productos relacionados."""
+    """Renombra una categorÃ­a y actualiza productos relacionados."""
     cleanup_categorias_duplicadas()
     nombre_actual_limpio = _normalize_categoria_nombre(nombre_actual)
     nuevo_nombre_limpio = _normalize_categoria_nombre(nuevo_nombre)
     if not nombre_actual_limpio:
-        raise ValueError("La categoría actual es obligatoria.")
+        raise ValueError("La categorÃ­a actual es obligatoria.")
     if not nuevo_nombre_limpio:
-        raise ValueError("Ingresá un nuevo nombre de categoría.")
+        raise ValueError("IngresÃ¡ un nuevo nombre de categorÃ­a.")
 
     existente_actual = _find_categoria_row_by_id(categoria_id) or _find_categoria_row(nombre_actual_limpio)
     if not existente_actual:
-        raise ValueError("No se encontró la categoría a renombrar.")
+        raise ValueError("No se encontrÃ³ la categorÃ­a a renombrar.")
 
     nombre_actual_limpio = _normalize_categoria_nombre(existente_actual["nombre"])
     existente_nuevo = _find_categoria_row(nuevo_nombre_limpio)
@@ -1990,7 +2011,7 @@ def update_categoria(nombre_actual, nuevo_nombre, categoria_id=None):
         and int(existente_nuevo["id"]) != int(existente_actual["id"])
         and _categoria_nombre_key(nuevo_nombre_limpio) != _categoria_nombre_key(nombre_actual_limpio)
     ):
-        raise ValueError("Ya existe otra categoría con ese nombre.")
+        raise ValueError("Ya existe otra categorÃ­a con ese nombre.")
 
     if _categoria_nombre_key(nombre_actual_limpio) == _categoria_nombre_key(nuevo_nombre_limpio):
         q(
@@ -2012,20 +2033,20 @@ def update_categoria(nombre_actual, nuevo_nombre, categoria_id=None):
 
 
 def set_categoria_activa(nombre, activa):
-    """Activa o desactiva una categoría sin tocar productos existentes."""
+    """Activa o desactiva una categorÃ­a sin tocar productos existentes."""
     cleanup_categorias_duplicadas()
     nombre_limpio = _normalize_categoria_nombre(nombre)
     if not nombre_limpio:
-        raise ValueError("La categoría es obligatoria.")
+        raise ValueError("La categorÃ­a es obligatoria.")
     _upsert_categoria_estado(nombre_limpio, bool(activa))
 
 
 def delete_categoria(nombre):
-    """Desactiva una categoría de forma segura."""
+    """Desactiva una categorÃ­a de forma segura."""
     set_categoria_activa(nombre, False)
 
 def get_gasto_categorias():
-    """Devuelve lista configurable de categorías de gastos con su tipo."""
+    """Devuelve lista configurable de categorÃ­as de gastos con su tipo."""
     cfg = get_config()
     raw = cfg.get('gastos_categorias', '')
     try:
@@ -2055,7 +2076,7 @@ def get_gasto_categorias():
     return normalizadas
 
 def set_gasto_categorias(categorias):
-    """Guarda la configuración completa de categorías de gastos."""
+    """Guarda la configuraciÃ³n completa de categorÃ­as de gastos."""
     limpias = []
     keys = set()
     for cat in categorias:
@@ -2083,7 +2104,7 @@ def normalizar_tipo_gasto(tipo):
 
 
 def normalizar_clasificacion_gasto(clasificacion, categoria=''):
-    """Normaliza la clasificación contable del gasto."""
+    """Normaliza la clasificaciÃ³n contable del gasto."""
     txt = str(clasificacion or '').strip().lower()
     if not txt:
         cat = str(categoria or '').strip().lower()
@@ -2092,7 +2113,7 @@ def normalizar_clasificacion_gasto(clasificacion, categoria=''):
         return 'Operativo'
     if 'imp' in txt:
         return 'Impuesto'
-    if 'fin' in txt or 'interes' in txt or 'interés' in txt:
+    if 'fin' in txt or 'interes' in txt or 'interÃ©s' in txt:
         return 'Financiero'
     if 'otro' in txt:
         return 'Otro'
@@ -2104,7 +2125,7 @@ def get_gasto_clasificaciones():
 
 
 def get_tipo_gasto_categoria(nombre_categoria):
-    """Obtiene el tipo asociado a una categoría de gasto."""
+    """Obtiene el tipo asociado a una categorÃ­a de gasto."""
     nombre = (nombre_categoria or '').strip().lower()
     for cat in get_gasto_categorias():
         if cat['nombre'].strip().lower() == nombre:
@@ -2112,40 +2133,40 @@ def get_tipo_gasto_categoria(nombre_categoria):
     return 'Necesario'
 
 def add_gasto_categoria(nombre, tipo='Necesario'):
-    """Agrega una categoría de gastos al listado configurable."""
+    """Agrega una categorÃ­a de gastos al listado configurable."""
     cleanup_gasto_categorias_duplicadas()
     nombre_limpio = _normalize_categoria_nombre(nombre)
     if not nombre_limpio:
-        raise ValueError("Ingresá un nombre de categoría de gasto.")
+        raise ValueError("IngresÃ¡ un nombre de categorÃ­a de gasto.")
     categorias = get_gasto_categorias()
     if _normalize_name_key(nombre_limpio) in {_normalize_name_key(c['nombre']) for c in categorias}:
-        raise ValueError("La categoría de gasto ya existe.")
+        raise ValueError("La categorÃ­a de gasto ya existe.")
     categorias.append({'nombre': nombre_limpio, 'tipo': normalizar_tipo_gasto(tipo)})
     set_gasto_categorias(categorias)
 
 def delete_gasto_categoria(nombre):
-    """Elimina una categoría de gastos del listado configurable."""
+    """Elimina una categorÃ­a de gastos del listado configurable."""
     clave = _normalize_name_key(nombre)
     categorias = [c for c in get_gasto_categorias() if _normalize_name_key(c['nombre']) != clave]
     set_gasto_categorias(categorias)
 
 def update_gasto_categoria(nombre_actual, nuevo_nombre, tipo='Necesario'):
-    """Renombra una categoría de gastos y actualiza registros relacionados."""
+    """Renombra una categorÃ­a de gastos y actualiza registros relacionados."""
     cleanup_gasto_categorias_duplicadas()
     actual = _normalize_categoria_nombre(nombre_actual)
     nuevo = _normalize_categoria_nombre(nuevo_nombre)
     if not actual:
-        raise ValueError("La categoría actual es obligatoria.")
+        raise ValueError("La categorÃ­a actual es obligatoria.")
     if not nuevo:
-        raise ValueError("Ingresá un nuevo nombre para la categoría de gasto.")
+        raise ValueError("IngresÃ¡ un nuevo nombre para la categorÃ­a de gasto.")
     tipo_normalizado = normalizar_tipo_gasto(tipo)
     categorias = get_gasto_categorias()
     clave_actual = _normalize_name_key(actual)
     clave_nuevo = _normalize_name_key(nuevo)
     if clave_actual != clave_nuevo and clave_nuevo in {_normalize_name_key(c['nombre']) for c in categorias}:
-        raise ValueError("Ya existe otra categoría de gasto con ese nombre.")
+        raise ValueError("Ya existe otra categorÃ­a de gasto con ese nombre.")
     if clave_actual not in {_normalize_name_key(c['nombre']) for c in categorias}:
-        raise ValueError("No se encontró la categoría de gasto a renombrar.")
+        raise ValueError("No se encontrÃ³ la categorÃ­a de gasto a renombrar.")
     categorias = [
         {'nombre': nuevo, 'tipo': tipo_normalizado} if _normalize_name_key(c['nombre']) == clave_actual else c
         for c in categorias
@@ -2156,7 +2177,7 @@ def update_gasto_categoria(nombre_actual, nuevo_nombre, tipo='Necesario'):
 
 
 def cleanup_categorias_duplicadas():
-    """Consolida filas duplicadas de categorías y normaliza referencias de productos."""
+    """Consolida filas duplicadas de categorÃ­as y normaliza referencias de productos."""
     base_map = _get_base_categorias_map()
     rows = _get_categoria_rows()
     productos_variantes = _get_productos_categoria_variantes()
@@ -2205,7 +2226,7 @@ def cleanup_categorias_duplicadas():
 
 
 def cleanup_gasto_categorias_duplicadas():
-    """Consolida categorías de gasto duplicadas por nombre normalizado."""
+    """Consolida categorÃ­as de gasto duplicadas por nombre normalizado."""
     cfg = get_config()
     raw = cfg.get('gastos_categorias', '')
     try:
@@ -2244,7 +2265,7 @@ def cleanup_gasto_categorias_duplicadas():
     return cambios
 
 
-# ─── USUARIOS ────────────────────────────────────────────────────────────────
+# â”€â”€â”€ USUARIOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_usuario_by_username(username):
     """Obtiene usuario por username."""
@@ -2257,7 +2278,7 @@ def get_usuario_by_id(uid):
 
 
 def verify_password(password, password_hash):
-    """Verifica contraseña contra hash."""
+    """Verifica contraseÃ±a contra hash."""
     if not password_hash:
         return False
     try:
@@ -2359,7 +2380,7 @@ def count_admins_activos(exclude_uid=None):
 
 
 def set_password_for_username(username, password):
-    """Actualiza la contraseña de un usuario por username."""
+    """Actualiza la contraseÃ±a de un usuario por username."""
     q(
         "UPDATE usuarios SET password_hash=? WHERE username=?",
         (generate_password_hash(password), username),
@@ -2424,7 +2445,7 @@ def delete_proveedor(pid):
 
 
 def has_permission(role_name, perm_key):
-    """Verifica si un rol tiene un permiso específico."""
+    """Verifica si un rol tiene un permiso especÃ­fico."""
     # El Administrador (en cualquiera de sus nombres) tiene acceso total
     if role_name in ['Administrador', 'admin']:
         return True
@@ -2443,7 +2464,7 @@ def get_roles():
     return q("SELECT * FROM roles ORDER BY nombre")
 
 
-# ─── PRODUCTOS ───────────────────────────────────────────────────────────────
+# â”€â”€â”€ PRODUCTOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_productos(activo_only=True, search='', rubro=None, proveedor=''):
     """Devuelve productos filtrables."""
@@ -2481,7 +2502,7 @@ def get_productos(activo_only=True, search='', rubro=None, proveedor=''):
 
 
 def get_productos_por_proveedor_categoria(proveedor, categoria="", rubro=None):
-    """Devuelve productos activos filtrados por proveedor habitual y categoría opcional."""
+    """Devuelve productos activos filtrados por proveedor habitual y categorÃ­a opcional."""
     proveedor_normalizado = str(proveedor or "").strip()
     if not proveedor_normalizado:
         return []
@@ -2510,11 +2531,11 @@ def get_productos_por_proveedor_categoria(proveedor, categoria="", rubro=None):
 
 
 def aplicar_aumento_precios(productos_ids, porcentaje):
-    """Aplica aumento porcentual a costo y precio_venta de productos específicos."""
+    """Aplica aumento porcentual a costo y precio_venta de productos especÃ­ficos."""
     try:
         porcentaje_num = float(porcentaje)
     except (TypeError, ValueError) as exc:
-        raise ValueError("El porcentaje debe ser un número válido.") from exc
+        raise ValueError("El porcentaje debe ser un nÃºmero vÃ¡lido.") from exc
     if porcentaje_num <= 0:
         raise ValueError("El porcentaje debe ser mayor a 0.")
 
@@ -2561,7 +2582,7 @@ def get_producto(pid):
 
 
 def get_producto_by_codigo(codigo):
-    """Busca por código interno o barras."""
+    """Busca por cÃ³digo interno o barras."""
     rubro_cond, rubro_params = _build_rubro_compatible_filter(None)
     r = q(
         f"SELECT * FROM productos WHERE codigo_interno=? AND activo=1 AND {rubro_cond}",
@@ -2683,7 +2704,7 @@ def delete_producto(pid):
     q("UPDATE productos SET activo=0 WHERE id=?", (pid,), fetchall=False, commit=True)
 
 
-# ─── STOCK ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€ STOCK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_stock_full(search='', alerta_only=False):
     """Devuelve stock completo con estados."""
@@ -2777,15 +2798,16 @@ def get_stock_movimientos_all(start_date='', end_date=''):
     return q(sql, params)
 
 
-# ─── CLIENTES ────────────────────────────────────────────────────────────────
+# â”€â”€â”€ CLIENTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_clientes(search='', with_debt_only=False, activo_only=True):
-    """Devuelve clientes filtrables con soporte para búsqueda y deuda."""
+    """Devuelve clientes filtrables con soporte para bÃºsqueda y deuda."""
     # 1. Base de la consulta: Incluimos un subquery para calcular el saldo al vuelo
     sql = """
         SELECT *,
         (SELECT COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0)
-         FROM cc_clientes_mov WHERE cliente_id = clientes.id) as saldo
+         FROM cc_clientes_mov
+         WHERE cliente_id = clientes.id AND COALESCE(anulado, 0)=0) as saldo
         FROM clientes
     """
     conds = []
@@ -2795,21 +2817,22 @@ def get_clientes(search='', with_debt_only=False, activo_only=True):
     if activo_only:
         conds.append("activo = 1")
 
-    # 3. Filtro de Búsqueda
+    # 3. Filtro de BÃºsqueda
     if search:
         conds.append("(nombre LIKE ? OR codigo LIKE ? OR dni_cuit LIKE ?)")
         params += [f'%{search}%'] * 3
 
     # 4. Filtro de Deuda (Solo si el saldo > 0)
     if with_debt_only:
-        # Usamos comillas triples para que Python permita varias líneas
+        # Usamos comillas triples para que Python permita varias lÃ­neas
         query_saldo = """
             (SELECT COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0)
-             FROM cc_clientes_mov WHERE cliente_id = clientes.id)
+             FROM cc_clientes_mov
+             WHERE cliente_id = clientes.id AND COALESCE(anulado, 0)=0)
         """
         conds.append(f"{query_saldo} > 0")
 
-    # 5. Construcción final
+    # 5. ConstrucciÃ³n final
     if conds:
         sql += " WHERE " + " AND ".join(conds)
 
@@ -2854,7 +2877,7 @@ def update_cliente(cid, data):
 def get_saldo_cliente(cid):
     """Calcula saldo de cuenta corriente del cliente."""
     movimientos = q(
-        "SELECT debe, haber FROM cc_clientes_mov WHERE cliente_id=?",
+        "SELECT debe, haber FROM cc_clientes_mov WHERE cliente_id=? AND COALESCE(anulado, 0)=0",
         (cid,),
     )
     return calcular_saldo_cliente_desde_movimientos(movimientos)
@@ -2871,17 +2894,178 @@ def get_movimientos_cliente(cid, limit=50):
     )
 
 
-def agregar_movimiento_cliente(cid, tipo, numero_comprobante, debe=0, haber=0, vencimiento='', observaciones='', fecha=None, venta_id=None):
+def get_movimiento_cliente(mid):
+    """Obtiene un movimiento puntual de cuenta corriente cliente."""
+    return q("SELECT * FROM cc_clientes_mov WHERE id=?", (mid,), fetchone=True)
+
+
+def agregar_movimiento_cliente(
+    cid,
+    tipo,
+    numero_comprobante,
+    debe=0,
+    haber=0,
+    vencimiento='',
+    observaciones='',
+    fecha=None,
+    venta_id=None,
+    medio_pago='',
+    caja_movimiento_id=None,
+    movimiento_origen_id=None,
+):
     """Agrega un movimiento a la cuenta corriente del cliente."""
     if not fecha:
         fecha = datetime.now().strftime('%Y-%m-%d')
-    q(
+    return q(
         """INSERT INTO cc_clientes_mov
-        (cliente_id, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones, venta_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (cid, fecha, tipo, numero_comprobante, debe, haber, vencimiento, observaciones, venta_id),
+        (cliente_id, fecha, tipo, numero_comprobante, debe, haber, medio_pago, vencimiento, observaciones, venta_id, caja_movimiento_id, movimiento_origen_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            cid,
+            fecha,
+            tipo,
+            numero_comprobante,
+            float(debe or 0),
+            float(haber or 0),
+            str(medio_pago or '').strip(),
+            vencimiento,
+            observaciones,
+            venta_id,
+            caja_movimiento_id,
+            movimiento_origen_id,
+        ),
+        fetchall=False,
         commit=True
     )
+
+
+def registrar_movimiento_cliente_manual(
+    cid,
+    tipo,
+    numero_comprobante='',
+    debe=0,
+    haber=0,
+    vencimiento='',
+    observaciones='',
+    fecha=None,
+    medio_pago='',
+):
+    """Registra un movimiento manual no destructivo para cuenta corriente cliente."""
+    cliente = get_cliente(cid)
+    if not cliente:
+        raise ValueError("El cliente indicado no existe.")
+
+    tipo_limpio = str(tipo or '').strip()
+    if not tipo_limpio:
+        raise ValueError("El tipo de movimiento es obligatorio.")
+    if tipo_limpio.lower() == 'venta':
+        raise ValueError("Las ventas fiadas deben generarse desde el Punto de Venta.")
+
+    debe_valor = float(debe or 0)
+    haber_valor = float(haber or 0)
+    if debe_valor < 0 or haber_valor < 0:
+        raise ValueError("Los importes no pueden ser negativos.")
+    if debe_valor > 0 and haber_valor > 0:
+        raise ValueError("Registrá un movimiento deudor o acreedor, no ambos a la vez.")
+    if debe_valor <= 0 and haber_valor <= 0:
+        raise ValueError("Ingresá un importe válido para el movimiento.")
+
+    return agregar_movimiento_cliente(
+        cid,
+        tipo_limpio,
+        numero_comprobante,
+        debe=debe_valor,
+        haber=haber_valor,
+        vencimiento=vencimiento,
+        observaciones=observaciones,
+        fecha=fecha,
+        medio_pago=medio_pago,
+    )
+
+
+def registrar_pago_cliente(
+    cid,
+    monto,
+    numero_comprobante='',
+    observaciones='',
+    fecha=None,
+    medio_pago='Efectivo',
+):
+    """Registra un pago de cliente y sincroniza caja si corresponde."""
+    cliente = get_cliente(cid)
+    if not cliente:
+        raise ValueError("El cliente indicado no existe.")
+
+    monto_valor = float(monto or 0)
+    if monto_valor <= 0:
+        raise ValueError("El monto del pago debe ser mayor a 0.")
+
+    fecha_pago = fecha or datetime.now().strftime('%Y-%m-%d')
+    medio_pago_limpio = str(medio_pago or '').strip() or 'Efectivo'
+    caja_movimiento_id = None
+
+    if medio_pago_limpio.lower() == 'efectivo':
+        caja = get_caja_abierta()
+        if not caja:
+            raise ValueError("No hay una caja abierta para registrar pagos en efectivo.")
+        fecha_caja = str(caja['fecha_apertura'] or '')[:10]
+        if fecha_pago != fecha_caja:
+            raise ValueError("No podés registrar pagos en efectivo fuera de la caja abierta actual.")
+        motivo_caja = f"Pago CC cliente #{cid}: {cliente['nombre']}"
+        if str(numero_comprobante or '').strip():
+            motivo_caja += f" ({str(numero_comprobante).strip()})"
+        caja_movimiento_id = registrar_movimiento_caja_abierta(
+            "INGRESO",
+            monto_valor,
+            motivo_caja,
+        )
+
+    return agregar_movimiento_cliente(
+        cid,
+        "Pago",
+        numero_comprobante,
+        debe=0,
+        haber=monto_valor,
+        observaciones=observaciones,
+        fecha=fecha_pago,
+        medio_pago=medio_pago_limpio,
+        caja_movimiento_id=caja_movimiento_id,
+    )
+
+
+def anular_movimiento_cliente(mid, motivo, usuario=''):
+    """Anula un movimiento de cuenta corriente cliente sin borrar historial."""
+    movimiento = get_movimiento_cliente(mid)
+    if not movimiento:
+        raise ValueError("El movimiento indicado no existe.")
+    if int(movimiento['anulado'] or 0):
+        raise ValueError("El movimiento ya está anulado.")
+
+    tipo_limpio = str(movimiento['tipo'] or '').strip().lower()
+    if int(movimiento['venta_id'] or 0) > 0 or tipo_limpio in {'venta', 'anulación venta', 'anulacion venta'}:
+        raise ValueError("Este movimiento proviene de una venta. Anulá la venta desde Historial para conservar coherencia.")
+
+    motivo_limpio = str(motivo or '').strip()
+    if not motivo_limpio:
+        raise ValueError("El motivo de anulación es obligatorio.")
+
+    caja_movimiento_id = int(movimiento['caja_movimiento_id'] or 0)
+    if caja_movimiento_id > 0:
+        anular_caja_movimiento(
+            caja_movimiento_id,
+            f"Anulación de pago en cuenta corriente cliente: {motivo_limpio}",
+            usuario=usuario,
+        )
+
+    marca_tiempo = datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    q(
+        """UPDATE cc_clientes_mov
+        SET anulado=1, anulada_at=?, anulada_por=?, motivo_anulacion=?
+        WHERE id=?""",
+        (marca_tiempo, str(usuario or '').strip(), motivo_limpio, mid),
+        commit=True,
+    )
+    return get_movimiento_cliente(mid)
 
 
 def reconciliar_cc_clientes_desde_ventas():
@@ -2890,7 +3074,10 @@ def reconciliar_cc_clientes_desde_ventas():
         """
         SELECT v.id, v.cliente_id, v.fecha, v.numero_ticket, v.total
         FROM ventas v
-        LEFT JOIN cc_clientes_mov m ON m.venta_id = v.id
+        LEFT JOIN cc_clientes_mov m
+               ON m.venta_id = v.id
+              AND COALESCE(m.anulado, 0)=0
+              AND LOWER(m.tipo)=LOWER('Venta')
         WHERE v.cliente_id > 0
           AND COALESCE(v.anulada, 0) = 0
           AND LOWER(v.medio_pago) = LOWER('Cuenta Corriente')
@@ -2925,7 +3112,7 @@ def get_historial_ventas_cliente(cid, limit=20):
 
 
 def get_estadisticas_cliente(cid):
-    """Obtiene estadísticas de un cliente."""
+    """Obtiene estadÃ­sticas de un cliente."""
     # Total de compras
     total_compras = q(
         "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM ventas WHERE cliente_id=? AND COALESCE(anulada, 0)=0",
@@ -2945,7 +3132,7 @@ def get_estadisticas_cliente(cid):
     }
 
 
-# ─── PROVEEDORES ─────────────────────────────────────────────────────────────
+# â”€â”€â”€ PROVEEDORES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_proveedores(activo_only=True, search=''):
     """Devuelve proveedores filtrables."""
@@ -3128,12 +3315,12 @@ def anular_factura_proveedor(factura_id, motivo='', usuario=''):
     if not factura:
         raise ValueError("La factura indicada no existe.")
     if int(factura["anulada"] or 0):
-        raise ValueError("La factura ya está anulada.")
+        raise ValueError("La factura ya estÃ¡ anulada.")
     if float(factura["pagado"] or 0) > 0:
         raise ValueError("No se puede anular una factura con pagos registrados.")
     motivo_limpio = str(motivo or "").strip()
     if not motivo_limpio:
-        raise ValueError("Debés indicar un motivo para anular la factura.")
+        raise ValueError("DebÃ©s indicar un motivo para anular la factura.")
     q(
         """UPDATE facturas_proveedores
         SET anulada=1, anulada_at=?, anulada_por=?, motivo_anulacion=?
@@ -3279,6 +3466,7 @@ def get_total_deuda_clientes():
         FROM (
             SELECT COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0) as saldo
             FROM cc_clientes_mov
+            WHERE COALESCE(anulado, 0)=0
             GROUP BY cliente_id
             HAVING saldo > 0
         )""",
@@ -3294,6 +3482,7 @@ def get_cantidad_clientes_con_deuda():
         FROM (
             SELECT cliente_id
             FROM cc_clientes_mov
+            WHERE COALESCE(anulado, 0)=0
             GROUP BY cliente_id
             HAVING COALESCE(SUM(debe),0) - COALESCE(SUM(haber),0) > 0
         )""",
@@ -3310,6 +3499,7 @@ def get_clientes_con_deuda(limit=5):
            FROM clientes
            JOIN cc_clientes_mov ON cc_clientes_mov.cliente_id = clientes.id
            WHERE clientes.activo = 1
+             AND COALESCE(cc_clientes_mov.anulado, 0)=0
            GROUP BY clientes.id, clientes.nombre, clientes.codigo
            HAVING saldo > 0
            ORDER BY saldo DESC, clientes.nombre ASC
@@ -3392,7 +3582,7 @@ def get_historial_compras_proveedor(pid, limit=20):
 
 
 def get_estadisticas_proveedor(pid):
-    """Obtiene estadísticas de un proveedor."""
+    """Obtiene estadÃ­sticas de un proveedor."""
     total_compras = q(
         "SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM compras WHERE proveedor_id=? AND COALESCE(anulada, 0)=0",
         (pid,), fetchone=True
@@ -3410,7 +3600,7 @@ def get_estadisticas_proveedor(pid):
     }
 
 
-# ─── VENTAS ──────────────────────────────────────────────────────────────────
+# â”€â”€â”€ VENTAS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_ventas(search='', fecha_desde='', fecha_hasta='', limit=200):
     """Devuelve ventas filtrables."""
@@ -3433,12 +3623,12 @@ def get_ventas(search='', fecha_desde='', fecha_hasta='', limit=200):
 
 
 def get_ventas_historial(search='', fecha_desde='', fecha_hasta='', medio_pago=''):
-    """Retorna ventas filtradas por búsqueda, fecha y medio de pago (Paso 18)."""
+    """Retorna ventas filtradas por bÃºsqueda, fecha y medio de pago (Paso 18)."""
     params = []
     condiciones = []
 
     if search:
-        # Buscamos por nombre de cliente, número de ticket o ID interno
+        # Buscamos por nombre de cliente, nÃºmero de ticket o ID interno
         condiciones.append("(v.cliente_nombre LIKE ? OR CAST(v.numero_ticket AS TEXT) LIKE ? OR CAST(v.id AS TEXT) LIKE ?)")
         params += [f'%{search}%', f'%{search}%', f'%{search}%']
     if fecha_desde:
@@ -3528,7 +3718,7 @@ def anular_venta(venta_id, motivo='', usuario=''):
         if not venta:
             raise ValueError("La venta indicada no existe.")
         if int(venta["anulada"] or 0):
-            raise ValueError("La venta ya está anulada.")
+            raise ValueError("La venta ya estÃ¡ anulada.")
 
         items = c.execute("SELECT * FROM ventas_detalle WHERE venta_id=?", (venta_id,)).fetchall()
         motivo_movimiento = f"Anulación venta #{venta_id}"
@@ -3563,7 +3753,7 @@ def anular_venta(venta_id, motivo='', usuario=''):
             and str(venta["medio_pago"] or "").strip().lower() == "cuenta corriente"
         ):
             movimiento_original = c.execute(
-                "SELECT id FROM cc_clientes_mov WHERE venta_id=? AND LOWER(tipo)=LOWER('Venta') LIMIT 1",
+                "SELECT id FROM cc_clientes_mov WHERE venta_id=? AND COALESCE(anulado, 0)=0 AND LOWER(tipo)=LOWER('Venta') LIMIT 1",
                 (venta_id,),
             ).fetchone()
             movimiento_compensacion = c.execute(
@@ -3604,7 +3794,7 @@ def anular_venta(venta_id, motivo='', usuario=''):
         conn.close()
 
 
-# ─── COMPRAS ─────────────────────────────────────────────────────────────────
+# â”€â”€â”€ COMPRAS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_compras(search='', fecha_desde='', fecha_hasta='', limit=200):
     """Devuelve compras filtrables."""
@@ -3780,11 +3970,11 @@ def anular_compra(compra_id, motivo='', usuario=''):
     if not compra_actual:
         raise ValueError("La compra indicada no existe.")
     if int(compra_actual["anulada"] or 0):
-        raise ValueError("La compra ya está anulada.")
+        raise ValueError("La compra ya estÃ¡ anulada.")
 
     factura_asociada = get_factura_por_compra(compra_id)
     if factura_asociada:
-        raise ValueError("No se puede anular automáticamente una compra asociada a cuenta corriente proveedor. Anulá o ajustá primero la factura/proveedor.")
+        raise ValueError("No se puede anular automÃ¡ticamente una compra asociada a cuenta corriente proveedor. AnulÃ¡ o ajustÃ¡ primero la factura/proveedor.")
 
     conn = get_conn()
     try:
@@ -3795,7 +3985,7 @@ def anular_compra(compra_id, motivo='', usuario=''):
             stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
             stock_actual = float(stock['stock_actual'] or 0) if stock else 0.0
             if stock_actual < cantidad:
-                raise ValueError("No se puede anular porque el stock actual es menor a la cantidad ingresada. Ajustá stock o revisá movimientos.")
+                raise ValueError("No se puede anular porque el stock actual es menor a la cantidad ingresada. AjustÃ¡ stock o revisÃ¡ movimientos.")
             stock_nuevo = stock_actual - cantidad
             c.execute(
                 "UPDATE stock SET stock_actual=? WHERE producto_id=?",
@@ -3805,7 +3995,7 @@ def anular_compra(compra_id, motivo='', usuario=''):
                 """INSERT INTO stock_movimientos
                 (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo)
                 VALUES (?,?,?,?,?,?)""",
-                (producto_id, 'ANULACION_COMPRA', -cantidad, stock_actual, stock_nuevo, f'Anulación compra #{compra_id}'),
+                (producto_id, 'ANULACION_COMPRA', -cantidad, stock_actual, stock_nuevo, f'AnulaciÃ³n compra #{compra_id}'),
             )
 
         marca_tiempo = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -3955,10 +4145,10 @@ def add_compra_con_factura(data, factura_data=None):
         conn.close()
 
 
-# ─── CAJA ────────────────────────────────────────────────────────────────────
+# â”€â”€â”€ CAJA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_caja_dia(fecha):
-    """Devuelve caja del día."""
+    """Devuelve caja del dÃ­a."""
     return q("SELECT * FROM caja_historial WHERE fecha=?", (fecha,), fetchone=True)
 
 
@@ -4025,9 +4215,9 @@ def anular_caja_movimiento(mid, motivo, usuario="", permitir_vinculado_gasto=Fal
     if not movimiento:
         raise ValueError("El movimiento de caja indicado no existe.")
     if int(movimiento["anulado"] or 0):
-        raise ValueError("El movimiento seleccionado ya está anulado.")
+        raise ValueError("El movimiento seleccionado ya estÃ¡ anulado.")
     if int(movimiento["gasto_id"] or 0) > 0 and not permitir_vinculado_gasto:
-        raise ValueError("Este movimiento está vinculado a un gasto. Modificalo desde Gastos para conservar coherencia.")
+        raise ValueError("Este movimiento estÃ¡ vinculado a un gasto. Modificalo desde Gastos para conservar coherencia.")
     if int(movimiento["caja_estado"] or 0) != 1:
         raise ValueError("No se pueden anular movimientos de una caja cerrada.")
     motivo_limpio = str(motivo or "").strip()
@@ -4055,7 +4245,7 @@ def validar_operacion_gasto_caja(gid, nuevo_data=None, deleting=False):
     if not gasto:
         return
     if deleting:
-        raise ValueError("No podés eliminar este gasto porque impacta una caja cerrada.")
+        raise ValueError("No podÃ©s eliminar este gasto porque impacta una caja cerrada.")
     if not nuevo_data:
         return
     campos_sensibles = ("fecha", "medio_pago", "monto", "descripcion", "categoria")
@@ -4065,12 +4255,12 @@ def validar_operacion_gasto_caja(gid, nuevo_data=None, deleting=False):
         if campo == "monto":
             try:
                 if float(actual or 0) != float(nuevo or 0):
-                    raise ValueError("No podés modificar este gasto porque impacta una caja cerrada.")
+                    raise ValueError("No podÃ©s modificar este gasto porque impacta una caja cerrada.")
             except ValueError:
-                raise ValueError("No podés modificar este gasto porque impacta una caja cerrada.")
+                raise ValueError("No podÃ©s modificar este gasto porque impacta una caja cerrada.")
             continue
         if actual != nuevo:
-            raise ValueError("No podés modificar este gasto porque impacta una caja cerrada.")
+            raise ValueError("No podÃ©s modificar este gasto porque impacta una caja cerrada.")
 
 
 def sync_gasto_caja_movimiento(gasto_id):
@@ -4082,7 +4272,7 @@ def sync_gasto_caja_movimiento(gasto_id):
         if movimiento:
             anular_caja_movimiento(
                 movimiento["id"],
-                "Anulación automática por eliminación del gasto asociado.",
+                "AnulaciÃ³n automÃ¡tica por eliminaciÃ³n del gasto asociado.",
                 usuario="sistema",
                 permitir_vinculado_gasto=True,
             )
@@ -4110,7 +4300,7 @@ def sync_gasto_caja_movimiento(gasto_id):
             movimiento_original_id = int(movimiento["id"] or 0)
             anular_caja_movimiento(
                 movimiento["id"],
-                "Anulación automática por actualización del gasto asociado.",
+                "AnulaciÃ³n automÃ¡tica por actualizaciÃ³n del gasto asociado.",
                 usuario="sistema",
                 permitir_vinculado_gasto=True,
             )
@@ -4127,14 +4317,14 @@ def sync_gasto_caja_movimiento(gasto_id):
     elif movimiento:
         anular_caja_movimiento(
             movimiento["id"],
-            "Anulación automática porque el gasto dejó de impactar caja.",
+            "AnulaciÃ³n automÃ¡tica porque el gasto dejÃ³ de impactar caja.",
             usuario="sistema",
             permitir_vinculado_gasto=True,
         )
 
 
 def init_caja_dia(fecha):
-    """Inicializa caja del día."""
+    """Inicializa caja del dÃ­a."""
     ahora = datetime.now()
     hora = ahora.strftime('%H:%M:%S')
     q(
@@ -4147,7 +4337,7 @@ def init_caja_dia(fecha):
 
 
 def cerrar_caja_dia(fecha, saldo_real):
-    """Cierra la caja del día."""
+    """Cierra la caja del dÃ­a."""
     ahora = datetime.now()
     hora = ahora.strftime('%H:%M:%S')
     caja = get_caja_dia(fecha)
@@ -4164,7 +4354,7 @@ def cerrar_caja_dia(fecha, saldo_real):
     return True
 
 
-# ─── GASTOS ──────────────────────────────────────────────────────────────────
+# â”€â”€â”€ GASTOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_gastos(search='', fecha_desde='', fecha_hasta='', limit=200):
     """Devuelve gastos filtrables."""
@@ -4191,11 +4381,11 @@ def validar_gasto_efectivo_contra_caja(data):
         return
     caja = get_caja_abierta()
     if not caja:
-        raise ValueError("No podés registrar gastos con efectivo porque no hay una caja abierta.")
+        raise ValueError("No podÃ©s registrar gastos con efectivo porque no hay una caja abierta.")
     fecha_gasto = str(data.get('fecha', '') or '').strip()
     fecha_caja = str(caja['fecha_apertura'] or '')[:10]
     if fecha_gasto != fecha_caja:
-        raise ValueError("No podés registrar gastos con efectivo fuera de la caja abierta actual.")
+        raise ValueError("No podÃ©s registrar gastos con efectivo fuera de la caja abierta actual.")
 
 
 def add_gasto(data):
@@ -4246,7 +4436,7 @@ def delete_gasto(gid):
     sync_gasto_caja_movimiento(gid)
 
 
-# ─── TEMPORADAS ──────────────────────────────────────────────────────────────
+# â”€â”€â”€ TEMPORADAS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_temporada_actual():
     """Devuelve la temporada actual o None."""
@@ -4258,7 +4448,7 @@ def get_temporada_actual():
     )
 
 def get_proxima_temporada():
-    """Retorna la próxima temporada programada."""
+    """Retorna la prÃ³xima temporada programada."""
     hoy = date.today().isoformat()
     return q(
         """SELECT * FROM temporadas
@@ -4304,7 +4494,7 @@ def delete_temporada(tid):
     q("DELETE FROM temporadas WHERE id=?", (tid,), commit=True)
 
 
-# ─── UTILIDADES ──────────────────────────────────────────────────────────────
+# â”€â”€â”€ UTILIDADES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def fmt_ars(valor):
     """Formatea valor en ARS."""
@@ -4317,10 +4507,10 @@ def _ventas_activas_cond(alias="v"):
 
 
 def get_dashboard_stats():
-    """Calcula estadísticas para dashboard."""
+    """Calcula estadÃ­sticas para dashboard."""
     hoy = date.today().isoformat()
 
-    # Ventas del día
+    # Ventas del dÃ­a
     ventas_hoy = q(
         f"SELECT COUNT(*) as total, COALESCE(SUM(total),0) as monto FROM ventas WHERE fecha=? AND {_ventas_activas_cond('ventas')}",
         (hoy,), fetchone=True
@@ -4329,7 +4519,7 @@ def get_dashboard_stats():
     # Stock en alerta
     alertas = get_alertas_count()
 
-    # Últimas ventas
+    # Ãšltimas ventas
     ultimas_ventas = q(f"SELECT * FROM ventas WHERE {_ventas_activas_cond('ventas')} ORDER BY fecha DESC, id DESC LIMIT 5")
 
     # Temporada actual
@@ -4345,7 +4535,7 @@ def get_dashboard_stats():
 
 
 def buscar_productos_pos(search):
-    """Busca productos para POS por nombre/código/categoría."""
+    """Busca productos para POS por nombre/cÃ³digo/categorÃ­a."""
     rubro_cond, rubro_params = _build_rubro_compatible_filter(None)
     sql = """SELECT p.id, p.codigo_interno, p.codigo_barras, p.descripcion, p.categoria, p.unidad,
                     p.tipo_unidad, p.permite_fraccionado, p.por_peso, p.precio_venta, s.stock_actual
@@ -4360,9 +4550,9 @@ def buscar_productos_pos(search):
         params += [f'%{search}%'] * 4
     sql += " ORDER BY p.descripcion LIMIT 50"
 
-    # DEBUG: Descomenta las siguientes líneas para ver la consulta SQL y los parámetros
+    # DEBUG: Descomenta las siguientes lÃ­neas para ver la consulta SQL y los parÃ¡metros
     # import os
-    # if os.environ.get('FLASK_DEBUG') == '1': # Solo imprime si Flask está en modo debug
+    # if os.environ.get('FLASK_DEBUG') == '1': # Solo imprime si Flask estÃ¡ en modo debug
     #     print(f"DEBUG SQL (buscar_productos_pos): {sql}")
     #     print(f"DEBUG Params (buscar_productos_pos): {params}")
 
@@ -4398,7 +4588,7 @@ def get_venta_ticket(vid):
         venta['detalle'] = get_venta_detalle(vid)
     return venta
 
-# ─── REPORTES Y ESTADÍSTICAS (PASO 12) ───────────────────────────────────────
+# â”€â”€â”€ REPORTES Y ESTADÃSTICAS (PASO 12) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_stats_rentabilidad(mes_actual=None, rubro=None):
     """Calcula ganancia bruta y operativa simple del mes."""
@@ -4470,7 +4660,7 @@ def get_stats_rentabilidad(mes_actual=None, rubro=None):
     }
 
 def get_top_productos_vendidos(limit=5, rubro=None):
-    """Obtiene los productos más vendidos por cantidad."""
+    """Obtiene los productos mÃ¡s vendidos por cantidad."""
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     return q(f"""
         SELECT COALESCE(NULLIF(vd.descripcion, ''), p.descripcion, 'Producto sin nombre') as descripcion,
@@ -4492,7 +4682,7 @@ def get_top_productos_vendidos(limit=5, rubro=None):
     """, (*rubro_params, limit))
 
 def get_ventas_por_mes(year, rubro=None):
-    """Retorna total de ventas y cantidad de tickets por mes para un año dado."""
+    """Retorna total de ventas y cantidad de tickets por mes para un aÃ±o dado."""
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     rows = q(f"""
         SELECT strftime('%m', v.fecha) as mes,
@@ -4512,7 +4702,7 @@ def get_ventas_por_mes(year, rubro=None):
     return {int(r['mes']): dict(r) for r in rows}
 
 def get_ventas_por_semana(semanas=8, rubro=None):
-    """Retorna ventas agrupadas por semana para las últimas N semanas."""
+    """Retorna ventas agrupadas por semana para las Ãºltimas N semanas."""
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     rows = q(f"""
         SELECT strftime('%W/%Y', v.fecha) as label,
@@ -4532,7 +4722,7 @@ def get_ventas_por_semana(semanas=8, rubro=None):
     return [dict(r) for r in rows]
 
 def get_ventas_por_medio_pago(year, mes, rubro=None):
-    """Retorna ventas agrupadas por medio de pago para un año y mes."""
+    """Retorna ventas agrupadas por medio de pago para un aÃ±o y mes."""
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     return q(f"""
         SELECT v.medio_pago,
@@ -4568,7 +4758,7 @@ def get_ventas_por_temporada(rubro=None):
     """, tuple(rubro_params))
 
 def get_ventas_por_categoria(rubro=None):
-    """Retorna ventas agrupadas por categoría de producto."""
+    """Retorna ventas agrupadas por categorÃ­a de producto."""
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     return q(f"""
         SELECT COALESCE(NULLIF(vd.categoria, ''), p.categoria, 'Sin categoria') as categoria,
@@ -4582,7 +4772,7 @@ def get_ventas_por_categoria(rubro=None):
     """, tuple(rubro_params))
 
 def get_top_productos_analisis(limit=15, desde='', hasta='', rubro=None):
-    """Retorna los productos más vendidos en un rango de fechas con rentabilidad."""
+    """Retorna los productos mÃ¡s vendidos en un rango de fechas con rentabilidad."""
     params = []
     condicion = ""
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
@@ -4973,7 +5163,7 @@ def get_bottom_productos(limit=10, rubro=None):
     """, (*rubro_params, limit))
 
 def get_rentabilidad_historica(rubro=None):
-    """Retorna rentabilidad de los últimos 6 meses."""
+    """Retorna rentabilidad de los Ãºltimos 6 meses."""
     rubro_cond, rubro_params = _build_rubro_compatible_filter_sql("p", rubro)
     return q(f"""
         SELECT strftime('%Y-%m', v.fecha) as mes,
@@ -4987,7 +5177,7 @@ def get_rentabilidad_historica(rubro=None):
     """, tuple(rubro_params))
 
 def get_catalogo_export():
-    """Retorna todos los productos activos para exportación."""
+    """Retorna todos los productos activos para exportaciÃ³n."""
     return q("""
         SELECT p.codigo_interno as codigo, p.descripcion, p.categoria, p.precio_venta,
                s.stock_actual, p.activo
