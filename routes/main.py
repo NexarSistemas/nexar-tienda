@@ -2834,7 +2834,8 @@ def caja_cerrar():
 @login_required
 def gastos():
     rows = db.get_gastos(request.args.get("q", ""), request.args.get("fecha_desde", ""), request.args.get("fecha_hasta", ""))
-    return render_template("gastos.html", gastos=rows, buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), total_gastos=sum(float(r["monto"] or 0) for r in rows), total_necesarios=sum(float(r["monto"] or 0) for r in rows if "prescindible" not in str(r["necesario"]).lower()), total_prescind=sum(float(r["monto"] or 0) for r in rows if "prescindible" in str(r["necesario"]).lower()), cats=db.get_gasto_categorias())
+    activos = [r for r in rows if not int(r["anulado"] or 0)]
+    return render_template("gastos.html", gastos=rows, buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), total_gastos=sum(float(r["monto"] or 0) for r in activos), total_necesarios=sum(float(r["monto"] or 0) for r in activos if "prescindible" not in str(r["necesario"]).lower()), total_prescind=sum(float(r["monto"] or 0) for r in activos if "prescindible" in str(r["necesario"]).lower()), cats=db.get_gasto_categorias())
 
 
 @main_bp.route("/gastos/nuevo", methods=["GET", "POST"])
@@ -2893,83 +2894,27 @@ def gasto_nuevo():
 @main_bp.route("/gastos/<int:gid>/editar", methods=["GET", "POST"])
 @admin_required
 def gasto_editar(gid):
-    gasto = db.q("SELECT * FROM gastos WHERE id=?", (gid,), fetchone=True)
+    gasto = db.get_gasto(gid)
     if not gasto:
-        flash("âŒ Gasto no encontrado.", "danger")
+        flash("Gasto no encontrado.", "danger")
         return redirect(url_for("gastos"))
-    if request.method == "POST":
-        data = _resolver_proveedor_gasto(request.form.to_dict())
-        if not data:
-            return render_template(
-                "gasto_form.html",
-                gasto=gasto,
-                categorias_gastos=db.get_gasto_categorias(),
-                clasificaciones_gastos=db.get_gasto_clasificaciones(),
-                proveedores=db.get_proveedores(),
-                accion="Editar",
-                hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
-                gasto_form=request.form,
-            )
-        if not _validar_gasto_efectivo_contra_caja(data):
-            return render_template(
-                "gasto_form.html",
-                gasto=gasto,
-                categorias_gastos=db.get_gasto_categorias(),
-                clasificaciones_gastos=db.get_gasto_clasificaciones(),
-                proveedores=db.get_proveedores(),
-                accion="Editar",
-                hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
-                gasto_form=data,
-            )
-        try:
-            db.validar_operacion_gasto_caja(gid, data)
-        except ValueError as exc:
-            flash(str(exc), "warning")
-            return render_template(
-                "gasto_form.html",
-                gasto=gasto,
-                categorias_gastos=db.get_gasto_categorias(),
-                clasificaciones_gastos=db.get_gasto_clasificaciones(),
-                proveedores=db.get_proveedores(),
-                accion="Editar",
-                hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
-                gasto_form=data,
-            )
-        try:
-            db.update_gasto(gid, data)
-        except ValueError as exc:
-            flash(str(exc), "warning")
-            return render_template(
-                "gasto_form.html",
-                gasto=gasto,
-                categorias_gastos=db.get_gasto_categorias(),
-                clasificaciones_gastos=db.get_gasto_clasificaciones(),
-                proveedores=db.get_proveedores(),
-                accion="Editar",
-                hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
-                gasto_form=data,
-            )
-        flash("âœ… Gasto actualizado.", "success")
-        return redirect(url_for("gastos"))
-    return render_template(
-        "gasto_form.html",
-        gasto=gasto,
-        categorias_gastos=db.get_gasto_categorias(),
-        clasificaciones_gastos=db.get_gasto_clasificaciones(),
-        proveedores=db.get_proveedores(),
-        accion="Editar",
-        hoy=gasto["fecha"] or datetime.now().strftime("%Y-%m-%d"),
-        gasto_form=None,
-    )
+    if int(gasto["anulado"] or 0):
+        flash("El gasto seleccionado ya está anulado y no se puede editar.", "warning")
+    else:
+        flash("Los gastos registrados no se editan para conservar caja y reportes. Anulalo y cargalo nuevamente.", "warning")
+    return redirect(url_for("gastos"))
 
 
 @main_bp.route("/gastos/<int:gid>/eliminar", methods=["POST"])
 @login_required
 def gasto_eliminar(gid):
     try:
-        db.validar_operacion_gasto_caja(gid, deleting=True)
-        db.delete_gasto(gid)
-        flash("âœ… Gasto eliminado.", "success")
+        db.anular_gasto(
+            gid,
+            request.form.get("motivo_anulacion", ""),
+            usuario=session.get("user", {}).get("username", ""),
+        )
+        flash("Gasto anulado correctamente. El historial fue conservado.", "success")
     except ValueError as exc:
         flash(str(exc), "warning")
     return redirect(url_for("gastos"))
@@ -3482,7 +3427,7 @@ def analisis():
         temporadas=db.get_ventas_por_temporada(rubro=rubro_actual),
         rent=db.get_stats_rentabilidad(rubro=rubro_actual),
         rent_hist=db.get_rentabilidad_historica(rubro=rubro_actual),
-        gastos_cat=db.q("SELECT categoria, ROUND(SUM(monto),2) as total, necesario FROM gastos GROUP BY categoria ORDER BY total DESC"),
+        gastos_cat=db.q("SELECT categoria, ROUND(SUM(monto),2) as total, necesario FROM gastos WHERE COALESCE(anulado, 0)=0 GROUP BY categoria ORDER BY total DESC"),
         fecha_desde=desde,
         fecha_hasta=hasta,
         resumen_bruto=db.get_resumen_rentabilidad_periodo(desde, hasta, rubro=rubro_actual),

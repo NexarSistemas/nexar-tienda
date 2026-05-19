@@ -385,3 +385,14 @@ Esta auditoría es documental. No modifica lógica funcional.
 - La venta fiada sigue compensando deuda al anularse desde Historial de ventas, sin borrar asientos previos.
 - Riesgo que queda abierto: el formulario heredado de movimientos sigue permitiendo ajustes manuales y notas de credito; el MVP endurece especialmente pagos y ventas relacionadas, pero no agrega todavia una bitacora avanzada de cambios manuales.
 - UI: el detalle del cliente ahora debe advertir `El movimiento no se borrara. Quedara anulado para conservar historial.` y usar modal Nexar en lugar de confirmaciones nativas.
+
+## 2026-05-19 - feature/gastos-seguros
+
+### Gastos
+- Estado: corregido parcialmente con MVP de anulacion segura.
+- `gastos` ahora conserva historial con `anulado`, `anulada_at`, `anulada_por` y `motivo_anulacion`.
+- Los gastos ya no deben corregirse borrando ni editando en forma destructiva: se anulan con motivo obligatorio y luego se vuelven a cargar si hace falta.
+- Si un gasto en efectivo genero un `EGRESO` en caja abierta, la anulacion tambien anula ese movimiento vinculado para mantener caja y gasto alineados.
+- Los reportes y resumenes de rentabilidad pasan a ignorar gastos anulados, pero el listado de gastos los mantiene visibles como historial.
+- UI: `gastos.html` debe usar modal Nexar para anular y mostrar antes de confirmar fecha, categoria, medio de pago, importe y descripcion reales del gasto.
+- Riesgo que queda abierto: el endpoint conserva el nombre `gasto_eliminar` por compatibilidad interna, aunque operativamente ahora anula en lugar de borrar.
