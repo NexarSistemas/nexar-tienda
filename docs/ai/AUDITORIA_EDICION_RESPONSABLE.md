@@ -396,3 +396,13 @@ Esta auditoría es documental. No modifica lógica funcional.
 - Los reportes y resumenes de rentabilidad pasan a ignorar gastos anulados, pero el listado de gastos los mantiene visibles como historial.
 - UI: `gastos.html` debe usar modal Nexar para anular y mostrar antes de confirmar fecha, categoria, medio de pago, importe y descripcion reales del gasto.
 - Riesgo que queda abierto: el endpoint conserva el nombre `gasto_eliminar` por compatibilidad interna, aunque operativamente ahora anula en lugar de borrar.
+
+## 2026-05-19 - feature/reportes-historicos-coherentes
+
+### Reportes
+- Estado: corregido parcialmente con auditoria de coherencia historica.
+- Se detecto un desvio en `reportes()`: el resumen mensual de gastos seguia calculando necesarios/prescindibles con `db.get_gastos()` completo y contaba anulados como activos.
+- Ese resumen ahora excluye gastos anulados antes de calcular montos y porcentajes.
+- Dashboard financiero, estadisticas anuales, rentabilidad detallada y caja diaria quedaron revisados y sus consultas principales ya trabajaban con ventas/gastos/movimientos activos.
+- Historiales visibles se mantuvieron sin borrar anulados; el ajuste fue numerico, no de ocultamiento.
+- Riesgo que queda abierto: siguen existiendo listados historicos de compras/facturas/gastos que muestran registros anulados por diseno de auditoria. Eso es correcto siempre que no se reutilicen esas filas para agregados sin filtrar activos.
