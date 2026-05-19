@@ -802,6 +802,21 @@ def _is_admin_role(role: str | None) -> bool:
     return role in {"Administrador", "admin"}
 
 
+def _is_vendedor_role(role: str | None) -> bool:
+    return str(role or "").strip().lower() == "vendedor"
+
+
+def vendedor_forbidden(view):
+    @wraps(view)
+    @login_required
+    def wrapped(*args, **kwargs):
+        if _is_vendedor_role(session.get("user", {}).get("rol")):
+            flash("No tenés permisos para acceder a esa sección.", "danger")
+            return redirect(url_for("dashboard"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
 def _build_rubro_cards():
     return [
         {
@@ -975,21 +990,11 @@ def _validate_sensitive_operation_authorization(form, action_label: str) -> tupl
     if not current_user:
         return False, "No se pudo validar el usuario logueado. IniciÃ¡ sesiÃ³n nuevamente."
 
-    if _is_admin_role(current_user["rol"]):
-        if not db.verify_password(form.get("current_password", ""), current_user["password_hash"]):
-            return False, "La contraseÃ±a del administrador logueado es incorrecta."
-        return True, ""
+    if not _is_admin_role(current_user["rol"]):
+        return False, "No tenes permisos para anular operaciones criticas."
 
-    admin_username = (form.get("admin_username") or "").strip()
-    admin_password = form.get("admin_password", "")
-    admin_user = db.get_usuario_by_username(admin_username)
-    if (
-        not admin_user
-        or not int(admin_user["activo"] or 0)
-        or not _is_admin_role(admin_user["rol"])
-        or not db.verify_password(admin_password, admin_user["password_hash"])
-    ):
-        return False, "Las credenciales del administrador no son vÃ¡lidas."
+    if not db.verify_password(form.get("current_password", ""), current_user["password_hash"]):
+        return False, "La contraseÃ±a del administrador logueado es incorrecta."
     return True, ""
 
 
@@ -1745,7 +1750,7 @@ def productos():
 
 
 @main_bp.route("/productos/lote", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def productos_lote():
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
@@ -1939,7 +1944,7 @@ def productos_lote():
 
 
 @main_bp.route("/productos/importar", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def productos_importar():
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
@@ -2034,7 +2039,7 @@ def productos_importar():
 
 
 @main_bp.route("/productos/importar/plantilla", methods=["POST"])
-@login_required
+@vendedor_forbidden
 def productos_importar_generar_plantilla():
     destino = request.form.get("destino", "app")
     template_dir, warning_message = _resolve_productos_import_target_dir(destino)
@@ -2048,7 +2053,7 @@ def productos_importar_generar_plantilla():
 
 
 @main_bp.route("/productos/importar/plantilla/abrir-carpeta", methods=["POST"])
-@login_required
+@vendedor_forbidden
 def productos_importar_abrir_carpeta():
     template_dir = _get_productos_import_template_dir()
     template_dir.mkdir(parents=True, exist_ok=True)
@@ -2070,7 +2075,7 @@ def productos_importar_abrir_carpeta():
 
 
 @main_bp.route("/productos/nuevo", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def producto_nuevo():
     draft_compra = _purchase_draft_from_source(request.form if request.method == "POST" else request.args)
     desde_compra = request.values.get("return_to") == "compra_nueva"
@@ -2159,7 +2164,7 @@ def producto_nuevo():
 
 
 @main_bp.route("/productos/<int:pid>/editar", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def producto_editar(pid):
     producto = db.get_producto(pid)
     stock = db.q("SELECT * FROM stock WHERE producto_id=?", (pid,), fetchone=True)
@@ -2252,11 +2257,12 @@ def stock():
         productos=rows,
         alertas=db.get_alertas_count(),
         total_stock_value=sum(float(r["valor_stock"] or 0) for r in rows),
+        usuario_puede_editar_stock=not _is_vendedor_role(session.get("user", {}).get("rol")),
     )
 
 
 @main_bp.route("/stock/<int:pid>/ajustar", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def stock_ajustar(pid):
     producto = db.get_producto(pid)
     stock_row = db.q("SELECT * FROM stock WHERE producto_id=?", (pid,), fetchone=True)
@@ -2540,7 +2546,7 @@ def ticket(vid):
 
 
 @main_bp.route("/historial")
-@login_required
+@vendedor_forbidden
 def historial():
     search = request.args.get("q", "")
     fecha_desde = request.args.get("desde", "")
@@ -2562,13 +2568,13 @@ def historial():
 
 
 @main_bp.route("/historial/<int:vid>")
-@login_required
+@vendedor_forbidden
 def historial_detalle(vid):
     return redirect(url_for("ticket", vid=vid))
 
 
 @main_bp.route("/historial/<int:vid>/eliminar", methods=["POST"])
-@login_required
+@admin_required
 def historial_eliminar(vid):
     ok, msg = _validate_sale_delete_authorization(request.form)
     if not ok:
@@ -2597,14 +2603,14 @@ def historial_eliminar(vid):
 
 
 @main_bp.route("/compras")
-@login_required
+@vendedor_forbidden
 def compras():
     draft = _purchase_draft_from_source(request.args)
     return render_template("compras.html", compras=db.get_compras(request.args.get("q", ""), request.args.get("fecha_desde", ""), request.args.get("fecha_hasta", "")), buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), proveedores=db.get_proveedores(), productos=db.get_productos(), draft=draft, open_compra=_as_bool(request.args.get("open_compra")), created_product=_as_bool(request.args.get("created_product")), created_provider=_as_bool(request.args.get("created_provider")), hoy=date.today().isoformat(), usuario_es_admin=_is_admin_role(session.get("user", {}).get("rol")))
 
 
 @main_bp.route("/compras/nueva", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def compra_nueva():
     if request.method == "GET":
         return redirect(url_for("compras", **_purchase_draft_query(_purchase_draft_from_source(request.args), open_compra="1", created_product=request.args.get("created_product", ""), created_provider=request.args.get("created_provider", ""))))
@@ -2644,13 +2650,13 @@ def compra_nueva():
 
 
 @main_bp.route("/compras/<int:cid>")
-@login_required
+@vendedor_forbidden
 def compra_detalle(cid):
     return render_template("compra_detalle.html", compra=db.get_compra(cid))
 
 
 @main_bp.route("/compras/<int:cid>/editar", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def compra_editar(cid):
     compra = db.get_compra(cid)
     if not compra:
@@ -2719,7 +2725,7 @@ def compra_editar(cid):
 
 
 @main_bp.route("/compras/<int:cid>/eliminar", methods=["POST"])
-@login_required
+@admin_required
 def compra_eliminar(cid):
     ok, msg = _validate_purchase_cancel_authorization(request.form)
     if not ok:
@@ -2854,15 +2860,15 @@ def caja_cerrar():
 
 
 @main_bp.route("/gastos")
-@login_required
+@vendedor_forbidden
 def gastos():
     rows = db.get_gastos(request.args.get("q", ""), request.args.get("fecha_desde", ""), request.args.get("fecha_hasta", ""))
     activos = [r for r in rows if not int(r["anulado"] or 0)]
-    return render_template("gastos.html", gastos=rows, buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), total_gastos=sum(float(r["monto"] or 0) for r in activos), total_necesarios=sum(float(r["monto"] or 0) for r in activos if "prescindible" not in str(r["necesario"]).lower()), total_prescind=sum(float(r["monto"] or 0) for r in activos if "prescindible" in str(r["necesario"]).lower()), cats=db.get_gasto_categorias())
+    return render_template("gastos.html", gastos=rows, buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), total_gastos=sum(float(r["monto"] or 0) for r in activos), total_necesarios=sum(float(r["monto"] or 0) for r in activos if "prescindible" not in str(r["necesario"]).lower()), total_prescind=sum(float(r["monto"] or 0) for r in activos if "prescindible" in str(r["necesario"]).lower()), cats=db.get_gasto_categorias(), usuario_es_admin=_is_admin_role(session.get("user", {}).get("rol")))
 
 
 @main_bp.route("/gastos/nuevo", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def gasto_nuevo():
     if request.method == "POST":
         data = _resolver_proveedor_gasto(request.form.to_dict())
@@ -2929,7 +2935,7 @@ def gasto_editar(gid):
 
 
 @main_bp.route("/gastos/<int:gid>/eliminar", methods=["POST"])
-@login_required
+@admin_required
 def gasto_eliminar(gid):
     try:
         db.anular_gasto(
@@ -2947,11 +2953,11 @@ def gasto_eliminar(gid):
 @login_required
 def clientes():
     db.reconciliar_cc_clientes_desde_ventas()
-    return render_template("clientes.html", clientes=db.get_clientes(request.args.get("q", ""), _as_bool(request.args.get("solo_deuda"))), buscar=request.args.get("q", ""), solo_deuda=_as_bool(request.args.get("solo_deuda")))
+    return render_template("clientes.html", clientes=db.get_clientes(request.args.get("q", ""), _as_bool(request.args.get("solo_deuda"))), buscar=request.args.get("q", ""), solo_deuda=_as_bool(request.args.get("solo_deuda")), usuario_puede_editar_clientes=not _is_vendedor_role(session.get("user", {}).get("rol")))
 
 
 @main_bp.route("/clientes/nuevo", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def cliente_nuevo():
     if request.method == "POST":
         if not _limit_allows("clientes"):
@@ -2962,7 +2968,7 @@ def cliente_nuevo():
 
 
 @main_bp.route("/clientes/<int:cid>/editar", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def cliente_editar(cid):
     cliente = db.get_cliente(cid)
     if request.method == "POST":
@@ -2985,11 +2991,13 @@ def cliente_detalle(cid):
         historial_ventas=db.get_historial_ventas_cliente(cid),
         estadisticas=db.get_estadisticas_cliente(cid),
         today=datetime.now().strftime("%Y-%m-%d"),
+        usuario_es_admin=_is_admin_role(session.get("user", {}).get("rol")),
+        usuario_puede_editar_cliente=not _is_vendedor_role(session.get("user", {}).get("rol")),
     )
 
 
 @main_bp.route("/clientes/<int:cid>/movimiento", methods=["POST"])
-@login_required
+@vendedor_forbidden
 def cliente_agregar_movimiento(cid):
     tipo = (request.form.get("tipo", "Ajuste") or "").strip()
     try:
@@ -3022,7 +3030,7 @@ def cliente_agregar_movimiento(cid):
 
 
 @main_bp.route("/clientes/<int:cid>/movimiento/<int:mid>/anular", methods=["POST"])
-@login_required
+@admin_required
 def cliente_anular_movimiento(cid, mid):
     movimiento = db.get_movimiento_cliente(mid)
     if not movimiento or int(movimiento["cliente_id"] or 0) != cid:
@@ -3042,14 +3050,14 @@ def cliente_anular_movimiento(cid, mid):
 
 
 @main_bp.route("/clientes/<int:cid>/eliminar", methods=["POST"])
-@login_required
+@vendedor_forbidden
 def cliente_eliminar(cid):
     db.delete_cliente(cid)
     return redirect(url_for("clientes"))
 
 
 @main_bp.route("/proveedores")
-@login_required
+@vendedor_forbidden
 def proveedores():
     buscar = request.args.get("q", "")
     proveedores_list = db.get_proveedores(activo_only=False, search=buscar)
@@ -3066,7 +3074,7 @@ def proveedores():
 
 
 @main_bp.route("/proveedores/nuevo", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def proveedor_nuevo():
     if request.method == "POST":
         if not _limit_allows("proveedores"):
@@ -3083,7 +3091,7 @@ def proveedor_nuevo():
 
 
 @main_bp.route("/proveedores/<int:pid>/editar", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def proveedor_editar(pid):
     proveedor = db.get_proveedor(pid)
     if request.method == "POST":
@@ -3093,7 +3101,7 @@ def proveedor_editar(pid):
 
 
 @main_bp.route("/proveedores/<int:pid>")
-@login_required
+@vendedor_forbidden
 def proveedor_detalle(pid):
     proveedor = _get_proveedor_or_404(pid)
     saldo_auxiliar = db.get_saldo_proveedor(pid)
@@ -3114,7 +3122,7 @@ def proveedor_detalle(pid):
 
 
 @main_bp.route("/precios/proveedor")
-@login_required
+@vendedor_forbidden
 def precios_proveedor():
     proveedor_filtro = (request.args.get("proveedor", "") or "").strip()
     categoria_filtro = (request.args.get("categoria", "") or "").strip()
@@ -3146,7 +3154,7 @@ def precios_proveedor():
 
 
 @main_bp.route("/precios/proveedor/previsualizar", methods=["POST"])
-@login_required
+@vendedor_forbidden
 def precios_proveedor_previsualizar():
     proveedor_filtro = (request.form.get("proveedor", "") or "").strip()
     categoria_filtro = (request.form.get("categoria", "") or "").strip()
@@ -3200,7 +3208,7 @@ def precios_proveedor_previsualizar():
 
 
 @main_bp.route("/precios/proveedor/aplicar", methods=["POST"])
-@login_required
+@vendedor_forbidden
 def precios_proveedor_aplicar():
     proveedor_filtro = (request.form.get("proveedor", "") or "").strip()
     categoria_filtro = (request.form.get("categoria", "") or "").strip()
@@ -3249,7 +3257,7 @@ def precios_proveedor_aplicar():
 
 
 @main_bp.route("/proveedores/<int:pid>/facturas")
-@login_required
+@vendedor_forbidden
 def proveedor_facturas(pid):
     proveedor = _get_proveedor_or_404(pid)
     facturas = _enriquecer_facturas_proveedor(db.get_facturas_proveedor(pid))
@@ -3265,7 +3273,7 @@ def proveedor_facturas(pid):
 
 
 @main_bp.route("/proveedores/<int:pid>/facturas/nueva", methods=["GET", "POST"])
-@login_required
+@vendedor_forbidden
 def proveedor_factura_nueva(pid):
     proveedor = _get_proveedor_or_404(pid)
     if request.method == "POST":
@@ -3291,7 +3299,7 @@ def proveedor_factura_nueva(pid):
 
 
 @main_bp.route("/proveedores/<int:pid>/facturas/<int:factura_id>/editar", methods=["GET", "POST"])
-@login_required
+@admin_required
 def proveedor_factura_editar(pid, factura_id):
     proveedor = _get_proveedor_or_404(pid)
     factura = _get_factura_proveedor_or_404(pid, factura_id)
@@ -3322,7 +3330,7 @@ def proveedor_factura_editar(pid, factura_id):
 
 
 @main_bp.route("/proveedores/<int:pid>/facturas/<int:factura_id>/pagar", methods=["POST"])
-@login_required
+@vendedor_forbidden
 def proveedor_factura_pagar(pid, factura_id):
     _get_proveedor_or_404(pid)
     factura = _get_factura_proveedor_or_404(pid, factura_id)
@@ -3341,7 +3349,7 @@ def proveedor_factura_pagar(pid, factura_id):
 
 
 @main_bp.route("/proveedores/<int:pid>/facturas/<int:factura_id>/eliminar", methods=["POST"])
-@login_required
+@admin_required
 def proveedor_factura_eliminar(pid, factura_id):
     _get_proveedor_or_404(pid)
     factura = _get_factura_proveedor_or_404(pid, factura_id)
@@ -3365,21 +3373,21 @@ def proveedor_factura_eliminar(pid, factura_id):
 
 
 @main_bp.route("/proveedores/<int:pid>/movimiento", methods=["POST"])
-@login_required
+@vendedor_forbidden
 def proveedor_agregar_movimiento(pid):
     db.agregar_movimiento_proveedor(pid, request.form.get("tipo", "Ajuste"), request.form.get("numero_comprobante", ""), float(request.form.get("debe", 0) or 0), float(request.form.get("haber", 0) or 0), request.form.get("vencimiento", ""), request.form.get("observaciones", ""))
     return redirect(url_for("proveedor_detalle", pid=pid))
 
 
 @main_bp.route("/proveedores/<int:pid>/eliminar", methods=["POST"])
-@login_required
+@vendedor_forbidden
 def proveedor_eliminar(pid):
     db.delete_proveedor(pid)
     return redirect(url_for("proveedores"))
 
 
 @main_bp.route("/reportes")
-@login_required
+@vendedor_forbidden
 def reportes():
     require_modulo("reportes")
     rubro_actual = get_rubro_actual(db.get_config())
@@ -3421,7 +3429,7 @@ def reportes():
 
 
 @main_bp.route("/estadisticas")
-@login_required
+@vendedor_forbidden
 def estadisticas():
     require_modulo("reportes")
     year = int(request.args.get("year", date.today().year))
@@ -3435,7 +3443,7 @@ def estadisticas():
 
 
 @main_bp.route("/analisis")
-@login_required
+@vendedor_forbidden
 def analisis():
     require_modulo("ia")
     desde = request.args.get("desde", (date.today() - timedelta(days=30)).isoformat())
@@ -4526,6 +4534,9 @@ def acerca():
 
 @main_bp.route("/logout")
 def logout():
+    if "user" in session and _caja_abierta() and not _as_bool(request.args.get("force")):
+        flash("Hay una caja abierta. Confirmá explícitamente el cierre de sesión o revisá la caja antes de salir.", "warning")
+        return redirect(url_for("dashboard"))
     session.clear()
     DESKTOP_STATE["user_logged_in"] = False
     return redirect(url_for("login"))
@@ -4544,6 +4555,8 @@ def desktop_close_warning():
         "caja_url": url_for("caja", auto_open="cerrar"),
         "caja_cerrar_y_salir_url": url_for("caja", auto_open="cerrar", next=url_for("main.salida_protegida_cerrar_app")),
         "apagar_url": url_for("apagar_rapido"),
+        "logout_url": url_for("logout"),
+        "logout_force_url": url_for("logout", force="1"),
     })
 
 

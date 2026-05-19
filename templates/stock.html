@@ -203,11 +203,17 @@
                         <strong>{{ "{:,.2f}".format(prod['valor_stock']) }}</strong>
                     </td>
                     <td class="text-center">
+                        {% if usuario_puede_editar_stock %}
                         <a href="{{ url_for('stock_ajustar', pid=prod['id']) }}" 
                            class="btn btn-sm btn-outline-primary"
                            title="Ajustar stock">
                             <i class="fas fa-pencil-alt"></i>
                         </a>
+                        {% else %}
+                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="No tenés permisos para ajustar stock">
+                            <i class="fas fa-lock"></i>
+                        </button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}

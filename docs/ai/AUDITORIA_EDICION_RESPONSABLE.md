@@ -417,3 +417,14 @@ Esta auditoría es documental. No modifica lógica funcional.
 - Se agrego la vista `/auditoria` en modo solo lectura, con filtros minimos por accion, entidad y fecha.
 - No se permite editar ni borrar auditoria desde UI.
 - Riesgo que queda abierto: el MVP cubre acciones criticas protegidas, pero no intenta auditar todavia toda operacion secundaria o de configuracion del sistema.
+
+## 2026-05-19 - feature/permisos-basicos
+
+### Permisos basicos admin/empleado
+- Estado: agregado MVP con reutilizacion de sesion y roles existentes.
+- Se tomo como admin a `Administrador/admin` y el resto de roles quedan acotados como perfil operativo tipo empleado para este alcance.
+- Las rutas criticas de anulacion y ajuste protegido ahora validan admin en backend, no solo en UI.
+- Se removio la posibilidad de que un usuario no admin ejecute anulaciones criticas ingresando credenciales de otro administrador.
+- La UI de ventas, compras, gastos, cuenta corriente cliente y facturas de proveedor deja de ofrecer anulaciones a empleados y muestra candado informativo en su lugar.
+- `/auditoria` permanece visible y accesible solo para admin.
+- Riesgo que queda abierto: el MVP no redefine toda la matriz de permisos del sistema; endurece solo las operaciones criticas pedidas para no introducir cambios funcionales amplios.

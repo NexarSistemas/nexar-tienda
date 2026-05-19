@@ -98,7 +98,7 @@
                                 <a href="{{ url_for('historial_detalle', vid=venta.id) }}" class="btn btn-sm btn-outline-primary" title="Ver Ticket">
                                     <i class="fas fa-receipt"></i>
                                 </a>
-                                {% if not venta.anulada %}
+                                {% if not venta.anulada and usuario_es_admin %}
                                 <button
                                     type="button"
                                     class="btn btn-sm btn-outline-warning ms-1"
@@ -110,6 +110,10 @@
                                     data-total="{{ venta.total | fmt_ars }}"
                                 >
                                     <i class="fas fa-ban"></i>
+                                </button>
+                                {% elif not venta.anulada %}
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" disabled title="Solo administradores pueden anular ventas">
+                                    <i class="fas fa-lock"></i>
                                 </button>
                                 {% else %}
                                 <button type="button" class="btn btn-sm btn-outline-secondary ms-1" disabled title="Venta ya anulada">
