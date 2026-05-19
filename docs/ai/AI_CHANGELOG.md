@@ -929,3 +929,28 @@ Implementar gastos seguros con anulacion responsable, sin borrado fisico, con co
 ### Casos dudosos / alcance
 - El endpoint sigue llamandose gasto_eliminar por compatibilidad, pero ahora ejecuta anulacion responsable.
 - La vista deja el acceso de edicion bloqueado para gastos ya registrados; cualquier correccion posterior se resuelve anulando y cargando un nuevo gasto.
+
+## 2026-05-19 - Codex - feature/reportes-historicos-coherentes
+
+### Tarea
+Auditar y corregir reportes principales para que no cuenten registros anulados como activos, manteniendo el historial visible donde corresponde.
+
+### Archivos modificados
+- `routes/main.py`
+- `tests/test_reportes_historicos_coherentes.py`
+- `docs/ai/AI_CHANGELOG.md`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+
+### Que se cambio
+- Se corrigio el resumen de gastos de `reportes()` para excluir gastos anulados al calcular necesarios, prescindibles y porcentaje.
+- Se agrego un helper minimo `_resumen_gastos_reportes(...)` para centralizar ese calculo sin tocar la estructura del modulo.
+- Se auditaron los reportes principales y se confirmo que dashboard financiero, estadisticas anuales, rentabilidad detallada y caja diaria ya venian excluyendo ventas/gastos/movimientos anulados en sus consultas clave.
+
+### Que se probo
+- Validacion sintactica con `python -m py_compile routes/main.py database.py tests/test_reportes_historicos_coherentes.py`.
+- Tests unitarios con `python -m unittest tests.test_reportes_historicos_coherentes tests.test_gastos_seguros tests.test_cc_clientes_anulacion tests.test_proveedor_facturas_anulacion`.
+- Casos cubiertos: gasto anulado no suma en reportes, venta anulada no suma en dashboard/rentabilidad, compra anulada no suma como compra activa en estadisticas de proveedor, y caja no duplica movimientos anulados.
+
+### Casos dudosos / alcance
+- El alcance efectivo del fix fue chico: el hueco detectado estaba en el resumen mensual de gastos de `reportes()`. El resto de las consultas principales ya estaba alineado con anulaciones seguras.
+- Se mantuvo visible el historial anulado en vistas historicas; no se agregaron cambios visuales nuevos porque no hacian falta para la coherencia numerica.

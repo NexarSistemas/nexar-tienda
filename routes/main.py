@@ -1458,6 +1458,13 @@ def _caja_resumen(caja_row) -> dict:
     return {"ventas": float(ventas["total"] or 0), "ingresos": ingresos, "egresos": egresos, "total": total}
 
 
+def _resumen_gastos_reportes(rows) -> tuple[float, float]:
+    activos = [row for row in rows if not int(row["anulado"] or 0)]
+    gastos_necesarios = sum(float(r["monto"] or 0) for r in activos if "prescindible" not in str(r["necesario"]).lower())
+    gastos_prescindibles = sum(float(r["monto"] or 0) for r in activos if "prescindible" in str(r["necesario"]).lower())
+    return gastos_necesarios, gastos_prescindibles
+
+
 @main_bp.route("/registro-inicial", methods=["GET", "POST"])
 def registro_inicial():
     if db.count_usuarios() > 0:
@@ -3379,8 +3386,7 @@ def reportes():
         """,
         tuple(rubro_params),
     )
-    gastos_nec = sum(float(r["monto"] or 0) for r in db.get_gastos() if "prescindible" not in str(r["necesario"]).lower())
-    gastos_pre = sum(float(r["monto"] or 0) for r in db.get_gastos() if "prescindible" in str(r["necesario"]).lower())
+    gastos_nec, gastos_pre = _resumen_gastos_reportes(db.get_gastos())
     total_g = gastos_nec + gastos_pre
     pct = round((gastos_pre / total_g) * 100, 1) if total_g else 0
     return render_template(
