@@ -954,3 +954,35 @@ Auditar y corregir reportes principales para que no cuenten registros anulados c
 ### Casos dudosos / alcance
 - El alcance efectivo del fix fue chico: el hueco detectado estaba en el resumen mensual de gastos de `reportes()`. El resto de las consultas principales ya estaba alineado con anulaciones seguras.
 - Se mantuvo visible el historial anulado en vistas historicas; no se agregaron cambios visuales nuevos porque no hacian falta para la coherencia numerica.
+
+## 2026-05-19 - Codex - feature/auditoria-visual
+
+### Tarea
+Implementar un MVP de auditoria visual para acciones criticas ya protegidas, con bitacora de solo lectura y diff minimo.
+
+### Archivos modificados
+- `app.py`
+- `database.py`
+- `routes/main.py`
+- `templates/base.html`
+- `templates/auditoria.html`
+- `tests/test_auditoria_visual.py`
+- `docs/ai/AI_CHANGELOG.md`
+- `docs/ai/AUDITORIA_EDICION_RESPONSABLE.md`
+
+### Que se cambio
+- Se agrego una tabla minima `auditoria` con `fecha`, `usuario`, `accion`, `entidad`, `entidad_id`, `detalle` y `motivo`.
+- Se sumaron helpers chicos en `database.py` para registrar y consultar auditoria con filtros simples.
+- Se registra auditoria al anular venta, compra, gasto, movimiento de cuenta corriente cliente y factura de proveedor.
+- Tambien se registra auditoria al abrir y cerrar caja desde sus rutas existentes.
+- Se agrego la pantalla de solo lectura `/auditoria` con tabla Nexar simple y filtros GET por accion, entidad y rango de fechas.
+- Se expuso el endpoint legacy `auditoria` para mantener compatibilidad con `url_for(...)` sin prefijo, y se agrego acceso visual en sidebar para admin.
+
+### Que se probo
+- Validacion sintactica con `python -m py_compile app.py database.py routes/main.py tests/test_auditoria_visual.py`.
+- Tests unitarios con `python -m unittest tests.test_auditoria_visual tests.test_gastos_seguros tests.test_cc_clientes_anulacion tests.test_proveedor_facturas_anulacion tests.test_reportes_historicos_coherentes`.
+- Casos cubiertos: anulacion de gasto, anulacion de pago cliente, apertura/cierre de caja y visualizacion de registros en `/auditoria`.
+
+### Casos dudosos / alcance
+- No existia mecanismo previo de auditoria, por eso se creo una tabla minima nueva en vez de agregar una solucion mas grande.
+- El MVP registra anulacion de factura de proveedor como caso representativo de proveedor protegido; no agrega todavia una bitacora completa para todos los movimientos auxiliares de `cc_proveedores_mov`.

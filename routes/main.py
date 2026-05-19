@@ -2791,7 +2791,15 @@ def caja_detalle(cid):
 def caja_abrir():
     if not _caja_abierta():
         marca_tiempo = datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-        db.q("INSERT INTO caja (usuario_id,fecha_apertura,saldo_inicial,estado) VALUES (?,?,?,1)", (session["user"]["id"], marca_tiempo, float(request.form.get("saldo_inicial", 0) or 0)), commit=True)
+        saldo_inicial = float(request.form.get("saldo_inicial", 0) or 0)
+        caja_id = db.q("INSERT INTO caja (usuario_id,fecha_apertura,saldo_inicial,estado) VALUES (?,?,?,1)", (session["user"]["id"], marca_tiempo, saldo_inicial), commit=True)
+        db.registrar_auditoria(
+            "APERTURA_CAJA",
+            "caja",
+            caja_id,
+            detalle=f"Caja abierta con saldo inicial {saldo_inicial:.2f}",
+            usuario=session.get("user", {}).get("username", ""),
+        )
     return redirect(_safe_next_url(request.form.get("next"), url_for("caja")))
 
 
@@ -2833,7 +2841,15 @@ def caja_cerrar():
         flash("No hay una caja abierta para cerrar.", "warning")
         return redirect(url_for("caja"))
     marca_tiempo = datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-    db.q("UPDATE caja SET fecha_cierre=?,saldo_final_real=?,estado=0 WHERE id=?", (marca_tiempo, float(request.form.get("saldo_real", 0) or 0), caja_actual["id"]), commit=True)
+    saldo_real = float(request.form.get("saldo_real", 0) or 0)
+    db.q("UPDATE caja SET fecha_cierre=?,saldo_final_real=?,estado=0 WHERE id=?", (marca_tiempo, saldo_real, caja_actual["id"]), commit=True)
+    db.registrar_auditoria(
+        "CIERRE_CAJA",
+        "caja",
+        int(caja_actual["id"] or 0),
+        detalle=f"Caja cerrada con saldo real {saldo_real:.2f}",
+        usuario=session.get("user", {}).get("username", ""),
+    )
     return redirect(_safe_next_url(request.form.get("next"), url_for("caja")))
 
 
@@ -3484,6 +3500,30 @@ def rentabilidad_detallada():
         gastos_semanal=db.get_composicion_gastos_rentabilidad("semanal", desde, hasta, rubro=rubro_actual),
         rubro_actual=rubro_actual,
         categorias_rubro=get_categorias_disponibles(rubro_actual),
+    )
+
+
+@main_bp.route("/auditoria")
+@admin_required
+def auditoria():
+    filtros = {
+        "accion": request.args.get("accion", ""),
+        "entidad": request.args.get("entidad", ""),
+        "fecha_desde": request.args.get("fecha_desde", ""),
+        "fecha_hasta": request.args.get("fecha_hasta", ""),
+    }
+    opciones = db.get_auditoria_filtros()
+    return render_template(
+        "auditoria.html",
+        registros=db.get_auditoria(
+            filtros["accion"],
+            filtros["entidad"],
+            filtros["fecha_desde"],
+            filtros["fecha_hasta"],
+        ),
+        acciones=opciones["acciones"],
+        entidades=opciones["entidades"],
+        **filtros,
     )
 
 

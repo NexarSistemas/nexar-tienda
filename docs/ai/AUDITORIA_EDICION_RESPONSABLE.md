@@ -406,3 +406,14 @@ Esta auditoría es documental. No modifica lógica funcional.
 - Dashboard financiero, estadisticas anuales, rentabilidad detallada y caja diaria quedaron revisados y sus consultas principales ya trabajaban con ventas/gastos/movimientos activos.
 - Historiales visibles se mantuvieron sin borrar anulados; el ajuste fue numerico, no de ocultamiento.
 - Riesgo que queda abierto: siguen existiendo listados historicos de compras/facturas/gastos que muestran registros anulados por diseno de auditoria. Eso es correcto siempre que no se reutilicen esas filas para agregados sin filtrar activos.
+
+## 2026-05-19 - feature/auditoria-visual
+
+### Auditoria visual
+- Estado: agregado MVP de bitacora visual para acciones criticas.
+- Se incorporo una tabla minima `auditoria` para registrar `fecha`, `usuario`, `accion`, `entidad`, `entidad_id`, `detalle` y `motivo`.
+- La bitacora ahora registra anulacion de venta, compra, gasto, movimiento de cuenta corriente cliente y factura de proveedor.
+- Tambien registra apertura y cierre de caja para dejar trazabilidad operativa visible.
+- Se agrego la vista `/auditoria` en modo solo lectura, con filtros minimos por accion, entidad y fecha.
+- No se permite editar ni borrar auditoria desde UI.
+- Riesgo que queda abierto: el MVP cubre acciones criticas protegidas, pero no intenta auditar todavia toda operacion secundaria o de configuracion del sistema.
