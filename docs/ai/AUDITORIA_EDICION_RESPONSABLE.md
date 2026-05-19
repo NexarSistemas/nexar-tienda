@@ -374,3 +374,14 @@ Esta auditoría es documental. No modifica lógica funcional.
 - Crear productos por lote y verificar validaciones por fila.
 - Revisar unicidad de código de barras interno.
 - Reemplazar imagen de producto y confirmar que no afecta operaciones.
+
+## 2026-05-19 - feature/cc-clientes-segura
+
+### Cuenta corriente clientes
+- Estado: corregido parcialmente con MVP de anulacion segura.
+- El libro `cc_clientes_mov` ahora conserva historial, calcula deuda solo con movimientos activos y deja trazabilidad minima de anulacion.
+- Los pagos de clientes ya no deben corregirse borrando ni reescribiendo deuda: se anulan con motivo obligatorio, se bloquea la doble anulacion y se impide anular desde clientes movimientos que nacieron de una venta fiada.
+- Si un pago genero ingreso en caja, la anulacion tambien anula su `caja_movimientos` vinculado para mantener caja y cuenta corriente alineadas.
+- La venta fiada sigue compensando deuda al anularse desde Historial de ventas, sin borrar asientos previos.
+- Riesgo que queda abierto: el formulario heredado de movimientos sigue permitiendo ajustes manuales y notas de credito; el MVP endurece especialmente pagos y ventas relacionadas, pero no agrega todavia una bitacora avanzada de cambios manuales.
+- UI: el detalle del cliente ahora debe advertir `El movimiento no se borrara. Quedara anulado para conservar historial.` y usar modal Nexar en lugar de confirmaciones nativas.
