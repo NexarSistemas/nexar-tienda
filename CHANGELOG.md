@@ -4,6 +4,21 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.35.0] - 2026-05-19
+
+### Added
+- Se incorpora auditoria operativa ampliada para acciones criticas, incluyendo login, logout, caja, clientes, configuracion y usuarios con usuario, rol y detalle legible.
+- Se consolida el visor de auditoria con columna de rol para lectura mas clara desde la UI administrativa.
+
+### Changed
+- Se endurecen los permisos del rol vendedor para restringir accesos de gestion y mantener solo el flujo operativo de venta, cobro, consulta de stock y busqueda de clientes/productos.
+- Se agrega advertencia explicita al cerrar sesion o salir con caja abierta para vendedor, encargado y administrador.
+- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG` e `Inno Setup` para el release estable `v1.35.0`.
+
+### Fixed
+- Se evita que un vendedor o encargado cierre la app o la sesion sin aviso cuando existe una caja abierta.
+- Se refuerza la trazabilidad de acciones sensibles sin modificar la logica funcional principal de ventas, caja y permisos administrativos.
+
 ## [1.34.0] - 2026-05-15
 
 ### Added
