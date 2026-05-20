@@ -2,6 +2,29 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-19 - Codex - fix/licencias-flujo-comercial loop licencia y checkout demo
+
+### Tarea
+Corregir el loop entre recuperacion y licencia post-login, y destrabar el checkout comercial desde DEMO/sin licencia valida con diff minimo.
+
+### Archivos modificados
+- `routes/main.py`
+- `services/mercadopago_checkout.py`
+- `tests/test_license_integration.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se consolido la resolucion comercial del checkout para usar `cambio_plan` solo cuando la licencia local efectiva tiene `key`; DEMO/SIN_PLAN siguen por `alta_licencia`.
+- Se habilito el precio por defecto de `BASICA` para que instalaciones nuevas sin env especifica no queden bloqueadas al iniciar checkout directo.
+- Se ajustaron mensajes visibles con texto roto en las secciones tocadas para mantener UTF-8 correcto.
+- Se ampliaron los tests de integracion para cubrir acceso sin loop a `configurar-recuperacion`/`licencia`/`mi-plan`, checkout directo DEMO a `BASICA`, `PRO` y `MENSUAL_FULL`, y preservacion de `cambio_plan` cuando existe `license_key`.
+
+### Que se probo
+- Tests de integracion de licencias enfocados en loop, checkout y tipo de solicitud comercial.
+- Se ajusto el fallback local de precio de `BASICA` a `49.900` para instalaciones nuevas sin `NEXAR_PRICE_BASICA`.
+- Se re-alineo el boton lateral `Cerrar sistema` con el mismo submit form del cierre desktop por X.
+- Se blindo el post-login para que DEMO activo vuelva al dashboard y no salte a `Mi Plan` salvo bloqueo comercial real.
+
 ## 2026-05-18 - Codex - feature/caja-segura-fase2 bloqueo gasto efectivo y detalle caja cerrada
 
 ### Tarea

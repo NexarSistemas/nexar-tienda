@@ -179,21 +179,21 @@ def _safe_next_url(value: str | None, fallback: str) -> str:
 
 def _validate_password(password: str) -> tuple[bool, str]:
     if len(password or "") < 6 or len(password or "") > 12:
-        return False, "La contraseÃ±a debe tener entre 6 y 12 caracteres."
+        return False, "La contraseña debe tener entre 6 y 12 caracteres."
     if not re.search(r"[A-Z]", password or ""):
-        return False, "La contraseÃ±a debe incluir una mayÃºscula."
+        return False, "La contraseña debe incluir una mayúscula."
     if not re.search(r"[a-z]", password or ""):
-        return False, "La contraseÃ±a debe incluir una minÃºscula."
+        return False, "La contraseña debe incluir una minúscula."
     if not re.search(r"[0-9]", password or ""):
-        return False, "La contraseÃ±a debe incluir un nÃºmero."
+        return False, "La contraseña debe incluir un número."
     if not re.search(r"[^A-Za-z0-9]", password or ""):
-        return False, "La contraseÃ±a debe incluir un sÃ­mbolo."
+        return False, "La contraseña debe incluir un símbolo."
     return True, ""
 
 
 def _validate_password_confirmation(password: str, confirmation: str) -> tuple[bool, str]:
     if password != confirmation:
-        return False, "Las contraseÃ±as no coinciden."
+        return False, "Las contraseñas no coinciden."
     return _validate_password(password)
 
 
@@ -230,7 +230,7 @@ def _limit_allows(kind: str) -> bool:
     current = int(db.q(current_sql, fetchone=True)[0] or 0)
     check = db.check_license_limits(kind, current + 1)
     if not check["ok"]:
-        flash(f"âš ï¸ {check['message']}", "warning")
+        flash(f"⚠️ {check['message']}", "warning")
         return False
     return True
 
@@ -246,7 +246,7 @@ def _parse_positive_percentage(raw_value) -> float:
     try:
         porcentaje = float(str(raw_value or "").replace(",", "."))
     except ValueError as exc:
-        raise ValueError("El porcentaje debe ser un nÃºmero vÃ¡lido.") from exc
+        raise ValueError("El porcentaje debe ser un número válido.") from exc
     if porcentaje <= 0:
         raise ValueError("El porcentaje debe ser mayor a 0.")
     return porcentaje
@@ -280,10 +280,10 @@ def _validar_codigos_barras_manuales(filas: list[dict], errores: list[str], *, r
         codigo_key = codigo.lower()
         row_label = str(fila.get(row_label_key) or "fila")
         if codigo_key in vistos:
-            errores.append(f"{row_label}: el cÃ³digo de barras '{codigo}' estÃ¡ repetido dentro de la carga.")
+            errores.append(f"{row_label}: el código de barras '{codigo}' está repetido dentro de la carga.")
             continue
         if db.codigo_barras_exists(codigo):
-            errores.append(f"{row_label}: ya existe un producto con el cÃ³digo de barras '{codigo}'.")
+            errores.append(f"{row_label}: ya existe un producto con el código de barras '{codigo}'.")
             continue
         vistos[codigo_key] = row_label
 
@@ -295,7 +295,7 @@ def _parse_float_csv(value, field_name: str, row_number: int, *, allow_zero: boo
     try:
         numero = float(texto)
     except ValueError as exc:
-        raise ValueError(f"Fila {row_number}: {field_name} debe ser numÃ©rico.") from exc
+        raise ValueError(f"Fila {row_number}: {field_name} debe ser numérico.") from exc
     if numero < 0:
         raise ValueError(f"Fila {row_number}: {field_name} no puede ser negativo.")
     if not allow_zero and numero == 0:
@@ -426,8 +426,8 @@ def _resolve_productos_import_target_dir(destino: str) -> tuple[Path, str | None
                 return candidate, None
         home_dir = Path.home()
         if home_dir.exists():
-            return home_dir, "No se encontrÃ³ una carpeta de descargas vÃ¡lida. Se usÃ³ la carpeta personal del usuario."
-        return app_dir, "No se encontrÃ³ una carpeta de descargas vÃ¡lida ni la carpeta personal. Se usÃ³ la carpeta de la aplicaciÃ³n."
+            return home_dir, "No se encontró una carpeta de descargas válida. Se usó la carpeta personal del usuario."
+        return app_dir, "No se encontró una carpeta de descargas válida ni la carpeta personal. Se usó la carpeta de la aplicación."
     return app_dir, None
 
 
@@ -469,13 +469,14 @@ def _resolve_next_upgrade_plan(license_info: dict[str, object] | None) -> str:
     return available[0] if available else ""
 
 
+def _get_checkout_license_key(license_info: dict[str, object] | None = None) -> str:
+    info = license_info or {}
+    return str(info.get("key", "") or "").strip()
+
+
 def _has_checkout_license(license_info: dict[str, object] | None = None) -> bool:
     license_info = license_info or {}
-    stored_license = cargar_licencia() or {}
-    license_key = _first_non_empty(
-        license_info.get("key", ""),
-        stored_license.get("license_key", ""),
-    )
+    license_key = _get_checkout_license_key(license_info)
     if license_key:
         return True
     normalized_tier = normalize_plan(license_info.get("tier", "DEMO"), default="DEMO")
@@ -557,12 +558,7 @@ def _resolve_requested_checkout_plan(license_info: dict[str, object] | None) -> 
 
 
 def _resolve_checkout_request_type(license_info: dict[str, object] | None) -> str:
-    license_info = license_info or {}
-    stored_license = cargar_licencia() or {}
-    license_key = _first_non_empty(
-        license_info.get("key", ""),
-        stored_license.get("license_key", ""),
-    )
+    license_key = _get_checkout_license_key(license_info)
     return "cambio_plan" if license_key else "alta_licencia"
 
 
@@ -577,6 +573,15 @@ def _get_license_holder_profile(license_info: dict[str, object] | None = None) -
     }
 
 
+def _should_force_license_resolution_after_login() -> bool:
+    demo_status = db.get_demo_status()
+    if not demo_status.get("vencido"):
+        return False
+
+    license_info = db.get_license_info()
+    return str(license_info.get("tier", "DEMO") or "DEMO").strip().upper() not in {"BASICA", "PRO", "FULL"}
+
+
 def _validate_license_holder_profile(holder_profile: dict[str, str]) -> tuple[bool, str]:
     email = str(holder_profile.get("email", "") or "").strip().lower()
     recovery_word = str(holder_profile.get("palabra_recuperacion", "") or "").strip()
@@ -584,9 +589,9 @@ def _validate_license_holder_profile(holder_profile: dict[str, str]) -> tuple[bo
     if not email:
         return False, "El email del titular es obligatorio."
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-        return False, "El email del titular no es vÃ¡lido."
+        return False, "El email del titular no es válido."
     if recovery_word and len(recovery_word) < 4:
-        return False, "La palabra de recuperaciÃ³n debe tener al menos 4 caracteres."
+        return False, "La palabra de recuperación debe tener al menos 4 caracteres."
     return True, ""
 
 
@@ -648,7 +653,7 @@ def _license_auto_refresh_loop(app) -> None:
             with app.app_context():
                 _refresh_license_response(force=True)
         except Exception:
-            logger.exception("Auto refresh de licencia fallÃ³")
+            logger.exception("Auto refresh de licencia falló")
 
 
 def ensure_license_auto_refresh_thread(app) -> None:
@@ -686,7 +691,7 @@ def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response,
         return None, (
             jsonify({
                 "ok": False,
-                "message": "El plan seleccionado no admite checkout directo para tu licencia actual.",
+            "message": "El plan seleccionado no admite checkout directo para tu licencia actual.",
             }),
             400,
         )
@@ -695,7 +700,7 @@ def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response,
         return None, (
             jsonify({
                 "ok": False,
-                "message": "Tu plan actual ya no requiere actualizaciÃ³n online.",
+                "message": "Tu plan actual ya no requiere actualización online.",
             }),
             400,
         )
@@ -705,7 +710,7 @@ def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response,
         return None, (
             jsonify({
                 "ok": False,
-                "message": "No se encontrÃ³ una licencia activa para iniciar el checkout.",
+                "message": "No se encontró una licencia activa para iniciar el checkout.",
             }),
             400,
         )
@@ -806,7 +811,7 @@ def _create_checkout_init_point() -> tuple[str | None, dict[str, object] | None,
         )
     except Exception:
         logger.exception(
-            "Checkout Mercado Pago fallo inesperado tipo=%s licencia=%s activation_id=%s plan_destino=%s",
+            "Checkout Mercado Pago falló inesperadamente tipo=%s licencia=%s activation_id=%s plan_destino=%s",
             tipo_solicitud,
             _mask_license_key(license_key),
             activation_id[:12],
@@ -845,7 +850,7 @@ def admin_required(view):
     @login_required
     def wrapped(*args, **kwargs):
         if session.get("user", {}).get("rol") not in {"Administrador", "admin"}:
-            flash("âŒ No tenÃ©s permisos para acceder a esa secciÃ³n.", "danger")
+            flash("❌ No tenés permisos para acceder a esa sección.", "danger")
             return redirect(url_for("dashboard"))
         return view(*args, **kwargs)
     return wrapped
@@ -921,20 +926,20 @@ def _validate_email(value: str, *, required: bool = True) -> tuple[bool, str]:
     if not email:
         return (False, "El email es obligatorio.") if required else (True, "")
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-        return False, "IngresÃ¡ un email vÃ¡lido."
+        return False, "Ingresá un email válido."
     return True, ""
 
 
 def _validate_initial_setup_payload(form_data: dict[str, str]) -> tuple[bool, str]:
     required_fields = {
-        "nombre_completo": "CompletÃ¡ el nombre del administrador.",
-        "username": "CompletÃ¡ el usuario administrador.",
-        "nombre_negocio": "CompletÃ¡ el nombre comercial.",
-        "cuit": "CompletÃ¡ el CUIT.",
-        "direccion": "CompletÃ¡ la direcciÃ³n del comercio.",
-        "localidad": "CompletÃ¡ la localidad.",
-        "provincia": "CompletÃ¡ la provincia.",
-        "telefono": "CompletÃ¡ el telÃ©fono del comercio.",
+        "nombre_completo": "Completá el nombre del administrador.",
+        "username": "Completá el usuario administrador.",
+        "nombre_negocio": "Completá el nombre comercial.",
+        "cuit": "Completá el CUIT.",
+        "direccion": "Completá la dirección del comercio.",
+        "localidad": "Completá la localidad.",
+        "provincia": "Completá la provincia.",
+        "telefono": "Completá el teléfono del comercio.",
     }
     for field, message in required_fields.items():
         if not str(form_data.get(field, "") or "").strip():
@@ -942,7 +947,7 @@ def _validate_initial_setup_payload(form_data: dict[str, str]) -> tuple[bool, st
 
     rubro = str(form_data.get("rubro", "") or "").strip().lower()
     if rubro not in set(get_rubros_disponibles()):
-        return False, "SeleccionÃ¡ un rubro vÃ¡lido para continuar."
+        return False, "Seleccioná un rubro válido para continuar."
 
     ok, msg = _validate_email(form_data.get("admin_email", ""))
     if not ok:
@@ -1050,17 +1055,17 @@ def _enriquecer_items_reporte(items):
 
 def _validate_sensitive_operation_authorization(form, action_label: str) -> tuple[bool, str]:
     if not _as_bool(form.get("confirmo_responsabilidad")):
-        return False, f"DebÃ©s confirmar la advertencia antes de {action_label}."
+        return False, f"Debés confirmar la advertencia antes de {action_label}."
 
     current_user = db.get_usuario_by_id(session.get("user", {}).get("id"))
     if not current_user:
-        return False, "No se pudo validar el usuario logueado. IniciÃ¡ sesiÃ³n nuevamente."
+        return False, "No se pudo validar el usuario logueado. Iniciá sesión nuevamente."
 
     if not _is_admin_role(current_user["rol"]):
         return False, "No tenes permisos para anular operaciones criticas."
 
     if not db.verify_password(form.get("current_password", ""), current_user["password_hash"]):
-        return False, "La contraseÃ±a del administrador logueado es incorrecta."
+        return False, "La contraseña del administrador logueado es incorrecta."
     return True, ""
 
 
@@ -1096,7 +1101,7 @@ def _resolver_proveedor_gasto(data: dict) -> dict | None:
 
     if proveedor_id == "__nuevo__":
         if not nuevo_nombre:
-            flash("âš ï¸ IngresÃ¡ el nombre del nuevo proveedor.", "warning")
+            flash("⚠️ Ingresá el nombre del nuevo proveedor.", "warning")
             return None
         existente = next((p for p in db.get_proveedores() if str(p["nombre"]).strip().lower() == nuevo_nombre.lower()), None)
         if existente:
@@ -1124,12 +1129,12 @@ def _validar_gasto_efectivo_contra_caja(data: dict) -> bool:
         return True
     caja_actual = _caja_abierta()
     if not caja_actual:
-        flash("No podÃ©s registrar gastos con efectivo porque no hay una caja abierta.", "warning")
+        flash("No podés registrar gastos con efectivo porque no hay una caja abierta.", "warning")
         return False
     fecha_gasto = str(data.get("fecha", "") or "").strip()
     fecha_caja = str(caja_actual["fecha_apertura"] or "")[:10]
     if fecha_gasto != fecha_caja:
-        flash("No podÃ©s registrar gastos con efectivo fuera de la caja abierta actual.", "warning")
+        flash("No podés registrar gastos con efectivo fuera de la caja abierta actual.", "warning")
         return False
     return True
 
@@ -1395,7 +1400,7 @@ def _update_install_state(current_version: str | None = None) -> dict:
     license_info = db.get_license_info()
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
-        flash("No se encontrÃ³ una licencia activa para enviar el cambio de plan.", "warning")
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
         return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
@@ -1549,14 +1554,14 @@ def registro_inicial():
             password_confirm = request.form.get("password_confirm", "")
             ok, msg = _validate_initial_setup_payload(form_data)
             if not ok:
-                flash(f"âš ï¸ {msg}", "warning")
+                flash(f"⚠️ {msg}", "warning")
                 return render_template("registro_inicial.html", **context)
             ok, msg = _validate_password_confirmation(password, password_confirm)
             if not ok:
-                flash(f"âŒ {msg}", "danger")
+                flash(f"❌ {msg}", "danger")
                 return render_template("registro_inicial.html", **context)
             if db.get_usuario_by_username(negocio["username"]):
-                flash("âš ï¸ Ese usuario administrador ya existe.", "warning")
+                flash("⚠️ Ese usuario administrador ya existe.", "warning")
                 return render_template("registro_inicial.html", **context)
             db.add_usuario(
                 negocio["username"],
@@ -1579,7 +1584,7 @@ def registro_inicial():
                     "responsable": negocio["nombre_completo"],
                 }
             )
-            flash("âœ… ConfiguraciÃ³n inicial completada. Ya podÃ©s iniciar sesiÃ³n.", "success")
+            flash("✅ Configuración inicial completada. Ya podés iniciar sesión.", "success")
             return redirect(url_for("login"))
         nombre = request.form.get("nombre_completo", "").strip()
         username = request.form.get("username", "").strip()
@@ -1588,18 +1593,18 @@ def registro_inicial():
         question = request.form.get("security_question", "").strip()
         answer = request.form.get("security_answer", "").strip()
         if not all([nombre, username, password, password_confirm, question, answer]):
-            flash("âš ï¸ CompletÃ¡ todos los campos.", "warning")
+            flash("⚠️ Completá todos los campos.", "warning")
             return render_template("registro_inicial.html", nombre=nombre, username=username)
         ok, msg = _validate_password_confirmation(password, password_confirm)
         if not ok:
-            flash(f"âŒ {msg}", "danger")
+            flash(f"❌ {msg}", "danger")
             return render_template("registro_inicial.html", nombre=nombre, username=username)
         ok, msg = _validate_security_recovery(question, answer)
         if not ok:
-            flash(f"âŒ {msg}", "danger")
+            flash(f"❌ {msg}", "danger")
             return render_template("registro_inicial.html", nombre=nombre, username=username)
         db.add_usuario(username, password, "Administrador", nombre, question, answer)
-        flash("âœ… Administrador creado. Ya podÃ©s iniciar sesiÃ³n.", "success")
+        flash("✅ Administrador creado. Ya podés iniciar sesión.", "success")
         return redirect(url_for("login"))
     return render_template("registro_inicial.html", **_build_initial_setup_context())
 
@@ -1613,7 +1618,7 @@ def login():
         password = request.form.get("password", "")
         user = db.get_usuario_by_username(username)
         if not user or not int(user["activo"] or 0) or not db.verify_password(password, user["password_hash"]):
-            flash("âŒ Usuario o contraseÃ±a incorrectos.", "danger")
+            flash("❌ Usuario o contraseña incorrectos.", "danger")
             return render_template("login.html", next=request.form.get("next", ""))
         session["user"] = {"id": user["id"], "username": user["username"], "nombre_completo": user["nombre_completo"] or user["username"], "rol": user["rol"]}
         session["show_welcome"] = True
@@ -1625,9 +1630,12 @@ def login():
             detalle=f"Inicio de sesion de {user['username']} ({user['rol']})",
         )
         if not user["security_question"] or not user["security_answer_hash"]:
-            flash("âš ï¸ Antes de continuar, configurÃ¡ tu pregunta y respuesta secreta.", "warning")
+            flash("⚠️ Antes de continuar, configurá tu pregunta y respuesta secreta.", "warning")
             return redirect(url_for("configurar_recuperacion", next=request.form.get("next", "")))
-        return redirect(request.form.get("next") or url_for("dashboard"))
+        next_url = str(request.form.get("next", "") or "").strip()
+        if next_url in {url_for("mi_plan"), url_for("licencia")} and not _should_force_license_resolution_after_login():
+            next_url = ""
+        return redirect(next_url or url_for("dashboard"))
     return render_template("login.html", next=request.args.get("next", ""))
 
 
@@ -1646,14 +1654,14 @@ def configurar_recuperacion():
         answer = request.form.get("security_answer", "").strip()
         ok, msg = _validate_security_recovery(question, answer)
         if not ok:
-            flash(f"âš ï¸ {msg}", "warning")
+            flash(f"⚠️ {msg}", "warning")
             return render_template("configurar_recuperacion.html", usuario=usuario)
         db.update_perfil(usuario["id"], {
             "nombre_completo": usuario["nombre_completo"],
             "security_question": question,
             "security_answer": answer,
         })
-        flash("âœ… RecuperaciÃ³n de contraseÃ±a configurada.", "success")
+        flash("✅ Recuperación de contraseña configurada.", "success")
         return redirect(request.form.get("next") or url_for("dashboard"))
 
     return render_template("configurar_recuperacion.html", usuario=usuario, next=request.args.get("next", ""))
@@ -1671,7 +1679,7 @@ def recuperar_password():
             if user and user["security_question"]:
                 step = 2
             else:
-                flash("âŒ Usuario inexistente o sin recuperaciÃ³n configurada.", "danger")
+                flash("❌ Usuario inexistente o sin recuperación configurada.", "danger")
         elif step == 2:
             user = db.get_usuario_by_username(username)
             security_answer = request.form.get("security_answer", "")
@@ -1681,11 +1689,11 @@ def recuperar_password():
                 session["recover_user"] = username
                 step = 3
             else:
-                flash("âŒ La respuesta no coincide.", "danger")
+                flash("❌ La respuesta no coincide.", "danger")
                 step = 1
         elif step == 3:
             if session.get("recover_user") != username:
-                flash("âš ï¸ La sesiÃ³n de recuperaciÃ³n venciÃ³. EmpezÃ¡ de nuevo.", "warning")
+                flash("⚠️ La sesión de recuperación venció. Empezá de nuevo.", "warning")
                 session.pop("recover_user", None)
                 return redirect(url_for("recuperar_password"))
             password = request.form.get("password", "")
@@ -1694,9 +1702,9 @@ def recuperar_password():
             if ok:
                 db.set_password_for_username(username, password)
                 session.pop("recover_user", None)
-                flash("âœ… ContraseÃ±a restablecida.", "success")
+                flash("✅ Contraseña restablecida.", "success")
                 return redirect(url_for("login"))
-            flash(f"âŒ {msg}", "danger")
+            flash(f"❌ {msg}", "danger")
     return render_template("recuperar_password.html", step=step, user=user, username=username)
 
 
@@ -1736,7 +1744,7 @@ def configuracion_rubro_inicial():
     selected_rubro = request.form.get("rubro", rubro_guardado or rubro_actual)
     if rubro_guardado:
         if request.method == "POST":
-            flash("El rubro ya quedÃ³ configurado. Para cambiarlo, contactÃ¡ soporte.", "warning")
+            flash("El rubro ya quedó configurado. Para cambiarlo, contactá soporte.", "warning")
             return redirect(url_for("config"))
         return render_template(
             "configuracion_rubro_inicial.html",
@@ -1750,7 +1758,7 @@ def configuracion_rubro_inicial():
     if request.method == "POST":
         rubro = str(request.form.get("rubro", "") or "").strip().lower()
         if rubro not in set(get_rubros_disponibles()):
-            flash("SeleccionÃ¡ un rubro vÃ¡lido para continuar.", "warning")
+            flash("Seleccioná un rubro válido para continuar.", "warning")
             return render_template(
                 "configuracion_rubro_inicial.html",
                 rubros=rubros,
@@ -1891,7 +1899,7 @@ def productos_lote():
             if not any(row.values()):
                 continue
             if not row["descripcion"]:
-                errores.append(f"Fila {idx + 1}: la descripciÃ³n es obligatoria si cargÃ¡s datos.")
+                errores.append(f"Fila {idx + 1}: la descripción es obligatoria si cargás datos.")
                 continue
             if row["costo"] == "":
                 errores.append(f"Fila {idx + 1}: el costo es obligatorio.")
@@ -1906,17 +1914,17 @@ def productos_lote():
             try:
                 costo_num = float(row["costo"])
             except ValueError:
-                errores.append(f"Fila {idx + 1}: el costo debe ser numÃ©rico.")
+                errores.append(f"Fila {idx + 1}: el costo debe ser numérico.")
                 continue
             try:
                 precio_num = float(row["precio_venta"])
             except ValueError:
-                errores.append(f"Fila {idx + 1}: el precio de venta debe ser numÃ©rico.")
+                errores.append(f"Fila {idx + 1}: el precio de venta debe ser numérico.")
                 continue
             try:
                 stock_num = float(row["stock_actual"])
             except ValueError:
-                errores.append(f"Fila {idx + 1}: el stock inicial debe ser numÃ©rico.")
+                errores.append(f"Fila {idx + 1}: el stock inicial debe ser numérico.")
                 continue
 
             if costo_num < 0:
@@ -1926,7 +1934,7 @@ def productos_lote():
             if stock_num <= 0:
                 errores.append(f"Fila {idx + 1}: el stock inicial debe ser mayor a 0.")
             if errores:
-                # Solo omitimos agregar la fila si la Ãºltima validaciÃ³n generÃ³ error.
+                # Solo omitimos agregar la fila si la última validación generó error.
                 fila_con_error = any(msg.startswith(f"Fila {idx + 1}:") for msg in errores)
                 if fila_con_error:
                     continue
@@ -1943,7 +1951,7 @@ def productos_lote():
             )
 
         if not common_data["categoria"]:
-            errores.append("SeleccionÃ¡ una categorÃ­a para la carga por lote.")
+            errores.append("Seleccioná una categoría para la carga por lote.")
 
         try:
             unidad_normalizada = normalizar_unidad(common_data["unidad"], rubro_actual)
@@ -1951,16 +1959,16 @@ def productos_lote():
             stock_minimo_num = float(common_data["stock_minimo"] or 5)
             stock_maximo_num = float(common_data["stock_maximo"] or 50)
             if stock_minimo_num < 0:
-                errores.append("El stock mÃ­nimo no puede ser negativo.")
+                errores.append("El stock mínimo no puede ser negativo.")
             if stock_maximo_num < 0:
-                errores.append("El stock mÃ¡ximo no puede ser negativo.")
+                errores.append("El stock máximo no puede ser negativo.")
         except ValueError:
-            errores.append("Stock mÃ­nimo y stock mÃ¡ximo deben ser numÃ©ricos.")
+            errores.append("Stock mínimo y stock máximo deben ser numéricos.")
             stock_minimo_num = 5.0
             stock_maximo_num = 50.0
 
         if not filas_validas and not errores:
-            errores.append("CargÃ¡ al menos una fila vÃ¡lida para crear productos.")
+            errores.append("Cargá al menos una fila válida para crear productos.")
 
         _validar_codigos_barras_manuales(filas_validas, errores, row_label_key="row_label")
 
@@ -2028,18 +2036,18 @@ def productos_importar():
         generar_codigo_barras_interno = _as_bool(request.form.get("generar_codigo_barras_interno"))
         archivo = request.files.get("archivo_csv")
         if not archivo or not str(archivo.filename or "").strip():
-            import_errors.append("SeleccionÃ¡ un archivo CSV para importar.")
+            import_errors.append("Seleccioná un archivo CSV para importar.")
         else:
             filename = str(archivo.filename or "").strip()
             if not filename.lower().endswith(".csv"):
-                import_errors.append("El archivo debe tener extensiÃ³n .csv.")
+                import_errors.append("El archivo debe tener extensión .csv.")
 
         filas_validas: list[dict[str, str]] = []
         if not import_errors and archivo:
             try:
                 contenido = archivo.stream.read().decode("utf-8-sig")
             except UnicodeDecodeError:
-                import_errors.append("No se pudo leer el archivo. UsÃ¡ UTF-8 o la plantilla descargable.")
+                import_errors.append("No se pudo leer el archivo. Usá UTF-8 o la plantilla descargable.")
                 contenido = ""
 
             if not import_errors:
@@ -2048,7 +2056,7 @@ def productos_importar():
                 try:
                     raw_headers = next(reader)
                 except StopIteration:
-                    import_errors.append("El archivo CSV estÃ¡ vacÃ­o.")
+                    import_errors.append("El archivo CSV está vacío.")
                     raw_headers = []
 
                 if raw_headers:
@@ -2078,7 +2086,7 @@ def productos_importar():
                             filas_validas.append(validada)
 
                 if not import_errors and not filas_validas:
-                    import_errors.append("El CSV no contiene filas vÃ¡lidas para importar.")
+                    import_errors.append("El CSV no contiene filas válidas para importar.")
 
         _validar_codigos_barras_manuales(filas_validas, import_errors, row_label_key="_row_label")
 
@@ -2349,8 +2357,8 @@ def stock_ajustar(pid):
             return redirect(request.url)
         db.update_stock_item(pid, nuevo, float(request.form.get("stock_minimo", 5)), float(request.form.get("stock_maximo", 50)), request.form.get("proveedor_habitual", ""))
         db.q("INSERT INTO stock_movimientos (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo) VALUES (?,?,?,?,?,?)", (pid, "AJUSTE", nuevo - anterior, anterior, nuevo, request.form.get("motivo", "Ajuste manual")), commit=True)
-        _auditar_accion("AJUSTE_STOCK", "stock", pid, detalle=f"{producto['descripcion'] or 'Producto'} Â· {anterior:.2f} -> {nuevo:.2f}", motivo=request.form.get("motivo", "Ajuste manual"))
-        flash("âœ… Stock actualizado.", "success")
+        _auditar_accion("AJUSTE_STOCK", "stock", pid, detalle=f"{producto['descripcion'] or 'Producto'} · {anterior:.2f} -> {nuevo:.2f}", motivo=request.form.get("motivo", "Ajuste manual"))
+        flash("✅ Stock actualizado.", "success")
         return redirect(url_for("stock"))
     return render_template(
         "stock_ajustar.html",
@@ -2376,7 +2384,7 @@ def temporada_nueva():
         data = request.form.to_dict()
         data["activa"] = 1 if _as_bool(data.get("activa")) else 0
         db.add_temporada(data)
-        flash("âœ… Temporada creada.", "success")
+        flash("✅ Temporada creada.", "success")
         return redirect(url_for("temporadas"))
     return render_template("temporada_form.html", temporada={}, accion="Nueva")
 
@@ -2390,7 +2398,7 @@ def temporada_editar(tid):
         data = request.form.to_dict()
         data["activa"] = 1 if _as_bool(data.get("activa")) else 0
         db.update_temporada(tid, data)
-        flash("âœ… Temporada actualizada.", "success")
+        flash("✅ Temporada actualizada.", "success")
         return redirect(url_for("temporadas"))
     return render_template("temporada_form.html", temporada=temporada, accion="Editar")
 
@@ -2400,7 +2408,7 @@ def temporada_editar(tid):
 def temporada_eliminar(tid):
     require_modulo("temporadas")
     db.delete_temporada(tid)
-    flash("âœ… Temporada eliminada.", "success")
+    flash("✅ Temporada eliminada.", "success")
     return redirect(url_for("temporadas"))
 
 
@@ -2428,7 +2436,7 @@ def api_buscar_productos():
 def api_producto_buscar():
     codigo = (request.args.get("codigo", "") or "").strip()
     if not codigo:
-        return jsonify({"ok": False, "msg": "Código vacÃ­o."}), 400
+        return jsonify({"ok": False, "msg": "Código vacío."}), 400
     producto = db.get_producto_by_codigo(codigo)
     if not producto:
         return jsonify({"ok": False, "msg": "Producto no encontrado."}), 404
@@ -2511,7 +2519,7 @@ def venta_finalizar():
         flash("El carrito esta vacio.", "warning")
         return redirect(url_for("punto_venta"))
     if not _caja_abierta():
-        flash("NecesitÃ¡s abrir caja para realizar ventas.", "warning")
+        flash("Necesitás abrir caja para realizar ventas.", "warning")
         return redirect(url_for("punto_venta"))
     try:
         for item in cart:
@@ -2535,7 +2543,7 @@ def venta_finalizar():
     db.reconciliar_cc_clientes_desde_ventas()
     db.decrementar_stock_venta(venta_id)
     venta = db.q("SELECT numero_ticket, total, cliente_nombre, medio_pago FROM ventas WHERE id=?", (venta_id,), fetchone=True)
-    _auditar_accion("VENTA_REGISTRADA", "venta", venta_id, detalle=f"Ticket #{venta['numero_ticket'] if venta else venta_id} Â· Cliente: {(venta['cliente_nombre'] if venta else cliente_nombre) or 'Mostrador'} Â· Medio: {(venta['medio_pago'] if venta else medio_pago) or medio_pago} Â· Total: {float((venta['total'] if venta else 0) or 0):.2f}")
+    _auditar_accion("VENTA_REGISTRADA", "venta", venta_id, detalle=f"Ticket #{venta['numero_ticket'] if venta else venta_id} · Cliente: {(venta['cliente_nombre'] if venta else cliente_nombre) or 'Mostrador'} · Medio: {(venta['medio_pago'] if venta else medio_pago) or medio_pago} · Total: {float((venta['total'] if venta else 0) or 0):.2f}")
     _clear_cart()
     flash("Venta registrada.", "success")
     return redirect(url_for("ticket", vid=venta_id))
@@ -2655,15 +2663,15 @@ def historial_detalle(vid):
 def historial_eliminar(vid):
     ok, msg = _validate_sale_delete_authorization(request.form)
     if not ok:
-        flash(f"âŒ {msg}", "danger")
+        flash(f"❌ {msg}", "danger")
         return redirect(url_for("historial"))
 
     venta = db.q("SELECT id, numero_ticket, anulada FROM ventas WHERE id=?", (vid,), fetchone=True)
     if not venta:
-        flash("âŒ La venta indicada no existe.", "danger")
+        flash("❌ La venta indicada no existe.", "danger")
         return redirect(url_for("historial"))
     if int(venta["anulada"] or 0):
-        flash(f"âš ï¸ La venta #{venta['numero_ticket']} ya estaba anulada.", "warning")
+        flash(f"⚠️ La venta #{venta['numero_ticket']} ya estaba anulada.", "warning")
         return redirect(url_for("historial"))
 
     try:
@@ -2676,7 +2684,7 @@ def historial_eliminar(vid):
     except ValueError as exc:
         flash(str(exc), "warning")
         return redirect(url_for("historial"))
-    flash(f"âœ… Venta #{venta['numero_ticket']} anulada correctamente. El stock fue restaurado.", "success")
+    flash(f"✅ Venta #{venta['numero_ticket']} anulada correctamente. El stock fue restaurado.", "success")
     return redirect(url_for("historial"))
 
 
@@ -2723,8 +2731,8 @@ def compra_nueva():
         except Exception:
             flash("No se pudo registrar la compra correctamente.", "danger")
             return redirect(url_for("compras", **_purchase_draft_query(_purchase_draft_from_source(request.form), open_compra="1")))
-        _auditar_accion("COMPRA_REGISTRADA", "compra", 0, detalle=f"Remito: {data.get('numero_remito', '') or 'Sin remito'} Â· Proveedor: {data.get('proveedor_nombre', '') or 'Sin proveedor'} Â· Total: {float(data.get('total', 0) or 0):.2f}")
-        flash("âœ… Compra registrada.", "success")
+        _auditar_accion("COMPRA_REGISTRADA", "compra", 0, detalle=f"Remito: {data.get('numero_remito', '') or 'Sin remito'} · Proveedor: {data.get('proveedor_nombre', '') or 'Sin proveedor'} · Total: {float(data.get('total', 0) or 0):.2f}")
+        flash("✅ Compra registrada.", "success")
         return redirect(url_for("compras"))
     return redirect(url_for("compras"))
 
@@ -2990,7 +2998,7 @@ def gasto_nuevo():
                 hoy=data.get("fecha") or datetime.now().strftime("%Y-%m-%d"),
                 gasto_form=data,
             )
-        flash("âœ… Gasto registrado.", "success")
+        flash("✅ Gasto registrado.", "success")
         _auditar_accion(
             "GASTO_REGISTRADO",
             "gasto",
@@ -3293,7 +3301,7 @@ def precios_proveedor_previsualizar():
         productos_preview = _build_precios_preview_rows(productos_rows, porcentaje)
         total_afectados = len(productos_preview)
         if total_afectados == 0:
-            flash("No se encontraron productos para ese proveedor/categorÃ­a.", "warning")
+            flash("No se encontraron productos para ese proveedor/categoría.", "warning")
     except ValueError as exc:
         flash(str(exc), "warning")
 
@@ -3328,7 +3336,7 @@ def precios_proveedor_aplicar():
             rubro=rubro_actual,
         )
         if not productos_rows:
-            flash("No se encontraron productos para ese proveedor/categorÃ­a.", "warning")
+            flash("No se encontraron productos para ese proveedor/categoría.", "warning")
             return redirect(
                 url_for(
                     "precios_proveedor",
@@ -3470,7 +3478,7 @@ def proveedor_factura_eliminar(pid, factura_id):
             usuario=session.get("user", {}).get("username", ""),
             rol=session.get("user", {}).get("rol", ""),
         )
-        flash("Factura anulada correctamente. El historial se conservÃ³.", "success")
+        flash("Factura anulada correctamente. El historial se conservó.", "success")
     except ValueError as exc:
         flash(str(exc), "warning")
     return redirect(request.form.get("next") or url_for("proveedor_facturas", pid=pid))
@@ -3648,19 +3656,19 @@ def perfil():
         if data.get("password"):
             ok, msg = _validate_password_confirmation(data["password"], data.get("password_confirm", ""))
             if not ok:
-                flash(f"âŒ {msg}", "danger")
+                flash(f"❌ {msg}", "danger")
                 return render_template("perfil.html", usuario=usuario)
         if bool(data.get("security_question", "").strip()) != bool(data.get("security_answer", "").strip()):
-            flash("âš ï¸ Para cambiar la recuperaciÃ³n, ingresÃ¡ pregunta y respuesta secreta.", "warning")
+            flash("⚠️ Para cambiar la recuperación, ingresá pregunta y respuesta secreta.", "warning")
             return render_template("perfil.html", usuario=usuario)
         if data.get("security_question", "").strip() and data.get("security_answer", "").strip():
             ok, msg = _validate_security_recovery(data["security_question"], data["security_answer"])
             if not ok:
-                flash(f"âš ï¸ {msg}", "warning")
+                flash(f"⚠️ {msg}", "warning")
                 return render_template("perfil.html", usuario=usuario)
         data.pop("password_confirm", None)
         db.update_perfil(usuario["id"], data)
-        flash("âœ… Perfil actualizado.", "success")
+        flash("✅ Perfil actualizado.", "success")
         return redirect(url_for("perfil"))
     return render_template("perfil.html", usuario=usuario)
 
@@ -3895,14 +3903,14 @@ def mi_plan_solicitar_upgrade():
     )
 
     if plan_solicitado and plan_solicitado not in allowed_targets:
-        flash("El cambio de plan solicitado no estÃ¡ disponible para tu licencia actual.", "info")
+        flash("El cambio de plan solicitado no está disponible para tu licencia actual.", "info")
         return redirect(url_for("main.mi_plan"))
 
     if not plan_solicitado:
         if allowed_targets:
             plan_solicitado = allowed_targets[0]
         else:
-            flash("Tu plan actual ya estÃ¡ completo o no admite actualizaciÃ³n.", "info")
+            flash("Tu plan actual ya está completo o no admite actualización.", "info")
             return redirect(url_for("main.mi_plan"))
 
     license_key = str(license_info.get("key", "") or "").strip()
@@ -3959,7 +3967,7 @@ def mi_plan_solicitar_upgrade():
             "success",
         )
     else:
-        flash(result.get("message", "No se pudo enviar la solicitud de actualizaciÃ³n."), "danger")
+        flash(result.get("message", "No se pudo enviar la solicitud de actualización."), "danger")
     return redirect(url_for("main.mi_plan"))
 
 
@@ -3968,7 +3976,7 @@ def mi_plan_solicitar_upgrade():
 def config_categoria():
     try:
         db.add_categoria(request.form.get("nombre", "").strip())
-        flash("CategorÃ­a guardada correctamente.", "success")
+        flash("Categoría guardada correctamente.", "success")
     except ValueError as exc:
         flash(str(exc), "warning")
     return redirect(url_for("config"))
@@ -3983,7 +3991,7 @@ def config_categoria_editar():
             request.form.get("nuevo_nombre", ""),
             request.form.get("categoria_id", ""),
         )
-        flash("CategorÃ­a actualizada correctamente.", "success")
+        flash("Categoría actualizada correctamente.", "success")
     except ValueError as exc:
         flash(str(exc), "warning")
     return redirect(url_for("config"))
@@ -3997,7 +4005,7 @@ def config_categoria_toggle():
     try:
         db.set_categoria_activa(nombre, activa)
         flash(
-            "CategorÃ­a activada correctamente." if activa else "CategorÃ­a desactivada correctamente.",
+            "Categoría activada correctamente." if activa else "Categoría desactivada correctamente.",
             "success",
         )
     except ValueError as exc:
@@ -4010,7 +4018,7 @@ def config_categoria_toggle():
 def config_categoria_eliminar():
     try:
         db.delete_categoria(request.form.get("nombre", ""))
-        flash("CategorÃ­a desactivada correctamente.", "success")
+        flash("Categoría desactivada correctamente.", "success")
     except ValueError as exc:
         flash(str(exc), "warning")
     return redirect(url_for("config"))
@@ -4021,7 +4029,7 @@ def config_categoria_eliminar():
 def config_gasto_categoria():
     try:
         db.add_gasto_categoria(request.form.get("nombre", ""), request.form.get("tipo", "Necesario"))
-        flash("CategorÃ­a de gasto guardada correctamente.", "success")
+        flash("Categoría de gasto guardada correctamente.", "success")
     except ValueError as exc:
         flash(str(exc), "warning")
     return redirect(url_for("config"))
@@ -4043,7 +4051,7 @@ def config_gasto_categoria_editar():
             request.form.get("nuevo_nombre", ""),
             request.form.get("tipo", "Necesario"),
         )
-        flash("CategorÃ­a de gasto actualizada correctamente.", "success")
+        flash("Categoría de gasto actualizada correctamente.", "success")
     except ValueError as exc:
         flash(str(exc), "warning")
     return redirect(url_for("config"))
@@ -4082,9 +4090,9 @@ def licencia_activar():
     ok, msg = validate_license_key(request.form.get("license_key", ""), debug=False)
     if ok:
         guardar_licencia(license_key, db.get_license_info())
-        flash(f"âœ… {msg} La licencia quedÃ³ vinculada a este equipo.", "success")
+        flash(f"✅ {msg} La licencia quedó vinculada a este equipo.", "success")
     else:
-        flash(f"âŒ {msg}", "danger")
+        flash(f"❌ {msg}", "danger")
     return redirect(url_for("licencia"))
 
 
@@ -4140,7 +4148,7 @@ def usuario_nuevo():
             request.form.get("password_confirm", ""),
         )
         if not ok:
-            flash(f"âŒ {msg}", "danger")
+            flash(f"❌ {msg}", "danger")
         else:
             db.add_usuario(request.form.get("username", ""), request.form.get("password", ""), request.form.get("rol", "Vendedor"), request.form.get("nombre_completo", ""))
             nuevo_usuario = db.get_usuario_by_username(request.form.get("username", ""))
@@ -4160,19 +4168,19 @@ def usuario_editar(uid):
     require_modulo("multiusuario")
     usuario = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
     if not usuario:
-        flash("âŒ Usuario inexistente.", "danger")
+        flash("❌ Usuario inexistente.", "danger")
         return redirect(url_for("usuarios"))
     if request.method == "POST":
         activo = 1 if _as_bool(request.form.get("activo")) else 0
         nuevo_rol = request.form.get("rol", usuario["rol"])
         if not activo and uid == session["user"]["id"]:
-            flash("âš ï¸ No podÃ©s desactivar tu propio usuario.", "warning")
+            flash("⚠️ No podés desactivar tu propio usuario.", "warning")
             return redirect(url_for("usuarios"))
         if not activo and usuario["rol"] in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
-            flash("âš ï¸ No podÃ©s desactivar el Ãºltimo administrador activo.", "warning")
+            flash("⚠️ No podés desactivar el último administrador activo.", "warning")
             return redirect(url_for("usuarios"))
         if usuario["rol"] in {"Administrador", "admin"} and nuevo_rol not in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
-            flash("âš ï¸ No podÃ©s quitar el rol al Ãºltimo administrador activo.", "warning")
+            flash("⚠️ No podés quitar el rol al último administrador activo.", "warning")
             return redirect(url_for("usuarios"))
         db.update_usuario(uid, {"rol": nuevo_rol, "nombre_completo": request.form.get("nombre_completo", usuario["nombre_completo"]), "activo": activo})
         _auditar_accion(
@@ -4191,15 +4199,15 @@ def usuario_toggle_activo(uid):
     require_modulo("multiusuario")
     user = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
     if not user:
-        flash("âŒ Usuario inexistente.", "danger")
+        flash("❌ Usuario inexistente.", "danger")
         return redirect(url_for("usuarios"))
     if uid == session["user"]["id"]:
-        flash("âš ï¸ No podÃ©s cambiar el estado de tu propio usuario.", "warning")
+        flash("⚠️ No podés cambiar el estado de tu propio usuario.", "warning")
         return redirect(url_for("usuarios"))
 
     nuevo_estado = 0 if int(user["activo"] or 0) else 1
     if nuevo_estado == 0 and user["rol"] in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
-        flash("âš ï¸ No podÃ©s desactivar el Ãºltimo administrador activo.", "warning")
+        flash("⚠️ No podés desactivar el último administrador activo.", "warning")
         return redirect(url_for("usuarios"))
 
     db.set_usuario_activo(uid, nuevo_estado)
@@ -4209,7 +4217,7 @@ def usuario_toggle_activo(uid):
         uid,
         detalle=f"{user['username']} -> {'activo' if nuevo_estado else 'inactivo'}",
     )
-    flash("âœ… Usuario activado." if nuevo_estado else "âœ… Usuario desactivado.", "success")
+    flash("✅ Usuario activado." if nuevo_estado else "✅ Usuario desactivado.", "success")
     return redirect(url_for("usuarios"))
 
 
@@ -4219,13 +4227,13 @@ def usuario_eliminar(uid):
     require_modulo("multiusuario")
     user = db.q("SELECT * FROM usuarios WHERE id=?", (uid,), fetchone=True)
     if not user:
-        flash("âŒ Usuario inexistente.", "danger")
+        flash("❌ Usuario inexistente.", "danger")
         return redirect(url_for("usuarios"))
     if uid == session["user"]["id"]:
-        flash("âš ï¸ No podÃ©s eliminar tu propio usuario.", "warning")
+        flash("⚠️ No podés eliminar tu propio usuario.", "warning")
         return redirect(url_for("usuarios"))
     if user["rol"] in {"Administrador", "admin"} and db.count_admins_activos(exclude_uid=uid) == 0:
-        flash("âš ï¸ No podÃ©s eliminar el Ãºltimo administrador activo.", "warning")
+        flash("⚠️ No podés eliminar el último administrador activo.", "warning")
         return redirect(url_for("usuarios"))
     _auditar_accion(
         "ELIMINACION_USUARIO",
@@ -4234,7 +4242,7 @@ def usuario_eliminar(uid):
         detalle=f"{user['username']} ({user['rol']})",
     )
     db.delete_usuario(uid)
-    flash("âœ… Usuario eliminado definitivamente.", "success")
+    flash("✅ Usuario eliminado definitivamente.", "success")
     return redirect(url_for("usuarios"))
 
 
@@ -4244,7 +4252,7 @@ def respaldo():
     license_info = db.get_license_info()
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
-        flash("No se encontrÃ³ una licencia activa para enviar el cambio de plan.", "warning")
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
         return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
@@ -4405,7 +4413,7 @@ def actualizacion_instalar(nombre):
                 "apagado.html",
                 titulo="Cerrando Nexar Comercio para actualizar",
                 mensaje="La app se va a cerrar para iniciar el instalador de Windows de forma segura.",
-                estado="Esperando que se liberen Flask, pywebview y el ejecutable antes de abrir la actualizaciÃ³n.",
+                estado="Esperando que se liberen Flask, pywebview y el ejecutable antes de abrir la actualización.",
                 delay_ms=1600,
             )
         except Exception as exc:
@@ -4524,7 +4532,7 @@ def ayuda():
     license_info = db.get_license_info()
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
-        flash("No se encontrÃ³ una licencia activa para enviar el cambio de plan.", "warning")
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
         return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
@@ -4599,7 +4607,7 @@ def debug_licencia():
     license_info = db.get_license_info()
     license_key = str(license_info.get("key", "") or "").strip()
     if not license_key:
-        flash("No se encontrÃ³ una licencia activa para enviar el cambio de plan.", "warning")
+        flash("No se encontró una licencia activa para enviar el cambio de plan.", "warning")
         return redirect(url_for("main.mi_plan"))
 
     cfg = db.get_config()
@@ -4719,7 +4727,7 @@ def salida_protegida_cerrar_app():
     return render_template(
         "apagado.html",
         titulo="Caja cerrada",
-        mensaje="La caja se cerrÃ³ correctamente y la aplicaciÃ³n se cerrarÃ¡ ahora.",
+        mensaje="La caja se cerró correctamente y la aplicación se cerrará ahora.",
         estado="Cerrando Nexar Comercio de forma segura...",
         delay_ms=900,
     )

@@ -171,6 +171,9 @@ def create_app() -> Flask:
             "/configurar-recuperacion",
             "/logout",
             "/static",
+            "/licencia",
+            "/mi-plan",
+            "/api/desktop/close-warning",
             "/apagar-rapido",
             "/shutdown",
         )
@@ -188,6 +191,7 @@ def create_app() -> Flask:
             "/static",
             "/licencia",
             "/mi-plan",
+            "/api/desktop/close-warning",
             "/apagar-rapido",
             "/shutdown",
             "/ayuda",
@@ -201,6 +205,9 @@ def create_app() -> Flask:
         license_allowed_paths = (
             "/activar",
             "/licencia",
+            "/configurar-recuperacion",
+            "/mi-plan",
+            "/api/desktop/close-warning",
             "/configuracion/rubro-inicial",
             "/logout",
             "/apagar",
@@ -214,9 +221,9 @@ def create_app() -> Flask:
         if request.path.startswith(license_allowed_paths):
             return None
 
+        demo_status = db.get_demo_status()
         licencia = cargar_licencia()
         if not licencia:
-            demo_status = db.get_demo_status()
             if not demo_status.get("vencido"):
                 return None
             return redirect("/licencia")
@@ -242,6 +249,8 @@ def create_app() -> Flask:
                 })
                 return None
             if db.get_license_info().get("tier") == "BASICA":
+                return None
+            if not demo_status.get("vencido") and local_info.get("tier") in {"DEMO", "SIN_PLAN"}:
                 return None
             return redirect("/licencia")
 
