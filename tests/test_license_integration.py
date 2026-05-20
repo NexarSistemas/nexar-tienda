@@ -229,16 +229,8 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertTrue(self.routes_main._has_checkout_license({"tier": "DEMO", "key": ""}))
         self.assertEqual(
             self.routes_main._get_available_checkout_plans({"tier": "DEMO", "key": ""}),
-            ["PRO", "FULL"],
+            ["BASICA", "PRO", "FULL"],
         )
-
-    def test_checkout_muestra_basica_en_demo_si_tiene_precio_configurado(self):
-        self.assertTrue(self.routes_main._has_checkout_license({"tier": "DEMO", "key": ""}))
-        with mock.patch.object(self.routes_main, "plan_supports_checkout", side_effect=lambda plan: plan in {"BASICA", "PRO", "FULL"}):
-            self.assertEqual(
-                self.routes_main._get_available_checkout_plans({"tier": "DEMO", "key": ""}),
-                ["BASICA", "PRO", "FULL"],
-            )
 
     def test_basica_muestra_pro_y_full(self):
         actions = get_plan_actions("BASICA")
@@ -362,6 +354,46 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(context["license_key"], "")
         self.assertTrue(str(context["external_reference"]).startswith("ALTA|NXID-TEST-123|"))
 
+    def test_build_checkout_context_permite_alta_licencia_basica_desde_demo(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/checkout", method="POST", json={"plan_destino": "BASICA"}):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO", "key": "", "expirada": False}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"license_owner_name": "Admin", "license_owner_email": "admin@test.com", "license_owner_phone": ""}), \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-TEST-123", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-TEST-123"):
+                context, error_response = self.routes_main._build_checkout_context()
+
+        self.assertIsNone(error_response)
+        self.assertEqual(context["tipo_solicitud"], "alta_licencia")
+        self.assertEqual(context["plan_destino"], "BASICA")
+
+    def test_build_checkout_context_permite_alta_licencia_full_desde_demo(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/checkout", method="POST", json={"plan_destino": "MENSUAL_FULL"}):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO", "key": "", "expirada": False}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"license_owner_name": "Admin", "license_owner_email": "admin@test.com", "license_owner_phone": ""}), \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-TEST-789", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-TEST-789"):
+                context, error_response = self.routes_main._build_checkout_context()
+
+        self.assertIsNone(error_response)
+        self.assertEqual(context["tipo_solicitud"], "alta_licencia")
+        self.assertEqual(context["plan_destino"], "FULL")
+
+    def test_checkout_con_license_json_stale_sigue_tratando_demo_como_alta(self):
+        self.assertEqual(
+            self.routes_main._resolve_checkout_request_type({"tier": "DEMO", "key": ""}),
+            "alta_licencia",
+        )
+
     def test_solicitud_manual_desde_demo_envia_alta_licencia(self):
         app = self.app_module.create_app()
         with app.test_request_context("/mi-plan/solicitar-upgrade", method="POST", data={"plan_destino": "FULL"}):
@@ -388,6 +420,23 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(captured["activation_id"], "NXID-DEMO-456")
         self.assertEqual(captured["plan_destino"], "FULL")
         self.assertEqual(captured["license_key"], "")
+
+    def test_build_checkout_context_con_license_key_sigue_usando_cambio_plan(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/checkout", method="POST", json={"plan_destino": "PRO"}):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "BASICA", "key": "NXR-TDA-TEST-001", "expirada": False}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"license_owner_name": "Admin", "license_owner_email": "admin@test.com", "license_owner_phone": ""}), \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-UPG-321", {"host": "licensed"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-UPG-321"):
+                context, error_response = self.routes_main._build_checkout_context()
+
+        self.assertIsNone(error_response)
+        self.assertEqual(context["tipo_solicitud"], "cambio_plan")
+        self.assertEqual(context["license_key"], "NXR-TDA-TEST-001")
 
     def test_pro_no_colapsa_a_full(self):
         pro_modules = get_modulos_plan("PRO")
@@ -485,6 +534,183 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"No hay una actualizacion nueva disponible.", response.data)
         self.assertNotIn(b"solo para el plan FULL", response.data)
+
+    def test_licencia_y_mi_plan_son_accesibles_con_recuperacion_pendiente(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "admin", "id": 1}
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    return {"security_question": "", "security_answer_hash": ""}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.routes_main.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.routes_main.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.routes_main.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={}), \
+                 mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "SIN_PLAN", "key": "INVALID"}), \
+                 mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module.db, "get_config", return_value={}), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "SIN_PLAN", "key": "INVALID"}), \
+                 mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "INVALID"}), \
+                 mock.patch.object(self.app_module, "validate_saved_license", return_value=(False, "invalid")):
+                response_recovery = client.get("/configurar-recuperacion", follow_redirects=False)
+                response_licencia = client.get("/licencia", follow_redirects=False)
+                response_mi_plan = client.get("/mi-plan", follow_redirects=False)
+
+        self.assertEqual(response_recovery.status_code, 200)
+        self.assertEqual(response_licencia.status_code, 200)
+        self.assertEqual(response_mi_plan.status_code, 200)
+
+    def test_dashboard_demo_activo_no_redirige_a_licencia_por_license_key_invalida(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "admin", "id": 1}
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "get_demo_status", return_value={"vencido": False}), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "SIN_PLAN", "key": ""}), \
+                 mock.patch.object(self.app_module.db, "get_config", return_value={}), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module.db, "get_onboarding_context", return_value={}), \
+                 mock.patch.object(self.app_module.db, "debe_mostrar_aviso_rubro_pendiente", return_value=False), \
+                 mock.patch.object(self.app_module.db, "get_resumen_dashboard_financiero", return_value={}), \
+                 mock.patch.object(self.app_module.db, "get_facturas_proveedores_vencidas_resumen", return_value=[]), \
+                 mock.patch.object(self.app_module.db, "get_facturas_proveedores_por_vencer_resumen", return_value=[]), \
+                 mock.patch.object(self.app_module.db, "get_clientes_con_deuda", return_value=[]), \
+                 mock.patch.object(self.app_module.db, "get_dashboard_stats", return_value={}), \
+                 mock.patch.object(self.routes_main, "render_template", return_value="dashboard"), \
+                 mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "INVALID"}), \
+                 mock.patch.object(self.app_module, "validate_saved_license", return_value=(False, "invalid")):
+                response = client.get("/", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_login_demo_con_next_mi_plan_vuelve_al_dashboard(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["_csrf_token"] = "test-token"
+
+            user = {
+                "id": 1,
+                "username": "admin",
+                "nombre_completo": "Administrador",
+                "rol": "Administrador",
+                "activo": 1,
+                "password_hash": "hash",
+                "security_question": "Color",
+                "security_answer_hash": "hash2",
+            }
+
+            with mock.patch.object(self.routes_main.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.routes_main.db, "get_usuario_by_username", return_value=user), \
+                 mock.patch.object(self.routes_main.db, "verify_password", return_value=True), \
+                 mock.patch.object(self.routes_main.db, "get_demo_status", return_value={"vencido": False}), \
+                 mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO"}):
+                response = client.post(
+                    "/login",
+                    data={
+                        "username": "admin",
+                        "password": "secret",
+                        "next": "/mi-plan",
+                        "csrf_token": "test-token",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/"))
+
+    def test_login_con_demo_vencido_puede_respetar_next_mi_plan(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["_csrf_token"] = "test-token"
+
+            user = {
+                "id": 1,
+                "username": "admin",
+                "nombre_completo": "Administrador",
+                "rol": "Administrador",
+                "activo": 1,
+                "password_hash": "hash",
+                "security_question": "Color",
+                "security_answer_hash": "hash2",
+            }
+
+            with mock.patch.object(self.routes_main.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.routes_main.db, "get_usuario_by_username", return_value=user), \
+                 mock.patch.object(self.routes_main.db, "verify_password", return_value=True), \
+                 mock.patch.object(self.routes_main.db, "get_demo_status", return_value={"vencido": True}), \
+                 mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "SIN_PLAN"}):
+                response = client.post(
+                    "/login",
+                    data={
+                        "username": "admin",
+                        "password": "secret",
+                        "next": "/mi-plan",
+                        "csrf_token": "test-token",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/mi-plan"))
+
+    def test_close_warning_demo_activo_sigue_accesible_con_license_key_invalida(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "admin", "id": 1}
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "get_demo_status", return_value={"vencido": False}), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "SIN_PLAN", "key": ""}), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "INVALID"}), \
+                 mock.patch.object(self.app_module, "validate_saved_license", return_value=(False, "invalid")), \
+                 mock.patch.object(self.routes_main, "_caja_abierta", return_value=None):
+                response = client.get("/api/desktop/close-warning", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_apagar_rapido_devuelve_pantalla_de_apagado(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["_csrf_token"] = "test-token"
+                session["user"] = {"rol": "admin", "id": 1}
+
+            response = client.post("/apagar-rapido", data={"csrf_token": "test-token"}, follow_redirects=False)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Sistema cerrado", response.data)
 
     def test_windows_update_helper_script_espera_cierre_y_lanza_instalador(self):
         installer = Path(self.temp_dir.name) / "NexarTienda_1.32.0_Setup.exe"

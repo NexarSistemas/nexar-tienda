@@ -4,6 +4,18 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.35.1] - 2026-05-19
+
+### Changed
+- Se estabiliza el flujo DEMO para permitir acceso normal al dashboard sin forzar licencia mientras el periodo de prueba sigue activo.
+- Se consolida el checkout comercial directo desde `Mi plan` para BASICA, PRO y FULL con `alta_licencia` en DEMO y `cambio_plan` cuando existe `license_key`.
+- Se recupera una salida protegida consistente desde la X y desde el boton lateral, con advertencia fuerte si hay caja abierta y confirmacion simple si la caja esta cerrada.
+
+### Fixed
+- Se elimina el loop entre `licencia` y `configurar-recuperacion` en instalaciones nuevas o sin licencia valida.
+- Se corrige el acceso a `Mi plan`, `Licencia` y al warning desktop sin quedar bloqueados por estados locales de licencia invalidos.
+- Se corrigen textos UTF-8 en archivos tocados del flujo de login, licencias, checkout y cierre.
+
 ## [1.35.0] - 2026-05-19
 
 ### Added

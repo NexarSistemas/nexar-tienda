@@ -10,7 +10,7 @@ from licensing.planes import normalize_plan
 DEFAULT_NEXAR_PAGOS_API = "https://nexar-pagos.netlify.app/.netlify/functions"
 REQUEST_TIMEOUT_SECONDS = 12
 PRICE_BY_PLAN = {
-    "BASICA": int(str(os.getenv("NEXAR_PRICE_BASICA", "0") or "0").strip() or 0),
+    "BASICA": int(str(os.getenv("NEXAR_PRICE_BASICA", "49900") or "49900").strip() or 49900),
     "PRO": int(str(os.getenv("NEXAR_PRICE_PRO", "9900") or "9900").strip() or 9900),
     "FULL": int(str(os.getenv("NEXAR_PRICE_FULL", "19900") or "19900").strip() or 19900),
 }
