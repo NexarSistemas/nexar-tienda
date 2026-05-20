@@ -28,11 +28,20 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.addCleanup(self.temp_dir.cleanup)
         os.environ["SECRET_KEY"] = "test-secret"
         os.environ["FLASK_ENV"] = "development"
+        os.environ.pop("NEXAR_MODULES", None)
+        os.environ.pop("NEXAR_EXTRA_MODULES", None)
+        os.environ.pop("NEXAR_PLAN", None)
+        os.environ.pop("NEXAR_LICENSE_MODE", None)
 
         import database
         import licensing.permisos as permisos
         import routes.main as routes_main
         import app as app_module
+
+        os.environ["NEXAR_LICENSE_MODE"] = "prod"
+        os.environ.pop("NEXAR_MODULES", None)
+        os.environ.pop("NEXAR_EXTRA_MODULES", None)
+        os.environ.pop("NEXAR_PLAN", None)
 
         self.database = importlib.reload(database)
         self.database.DB_PATH = str(Path(self.temp_dir.name) / "test_tienda.db")

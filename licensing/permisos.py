@@ -21,6 +21,15 @@ SDK_REPO_PATH = Path(__file__).resolve().parent.parent.parent / "nexar_licencias
 _last_logged_source: str | None = None
 _last_modules_source: str | None = None
 
+
+def _apply_extra_modules(base_modules: set[str], source: str) -> set[str]:
+    extra_modules = get_modulos_extra()
+    if not extra_modules:
+        return set(base_modules)
+    _set_source(f"{source}+env")
+    return set(base_modules) | extra_modules
+
+
 def _log_source(source: str, message: str) -> None:
     global _last_logged_source, _last_modules_source
     _last_modules_source = source
@@ -146,7 +155,7 @@ def get_modulos_activos() -> set[str]:
     modules = _get_modulos_sdk()
     if modules:
         _log_source("sdk", "PROD mode: usando módulos desde SDK")
-        return modules
+        return _apply_extra_modules(modules, "sdk")
 
     try:
         from database import get_license_info
@@ -154,8 +163,7 @@ def get_modulos_activos() -> set[str]:
         license_info = get_license_info()
         effective_tier = _normalize_tier(license_info.get("tier", "DEMO"))
         if str(license_info.get("tier", "")).strip().upper() == "SIN_PLAN":
-            _set_source("db_effective_none")
-            return set()
+            return _apply_extra_modules(set(), "db_effective_none")
     except Exception:
         effective_tier = _get_tier_from_db()
 
@@ -166,20 +174,20 @@ def get_modulos_activos() -> set[str]:
         if filtered_modules:
             source = "db_modules" if filtered_modules == modules_from_config else "db_modules_filtered"
             _log_source(source, "PROD mode: usando módulos persistidos en DB")
-            return filtered_modules
+            return _apply_extra_modules(filtered_modules, source)
 
     # Leer tier desde DB y mapear a módulos
     try:
         modules_from_tier = _get_modulos_from_tier(effective_tier)
         if modules_from_tier:
             _log_source("db", f"PROD mode: usando módulos desde DB tier '{effective_tier}'")
-            return modules_from_tier
+            return _apply_extra_modules(modules_from_tier, "db")
     except Exception as e:
         logger.debug(f"Error leyendo tier desde DB: {e}")
 
     _set_source("fallback")
     logger.info("PROD mode: sin módulos remotos ni persistidos, usando fallback core")
-    return {"core"}
+    return _apply_extra_modules({"core"}, "fallback")
 
 
 def get_modulos_debug_info() -> dict[str, object]:
