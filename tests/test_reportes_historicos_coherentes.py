@@ -2,7 +2,9 @@ import importlib
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
+from unittest import mock
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -150,7 +152,10 @@ class ReportesHistoricosCoherentesTests(unittest.TestCase):
         self.database.anular_gasto(gasto_anulado, motivo="Duplicado", usuario="admin")
 
         rent = self.database.get_stats_rentabilidad("2026-05")
-        dashboard = self.database.get_dashboard_stats()
+        mocked_date = mock.Mock()
+        mocked_date.today.return_value = date(2026, 5, 19)
+        with mock.patch.object(self.database, "date", mocked_date):
+            dashboard = self.database.get_dashboard_stats()
 
         self.assertEqual(rent["ingresos"], 120.0)
         self.assertEqual(rent["total_gastos"], 30.0)

@@ -2,7 +2,7 @@
 Tests para integración de licencias modulares en Nexar Tienda.
 
 Verifica que los tiers se mapeen correctamente a módulos:
-- DEMO -> {core}
+- DEMO -> {core, reportes}
 - BASICA -> {core, clientes, proveedores, pos, stock, caja}
 - PRO -> {BASICA + compras, historial, reportes, export, multiusuario}
 - MENSUAL_FULL/FULL -> {PRO + temporadas, multinegocio}
@@ -46,7 +46,7 @@ REMOTE_MODULES = ['clientes', 'core']
 
 
 def _reset_license_env():
-    for key in ('NEXAR_LICENSE_MODE', 'NEXAR_PLAN', 'NEXAR_MODULES'):
+    for key in ('NEXAR_LICENSE_MODE', 'NEXAR_PLAN', 'NEXAR_MODULES', 'NEXAR_EXTRA_MODULES'):
         os.environ.pop(key, None)
 
 
@@ -99,7 +99,7 @@ def test_normalize_tier():
 def test_get_modulos_from_tier():
     """Verifica que se obtienen los módulos correctos para cada tier."""
     test_cases = {
-        'DEMO': {'core'},
+        'DEMO': {'core', 'reportes'},
         'BASICA': {'core', 'clientes', 'proveedores', 'pos', 'stock', 'caja'},
         'PRO': PRO_MODULES,
         'MENSUAL_FULL': FULL_MODULES,

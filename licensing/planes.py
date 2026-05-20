@@ -82,13 +82,26 @@ def get_modulos_plan(plan: str | None = None) -> set[str]:
     return set(PLANES.get(plan_key, PLANES["DEMO"]))
 
 
+def _parse_modules_env(raw_modules: str | None) -> set[str]:
+    return {
+        module.strip().lower()
+        for module in str(raw_modules or "").split(",")
+        if module.strip()
+    }
+
+
 def get_modulos_extra() -> set[str]:
-    raw_modules = os.getenv("NEXAR_MODULES", "")
-    return {module.strip().lower() for module in raw_modules.split(",") if module.strip()}
+    legacy_modules = _parse_modules_env(os.getenv("NEXAR_MODULES", ""))
+    extra_modules = _parse_modules_env(os.getenv("NEXAR_EXTRA_MODULES", ""))
+    return legacy_modules | extra_modules
 
 
 def get_modulos_activos() -> set[str]:
     return get_modulos_plan() | get_modulos_extra()
+
+
+def modulo_activo(nombre_modulo: str) -> bool:
+    return str(nombre_modulo or "").strip().lower() in get_modulos_activos()
 
 
 def get_commercial_plan_options() -> list[dict[str, str]]:

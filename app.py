@@ -258,6 +258,10 @@ def create_app() -> Flask:
 
     app.register_blueprint(main_bp)
     app.register_blueprint(licencia_bp)
+    if modulo_activo("arca_facturacion"):
+        from modules.arca import arca_bp
+
+        app.register_blueprint(arca_bp)
 
     def _legacy_url_build_error(error, endpoint, values):
         return f"/en-construccion/{endpoint}"

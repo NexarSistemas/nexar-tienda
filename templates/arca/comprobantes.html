@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Comprobantes ARCA - {{ app_display_name }}{% endblock %}
+{% block page_title %}Comprobantes ARCA{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm border-0">
+    <div class="card-body p-4">
+        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+            <div>
+                <h2 class="h4 mb-1">Listado de comprobantes</h2>
+                <p class="text-muted mb-0">Pantalla placeholder para futuros comprobantes electrónicos.</p>
+            </div>
+            <a href="{{ url_for('arca.estado') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Volver
+            </a>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Punto de venta</th>
+                        <th>Número</th>
+                        <th>Estado</th>
+                        <th>CAE</th>
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if comprobantes %}
+                        {% for comprobante in comprobantes %}
+                        <tr>
+                            <td>{{ comprobante.created_at | date }}</td>
+                            <td>{{ comprobante.tipo_comprobante or "-" }}</td>
+                            <td>{{ comprobante.punto_venta or "-" }}</td>
+                            <td>{{ comprobante.numero or "-" }}</td>
+                            <td><span class="badge text-bg-secondary">{{ comprobante.estado or "pendiente" }}</span></td>
+                            <td>{{ comprobante.cae or "-" }}</td>
+                            <td class="text-end">{{ comprobante.total | fmt_ars }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                Todavía no hay comprobantes ARCA registrados en esta instalación.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

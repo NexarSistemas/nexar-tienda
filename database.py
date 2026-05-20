@@ -242,6 +242,63 @@ def qm(statements):
 _db_initialized = False
 
 
+def _init_arca_tables(c) -> None:
+    c.executescript("""
+        CREATE TABLE IF NOT EXISTS arca_configuracion (
+            id INTEGER PRIMARY KEY,
+            cuit TEXT,
+            razon_social TEXT,
+            condicion_fiscal TEXT,
+            punto_venta INTEGER,
+            ambiente TEXT DEFAULT 'homologacion',
+            activo INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS arca_certificados (
+            id INTEGER PRIMARY KEY,
+            nombre TEXT,
+            ambiente TEXT,
+            certificado_path TEXT,
+            key_path TEXT,
+            activo INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS arca_comprobantes (
+            id INTEGER PRIMARY KEY,
+            venta_id INTEGER NULL,
+            tipo_comprobante TEXT,
+            punto_venta INTEGER,
+            numero INTEGER,
+            cae TEXT,
+            cae_vencimiento TEXT,
+            estado TEXT DEFAULT 'pendiente',
+            ambiente TEXT DEFAULT 'homologacion',
+            total REAL,
+            payload_json TEXT,
+            respuesta_json TEXT,
+            error_mensaje TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS arca_eventos (
+            id INTEGER PRIMARY KEY,
+            comprobante_id INTEGER NULL,
+            nivel TEXT,
+            mensaje TEXT,
+            detalle_json TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_arca_comprobantes_venta_id ON arca_comprobantes(venta_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_arca_comprobantes_estado ON arca_comprobantes(estado)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_arca_eventos_comprobante_id ON arca_eventos(comprobante_id)")
+
+
 def registrar_auditoria(accion, entidad, entidad_id=0, detalle='', motivo='', usuario='', rol=''):
     """Registra una accion critica en la bitacora de auditoria."""
     marca_tiempo = datetime.now().replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
@@ -300,6 +357,7 @@ def init_db():
 
     conn = get_conn()
     c = conn.cursor()
+    _init_arca_tables(c)
 
     # Crear todas las tablas
     c.executescript("""

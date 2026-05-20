@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Configuración ARCA - {{ app_display_name }}{% endblock %}
+{% block page_title %}Configuración ARCA{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-xl-9">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+                    <div>
+                        <h2 class="h4 mb-1">Configuración fiscal básica</h2>
+                        <p class="text-muted mb-0">Guardá la base operativa del módulo sin emitir comprobantes reales.</p>
+                    </div>
+                    <a href="{{ url_for('arca.estado') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Volver
+                    </a>
+                </div>
+
+                <form method="POST" class="row g-3">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="col-md-6">
+                        <label for="cuit" class="form-label">CUIT</label>
+                        <input type="text" class="form-control" id="cuit" name="cuit" value="{{ config.cuit or '' }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="razon_social" class="form-label">Razón social</label>
+                        <input type="text" class="form-control" id="razon_social" name="razon_social" value="{{ config.razon_social or '' }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="condicion_fiscal" class="form-label">Condición fiscal</label>
+                        <input type="text" class="form-control" id="condicion_fiscal" name="condicion_fiscal" value="{{ config.condicion_fiscal or '' }}">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="punto_venta" class="form-label">Punto de venta</label>
+                        <input type="number" min="1" class="form-control" id="punto_venta" name="punto_venta" value="{{ config.punto_venta or '' }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="ambiente" class="form-label">Ambiente</label>
+                        <select class="form-select" id="ambiente" name="ambiente">
+                            <option value="homologacion" {% if (config.ambiente or 'homologacion') == 'homologacion' %}selected{% endif %}>Homologación</option>
+                            <option value="produccion" {% if config.ambiente == 'produccion' %}selected{% endif %}>Producción</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="activo" class="form-label">Activo</label>
+                        <select class="form-select" id="activo" name="activo">
+                            <option value="0" {% if (config.activo|string) != '1' %}selected{% endif %}>No</option>
+                            <option value="1" {% if (config.activo|string) == '1' %}selected{% endif %}>Sí</option>
+                        </select>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="alert alert-warning mb-0" role="alert">
+                            Esta configuración todavía no emite comprobantes reales ni conecta con ARCA.
+                        </div>
+                    </div>
+
+                    <div class="col-12 d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Guardar configuración
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
