@@ -86,3 +86,6 @@ scripts/*
 exports/*
 static/uploads/productos/*
 !static/uploads/productos/.gitkeep
+
+
+release-1.35.1

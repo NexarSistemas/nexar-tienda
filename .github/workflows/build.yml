@@ -408,7 +408,7 @@ jobs:
         id: release_check
         run: |
           TAG="v${{ needs.check.outputs.version }}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh api "repos/${{ github.repository }}/releases/tags/$TAG" >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "⚠️ Release $TAG ya existe — solo se actualizarán los assets"
           else
@@ -434,11 +434,20 @@ jobs:
         run: |
           TAG="v${{ needs.check.outputs.version }}"
           gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
             --title "Nexar Tienda v${{ needs.check.outputs.version }}" \
             --notes-file release.md \
             --latest \
             --target $GITHUB_SHA
           echo "✅ Release creado: $TAG"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verificar release antes de subir assets
+        run: |
+          TAG="v${{ needs.check.outputs.version }}"
+          gh api "repos/${{ github.repository }}/releases/tags/$TAG" >/dev/null
+          echo "✅ Release confirmado: $TAG"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -450,8 +459,8 @@ jobs:
             name=$(basename "$file")
             echo "⬆️  Subiendo $name..."
             # Eliminar asset previo si existe (para permitir re-runs sin conflicto)
-            gh release delete-asset "$TAG" "$name" -y 2>/dev/null || true
-            gh release upload "$TAG" "$file"
+            gh release delete-asset "$TAG" "$name" -y --repo "${{ github.repository }}" 2>/dev/null || true
+            gh release upload "$TAG" "$file" --repo "${{ github.repository }}"
             echo "   ✅ $name subido"
           done
         env:
