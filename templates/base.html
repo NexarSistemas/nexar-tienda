@@ -108,7 +108,7 @@
             {% endif %}
             {% if session['user']['rol'] in ['Administrador', 'admin'] and modulo_activo("arca_facturacion") %}
             <a class="nav-link {% if request.endpoint in ['arca.estado', 'arca.config', 'arca.comprobantes'] %}active{% endif %}" href="{{ url_for('arca.estado') }}">
-                <i class="fas fa-file-invoice"></i> FacturaciÃ³n ARCA
+                <i class="fas fa-file-invoice"></i> Facturación ARCA
             </a>
             {% endif %}
             <a class="nav-link {% if request.endpoint == 'mi_plan' %}active{% endif %}" href="{{ url_for('mi_plan') }}">
@@ -165,12 +165,12 @@
         <header class="navbar navbar-expand-lg navbar-light navbar-top">
             <div class="container-fluid px-4">
                 <h4 class="mb-0 text-navy">{% block page_title %}Dashboard{% endblock %}</h4>
-                
+
                 <div class="ms-auto d-flex align-items-center gap-3">
                     <div class="topbar-actions">
                         {% block topbar_actions %}{% endblock %}
                     </div>
-                    
+
                     <div class="text-muted small border-start ps-3 d-none d-md-block text-end">
                         <div class="fw-bold">
                             <i class="fas fa-store me-1"></i>{{ get_config_valor('nombre_negocio', app_display_name) }}
