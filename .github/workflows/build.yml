@@ -407,8 +407,11 @@ jobs:
       - name: Verificar si el release ya existe
         id: release_check
         run: |
+          set -euo pipefail
           TAG="v${{ needs.check.outputs.version }}"
-          if gh api "repos/${{ github.repository }}/releases/tags/$TAG" >/dev/null 2>&1; then
+          if gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/releases/tags/$TAG" >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "⚠️ Release $TAG ya existe — solo se actualizarán los assets"
           else
@@ -445,14 +448,18 @@ jobs:
 
       - name: Verificar release antes de subir assets
         run: |
+          set -euo pipefail
           TAG="v${{ needs.check.outputs.version }}"
-          gh api "repos/${{ github.repository }}/releases/tags/$TAG" >/dev/null
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/releases/tags/$TAG" >/dev/null
           echo "✅ Release confirmado: $TAG"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Subir assets al release
         run: |
+          set -euo pipefail
           TAG="v${{ needs.check.outputs.version }}"
 
           for file in final/*; do
