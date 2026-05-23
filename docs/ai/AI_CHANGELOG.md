@@ -2,6 +2,24 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-23 - Codex - fix/release-gh-token
+
+### Tarea
+Corregir el job `release` del workflow `Build & Release Nexar Tienda` para que `gh` autentique correctamente y no oculte errores reales al consultar releases.
+
+### Archivos modificados
+- `.github/workflows/build.yml`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregó `permissions: contents: write` y `env: GH_TOKEN: ${{ github.token }}` a nivel job en `release`.
+- Se eliminaron los `env` repetidos con `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` de los steps que usan `gh`.
+- Se mantuvo `--repo "${{ github.repository }}"` en los comandos `gh` que ya lo utilizaban.
+- La verificación de existencia del release ahora distingue `404` como “no existe” y falla con mensaje claro ante `401`, `403` u otros errores de la API/CLI.
+
+### Qué se probó
+- Revisión estática del YAML del workflow y del flujo de autenticación del job `release`.
+
 ## 2026-05-23 - Codex - feature/arca-config-fase2
 
 ### Tarea
