@@ -7,11 +7,11 @@
 <div class="row justify-content-center">
     <div class="col-12 col-xl-10">
         <div class="card shadow-sm border-0">
-            <div class="card-body p-4">
-                <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+            <div class="card-body p-4 p-lg-5">
+                <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-start gap-3 mb-4">
                     <div>
-                        <h2 class="h4 mb-1">Configuración fiscal</h2>
-                        <p class="text-muted mb-0">Prepará los datos fiscales locales sin emitir comprobantes reales.</p>
+                        <h2 class="h4 mb-1">Configuración fiscal persistente</h2>
+                        <p class="text-muted mb-0">Esta fase guarda datos fiscales locales para ARCA sin emitir comprobantes ni conectarse a WSAA o WSFE.</p>
                     </div>
                     <div class="d-flex gap-2">
                         <a href="{{ url_for('arca.estado') }}" class="btn btn-outline-secondary">
@@ -23,96 +23,120 @@
                     </div>
                 </div>
 
-                <form method="POST" class="row g-3">
+                <form method="POST" class="row g-4">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                    <div class="col-md-6">
-                        <label for="cuit" class="form-label">CUIT</label>
-                        <input type="text" class="form-control" id="cuit" name="cuit" value="{{ config.cuit or '' }}" required>
-                        <div class="form-text">Se guarda normalizado solo con números.</div>
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="razon_social" class="form-label">Razón social</label>
-                        <input type="text" class="form-control" id="razon_social" name="razon_social" value="{{ config.razon_social or '' }}" required>
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="nombre_fantasia" class="form-label">Nombre de fantasía</label>
-                        <input type="text" class="form-control" id="nombre_fantasia" name="nombre_fantasia" value="{{ config.nombre_fantasia or '' }}" required>
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="condicion_fiscal" class="form-label">Condición fiscal</label>
-                        <select class="form-select" id="condicion_fiscal" name="condicion_fiscal" required>
-                            <option value="">Seleccionar...</option>
-                            {% for condicion in condiciones_fiscales %}
-                            <option value="{{ condicion }}" {% if config.condicion_fiscal == condicion %}selected{% endif %}>
-                                {{ condicion.replace('_', ' ')|title }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="punto_venta" class="form-label">Punto de venta</label>
-                        <input type="number" min="1" max="99999" class="form-control" id="punto_venta" name="punto_venta" value="{{ config.punto_venta or '' }}" required>
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="ambiente" class="form-label">Ambiente</label>
-                        <select class="form-select" id="ambiente" name="ambiente">
-                            <option value="homologacion" {% if (config.ambiente or 'homologacion') == 'homologacion' %}selected{% endif %}>Homologación</option>
-                            <option value="produccion" {% if config.ambiente == 'produccion' %}selected{% endif %}>Producción</option>
-                        </select>
-                    </div>
-
-                    <div class="col-12">
-                        <div id="produccion-warning" class="alert alert-warning {% if (config.ambiente or 'homologacion') != 'produccion' %}d-none{% endif %}" role="alert">
-                            Producción solo debe usarse cuando los certificados reales estén correctamente configurados.
-                        </div>
-                    </div>
-
-                    <div class="col-12">
-                        <label for="domicilio_fiscal" class="form-label">Domicilio fiscal</label>
-                        <input type="text" class="form-control" id="domicilio_fiscal" name="domicilio_fiscal" value="{{ config.domicilio_fiscal or '' }}" required>
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="inicio_actividades" class="form-label">Inicio de actividades</label>
-                        <input type="date" class="form-control" id="inicio_actividades" name="inicio_actividades" value="{{ config.inicio_actividades or '' }}" required>
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="ingresos_brutos" class="form-label">Ingresos brutos</label>
-                        <input type="text" class="form-control" id="ingresos_brutos" name="ingresos_brutos" value="{{ config.ingresos_brutos or '' }}" required>
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="email_fiscal" class="form-label">Email fiscal</label>
-                        <input type="email" class="form-control" id="email_fiscal" name="email_fiscal" value="{{ config.email_fiscal or '' }}" required>
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="telefono_fiscal" class="form-label">Teléfono fiscal</label>
-                        <input type="text" class="form-control" id="telefono_fiscal" name="telefono_fiscal" value="{{ config.telefono_fiscal or '' }}" required>
-                    </div>
-
-                    <div class="col-12">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="activo" name="activo" value="1" {% if (config.activo|string) == '1' %}checked{% endif %}>
-                            <label class="form-check-label" for="activo">Activo</label>
-                        </div>
-                    </div>
 
                     <div class="col-12">
                         <div class="alert alert-warning mb-0" role="alert">
-                            Esta fase todavía no conecta con ARCA real ni emite comprobantes fiscales.
+                            Fase 2 deja lista la configuración fiscal persistente. La emisión real de factura queda para una fase posterior.
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="border rounded-3 p-3 p-lg-4 bg-light-subtle">
+                            <h3 class="h6 text-uppercase text-muted mb-3">Datos fiscales</h3>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label for="cuit" class="form-label">CUIT</label>
+                                    <input type="text" class="form-control" id="cuit" name="cuit" value="{{ config.cuit or '' }}" inputmode="numeric" required>
+                                    <div class="form-text">Obligatorio. Se guarda normalizado solo con números.</div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label for="razon_social" class="form-label">Razón social</label>
+                                    <input type="text" class="form-control" id="razon_social" name="razon_social" value="{{ config.razon_social or '' }}" required>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label for="condicion_fiscal" class="form-label">Condición fiscal</label>
+                                    <select class="form-select" id="condicion_fiscal" name="condicion_fiscal" required>
+                                        <option value="">Seleccionar...</option>
+                                        {% for condicion in condiciones_fiscales %}
+                                        <option value="{{ condicion }}" {% if config.condicion_fiscal == condicion %}selected{% endif %}>
+                                            {{ condicion.replace('_', ' ')|title }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <div class="col-md-3">
+                                    <label for="punto_venta" class="form-label">Punto de venta</label>
+                                    <input type="number" min="1" step="1" class="form-control" id="punto_venta" name="punto_venta" value="{{ config.punto_venta or '' }}" required>
+                                </div>
+
+                                <div class="col-md-3">
+                                    <label for="ambiente" class="form-label">Ambiente</label>
+                                    <select class="form-select" id="ambiente" name="ambiente" required>
+                                        <option value="homologacion" {% if (config.ambiente or 'homologacion') == 'homologacion' %}selected{% endif %}>Homologación</option>
+                                        <option value="produccion" {% if config.ambiente == 'produccion' %}selected{% endif %}>Producción</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="border rounded-3 p-3 p-lg-4">
+                            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 mb-3">
+                                <div>
+                                    <h3 class="h6 text-uppercase text-muted mb-1">Archivos de certificados</h3>
+                                    <p class="text-muted small mb-0">Las rutas son opcionales, pero si se cargan deben existir.</p>
+                                </div>
+                                <div id="produccion-warning" class="alert alert-warning py-2 px-3 mb-0 {% if (config.ambiente or 'homologacion') != 'produccion' %}d-none{% endif %}">
+                                    Producción requiere revisar muy bien certificados y datos fiscales antes de Fase 3.
+                                </div>
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label for="certificado_path" class="form-label">Ruta de certificado</label>
+                                    <input type="text" class="form-control" id="certificado_path" name="certificado_path" value="{{ config.certificado_path or '' }}" placeholder="data/arca/certificados/certificado.crt">
+                                    <div class="form-text">
+                                        {% if config.certificado_path %}
+                                            {% if config.certificado_path_exists %}
+                                                Archivo encontrado.
+                                            {% else %}
+                                                Archivo pendiente de revisión.
+                                            {% endif %}
+                                        {% else %}
+                                            Podés usar ruta absoluta o relativa al repo.
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label for="key_path" class="form-label">Ruta de key privada</label>
+                                    <input type="text" class="form-control" id="key_path" name="key_path" value="{{ config.key_path or '' }}" placeholder="data/arca/keys/privada.key">
+                                    <div class="form-text">
+                                        {% if config.key_path %}
+                                            {% if config.key_path_exists %}
+                                                Archivo encontrado.
+                                            {% else %}
+                                                Archivo pendiente de revisión.
+                                            {% endif %}
+                                        {% else %}
+                                            La validación solo exige existencia cuando cargás una ruta.
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="certificado_vencimiento" class="form-label">Vencimiento del certificado</label>
+                                    <input type="date" class="form-control" id="certificado_vencimiento" name="certificado_vencimiento" value="{{ config.certificado_vencimiento or '' }}">
+                                </div>
+
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="activo" name="activo" value="1" {% if (config.activo|string) == '1' %}checked{% endif %}>
+                                        <label class="form-check-label" for="activo">Configuración activa</label>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="col-12 d-flex justify-content-end">
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary px-4">
                             <i class="fas fa-save me-2"></i>Guardar configuración
                         </button>
                     </div>
@@ -130,12 +154,12 @@
             return;
         }
 
-        function toggleWarning() {
+        function syncProduccionWarning() {
             warning.classList.toggle("d-none", ambiente.value !== "produccion");
         }
 
-        ambiente.addEventListener("change", toggleWarning);
-        toggleWarning();
+        ambiente.addEventListener("change", syncProduccionWarning);
+        syncProduccionWarning();
     })();
 </script>
 {% endblock %}

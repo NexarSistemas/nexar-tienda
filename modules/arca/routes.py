@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from licensing.permisos import modulo_activo
 from modules.arca.services.arca_client import probar_conexion
@@ -10,11 +10,11 @@ from modules.arca.services.certificados_service import (
     registrar_certificado,
 )
 from modules.arca.services.comprobantes_service import listar_comprobantes
-from modules.arca.services.config_service import (
+from services.arca_config_service import (
     CONDICIONES_FISCALES_VALIDAS,
-    obtener_configuracion,
+    get_config,
     obtener_estado_modulo,
-    guardar_configuracion,
+    save_config,
 )
 from routes.main import admin_required
 
@@ -28,21 +28,16 @@ def _redirect_inactivo():
 
 
 def _config_form_data() -> dict[str, object]:
-    usuario = session.get("user", {}) if "user" in session else {}
     return {
         "cuit": request.form.get("cuit", ""),
         "razon_social": request.form.get("razon_social", ""),
-        "nombre_fantasia": request.form.get("nombre_fantasia", ""),
         "condicion_fiscal": request.form.get("condicion_fiscal", ""),
         "punto_venta": request.form.get("punto_venta", ""),
         "ambiente": request.form.get("ambiente", "homologacion"),
-        "domicilio_fiscal": request.form.get("domicilio_fiscal", ""),
-        "inicio_actividades": request.form.get("inicio_actividades", ""),
-        "ingresos_brutos": request.form.get("ingresos_brutos", ""),
-        "email_fiscal": request.form.get("email_fiscal", ""),
-        "telefono_fiscal": request.form.get("telefono_fiscal", ""),
+        "certificado_path": request.form.get("certificado_path", ""),
+        "key_path": request.form.get("key_path", ""),
+        "certificado_vencimiento": request.form.get("certificado_vencimiento", ""),
         "activo": request.form.get("activo", ""),
-        "updated_by": usuario.get("username", ""),
     }
 
 
@@ -87,12 +82,12 @@ def config():
     if request.method == "POST":
         form_data = _config_form_data()
         try:
-            config_actualizada = guardar_configuracion(form_data)
+            config_actualizada = save_config(form_data)
         except ValueError as exc:
             flash(str(exc), "warning")
             return render_template(
                 "arca/config.html",
-                config={**obtener_configuracion(), **form_data},
+                config={**get_config(), **form_data},
                 condiciones_fiscales=CONDICIONES_FISCALES_VALIDAS,
             )
         flash("Configuración ARCA guardada correctamente.", "success")
@@ -104,7 +99,7 @@ def config():
 
     return render_template(
         "arca/config.html",
-        config=obtener_configuracion(),
+        config=get_config(),
         condiciones_fiscales=CONDICIONES_FISCALES_VALIDAS,
     )
 
