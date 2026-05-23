@@ -31,14 +31,15 @@ class ArcaFase1Tests(unittest.TestCase):
 
         import database
         from licensing import permisos
-        from modules.arca.services import arca_client, certificados_service, config_service
+        from modules.arca.services import arca_client, certificados_service
+        from services import arca_config_service
 
         self.database = importlib.reload(database)
         self.database.DB_PATH = str(Path(self.temp_dir.name) / "test_tienda.db")
         self.database._db_initialized = False
         self.database.init_db()
 
-        self.config_service = importlib.reload(config_service)
+        self.config_service = importlib.reload(arca_config_service)
         self.config_service.db = self.database
         self.certificados_service = importlib.reload(certificados_service)
         self.certificados_service.db = self.database
@@ -81,13 +82,17 @@ class ArcaFase1Tests(unittest.TestCase):
 
         self.assertTrue(
             {
-                "nombre_fantasia",
-                "domicilio_fiscal",
-                "ingresos_brutos",
-                "telefono_fiscal",
-                "updated_by",
-                "email_fiscal",
-                "inicio_actividades",
+                "cuit",
+                "razon_social",
+                "condicion_fiscal",
+                "punto_venta",
+                "ambiente",
+                "certificado_path",
+                "key_path",
+                "certificado_vencimiento",
+                "activo",
+                "created_at",
+                "updated_at",
             }.issubset(config_columns)
         )
         self.assertTrue({"cuit", "observaciones", "vencimiento", "estado"}.issubset(cert_columns))
@@ -114,68 +119,76 @@ class ArcaFase1Tests(unittest.TestCase):
         self.assertEqual(certificado["certificado_path"], str(self.repo_cert_path.resolve()))
         self.assertEqual(certificado["key_path"], str(self.repo_key_path.resolve()))
 
-    def test_configuracion_valida_normaliza_cuit_y_guarda(self):
-        config = self.config_service.guardar_configuracion(
+    def test_configuracion_valida_guarda_todo_lo_requerido(self):
+        config = self.config_service.save_config(
             {
                 "cuit": "20-12345678-6",
                 "razon_social": "Nexar Demo SA",
-                "nombre_fantasia": "Nexar Demo",
                 "condicion_fiscal": "responsable_inscripto",
                 "punto_venta": "5",
                 "ambiente": "homologacion",
-                "domicilio_fiscal": "Calle Falsa 123",
+                "certificado_path": str(self.cert_path_a),
+                "key_path": str(self.key_path_a),
+                "certificado_vencimiento": "2031-04-12",
                 "activo": "1",
-                "inicio_actividades": "2024-01-10",
-                "ingresos_brutos": "901-123456-7",
-                "email_fiscal": "Fiscal@Nexar.test",
-                "telefono_fiscal": "+54 264 5551234",
-                "updated_by": "admin_test",
             }
         )
 
         self.assertEqual(config["cuit"], "20123456786")
         self.assertEqual(config["punto_venta"], 5)
-        self.assertEqual(config["email_fiscal"], "fiscal@nexar.test")
-        self.assertEqual(config["nombre_fantasia"], "Nexar Demo")
-        self.assertEqual(config["updated_by"], "admin_test")
+        self.assertEqual(config["certificado_path"], str(self.cert_path_a.resolve()))
+        self.assertEqual(config["key_path"], str(self.key_path_a.resolve()))
+        self.assertEqual(config["certificado_vencimiento"], "2031-04-12")
+        self.assertEqual(config["activo"], 1)
         self.assertTrue(self.config_service.arca_esta_configurado())
+
+    def test_configuracion_invalida_por_cuit(self):
+        with self.assertRaisesRegex(ValueError, "CUIT inválido"):
+            self.config_service.save_config(
+                {
+                    "cuit": "20123456780",
+                    "razon_social": "Nexar Demo SA",
+                    "condicion_fiscal": "responsable_inscripto",
+                    "punto_venta": "5",
+                    "ambiente": "homologacion",
+                }
+            )
 
     def test_configuracion_invalida_por_ambiente(self):
         with self.assertRaisesRegex(ValueError, "ambiente debe ser homologacion o produccion"):
-            self.config_service.guardar_configuracion(
+            self.config_service.save_config(
                 {
                     "cuit": "20123456786",
                     "razon_social": "Nexar Demo SA",
-                    "nombre_fantasia": "Nexar Demo",
                     "condicion_fiscal": "responsable_inscripto",
                     "punto_venta": "5",
                     "ambiente": "sandbox",
-                    "domicilio_fiscal": "Calle Falsa 123",
-                    "activo": "1",
-                    "inicio_actividades": "2024-01-10",
-                    "ingresos_brutos": "901-123456-7",
-                    "email_fiscal": "fiscal@nexar.test",
-                    "telefono_fiscal": "+54 264 5551234",
                 }
             )
 
     def test_configuracion_invalida_por_punto_venta(self):
-        with self.assertRaisesRegex(ValueError, "punto de venta debe ser mayor a cero"):
-            self.config_service.guardar_configuracion(
+        with self.assertRaisesRegex(ValueError, "Punto de venta inválido"):
+            self.config_service.save_config(
                 {
                     "cuit": "20123456786",
                     "razon_social": "Nexar Demo SA",
-                    "nombre_fantasia": "Nexar Demo",
                     "condicion_fiscal": "responsable_inscripto",
-                    "punto_venta": "0",
+                    "punto_venta": "abc",
                     "ambiente": "homologacion",
-                    "domicilio_fiscal": "Calle Falsa 123",
-                    "activo": "1",
-                    "inicio_actividades": "2024-01-10",
-                    "ingresos_brutos": "901-123456-7",
-                    "email_fiscal": "fiscal@nexar.test",
-                    "telefono_fiscal": "+54 264 5551234",
                 }
+            )
+
+    def test_validar_rutas_certificados_reporta_errores_claros(self):
+        with self.assertRaisesRegex(ValueError, "Certificado no encontrado"):
+            self.config_service.validar_rutas_certificados(
+                str(Path(self.temp_dir.name) / "missing.crt"),
+                str(self.key_path_a),
+            )
+
+        with self.assertRaisesRegex(ValueError, "Key no encontrada"):
+            self.config_service.validar_rutas_certificados(
+                str(self.cert_path_a),
+                str(Path(self.temp_dir.name) / "missing.key"),
             )
 
     def test_modulo_arca_activo_e_inactivo_por_env(self):
@@ -187,17 +200,6 @@ class ArcaFase1Tests(unittest.TestCase):
         os.environ.pop("NEXAR_EXTRA_MODULES", None)
         permisos = importlib.reload(permisos)
         self.assertFalse(permisos.modulo_activo("arca_facturacion"))
-
-    def test_certificados_rechazan_rutas_invalidas(self):
-        with self.assertRaisesRegex(ValueError, "ruta de certificado no existe"):
-            self.certificados_service.registrar_certificado(
-                {
-                    "nombre": "Cert inválido",
-                    "ambiente": "homologacion",
-                    "certificado_path": str(Path(self.temp_dir.name) / "missing.crt"),
-                    "key_path": str(self.key_path_a),
-                }
-            )
 
     def test_activar_certificado_desactiva_otro_del_mismo_ambiente(self):
         cert_1 = self.certificados_service.registrar_certificado(
@@ -257,21 +259,17 @@ class ArcaFase1Tests(unittest.TestCase):
         self.assertIn("Intento placeholder de conexión ARCA", eventos[0]["mensaje"])
 
     def test_eventos_arca_registran_acciones_sin_secretos(self):
-        self.config_service.guardar_configuracion(
+        self.config_service.save_config(
             {
                 "cuit": "20123456786",
                 "razon_social": "Nexar Demo SA",
-                "nombre_fantasia": "Nexar Demo",
                 "condicion_fiscal": "responsable_inscripto",
                 "punto_venta": "8",
                 "ambiente": "homologacion",
-                "domicilio_fiscal": "Calle Falsa 123",
+                "certificado_path": str(self.cert_path_a),
+                "key_path": str(self.key_path_a),
+                "certificado_vencimiento": "2030-12-31",
                 "activo": "1",
-                "inicio_actividades": "2024-01-10",
-                "ingresos_brutos": "901-123456-7",
-                "email_fiscal": "fiscal@nexar.test",
-                "telefono_fiscal": "+54 264 5551234",
-                "updated_by": "admin_test",
             }
         )
         certificado = self.certificados_service.registrar_certificado(

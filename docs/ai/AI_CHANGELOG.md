@@ -2,6 +2,32 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-23 - Codex - feature/arca-config-fase2
+
+### Tarea
+Implementar Fase 2 del módulo ARCA con configuración fiscal completa y persistente, manteniendo el módulo opcional, desacoplado y sin emisión real.
+
+### Archivos modificados
+- `database.py`
+- `services/arca_config_service.py`
+- `modules/arca/services/config_service.py`
+- `modules/arca/routes.py`
+- `templates/arca/config.html`
+- `tests/test_arca_fase1.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- La tabla `arca_configuracion` ahora garantiza las columnas persistentes de Fase 2: `cuit`, `razon_social`, `condicion_fiscal`, `punto_venta`, `ambiente`, `certificado_path`, `key_path`, `certificado_vencimiento`, `activo`, `created_at` y `updated_at`, sin romper instalaciones existentes.
+- Se creó `services/arca_config_service.py` como servicio desacoplado para la configuración fiscal, con `get_config()`, `save_config()`, `validate_config()`, `validar_cuit()` y `validar_rutas_certificados()`.
+- Las rutas ARCA de configuración ahora delegan la validación y persistencia al servicio nuevo, dejando la lógica pesada fuera de `modules/arca/routes.py`.
+- La pantalla `templates/arca/config.html` se rehizo para mostrar todos los campos de Fase 2 y aclarar que todavía no existe conexión real ni emisión de comprobantes.
+- Se mantuvo un wrapper de compatibilidad en `modules/arca/services/config_service.py` para no romper imports previos del módulo.
+- Se ajustaron pruebas ARCA para cubrir migración, guardado persistente, validaciones de CUIT, punto de venta, ambiente y rutas de certificados.
+
+### Qué se probó
+- Tests unitarios del módulo ARCA enfocados en persistencia, validaciones y placeholders.
+- Validación sintáctica de los archivos tocados.
+
 ## 2026-05-19 - Codex - fix/licencias-flujo-comercial loop licencia y checkout demo
 
 ### Tarea
