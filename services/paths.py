@@ -43,8 +43,11 @@ def bundle_dir() -> Path:
 
 
 def _user_data_base_dir() -> Path:
+    local_app_data = os.getenv("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        return Path(local_app_data)
     if os.name == "nt":
-        return Path(os.getenv("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+        return Path(Path.home() / "AppData" / "Local")
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support"
     return Path(os.getenv("XDG_DATA_HOME") or Path.home() / ".local" / "share")

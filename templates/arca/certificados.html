@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Certificados ARCA - {{ app_display_name }}{% endblock %}
+{% block page_title %}Certificados ARCA{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-12 col-xl-5">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+                    <div>
+                        <h2 class="h4 mb-1">Registrar certificado</h2>
+                        <p class="text-muted mb-0">Se guardan metadatos y rutas locales. No se lee ni se almacena el contenido sensible.</p>
+                    </div>
+                    <a href="{{ url_for('arca.estado') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Volver
+                    </a>
+                </div>
+
+                <form method="POST" class="row g-3">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="col-12">
+                        <label for="nombre" class="form-label">Nombre</label>
+                        <input type="text" class="form-control" id="nombre" name="nombre" value="{{ form_data.nombre or '' }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="ambiente" class="form-label">Ambiente</label>
+                        <select class="form-select" id="ambiente" name="ambiente">
+                            <option value="homologacion" {% if (form_data.ambiente or 'homologacion') == 'homologacion' %}selected{% endif %}>Homologación</option>
+                            <option value="produccion" {% if form_data.ambiente == 'produccion' %}selected{% endif %}>Producción</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="cuit" class="form-label">CUIT</label>
+                        <input type="text" class="form-control" id="cuit" name="cuit" value="{{ form_data.cuit or '' }}">
+                    </div>
+
+                    <div class="col-12">
+                        <label for="certificado_path" class="form-label">Ruta del certificado</label>
+                        <input type="text" class="form-control" id="certificado_path" name="certificado_path" value="{{ form_data.certificado_path or '' }}" required>
+                        <div class="form-text">Acepta rutas relativas al repo, por ejemplo `data/arca/certificados/cert-demo.crt`.</div>
+                    </div>
+
+                    <div class="col-12">
+                        <label for="key_path" class="form-label">Ruta de la clave privada</label>
+                        <input type="text" class="form-control" id="key_path" name="key_path" value="{{ form_data.key_path or '' }}" required>
+                        <div class="form-text">También acepta rutas absolutas Linux o relativas al repo.</div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="vencimiento" class="form-label">Vencimiento</label>
+                        <input type="date" class="form-control" id="vencimiento" name="vencimiento" value="{{ form_data.vencimiento or '' }}">
+                    </div>
+
+                    <div class="col-12">
+                        <label for="observaciones" class="form-label">Observaciones</label>
+                        <textarea class="form-control" id="observaciones" name="observaciones" rows="3">{{ form_data.observaciones or '' }}</textarea>
+                    </div>
+
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Registrar certificado
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-7">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+                    <div>
+                        <h2 class="h4 mb-1">Certificados registrados</h2>
+                        <p class="text-muted mb-0">Solo puede haber un certificado activo por ambiente.</p>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Ambiente</th>
+                                <th>CUIT</th>
+                                <th>Vencimiento</th>
+                                <th>Estado</th>
+                                <th>Activo</th>
+                                <th>Observaciones</th>
+                                <th>Certificado</th>
+                                <th>Key</th>
+                                <th class="text-end">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if certificados %}
+                                {% for certificado in certificados %}
+                                <tr>
+                                    <td class="fw-semibold">{{ certificado.nombre }}</td>
+                                    <td>{{ certificado.ambiente|capitalize }}</td>
+                                    <td>{{ certificado.cuit or "-" }}</td>
+                                    <td>{{ certificado.vencimiento or "-" }}</td>
+                                    <td>
+                                        <span class="badge {% if certificado.estado == 'activo' %}text-bg-success{% elif certificado.estado == 'vencido' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
+                                            {{ certificado.estado|capitalize }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if certificado.activo %}
+                                        <span class="badge text-bg-success">Sí</span>
+                                        {% else %}
+                                        <span class="badge text-bg-secondary">No</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="small">{{ certificado.observaciones or "-" }}</td>
+                                    <td class="small">
+                                        <div>{{ certificado.certificado_path }}</div>
+                                        <div class="{% if certificado.certificado_existe %}text-success{% else %}text-danger{% endif %}">
+                                            {% if certificado.certificado_existe %}Ruta válida{% else %}Ruta inválida{% endif %}
+                                        </div>
+                                    </td>
+                                    <td class="small">
+                                        <div>{{ certificado.key_path }}</div>
+                                        <div class="{% if certificado.key_existe %}text-success{% else %}text-danger{% endif %}">
+                                            {% if certificado.key_existe %}Ruta válida{% else %}Ruta inválida{% endif %}
+                                        </div>
+                                    </td>
+                                    <td class="text-end">
+                                        <form method="POST" action="{{ url_for('arca.certificados_activar', certificado_id=certificado.id) }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-outline-primary btn-sm" {% if certificado.activo %}disabled{% endif %}>
+                                                Activar
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="10" class="text-center text-muted py-4">
+                                        Todavía no hay certificados ARCA registrados.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

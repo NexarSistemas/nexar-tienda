@@ -81,14 +81,14 @@ from services.update_checker import download_release_asset, get_cached_update_in
 main_bp = Blueprint("main", __name__)
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = get_app_data_dir()
-BACKUP_DIR = get_backups_dir()
-UPDATE_DIR = get_updates_dir()
-LOG_DIR = get_logs_dir()
+DATA_DIR = None
+BACKUP_DIR = None
+UPDATE_DIR = None
+LOG_DIR = None
 CHANGELOG_PATH = BASE_DIR / "CHANGELOG.md"
-WINDOWS_UPDATE_STATUS_PATH = UPDATE_DIR / "windows_update_status.json"
-WINDOWS_UPDATE_LAUNCHER_PATH = UPDATE_DIR / "windows_update_launcher.ps1"
-WINDOWS_UPDATE_LOG_PATH = LOG_DIR / "update-installer.log"
+WINDOWS_UPDATE_STATUS_PATH = None
+WINDOWS_UPDATE_LAUNCHER_PATH = None
+WINDOWS_UPDATE_LOG_PATH = None
 
 DESKTOP_STATE = {
     "user_logged_in": False,
@@ -104,6 +104,40 @@ _LICENSE_REFRESH_LAST_RESULT: dict[str, object] = {
     "message": "",
 }
 _LICENSE_REFRESH_LAST_RUN = 0.0
+
+
+def _data_dir() -> Path:
+    return DATA_DIR if isinstance(DATA_DIR, Path) else get_app_data_dir()
+
+
+def _backup_dir() -> Path:
+    return BACKUP_DIR if isinstance(BACKUP_DIR, Path) else get_backups_dir()
+
+
+def _update_dir() -> Path:
+    return UPDATE_DIR if isinstance(UPDATE_DIR, Path) else get_updates_dir()
+
+
+def _log_dir() -> Path:
+    return LOG_DIR if isinstance(LOG_DIR, Path) else get_logs_dir()
+
+
+def _windows_update_status_path() -> Path:
+    if isinstance(WINDOWS_UPDATE_STATUS_PATH, Path):
+        return WINDOWS_UPDATE_STATUS_PATH
+    return _update_dir() / "windows_update_status.json"
+
+
+def _windows_update_launcher_path() -> Path:
+    if isinstance(WINDOWS_UPDATE_LAUNCHER_PATH, Path):
+        return WINDOWS_UPDATE_LAUNCHER_PATH
+    return _update_dir() / "windows_update_launcher.ps1"
+
+
+def _windows_update_log_path() -> Path:
+    if isinstance(WINDOWS_UPDATE_LOG_PATH, Path):
+        return WINDOWS_UPDATE_LOG_PATH
+    return _log_dir() / "update-installer.log"
 
 PURCHASE_DRAFT_FIELDS = (
     "fecha",
@@ -1140,9 +1174,10 @@ def _validar_gasto_efectivo_contra_caja(data: dict) -> bool:
 
 
 def _backup_list() -> list[dict]:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    backup_dir = _backup_dir()
+    backup_dir.mkdir(parents=True, exist_ok=True)
     items = []
-    for path in sorted(BACKUP_DIR.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True):
+    for path in sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True):
         stat = path.stat()
         items.append({"nombre": path.name, "fecha": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M"), "tamanio_kb": round(stat.st_size / 1024, 1)})
     return items
@@ -1150,12 +1185,13 @@ def _backup_list() -> list[dict]:
 
 def _update_list() -> list[dict]:
     current_version = current_app.config.get("APP_VERSION", "0.0.0")
-    UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+    update_dir = _update_dir()
+    update_dir.mkdir(parents=True, exist_ok=True)
     items = []
     candidates = [
-        *UPDATE_DIR.glob("nexar-tienda_*_amd64.deb"),
-        *UPDATE_DIR.glob("NexarTienda_*_Setup.exe"),
-        *UPDATE_DIR.glob("NexarComercio_*_Setup.exe"),
+        *update_dir.glob("nexar-tienda_*_amd64.deb"),
+        *update_dir.glob("NexarTienda_*_Setup.exe"),
+        *update_dir.glob("NexarComercio_*_Setup.exe"),
     ]
     for path in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
         installer_version = _installer_version(path.name)
@@ -1183,8 +1219,9 @@ def _update_file(nombre: str) -> Path:
     ) and safe_name.endswith("_Setup.exe")
     if safe_name != nombre or not (valid_linux or valid_windows):
         abort(404)
-    path = (UPDATE_DIR / safe_name).resolve()
-    if path.parent != UPDATE_DIR.resolve() or not path.exists():
+    update_dir = _update_dir()
+    path = (update_dir / safe_name).resolve()
+    if path.parent != update_dir.resolve() or not path.exists():
         abort(404)
     return path
 
@@ -1222,7 +1259,8 @@ def _powershell_literal(value: str | Path) -> str:
 def _write_windows_update_status(status: str, *, target_version: str, installer_name: str, error: str = "") -> None:
     if not sys.platform.startswith("win"):
         return
-    UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+    update_dir = _update_dir()
+    update_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "status": status,
         "target_version": target_version,
@@ -1230,14 +1268,15 @@ def _write_windows_update_status(status: str, *, target_version: str, installer_
         "error": error,
         "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
-    WINDOWS_UPDATE_STATUS_PATH.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+    _windows_update_status_path().write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
 
 
 def _consume_windows_update_status() -> None:
-    if not sys.platform.startswith("win") or not WINDOWS_UPDATE_STATUS_PATH.exists():
+    status_path = _windows_update_status_path()
+    if not status_path.exists():
         return
     try:
-        payload = json.loads(WINDOWS_UPDATE_STATUS_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
     except Exception as exc:
         logger.warning("No se pudo leer el estado externo de actualizacion Windows: %s", exc)
         return
@@ -1259,7 +1298,7 @@ def _consume_windows_update_status() -> None:
         data["update_installer_name"] = installer_name
     db.set_config(data)
     try:
-        WINDOWS_UPDATE_STATUS_PATH.unlink(missing_ok=True)
+        status_path.unlink(missing_ok=True)
     except Exception as exc:
         logger.warning("No se pudo limpiar el estado externo de actualizacion Windows: %s", exc)
 
@@ -1271,8 +1310,8 @@ def _build_windows_update_launcher_script(*, installer: Path, target_version: st
     app_pid = os.getpid()
     script = f"""$ErrorActionPreference = 'Stop'
 $InstallerPath = '{_powershell_literal(installer)}'
-$StatusPath = '{_powershell_literal(WINDOWS_UPDATE_STATUS_PATH)}'
-$LogPath = '{_powershell_literal(WINDOWS_UPDATE_LOG_PATH)}'
+$StatusPath = '{_powershell_literal(_windows_update_status_path())}'
+$LogPath = '{_powershell_literal(_windows_update_log_path())}'
 $TargetVersion = '{_powershell_literal(target_version)}'
 $InstallerName = '{_powershell_literal(installer.name)}'
 $AppPid = {app_pid}
@@ -1366,10 +1405,13 @@ try {{
 
 
 def _launch_windows_update_helper(*, installer: Path, target_version: str) -> None:
-    UPDATE_DIR.mkdir(parents=True, exist_ok=True)
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    update_dir = _update_dir()
+    log_dir = _log_dir()
+    launcher_path = _windows_update_launcher_path()
+    update_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
     script_content = _build_windows_update_launcher_script(installer=installer, target_version=target_version)
-    WINDOWS_UPDATE_LAUNCHER_PATH.write_text(script_content, encoding="utf-8")
+    launcher_path.write_text(script_content, encoding="utf-8")
     creation_flags = 0
     for flag_name in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP"):
         creation_flags |= int(getattr(subprocess, flag_name, 0))
@@ -1378,7 +1420,7 @@ def _launch_windows_update_helper(*, installer: Path, target_version: str) -> No
         "Preparando helper externo de actualizacion Windows. installer=%s target=%s script=%s",
         installer,
         target_version,
-        WINDOWS_UPDATE_LAUNCHER_PATH,
+        launcher_path,
     )
     subprocess.Popen(
         [
@@ -1387,11 +1429,11 @@ def _launch_windows_update_helper(*, installer: Path, target_version: str) -> No
             "-ExecutionPolicy",
             "Bypass",
             "-File",
-            str(WINDOWS_UPDATE_LAUNCHER_PATH),
+            str(launcher_path),
         ],
         creationflags=creation_flags,
         close_fds=True,
-        cwd=str(UPDATE_DIR),
+        cwd=str(update_dir),
     )
 
 
@@ -1484,8 +1526,9 @@ def _backup_file(nombre: str) -> Path:
     safe_name = Path(nombre or "").name
     if safe_name != nombre or not safe_name.endswith(".db"):
         abort(404)
-    path = (BACKUP_DIR / safe_name).resolve()
-    if path.parent != BACKUP_DIR.resolve() or not path.exists():
+    backup_dir = _backup_dir()
+    path = (backup_dir / safe_name).resolve()
+    if path.parent != backup_dir.resolve() or not path.exists():
         abort(404)
     return path
 
@@ -1499,8 +1542,9 @@ def _is_sqlite_database(path: Path) -> bool:
 
 
 def _make_backup() -> Path:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    target = BACKUP_DIR / f"nexar_comercio_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db"
+    backup_dir = _backup_dir()
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    target = backup_dir / f"nexar_comercio_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db"
     shutil.copy2(db.DB_PATH, target)
     try:
         if os.name != "nt":
@@ -1509,7 +1553,7 @@ def _make_backup() -> Path:
         pass
     db.set_config({"backup_ultimo": datetime.now().strftime("%Y-%m-%d %H:%M")})
     keep = int(db.get_config().get("backup_keep", "10") or 10)
-    for extra in sorted(BACKUP_DIR.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True)[keep:]:
+    for extra in sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True)[keep:]:
         extra.unlink(missing_ok=True)
     return target
 
@@ -4334,7 +4378,7 @@ def actualizacion_descargar():
 
     backup_path = _make_backup()
     try:
-        target = download_release_asset(update_info["asset_url"], UPDATE_DIR)
+        target = download_release_asset(update_info["asset_url"], _update_dir())
     except Exception as exc:
         flash(f"No se pudo descargar la actualizacion: {exc}", "danger")
         return redirect(url_for("respaldo"))
@@ -4351,18 +4395,18 @@ def actualizacion_descargar():
 def actualizacion_abrir_carpeta():
     if sys.platform.startswith("linux"):
         try:
-            subprocess.Popen(["xdg-open", str(UPDATE_DIR)])
+            subprocess.Popen(["xdg-open", str(_update_dir())])
             flash("Carpeta de actualizaciones abierta.", "success")
         except Exception as exc:
             flash(f"No se pudo abrir la carpeta: {exc}", "warning")
     elif sys.platform.startswith("win"):
         try:
-            os.startfile(str(UPDATE_DIR))  # type: ignore[attr-defined]
+            os.startfile(str(_update_dir()))  # type: ignore[attr-defined]
             flash("Carpeta de actualizaciones abierta.", "success")
         except Exception as exc:
             flash(f"No se pudo abrir la carpeta: {exc}", "warning")
     else:
-        flash(f"Carpeta de actualizaciones: {UPDATE_DIR}", "info")
+        flash(f"Carpeta de actualizaciones: {_update_dir()}", "info")
     return redirect(url_for("respaldo"))
 
 
@@ -4395,7 +4439,7 @@ def actualizacion_instalar(nombre):
     is_windows_installer = installer.suffix.lower() == ".exe"
     command = str(installer) if is_windows_installer else f"sudo apt install /tmp/nexar-tienda-updates/{installer.name}"
 
-    if sys.platform.startswith("win") and is_windows_installer:
+    if is_windows_installer:
         try:
             _write_windows_update_status(
                 "in_progress",

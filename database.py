@@ -15,6 +15,7 @@ import hashlib
 import json
 import unicodedata
 from datetime import datetime, date, timedelta
+from pathlib import Path
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from licensing.planes import PLANES as TIER_MODULES_MAP, normalize_plan
@@ -242,16 +243,47 @@ def qm(statements):
 _db_initialized = False
 
 
+def _ensure_table_columns(c, table_name: str, columns: dict[str, str]) -> None:
+    existing_columns = {
+        row["name"] for row in c.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    for column_name, definition in columns.items():
+        if column_name not in existing_columns:
+            c.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def _ensure_arca_directories() -> None:
+    data_dir = Path(DB_PATH).resolve().parent
+    arca_dir = data_dir / "arca"
+    certificados_dir = arca_dir / "certificados"
+    keys_dir = arca_dir / "keys"
+    for directory in (arca_dir, certificados_dir, keys_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+        if os.name != "nt":
+            try:
+                os.chmod(directory, 0o700)
+            except Exception:
+                pass
+
+
 def _init_arca_tables(c) -> None:
     c.executescript("""
         CREATE TABLE IF NOT EXISTS arca_configuracion (
             id INTEGER PRIMARY KEY,
             cuit TEXT,
             razon_social TEXT,
+            nombre_fantasia TEXT DEFAULT '',
             condicion_fiscal TEXT,
             punto_venta INTEGER,
             ambiente TEXT DEFAULT 'homologacion',
             activo INTEGER DEFAULT 0,
+            email TEXT DEFAULT '',
+            email_fiscal TEXT DEFAULT '',
+            inicio_actividades TEXT DEFAULT '',
+            domicilio_fiscal TEXT DEFAULT '',
+            ingresos_brutos TEXT DEFAULT '',
+            telefono_fiscal TEXT DEFAULT '',
+            updated_by TEXT DEFAULT '',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -263,6 +295,10 @@ def _init_arca_tables(c) -> None:
             certificado_path TEXT,
             key_path TEXT,
             activo INTEGER DEFAULT 0,
+            cuit TEXT DEFAULT '',
+            vencimiento TEXT DEFAULT NULL,
+            estado TEXT DEFAULT 'pendiente',
+            observaciones TEXT DEFAULT '',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -294,6 +330,38 @@ def _init_arca_tables(c) -> None:
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
     """)
+    _ensure_table_columns(
+        c,
+        "arca_configuracion",
+        {
+            "nombre_fantasia": "TEXT DEFAULT ''",
+            "email": "TEXT DEFAULT ''",
+            "email_fiscal": "TEXT DEFAULT ''",
+            "inicio_actividades": "TEXT DEFAULT ''",
+            "domicilio_fiscal": "TEXT DEFAULT ''",
+            "ingresos_brutos": "TEXT DEFAULT ''",
+            "telefono_fiscal": "TEXT DEFAULT ''",
+            "updated_by": "TEXT DEFAULT ''",
+        },
+    )
+    _ensure_table_columns(
+        c,
+        "arca_certificados",
+        {
+            "cuit": "TEXT DEFAULT ''",
+            "vencimiento": "TEXT DEFAULT NULL",
+            "estado": "TEXT DEFAULT 'pendiente'",
+            "observaciones": "TEXT DEFAULT ''",
+        },
+    )
+    c.execute(
+        """
+        UPDATE arca_configuracion
+        SET email_fiscal = COALESCE(NULLIF(TRIM(email_fiscal), ''), TRIM(email))
+        WHERE COALESCE(TRIM(email), '') != ''
+          AND COALESCE(TRIM(email_fiscal), '') = ''
+        """
+    )
     c.execute("CREATE INDEX IF NOT EXISTS idx_arca_comprobantes_venta_id ON arca_comprobantes(venta_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_arca_comprobantes_estado ON arca_comprobantes(estado)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_arca_eventos_comprobante_id ON arca_eventos(comprobante_id)")
@@ -355,6 +423,7 @@ def init_db():
         return
     _db_initialized = True
 
+    _ensure_arca_directories()
     conn = get_conn()
     c = conn.cursor()
     _init_arca_tables(c)
