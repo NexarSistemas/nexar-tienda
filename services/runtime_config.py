@@ -17,6 +17,14 @@ from services.paths import (
 )
 
 
+def _should_load_dotenv() -> bool:
+    if os.getenv("NEXAR_SKIP_DOTENV", "").strip() == "1":
+        return False
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return False
+    return True
+
+
 def app_data_dir() -> Path:
     return get_app_data_dir()
 
@@ -58,7 +66,8 @@ def _ensure_secret_key(data_dir: Path) -> None:
 
 
 def load_runtime_env() -> None:
-    load_dotenv()
+    if _should_load_dotenv():
+        load_dotenv()
     data_dir = app_data_dir()
     cache_dir = get_cache_dir()
 

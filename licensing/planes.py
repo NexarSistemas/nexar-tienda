@@ -96,8 +96,15 @@ def get_modulos_extra() -> set[str]:
     return legacy_modules | extra_modules
 
 
+def _arca_extra_explicitamente_habilitado() -> bool:
+    return "arca_facturacion" in _parse_modules_env(os.getenv("NEXAR_EXTRA_MODULES", ""))
+
+
 def get_modulos_activos() -> set[str]:
-    return get_modulos_plan() | get_modulos_extra()
+    modules = get_modulos_plan() | get_modulos_extra()
+    if not _arca_extra_explicitamente_habilitado():
+        modules.discard("arca_facturacion")
+    return modules
 
 
 def modulo_activo(nombre_modulo: str) -> bool:

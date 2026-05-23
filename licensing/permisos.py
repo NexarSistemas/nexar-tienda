@@ -12,6 +12,7 @@ from licensing.planes import (
     PLANES as TIER_MODULES_MAP,
     get_modulos_activos as get_modulos_activos_env,
     get_modulos_extra,
+    _parse_modules_env,
     normalize_plan,
 )
 
@@ -24,6 +25,11 @@ _last_modules_source: str | None = None
 
 def _apply_extra_modules(base_modules: set[str], source: str) -> set[str]:
     extra_modules = get_modulos_extra()
+    if not extra_modules:
+        return set(base_modules)
+    if "arca_facturacion" not in _parse_modules_env(os.getenv("NEXAR_EXTRA_MODULES", "")):
+        extra_modules = set(extra_modules)
+        extra_modules.discard("arca_facturacion")
     if not extra_modules:
         return set(base_modules)
     _set_source(f"{source}+env")
