@@ -4,6 +4,10 @@ from services.arca.auth_service import (
     get_connection_status as obtener_estado_conexion,
     probar_conexion_wsaa,
 )
+from services.arca.wsfe_service import (
+    get_last_wsfe_test as obtener_ultimo_resultado_wsfe,
+    probar_wsfe,
+)
 
 
 def _placeholder_response(operacion: str, extra: dict[str, object] | None = None) -> dict[str, object]:
@@ -18,6 +22,14 @@ def _placeholder_response(operacion: str, extra: dict[str, object] | None = None
 
 def probar_conexion() -> dict[str, object]:
     return probar_conexion_wsaa()
+
+
+def probar_wsfe_conexion() -> dict[str, object]:
+    return probar_wsfe()
+
+
+def obtener_estado_wsfe() -> dict[str, object]:
+    return obtener_ultimo_resultado_wsfe()
 
 
 def obtener_ultimo_comprobante() -> dict[str, object]:
