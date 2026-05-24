@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import database as db
 
@@ -46,6 +46,11 @@ def _row_to_dict(row) -> dict[str, object] | None:
         numero = data.get("numero")
     data["numero_comprobante"] = numero
     data["numero"] = numero
+    importe_total = data.get("importe_total")
+    if importe_total in (None, ""):
+        importe_total = data.get("total")
+    data["importe_total"] = float(importe_total or 0)
+    data["total"] = data["importe_total"]
     data["modo"] = _clean_text(data.get("modo")) or "wsfe"
     data["payload"] = _safe_json_loads(data.get("payload_json"))
     data["respuesta"] = _safe_json_loads(data.get("respuesta_json"))
@@ -60,8 +65,8 @@ def listar_comprobantes() -> list[dict[str, object]]:
     rows = db.q(
         """
         SELECT id, venta_id, tipo_comprobante, punto_venta, numero, numero_comprobante, cae,
-               cae_vencimiento, estado, modo, ambiente, total, payload_json, respuesta_json, error_mensaje,
-               created_at, updated_at
+               cae_vencimiento, importe_total, estado, fecha_emision, respuesta_raw, pdf_path, modo, ambiente,
+               total, payload_json, respuesta_json, error_mensaje, created_at, updated_at
         FROM arca_comprobantes
         ORDER BY datetime(COALESCE(created_at, '1970-01-01 00:00:00')) DESC, id DESC
         """
@@ -75,8 +80,8 @@ def obtener_comprobante_por_venta(venta_id: int | None) -> dict[str, object] | N
     row = db.q(
         """
         SELECT id, venta_id, tipo_comprobante, punto_venta, numero, numero_comprobante, cae,
-               cae_vencimiento, estado, modo, ambiente, total, payload_json, respuesta_json, error_mensaje,
-               created_at, updated_at
+               cae_vencimiento, importe_total, estado, fecha_emision, respuesta_raw, pdf_path, modo, ambiente,
+               total, payload_json, respuesta_json, error_mensaje, created_at, updated_at
         FROM arca_comprobantes
         WHERE venta_id = ?
         ORDER BY id DESC
@@ -88,7 +93,35 @@ def obtener_comprobante_por_venta(venta_id: int | None) -> dict[str, object] | N
     return _row_to_dict(row)
 
 
-def _next_simulated_number(punto_venta: int, tipo_comprobante: str) -> int:
+def obtener_comprobantes_por_venta_ids(venta_ids: list[int]) -> dict[int, dict[str, object]]:
+    ids = [int(venta_id) for venta_id in venta_ids if int(venta_id or 0) > 0]
+    if not ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in ids)
+    rows = db.q(
+        f"""
+        SELECT id, venta_id, tipo_comprobante, punto_venta, numero, numero_comprobante, cae,
+               cae_vencimiento, importe_total, estado, fecha_emision, respuesta_raw, pdf_path, modo, ambiente,
+               total, payload_json, respuesta_json, error_mensaje, created_at, updated_at
+        FROM arca_comprobantes
+        WHERE venta_id IN ({placeholders})
+        ORDER BY id DESC
+        """,
+        tuple(ids),
+    )
+    resultado: dict[int, dict[str, object]] = {}
+    for row in rows:
+        item = _row_to_dict(row)
+        if not item:
+            continue
+        venta_id = int(item.get("venta_id") or 0)
+        if venta_id and venta_id not in resultado:
+            resultado[venta_id] = item
+    return resultado
+
+
+def obtener_siguiente_numero_comprobante(punto_venta: int, tipo_comprobante: str) -> int:
     row = db.q(
         """
         SELECT MAX(COALESCE(numero_comprobante, numero)) AS max_num
@@ -100,12 +133,6 @@ def _next_simulated_number(punto_venta: int, tipo_comprobante: str) -> int:
     )
     last_number = int((row["max_num"] if row and row["max_num"] is not None else 0) or 0)
     return last_number + 1
-
-
-def _simulated_cae(venta_id: int) -> str:
-    return f"{datetime.now():%y%m%d%H%M%S}{int(venta_id) % 100:02d}"
-
-
 def _upsert_comprobante(
     *,
     venta_id: int,
@@ -115,6 +142,9 @@ def _upsert_comprobante(
     cae: str,
     cae_vencimiento: str,
     estado: str,
+    fecha_emision: str = "",
+    respuesta_raw: str = "",
+    pdf_path: str | None = None,
     modo: str,
     total: float,
     payload: dict[str, object] | None = None,
@@ -135,7 +165,11 @@ def _upsert_comprobante(
         numero_comprobante,
         _clean_text(cae),
         _clean_text(cae_vencimiento),
+        float(total or 0),
         estado_normalizado,
+        _clean_text(fecha_emision),
+        _clean_text(respuesta_raw),
+        _clean_text(pdf_path),
         _clean_text(modo).lower() or "wsfe",
         _clean_text(ambiente).lower() or "homologacion",
         float(total or 0),
@@ -150,8 +184,9 @@ def _upsert_comprobante(
             """
             UPDATE arca_comprobantes
             SET tipo_comprobante = ?, punto_venta = ?, numero = ?, numero_comprobante = ?, cae = ?,
-                cae_vencimiento = ?, estado = ?, modo = ?, ambiente = ?, total = ?, payload_json = ?,
-                respuesta_json = ?, error_mensaje = ?, updated_at = ?
+                cae_vencimiento = ?, importe_total = ?, estado = ?, fecha_emision = ?, respuesta_raw = ?,
+                pdf_path = ?, modo = ?, ambiente = ?, total = ?, payload_json = ?, respuesta_json = ?,
+                error_mensaje = ?, updated_at = ?
             WHERE id = ?
             """,
             (*params, existing["id"]),
@@ -162,8 +197,9 @@ def _upsert_comprobante(
             """
             INSERT INTO arca_comprobantes
             (venta_id, tipo_comprobante, punto_venta, numero, numero_comprobante, cae, cae_vencimiento,
-             estado, modo, ambiente, total, payload_json, respuesta_json, error_mensaje, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             importe_total, estado, fecha_emision, respuesta_raw, pdf_path, modo, ambiente, total, payload_json,
+             respuesta_json, error_mensaje, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 int(venta_id),
@@ -174,6 +210,45 @@ def _upsert_comprobante(
             commit=True,
         )
     return obtener_comprobante_por_venta(venta_id) or {}
+
+
+def registrar_comprobante_fiscal(
+    *,
+    venta_id: int,
+    tipo_comprobante: str,
+    punto_venta: int,
+    numero_comprobante: int | None,
+    cae: str,
+    cae_vencimiento: str,
+    importe_total: float,
+    estado: str,
+    fecha_emision: str,
+    payload: dict[str, object] | None = None,
+    respuesta: dict[str, object] | None = None,
+    respuesta_raw: str = "",
+    pdf_path: str | None = None,
+    modo: str = "wsfe",
+    ambiente: str = "homologacion",
+    error_mensaje: str = "",
+) -> dict[str, object]:
+    return _upsert_comprobante(
+        venta_id=venta_id,
+        tipo_comprobante=tipo_comprobante,
+        punto_venta=punto_venta,
+        numero_comprobante=numero_comprobante,
+        cae=cae,
+        cae_vencimiento=cae_vencimiento,
+        estado=estado,
+        fecha_emision=fecha_emision,
+        respuesta_raw=respuesta_raw,
+        pdf_path=pdf_path,
+        modo=modo,
+        total=importe_total,
+        payload=payload,
+        respuesta=respuesta,
+        error_mensaje=error_mensaje,
+        ambiente=ambiente,
+    )
 
 
 def registrar_comprobante_pendiente(
@@ -195,6 +270,9 @@ def registrar_comprobante_pendiente(
         cae="",
         cae_vencimiento="",
         estado=estado,
+        fecha_emision="",
+        respuesta_raw="",
+        pdf_path=None,
         modo="wsfe",
         total=float(total or 0),
         payload=payload,
@@ -231,143 +309,6 @@ def registrar_evento(
 
 
 def emitir_comprobante_desde_venta(venta_id: int | None) -> dict[str, object]:
-    if not venta_id:
-        return {
-            "ok": False,
-            "error_code": "venta_invalida",
-            "mensaje": "Venta inválida.",
-        }
+    from modules.arca.services.facturacion_desde_venta_service import facturar_venta_desde_existente
 
-    venta = db.q("SELECT * FROM ventas WHERE id = ?", (int(venta_id),), fetchone=True)
-    if not venta:
-        return {
-            "ok": False,
-            "error_code": "venta_no_encontrada",
-            "mensaje": "La venta indicada no existe.",
-        }
-
-    comprobante_existente = obtener_comprobante_por_venta(int(venta_id))
-    if comprobante_existente and _clean_text(comprobante_existente.get("estado")).upper() in ESTADOS_FINALES:
-        return {
-            "ok": False,
-            "error_code": "duplicado",
-            "mensaje": "La venta ya tiene un comprobante ARCA registrado.",
-            "comprobante": comprobante_existente,
-            "ya_existia": True,
-        }
-
-    from services.arca_config_service import (
-        arca_esta_configurado,
-        arca_modo_simulacion_activo,
-        get_config,
-    )
-
-    config = get_config()
-    punto_venta = int(config.get("punto_venta") or 0) if str(config.get("punto_venta") or "").strip() else 0
-    if punto_venta <= 0:
-        punto_venta = 1
-
-    tipo_comprobante = "Factura B"
-    total = float(venta["total"] or 0)
-    simulacion = arca_modo_simulacion_activo()
-    ambiente = _clean_text(config.get("ambiente")).lower() or "homologacion"
-
-    if simulacion:
-        numero = _next_simulated_number(punto_venta, tipo_comprobante)
-        cae = _simulated_cae(int(venta_id))
-        cae_vencimiento = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d")
-        comprobante = _upsert_comprobante(
-            venta_id=int(venta_id),
-            tipo_comprobante=tipo_comprobante,
-            punto_venta=punto_venta,
-            numero_comprobante=numero,
-            cae=cae,
-            cae_vencimiento=cae_vencimiento,
-            estado="MODO_TEST",
-            modo="simulacion",
-            total=total,
-            payload={"venta_id": int(venta_id), "simulado": True},
-            respuesta={
-                "resultado": "aprobado_simulado",
-                "cae": cae,
-                "cae_vencimiento": cae_vencimiento,
-            },
-            ambiente="simulacion",
-        )
-        registrar_evento(
-            comprobante_id=comprobante.get("id"),
-            nivel="info",
-            mensaje="Emisión ARCA simulada",
-            detalle={
-                "venta_id": int(venta_id),
-                "punto_venta": punto_venta,
-                "numero_comprobante": numero,
-                "modo": "simulacion",
-            },
-        )
-        return {
-            "ok": True,
-            "error_code": "",
-            "mensaje": "Comprobante ARCA simulado generado correctamente.",
-            "comprobante": comprobante,
-            "modo": "simulacion",
-        }
-
-    if not arca_esta_configurado():
-        comprobante = _upsert_comprobante(
-            venta_id=int(venta_id),
-            tipo_comprobante=tipo_comprobante,
-            punto_venta=punto_venta,
-            numero_comprobante=None,
-            cae="",
-            cae_vencimiento="",
-            estado="ERROR_CONFIG",
-            modo="wsfe",
-            total=total,
-            payload={"venta_id": int(venta_id), "simulado": False},
-            respuesta={},
-            error_mensaje="Configuración ARCA incompleta para emisión real.",
-            ambiente=ambiente,
-        )
-        registrar_evento(
-            comprobante_id=comprobante.get("id"),
-            nivel="warning",
-            mensaje="Emisión ARCA pendiente por configuración",
-            detalle={"venta_id": int(venta_id), "modo": "wsfe"},
-        )
-        return {
-            "ok": False,
-            "error_code": "ERROR_CONFIG",
-            "mensaje": "Configuración ARCA incompleta para emisión real.",
-            "comprobante": comprobante,
-            "modo": "wsfe",
-        }
-
-    comprobante = _upsert_comprobante(
-        venta_id=int(venta_id),
-        tipo_comprobante=tipo_comprobante,
-        punto_venta=punto_venta,
-        numero_comprobante=None,
-        cae="",
-        cae_vencimiento="",
-        estado="SIN_CONEXION",
-        modo="wsfe",
-        total=total,
-        payload={"venta_id": int(venta_id), "simulado": False},
-        respuesta={"pendiente": "wsfe_real"},
-        error_mensaje="La emisión WSFE real todavía no está habilitada en esta fase.",
-        ambiente=ambiente,
-    )
-    registrar_evento(
-        comprobante_id=comprobante.get("id"),
-        nivel="warning",
-        mensaje="Emisión ARCA real pendiente",
-        detalle={"venta_id": int(venta_id), "modo": "wsfe"},
-    )
-    return {
-        "ok": False,
-        "error_code": "SIN_CONEXION",
-        "mensaje": "La emisión WSFE real todavía no está habilitada en esta fase.",
-        "comprobante": comprobante,
-        "modo": "wsfe",
-    }
+    return facturar_venta_desde_existente(venta_id)

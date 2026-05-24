@@ -2608,7 +2608,9 @@ def ticket(vid):
 
             arca_comprobante = obtener_comprobante_por_venta(vid)
             arca_modo_operacion = str(obtener_modo_arca().get("modo") or "")
-            arca_puede_emitir = not bool(venta["anulada"]) and arca_comprobante is None
+            arca_puede_emitir = not bool(venta["anulada"]) and (
+                arca_comprobante is None or str(arca_comprobante.get("estado") or "").upper() not in {"AUTORIZADO", "AUTORIZADO_SIMULADO", "MODO_TEST"}
+            )
 
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
@@ -2705,6 +2707,28 @@ def historial():
     medio_pago = request.args.get("medio", "")
     ventas = db.get_ventas_historial(search, fecha_desde, fecha_hasta, medio_pago)
     medios = [row["medio_pago"] for row in db.get_medios_pago_ventas()]
+    arca_modulo_activo = False
+    arca_estado_por_venta = {}
+    arca_puede_emitir_ids: set[int] = set()
+    usuario_es_admin = _is_admin_role(session.get("user", {}).get("rol"))
+    if usuario_es_admin:
+        from licensing.permisos import modulo_activo
+
+        arca_modulo_activo = modulo_activo("arca_facturacion")
+        if arca_modulo_activo and ventas:
+            from modules.arca.services.comprobantes_service import obtener_comprobantes_por_venta_ids
+
+            ids = [int(venta["id"]) for venta in ventas]
+            arca_estado_por_venta = obtener_comprobantes_por_venta_ids(ids)
+            arca_puede_emitir_ids = {
+                int(venta["id"])
+                for venta in ventas
+                if not int(venta["anulada"] or 0)
+                and (
+                    int(venta["id"]) not in arca_estado_por_venta
+                    or str(arca_estado_por_venta[int(venta["id"])].get("estado") or "").upper() not in {"AUTORIZADO", "AUTORIZADO_SIMULADO", "MODO_TEST"}
+                )
+            }
     return render_template(
         "historial.html",
         ventas=ventas,
@@ -2714,7 +2738,10 @@ def historial():
         medio_pago_seleccionado=medio_pago,
         medios_pago_disponibles=medios,
         total_filtro=sum(float(v["total"] or 0) for v in ventas if not int(v["anulada"] or 0)),
-        usuario_es_admin=_is_admin_role(session.get("user", {}).get("rol")),
+        usuario_es_admin=usuario_es_admin,
+        arca_modulo_activo=arca_modulo_activo,
+        arca_estado_por_venta=arca_estado_por_venta,
+        arca_puede_emitir_ids=arca_puede_emitir_ids,
     )
 
 

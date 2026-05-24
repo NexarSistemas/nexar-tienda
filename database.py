@@ -315,7 +315,11 @@ def _init_arca_tables(c) -> None:
             numero_comprobante INTEGER,
             cae TEXT,
             cae_vencimiento TEXT,
+            importe_total REAL,
             estado TEXT DEFAULT 'pendiente',
+            fecha_emision TEXT DEFAULT '',
+            respuesta_raw TEXT DEFAULT '',
+            pdf_path TEXT DEFAULT NULL,
             modo TEXT DEFAULT 'wsfe',
             ambiente TEXT DEFAULT 'homologacion',
             total REAL,
@@ -378,8 +382,19 @@ def _init_arca_tables(c) -> None:
         "arca_comprobantes",
         {
             "numero_comprobante": "INTEGER",
+            "importe_total": "REAL",
+            "fecha_emision": "TEXT DEFAULT ''",
+            "respuesta_raw": "TEXT DEFAULT ''",
+            "pdf_path": "TEXT DEFAULT NULL",
             "modo": "TEXT DEFAULT 'wsfe'",
         },
+    )
+    c.execute(
+        """
+        UPDATE arca_comprobantes
+        SET importe_total = total
+        WHERE importe_total IS NULL AND total IS NOT NULL
+        """
     )
     c.execute(
         """

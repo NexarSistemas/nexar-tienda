@@ -14,7 +14,8 @@ from modules.arca.services.certificados_service import (
     listar_certificados,
     registrar_certificado,
 )
-from modules.arca.services.comprobantes_service import emitir_comprobante_desde_venta, listar_comprobantes
+from modules.arca.services.comprobantes_service import listar_comprobantes
+from modules.arca.services.facturacion_desde_venta_service import facturar_venta_desde_existente
 from services.arca_config_service import (
     CONDICIONES_FISCALES_VALIDAS,
     get_config,
@@ -168,10 +169,11 @@ def probar_wsfe_route():
     return redirect(url_for("arca.estado"))
 
 
+@arca_bp.route("/facturar-venta/<int:venta_id>", methods=["POST"])
 @arca_bp.route("/ventas/<int:venta_id>/emitir", methods=["POST"])
 @admin_required
 def emitir_comprobante_venta_route(venta_id: int):
-    resultado = emitir_comprobante_desde_venta(venta_id)
+    resultado = facturar_venta_desde_existente(venta_id)
     category = "success" if resultado.get("ok") else "warning"
     flash(resultado["mensaje"], category)
     destino = request.form.get("next") or request.referrer or url_for("ticket", vid=venta_id)

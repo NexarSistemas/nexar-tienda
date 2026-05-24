@@ -255,7 +255,14 @@ class ArcaFase1Tests(unittest.TestCase):
         self.assertEqual(resultado_emitir["error_code"], "venta_no_encontrada")
 
         eventos = self.database.q(
-            "SELECT mensaje, detalle_json FROM arca_eventos ORDER BY id DESC LIMIT 1"
+            """
+            SELECT mensaje, detalle_json
+            FROM arca_eventos
+            WHERE mensaje LIKE ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            ("%Conexión WSAA fallida%",),
         )
         self.assertTrue(eventos)
         self.assertIn("Conexión WSAA fallida", eventos[0]["mensaje"])

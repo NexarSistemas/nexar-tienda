@@ -95,11 +95,12 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="next" value="{{ request.path }}">
                         <button type="submit" class="btn btn-sm btn-outline-primary">
-                            <i class="fas fa-file-invoice me-2"></i>Emitir comprobante ARCA
+                            <i class="fas fa-file-invoice me-2"></i>Facturar con ARCA
                         </button>
                     </form>
                     {% else %}
                     <strong>No disponible para esta venta</strong>
+                    <div class="small text-muted mt-2">La venta ya tiene factura ARCA generada o no cumple las condiciones del módulo.</div>
                     {% endif %}
                 </div>
                 {% endif %}
