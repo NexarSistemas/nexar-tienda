@@ -24,6 +24,23 @@ _LAST_LICENSE_DEBUG: dict[str, object] = {
 }
 
 
+def _resolve_remote_plan(license_data: dict | None) -> str:
+    payload = license_data or {}
+    raw_plan = (
+        payload.get("plan_original")
+        or payload.get("plan")
+        or payload.get("tier")
+        or payload.get("license_plan")
+        or "DEMO"
+    )
+    try:
+        import database as db
+
+        return db.normalize_license_plan(raw_plan)
+    except Exception:
+        return str(raw_plan or "DEMO").strip().upper().replace("-", "_").replace(" ", "_")
+
+
 def _ensure_sdk_path() -> None:
     sdk_path = str(SDK_REPO_PATH)
     if sdk_path not in sys.path:
@@ -217,24 +234,13 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
 
     _save_sdk_cache(license_data)
     modules = license_data.get("modules") or license_data.get("features") or license_data.get("modulos") or []
-    plan = license_data.get("plan") or license_data.get("tier") or license_data.get("license_plan") or ""
+    plan = _resolve_remote_plan(license_data)
 
     try:
         import database as db
         from licensing.permisos import get_modulos_debug_info
 
         raw_plan = license_data.get("plan") or license_data.get("tier") or license_data.get("license_plan")
-        plan = db.normalize_license_plan(raw_plan)
-        if plan == "FULL" and db.get_config().get("basica_activada", "0") != "1":
-            _set_license_debug(
-                status="online_error",
-                validation_mode=source,
-                plan=plan,
-                tier=plan,
-                modules=modules,
-                last_error="basica_required_before_full",
-            )
-            return False, "Para activar Mensual Full primero tenés que activar una licencia Básica en esta instalación."
         db.sync_license_from_remote(license_data)
         modulos_debug = get_modulos_debug_info()
         logger.info(
@@ -255,8 +261,8 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
     _set_license_debug(
         status=status,
         validation_mode=source,
-        plan=license_data.get("plan") or plan,
-        tier=license_data.get("tier") or plan,
+        plan=plan,
+        tier=plan,
         modules=modules,
         last_error="",
     )

@@ -2,6 +2,53 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-24 - Codex - fix/activacion-directa-pro-full-release
+
+### Tarea
+Versionar el release patch enfocado en la corrección de activación directa de licencias PRO/FULL para `Nexar Comercio`.
+
+### Archivos modificados
+- `VERSION`
+- `CHANGELOG.md`
+- `README.md`
+- `build/nexar_tienda.iss`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se detectó la versión actual `1.35.1` y se preparó el release `1.35.2`.
+- Se agregó una entrada limpia en `CHANGELOG.md` enfocada solo en la corrección de activación directa de licencias PRO/FULL y compatibilidad con BASICA, PRO y FULL.
+- Se actualizó la versión visible en `README.md` y en el instalador Windows `build/nexar_tienda.iss`.
+- Se mantuvo el release sin referencias nuevas a otros módulos ajenos al fix de licencias.
+
+### Qué se probó
+- `python3 -m unittest -v tests.test_license_integration.LicenseIntegrationTests.test_validate_license_key_permite_activar_basica_desde_demo tests.test_license_integration.LicenseIntegrationTests.test_validate_license_key_permite_activar_pro_desde_demo tests.test_license_integration.LicenseIntegrationTests.test_validate_license_key_permite_activar_full_desde_demo_sin_basica_previa tests.test_license_integration.LicenseIntegrationTests.test_licensing_payload_acepta_full_y_alias_mensual_full tests.test_license_integration.LicenseIntegrationTests.test_activar_licencia_legacy_permite_full_sin_basica_previa tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_permite_alta_licencia_basica_desde_demo tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_permite_alta_licencia_desde_demo tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_permite_alta_licencia_full_desde_demo tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_con_license_key_sigue_usando_cambio_plan`
+- `python3 -m unittest -v tests.test_license_tiers.LicenseTierNormalizationTests`
+- `python3 -m py_compile database.py services/license_sdk.py services/licensing.py`
+
+## 2026-05-24 - Codex - fix/activacion-directa-pro-full
+
+### Tarea
+Corregir la activación de licencias para permitir altas iniciales BASICA, PRO y FULL desde DEMO/SIN_PLAN, sin exigir BASICA previa para PRO o FULL.
+
+### Archivos modificados
+- `services/license_sdk.py`
+- `database.py`
+- `services/licensing.py`
+- `tests/test_license_integration.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se eliminó la validación hardcodeada que bloqueaba activaciones iniciales `FULL` cuando `basica_activada` no estaba marcada, tanto en el flujo SDK/Supabase como en el helper legacy RSA.
+- La normalización de planes sigue resolviendo `FULL` y `MENSUAL_FULL` al mismo plan comercial, mientras `PRO` y `BASICA` conservan su identidad.
+- `basica_activada` quedó reservada para fallback permanente de licencias vencidas, y ya no funciona como requisito técnico previo para activar planes superiores.
+- Se amplió la validación auxiliar de payloads de licencia para aceptar también `FULL` y `MENSUAL_FULL`.
+- Se agregaron tests para altas iniciales BASICA, PRO y FULL desde DEMO, alias `MENSUAL_FULL`, y se confirmó que el cambio de plan existente con `license_key` sigue usando el flujo `cambio_plan`.
+
+### Qué se probó
+- `python3 -m unittest -v tests.test_license_integration.LicenseIntegrationTests.test_validate_license_key_permite_activar_basica_desde_demo tests.test_license_integration.LicenseIntegrationTests.test_validate_license_key_permite_activar_pro_desde_demo tests.test_license_integration.LicenseIntegrationTests.test_validate_license_key_permite_activar_full_desde_demo_sin_basica_previa tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_con_license_key_sigue_usando_cambio_plan tests.test_license_integration.LicenseIntegrationTests.test_licensing_payload_acepta_full_y_alias_mensual_full tests.test_license_integration.LicenseIntegrationTests.test_activar_licencia_legacy_permite_full_sin_basica_previa tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_permite_alta_licencia_basica_desde_demo tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_permite_alta_licencia_desde_demo tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_permite_alta_licencia_full_desde_demo`
+- `python3 -m unittest -v tests.test_license_tiers.LicenseTierNormalizationTests`
+- `python3 -m py_compile routes/main.py licensing/planes.py services/license_storage.py services/license_sdk.py services/licensing.py database.py`
+
 ## 2026-05-24 - Codex - fix/linux-ticket-print-cups
 
 ### Tarea

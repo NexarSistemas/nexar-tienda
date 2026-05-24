@@ -18,6 +18,7 @@ from licensing.planes import (
     get_plan_actions,
     get_plan_display_name,
     get_update_access_context,
+    normalize_plan,
 )
 from services.rubros import get_rubros_disponibles
 
@@ -336,11 +337,12 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertNotIn("Cancelar renovacion automatica", mi_plan_template)
 
     def test_normalize_plan_legacy_y_canonico_full(self):
-        from licensing.planes import normalize_plan
-
         self.assertEqual(normalize_plan("PRO"), "PRO")
         self.assertEqual(normalize_plan("FULL"), "FULL")
         self.assertEqual(normalize_plan("MENSUAL_FULL"), "FULL")
+
+    def test_normalize_plan_preserva_basica(self):
+        self.assertEqual(normalize_plan("BASICA"), "BASICA")
 
     def test_build_checkout_context_permite_alta_licencia_desde_demo(self):
         app = self.app_module.create_app()
@@ -446,6 +448,89 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertIsNone(error_response)
         self.assertEqual(context["tipo_solicitud"], "cambio_plan")
         self.assertEqual(context["license_key"], "NXR-TDA-TEST-001")
+
+    def test_validate_license_key_permite_activar_basica_desde_demo(self):
+        license_payload = {
+            "license_key": "NXR-BASICA-001",
+            "plan": "BASICA",
+            "tier": "BASICA",
+            "modules": ["core", "clientes"],
+        }
+
+        with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO"}), \
+             mock.patch.object(self.routes_main.db, "sync_license_from_remote") as sync_mock, \
+             mock.patch("services.license_sdk.import_validar_licencia_detalle", return_value=lambda *args, **kwargs: {"ok": True, "license": license_payload, "source": "online"}), \
+             mock.patch("services.license_sdk.import_validar_licencia", return_value=None):
+            ok, message = self.routes_main.validate_license_key("NXR-BASICA-001", debug=False)
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Licencia validada correctamente.")
+        sync_mock.assert_called_once_with(license_payload)
+
+    def test_validate_license_key_permite_activar_pro_desde_demo(self):
+        license_payload = {
+            "license_key": "NXR-PRO-001",
+            "plan": "PRO",
+            "tier": "PRO",
+            "modules": ["core", "reportes"],
+        }
+
+        with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO"}), \
+             mock.patch.object(self.routes_main.db, "sync_license_from_remote") as sync_mock, \
+             mock.patch("services.license_sdk.import_validar_licencia_detalle", return_value=lambda *args, **kwargs: {"ok": True, "license": license_payload, "source": "online"}), \
+             mock.patch("services.license_sdk.import_validar_licencia", return_value=None):
+            ok, message = self.routes_main.validate_license_key("NXR-PRO-001", debug=False)
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Licencia validada correctamente.")
+        sync_mock.assert_called_once_with(license_payload)
+
+    def test_validate_license_key_permite_activar_full_desde_demo_sin_basica_previa(self):
+        license_payload = {
+            "license_key": "NXR-FULL-001",
+            "plan": "MENSUAL_FULL",
+            "tier": "MENSUAL_FULL",
+            "modules": ["core", "reportes", "multinegocio"],
+        }
+
+        with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO"}), \
+             mock.patch.object(self.routes_main.db, "get_config", return_value={"basica_activada": "0"}), \
+             mock.patch.object(self.routes_main.db, "sync_license_from_remote") as sync_mock, \
+             mock.patch("services.license_sdk.import_validar_licencia_detalle", return_value=lambda *args, **kwargs: {"ok": True, "license": license_payload, "source": "online"}), \
+             mock.patch("services.license_sdk.import_validar_licencia", return_value=None):
+            ok, message = self.routes_main.validate_license_key("NXR-FULL-001", debug=False)
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Licencia validada correctamente.")
+        sync_mock.assert_called_once_with(license_payload)
+
+    def test_licensing_payload_acepta_full_y_alias_mensual_full(self):
+        from services.licensing import validate_license_payload
+
+        ok_full, msg_full = validate_license_payload({"plan": "FULL"}, machine_id="MID-1")
+        ok_alias, msg_alias = validate_license_payload({"plan": "MENSUAL_FULL"}, machine_id="MID-1")
+
+        self.assertTrue(ok_full, msg_full)
+        self.assertTrue(ok_alias, msg_alias)
+
+    def test_activar_licencia_legacy_permite_full_sin_basica_previa(self):
+        token_payload = {
+            "tier": "MENSUAL_FULL",
+            "type": "TDA_FULL",
+            "license_key": "NXR-FULL-LEGACY-001",
+            "max_machines": 1,
+            "expires_at": (date.today() + timedelta(days=30)).isoformat(),
+        }
+
+        with mock.patch.object(self.database, "validar_licencia_rsa", return_value=(True, "OK", token_payload)), \
+             mock.patch.object(self.database, "set_config") as set_config_mock:
+            ok, message = self.database.activar_licencia("token-demo")
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Licencia activada correctamente.")
+        updates = set_config_mock.call_args.args[0]
+        self.assertEqual(updates["license_tier"], "FULL")
+        self.assertEqual(updates["license_plan"], "FULL")
 
     def test_pro_no_colapsa_a_full(self):
         pro_modules = get_modulos_plan("PRO")

@@ -86,7 +86,7 @@ def decode_and_verify_token(token: str, secret: str) -> Tuple[Dict[str, Any], st
 def validate_license_payload(payload: Dict[str, Any], machine_id: str, negocio: str = "") -> Tuple[bool, str]:
     """Valida reglas mínimas del payload de licencia."""
     plan = payload.get("plan", "").upper()
-    if plan not in {"DEMO", "BASICA", "PRO"}:
+    if plan not in {"DEMO", "BASICA", "PRO", "FULL", "MENSUAL_FULL"}:
         return False, "Plan de licencia inválido."
 
     bound_machine = payload.get("machine_id", "")
