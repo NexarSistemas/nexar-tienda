@@ -60,6 +60,19 @@
                             <div class="fw-semibold">{{ estado_modulo.punto_venta or "Sin configurar" }}</div>
                         </div>
                     </div>
+                    <div class="col-md-6 col-xl-3">
+                        <div class="border rounded-3 p-3 h-100 bg-light">
+                            <div class="text-muted small mb-1">Modo emisión</div>
+                            <div class="fw-semibold">
+                                {% if estado_modulo.modo_simulacion %}
+                                Simulación
+                                {% else %}
+                                WSFE real
+                                {% endif %}
+                            </div>
+                            <div class="small text-muted">Origen: {{ estado_modulo.modo_origen }}</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="row g-3 mt-1">
@@ -118,6 +131,15 @@
                 <div class="alert alert-warning mt-4 mb-0" role="alert">
                     <strong>Modo actual:</strong> {{ conexion.modo|replace('-', ' ')|capitalize }}.
                     {{ conexion.mensaje }}
+                </div>
+
+                <div class="alert {% if estado_modulo.modo_simulacion %}alert-info{% else %}alert-secondary{% endif %} mt-3 mb-0" role="alert">
+                    <strong>Emisión de comprobantes:</strong>
+                    {% if estado_modulo.modo_simulacion %}
+                    `ARCA_MODO_SIMULACION` está activo. Las ventas emitirán comprobantes simulados para desarrollo sin llamar WSFE real.
+                    {% else %}
+                    `ARCA_MODO_SIMULACION` está desactivado. La app queda preparada para WSFE real, pero esta fase todavía no emite CAE real.
+                    {% endif %}
                 </div>
 
                 <div class="border rounded-3 p-3 mt-4 bg-light">

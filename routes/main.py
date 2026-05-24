@@ -32,6 +32,7 @@ from licensing.planes import (
 )
 from licensing.permisos import get_modulos_activos, get_modulos_debug_info, require_modulo
 from services.cuentas_corrientes import calcular_estado_factura, calcular_saldo_factura
+from services.file_open_service import open_file_cross_platform
 from services.license_storage import cargar_licencia, guardar_licencia
 from services.rubros import (
     convertir_cantidad_a_base,
@@ -2181,20 +2182,8 @@ def productos_importar_generar_plantilla():
 def productos_importar_abrir_carpeta():
     template_dir = _get_productos_import_template_dir()
     template_dir.mkdir(parents=True, exist_ok=True)
-    if sys.platform.startswith("linux"):
-        try:
-            subprocess.Popen(["xdg-open", str(template_dir)])
-            flash("Carpeta de plantillas abierta.", "success")
-        except Exception as exc:
-            flash(f"No se pudo abrir la carpeta: {exc}", "warning")
-    elif sys.platform.startswith("win"):
-        try:
-            os.startfile(str(template_dir))  # type: ignore[attr-defined]
-            flash("Carpeta de plantillas abierta.", "success")
-        except Exception as exc:
-            flash(f"No se pudo abrir la carpeta: {exc}", "warning")
-    else:
-        flash(f"Carpeta de plantillas: {template_dir}", "info")
+    opened = open_file_cross_platform(template_dir)
+    flash(opened["message"], "success" if opened.get("ok") else "warning")
     return redirect(url_for("productos_importar"))
 
 
@@ -2589,7 +2578,10 @@ def venta_finalizar():
     venta = db.q("SELECT numero_ticket, total, cliente_nombre, medio_pago FROM ventas WHERE id=?", (venta_id,), fetchone=True)
     _auditar_accion("VENTA_REGISTRADA", "venta", venta_id, detalle=f"Ticket #{venta['numero_ticket'] if venta else venta_id} · Cliente: {(venta['cliente_nombre'] if venta else cliente_nombre) or 'Mostrador'} · Medio: {(venta['medio_pago'] if venta else medio_pago) or medio_pago} · Total: {float((venta['total'] if venta else 0) or 0):.2f}")
     _clear_cart()
-    flash("Venta registrada.", "success")
+    flash(
+        f"Ticket generado correctamente. Si no se abrió automáticamente, abrilo desde: {url_for('ticket', vid=venta_id)}",
+        "success",
+    )
     return redirect(url_for("ticket", vid=venta_id))
 
 
@@ -2600,6 +2592,22 @@ def ticket(vid):
     if not venta:
         abort(404)
     detalle = db.get_venta_detalle(vid)
+    arca_comprobante = None
+    arca_modulo_activo = False
+    arca_es_admin = _is_admin_role(session.get("user", {}).get("rol"))
+    arca_puede_emitir = False
+    arca_modo_operacion = ""
+    if arca_es_admin:
+        from licensing.permisos import modulo_activo
+
+        arca_modulo_activo = modulo_activo("arca_facturacion")
+        if arca_modulo_activo:
+            from modules.arca.services.comprobantes_service import obtener_comprobante_por_venta
+            from services.arca_config_service import obtener_modo_arca
+
+            arca_comprobante = obtener_comprobante_por_venta(vid)
+            arca_modo_operacion = str(obtener_modo_arca().get("modo") or "")
+            arca_puede_emitir = not bool(venta["anulada"]) and arca_comprobante is None
 
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
@@ -2667,6 +2675,11 @@ def ticket(vid):
         cfg=cfg,
         rubro_actual=rubro_actual,
         venta_id=venta["id"],
+        arca_comprobante=arca_comprobante,
+        arca_modulo_activo=arca_modulo_activo,
+        arca_es_admin=arca_es_admin,
+        arca_puede_emitir=arca_puede_emitir,
+        arca_modo_operacion=arca_modo_operacion,
         subtotal_formateado=formatear_precio_ticket(venta["subtotal"]),
         descuento_formateado=formatear_precio_ticket(venta["descuento_adicional"]),
         interes_formateado=formatear_precio_ticket(venta["interes_financiacion"]),
@@ -4393,20 +4406,8 @@ def actualizacion_descargar():
 @main_bp.route("/respaldo/actualizacion/abrir-carpeta", methods=["POST"])
 @admin_required
 def actualizacion_abrir_carpeta():
-    if sys.platform.startswith("linux"):
-        try:
-            subprocess.Popen(["xdg-open", str(_update_dir())])
-            flash("Carpeta de actualizaciones abierta.", "success")
-        except Exception as exc:
-            flash(f"No se pudo abrir la carpeta: {exc}", "warning")
-    elif sys.platform.startswith("win"):
-        try:
-            os.startfile(str(_update_dir()))  # type: ignore[attr-defined]
-            flash("Carpeta de actualizaciones abierta.", "success")
-        except Exception as exc:
-            flash(f"No se pudo abrir la carpeta: {exc}", "warning")
-    else:
-        flash(f"Carpeta de actualizaciones: {_update_dir()}", "info")
+    opened = open_file_cross_platform(_update_dir())
+    flash(opened["message"], "success" if opened.get("ok") else "warning")
     return redirect(url_for("respaldo"))
 
 

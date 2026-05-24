@@ -72,6 +72,38 @@
                 </div>
                 {% endif %}
 
+                {% if arca_modulo_activo and arca_es_admin %}
+                <div class="ticket-season" style="border-left-color:#2563eb;background:#eff6ff;">
+                    <span class="label">ARCA</span>
+                    {% if arca_comprobante %}
+                    <strong>
+                        {{ arca_comprobante.estado or 'PENDIENTE' }}
+                        {% if arca_comprobante.numero_comprobante %} · N° {{ arca_comprobante.numero_comprobante }}{% endif %}
+                    </strong>
+                    <div class="small text-muted mt-2">
+                        Modo: {{ arca_comprobante.modo or arca_modo_operacion or 'simulacion' }}
+                        {% if arca_comprobante.cae %} · CAE {{ arca_comprobante.cae }}{% endif %}
+                        {% if arca_comprobante.cae_vencimiento %} · Vence {{ arca_comprobante.cae_vencimiento }}{% endif %}
+                    </div>
+                    {% if arca_comprobante.error_mensaje %}
+                    <div class="small text-muted mt-1">{{ arca_comprobante.error_mensaje }}</div>
+                    {% endif %}
+                    {% elif arca_puede_emitir %}
+                    <strong>Sin comprobante ARCA emitido</strong>
+                    <div class="small text-muted mt-2">Modo actual: {{ arca_modo_operacion or 'simulacion' }}.</div>
+                    <form method="POST" action="{{ url_for('arca.emitir_comprobante_venta_route', venta_id=venta_id) }}" class="mt-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ request.path }}">
+                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-file-invoice me-2"></i>Emitir comprobante ARCA
+                        </button>
+                    </form>
+                    {% else %}
+                    <strong>No disponible para esta venta</strong>
+                    {% endif %}
+                </div>
+                {% endif %}
+
                 <div class="ticket-section-title">Detalle de productos</div>
                 <div class="ticket-items">
                     <div class="ticket-items-head">
@@ -144,7 +176,7 @@
             </div>
 
             <div class="ticket-actions">
-                <button onclick="window.print()" class="btn btn-primary">
+                <button type="button" id="js-ticket-print" onclick="return window.__nexarTicketPrint(event)" class="btn btn-primary">
                     <i class="fas fa-print me-2"></i>Imprimir
                 </button>
                 <a href="{{ url_for('punto_venta') }}" class="btn btn-success">
@@ -154,6 +186,7 @@
                     <i class="fas fa-history me-2"></i>Historial
                 </a>
             </div>
+            <div class="ticket-browser-status d-none" id="js-ticket-browser-status" role="status"></div>
         </div>
     </div>
 </div>
@@ -401,6 +434,19 @@
         flex-wrap: wrap;
     }
 
+    .ticket-browser-status {
+        margin: 0 1.5rem 1.5rem;
+        padding: 0.85rem 1rem;
+        border-radius: 14px;
+        font-size: 0.95rem;
+    }
+
+    .ticket-browser-status {
+        background: #f6efe3;
+        color: #6a4d16;
+        border: 1px solid rgba(180, 132, 32, 0.2);
+    }
+
     @media (max-width: 768px) {
         .ticket-header-main,
         .ticket-badge-block {
@@ -564,4 +610,57 @@
         }
     }
 </style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const printButton = document.getElementById('js-ticket-print');
+    const statusBox = document.getElementById('js-ticket-browser-status');
+    const isDesktopWebview = Boolean(window.pywebview && window.pywebview.api);
+    const isLinux = /linux/i.test(String(navigator.platform || '')) || /linux/i.test(String(navigator.userAgent || ''));
+    const pywebviewPlatform = window.pywebview && window.pywebview.platform ? window.pywebview.platform : 'browser';
+
+    function setStatus(message) {
+        if (!statusBox) return;
+        statusBox.textContent = message;
+        statusBox.classList.remove('d-none');
+    }
+
+    window.__nexarTicketPrint = function () {
+        console.info('[ticket] Metodo de impresion solicitado', {
+            method: 'window.print',
+            platform: navigator.platform || 'desconocida',
+            userAgent: navigator.userAgent || 'desconocido',
+            isLinux: isLinux,
+            isDesktopWebview: isDesktopWebview,
+            pywebviewPlatform: pywebviewPlatform,
+        });
+
+        try {
+            window.focus();
+            window.print();
+        } catch (error) {
+            console.error('[ticket] Error ejecutando window.print()', error);
+            setStatus('No se pudo iniciar la impresión desde esta ventana.');
+        }
+
+        return false;
+    };
+
+    console.info('[ticket] Vista cargada', {
+        platform: navigator.platform || 'desconocida',
+        userAgent: navigator.userAgent || 'desconocido',
+        isLinux: isLinux,
+        isDesktopWebview: isDesktopWebview,
+        pywebviewPlatform: pywebviewPlatform,
+        url: window.location.href,
+    });
+
+    if (printButton) {
+        printButton.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                window.__nexarTicketPrint();
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

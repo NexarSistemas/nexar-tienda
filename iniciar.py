@@ -10,6 +10,8 @@ import webbrowser
 import threading as _threading
 import platform
 
+from services.file_open_service import open_external_target
+
 # ==============================
 # 🔹 Safe print (evita errores Unicode)
 # ==============================
@@ -219,6 +221,63 @@ if __name__ == "__main__":
     try:
         import webview
 
+        def install_linux_native_print(window):
+            if platform.system().lower() != "linux":
+                return
+
+            def _attach_print_hook():
+                try:
+                    native_window = getattr(window, "native", None)
+                    browser = getattr(native_window, "webview", None)
+                    page = browser.page() if browser else None
+                    renderer_name = getattr(webview, "renderer", "desconocido")
+
+                    if getattr(window, "_linux_native_print_hook_installed", False):
+                        safe_print(f"[ticket] Hook de impresion ya instalado renderer={renderer_name}")
+                        return
+
+                    if native_window is None or browser is None or page is None:
+                        safe_print(f"[ticket] No se pudo instalar hook de impresion renderer={renderer_name} motivo=ventana_nativa_no_lista")
+                        return
+
+                    from PySide6.QtPrintSupport import QPrintDialog, QPrinter
+
+                    def _handle_print_request(*args):
+                        safe_print(
+                            f"[ticket] printRequested recibido plataforma=linux renderer={renderer_name} "
+                            f"backend={getattr(webview.windows[0], 'gui', 'desconocido') if getattr(webview, 'windows', None) else 'desconocido'} "
+                            f"args={len(args)}"
+                        )
+                        try:
+                            native_window.raise_()
+                            native_window.activateWindow()
+                            browser.setFocus()
+
+                            printer = QPrinter()
+                            dialog = QPrintDialog(printer, native_window)
+                            dialog.setWindowTitle("Imprimir ticket")
+
+                            if dialog.exec():
+                                def _print_finished(success):
+                                    safe_print(f"[ticket] Impresion Qt finalizada ok={bool(success)} renderer={renderer_name}")
+
+                                browser.print(printer, _print_finished)
+                            else:
+                                safe_print(f"[ticket] Impresion Qt cancelada por usuario renderer={renderer_name}")
+                        except Exception as exc:
+                            safe_print(f"[ticket] Error en impresion Qt renderer={renderer_name} detalle={exc}")
+
+                    page.printRequested.connect(_handle_print_request)
+                    if hasattr(page, "printRequestedByFrame"):
+                        page.printRequestedByFrame.connect(lambda *_: _handle_print_request(*_))
+
+                    window._linux_native_print_hook_installed = True
+                    safe_print(f"[ticket] Hook de impresion nativa instalado plataforma=linux renderer={renderer_name}")
+                except Exception as exc:
+                    safe_print(f"[ticket] No se pudo instalar impresion nativa Linux: {exc}")
+
+            window.events.shown += _attach_print_hook
+
         class DesktopController:
             def __init__(self):
                 self.allow_close = False
@@ -262,6 +321,21 @@ if __name__ == "__main__":
                 _threading.Timer(0.1, _close).start()
                 return True
 
+            def openExternalUrl(self, url):
+                target = str(url or "").strip()
+                safe_print(f"[ticket] Apertura externa solicitada plataforma={platform.system().lower()} target={target or 'vacio'}")
+                result = open_external_target(target)
+                if result.get("ok"):
+                    safe_print(
+                        f"[ticket] Apertura externa OK metodo={result.get('method', 'desconocido')} target={result.get('target', target)}"
+                    )
+                else:
+                    safe_print(
+                        f"[ticket] Apertura externa fallo plataforma={result.get('platform', platform.system().lower())} "
+                        f"error={result.get('error', result.get('message', 'sin detalle'))}"
+                    )
+                return result
+
         controller = DesktopController()
         window = webview.create_window(
             APP_TITLE,
@@ -271,6 +345,7 @@ if __name__ == "__main__":
             maximized=True,
             js_api=NexarBridge(),
         )
+        install_linux_native_print(window)
         window.events.closing += controller.handle_closing
 
         localization = {

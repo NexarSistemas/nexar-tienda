@@ -2,6 +2,100 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-24 - Codex - fix/linux-native-ticket-print
+
+### Tarea
+Recuperar la impresión nativa de tickets en Linux dentro de PyWebView, dejando la apertura externa solo como recurso técnico secundario y no como UX principal.
+
+### Archivos modificados
+- `iniciar.py`
+- `templates/ticket.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se investigó la instalación local de `pywebview` y se confirmó que en `qtwebengine` no existe un handler nativo para `window.print()` como sí ocurre en Cocoa, por lo que Linux no estaba mostrando diálogo de impresión por defecto.
+- Se agregó en `iniciar.py` un hook nativo para Linux/Qt que intercepta `printRequested` del `QWebEnginePage`, abre `QPrintDialog` y ejecuta la impresión con `QPrinter` desde la ventana nativa.
+- En `templates/ticket.html` se volvió a un flujo principal simple con botón `Imprimir`, llamado directo a `window.print()`, `window.focus()` previo y logs JS de plataforma/backend.
+- Se retiraron el aviso visible para Linux y el botón principal `Abrir en navegador para imprimir`, para no degradar la UX del ticket.
+
+### Qué se probó
+- Revisión local del código instalado de `pywebview` para `qtwebengine`, validando la ausencia de override nativo de `window.print()` y la disponibilidad de `printRequested`, `QPrintDialog` y `QPrinter` en `PySide6`.
+- Verificación sintáctica con `py_compile` de los archivos tocados.
+
+## 2026-05-24 - Codex - fix/linux-ticket-print-fallback
+
+### Tarea
+Corregir el flujo de impresión de tickets/comprobantes en Linux dentro de PyWebView, manteniendo la impresión actual en Windows y navegador normal.
+
+### Archivos modificados
+- `iniciar.py`
+- `services/file_open_service.py`
+- `templates/ticket.html`
+- `tests/test_file_open_service.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se amplió `services/file_open_service.py` para abrir también URLs externas con el manejador nativo de cada plataforma y dejar logs simples de plataforma y método usado.
+- Se agregó al bridge `pywebview` el método `openExternalUrl(url)` para que la ventana nativa pueda abrir el ticket actual en navegador externo sin depender de `window.print()`.
+- En `templates/ticket.html` se mantuvo el botón `Imprimir`, se sumó `Abrir en navegador para imprimir`, y se agregó un aviso visible para Linux dentro de PyWebView cuando conviene usar el navegador externo.
+- El flujo nuevo evita el fallo silencioso: si la apertura externa falla, deja mensaje visible con la URL manual del ticket.
+
+### Qué se probó
+- Tests unitarios del servicio de apertura para archivo inexistente, apertura Linux con `xdg-open`, apertura de URL HTTP y error controlado con target vacío.
+
+## 2026-05-24 - Codex - fix/linux-ticket-open
+
+### Tarea
+Corregir visualización/apertura de tickets y aperturas externas en Linux sin romper Windows.
+
+### Archivos modificados
+- `services/file_open_service.py`
+- `routes/main.py`
+- `templates/cliente_detalle.html`
+- `tests/test_file_open_service.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se creó `services/file_open_service.py` con `open_file_cross_platform(path)` para centralizar aperturas en Windows (`os.startfile`), Linux (`xdg-open`) y macOS (`open`), validando existencia y devolviendo mensaje claro cuando falla.
+- Se reemplazaron aperturas manuales dispersas de carpetas por el servicio nuevo para evitar lógica duplicada y mejorar logs/feedback.
+- El flujo de venta ahora deja un mensaje visible con la ruta del ticket para reapertura manual si no se muestra automáticamente.
+- En `templates/cliente_detalle.html` se corrigió el enlace al ticket para entorno `pywebview`: en desktop remueve `target="_blank"` y navega en la misma ventana, evitando el fallo típico de Linux/Qt donde el ticket existe pero no se ve.
+
+### Qué se probó
+- Tests unitarios para archivo inexistente, apertura Linux con `xdg-open` y fallback con ruta manual si `xdg-open` falla.
+
+## 2026-05-23 - Codex - feature/arca-fase5-simulacion
+
+### Tarea
+Implementar Fase 5 del módulo ARCA con modo simulación profesional para desarrollo, desacoplado de la emisión real en ARCA/AFIP.
+
+### Archivos modificados
+- `database.py`
+- `services/arca_config_service.py`
+- `modules/arca/services/comprobantes_service.py`
+- `modules/arca/services/arca_client.py`
+- `modules/arca/routes.py`
+- `routes/main.py`
+- `templates/arca/estado.html`
+- `templates/arca/comprobantes.html`
+- `templates/ticket.html`
+- `tests/test_arca_fase1.py`
+- `tests/test_arca_fase5_simulacion.py`
+- `docs/arca/README.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- `ARCA_MODO_SIMULACION` ahora permite trabajar en simulación o dejar preparado el flujo WSFE real; en desarrollo el default queda en simulación activa.
+- `arca_comprobantes` se adaptó sin romper instalaciones existentes para guardar `numero_comprobante` y `modo`, manteniendo compatibilidad con datos previos.
+- Se amplió `modules/arca/services/comprobantes_service.py` con `emitir_comprobante_desde_venta(venta_id)`, generación incremental de comprobantes simulados, CAE/vencimiento simulados y control de duplicados por venta.
+- La ruta `POST /arca/ventas/<venta_id>/emitir` quedó integrada al módulo ARCA y el detalle de venta (`ticket`) ahora muestra estado ARCA y botón de emisión para administradores cuando todavía no existe comprobante.
+- La pantalla `ARCA / Estado` ahora informa explícitamente si la app está en simulación o preparada para WSFE real.
+- Se agregó documentación mínima en `docs/arca/README.md` para dejar claro el alcance de esta fase.
+
+### Qué se probó
+- Tests unitarios para emisión simulada, control de duplicados, error controlado sin `venta_id` y garantía de no invocar WSFE real en simulación.
+- Ajuste de compatibilidad en test previo del wrapper `arca_client`.
+
 ## 2026-05-23 - Codex - feature/arca-wsfe-fase4
 
 ### Tarea

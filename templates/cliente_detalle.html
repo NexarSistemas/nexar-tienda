@@ -339,7 +339,7 @@
                                     <td>{{ venta.fecha }}</td>
                                     <td>{{ venta.hora }}</td>
                                     <td>
-                                        <a href="{{ url_for('ticket', vid=venta.id) }}" target="_blank" class="text-decoration-none">
+                                        <a href="{{ url_for('ticket', vid=venta.id) }}" target="_blank" class="text-decoration-none js-ticket-link">
                                             #{{ venta.numero_ticket }}
                                         </a>
                                     </td>
@@ -571,6 +571,18 @@ document.addEventListener('DOMContentLoaded', function () {
                     btnConfirmarAnular.disabled = true;
                 }
             }
+        });
+    }
+
+    if (window.pywebview && window.pywebview.api) {
+        document.querySelectorAll('.js-ticket-link').forEach(function (link) {
+            link.removeAttribute('target');
+            link.addEventListener('click', function (event) {
+                const href = String(link.getAttribute('href') || '').trim();
+                if (!href) return;
+                event.preventDefault();
+                window.location.href = href;
+            });
         });
     }
 });

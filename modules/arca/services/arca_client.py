@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from modules.arca.services.comprobantes_service import emitir_comprobante_desde_venta
 from services.arca.auth_service import (
     get_connection_status as obtener_estado_conexion,
     probar_conexion_wsaa,
@@ -38,7 +39,5 @@ def obtener_ultimo_comprobante() -> dict[str, object]:
 
 def emitir_comprobante(data: dict[str, object] | None = None) -> dict[str, object]:
     payload = dict(data or {})
-    return _placeholder_response(
-        "emitir_comprobante",
-        {"payload": payload},
-    )
+    venta_id = payload.get("venta_id")
+    return emitir_comprobante_desde_venta(int(venta_id or 0) if venta_id is not None else None)
