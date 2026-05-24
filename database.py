@@ -332,6 +332,17 @@ def _init_arca_tables(c) -> None:
             detalle_json TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS arca_wsaa_tickets (
+            id INTEGER PRIMARY KEY,
+            ambiente TEXT NOT NULL,
+            service TEXT NOT NULL,
+            token TEXT NOT NULL,
+            sign TEXT NOT NULL,
+            generation_time TEXT NOT NULL,
+            expiration_time TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     _ensure_table_columns(
         c,
@@ -371,6 +382,12 @@ def _init_arca_tables(c) -> None:
     c.execute("CREATE INDEX IF NOT EXISTS idx_arca_comprobantes_venta_id ON arca_comprobantes(venta_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_arca_comprobantes_estado ON arca_comprobantes(estado)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_arca_eventos_comprobante_id ON arca_eventos(comprobante_id)")
+    c.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_arca_wsaa_tickets_lookup
+        ON arca_wsaa_tickets(ambiente, service, created_at DESC, id DESC)
+        """
+    )
 
 
 def registrar_auditoria(accion, entidad, entidad_id=0, detalle='', motivo='', usuario='', rol=''):

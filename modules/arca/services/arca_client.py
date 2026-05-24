@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from modules.arca.services.comprobantes_service import registrar_evento
+from services.arca.auth_service import (
+    get_connection_status as obtener_estado_conexion,
+    probar_conexion_wsaa,
+)
 
 
 def _placeholder_response(operacion: str, extra: dict[str, object] | None = None) -> dict[str, object]:
@@ -14,12 +17,7 @@ def _placeholder_response(operacion: str, extra: dict[str, object] | None = None
 
 
 def probar_conexion() -> dict[str, object]:
-    registrar_evento(
-        nivel="warning",
-        mensaje="Intento placeholder de conexión ARCA",
-        detalle={"operacion": "probar_conexion"},
-    )
-    return _placeholder_response("probar_conexion")
+    return probar_conexion_wsaa()
 
 
 def obtener_ultimo_comprobante() -> dict[str, object]:

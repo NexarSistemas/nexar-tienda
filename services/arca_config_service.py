@@ -239,9 +239,11 @@ def arca_esta_configurado() -> bool:
 
 def obtener_estado_modulo() -> dict[str, object]:
     from modules.arca.services.certificados_service import obtener_certificado_activo
+    from services.arca.auth_service import get_connection_status
 
     config = get_config()
     configurado = arca_esta_configurado()
+    conexion = get_connection_status()
     return {
         "configuracion": config,
         "configurado": configurado,
@@ -252,11 +254,11 @@ def obtener_estado_modulo() -> dict[str, object]:
         "punto_venta": config.get("punto_venta", ""),
         "certificado_homologacion": obtener_certificado_activo("homologacion"),
         "certificado_produccion": obtener_certificado_activo("produccion"),
-        "modo": "placeholder",
-        "mensaje": (
-            "Esta fase solo prepara la configuración fiscal persistente. "
-            "Todavía no hay conexión real con ARCA."
-        ),
+        "modo": conexion["modo"],
+        "mensaje": conexion["mensaje"],
+        "wsaa_ok": conexion["ok"],
+        "ticket_vigente": conexion["ticket_vigente"],
+        "ticket_expiration_time": conexion["expiration_time"],
     }
 
 
