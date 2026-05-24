@@ -92,12 +92,32 @@
                                 {% else %}
                                 <span class="badge bg-success">Activa</span>
                                 {% endif %}
+                                {% set arca_comprobante = arca_estado_por_venta.get(venta.id) if arca_estado_por_venta else None %}
+                                {% if arca_comprobante %}
+                                <div class="small text-muted mt-1">
+                                    ARCA: {{ arca_comprobante.estado or 'PENDIENTE' }}
+                                    {% if arca_comprobante.numero_comprobante %} · N° {{ arca_comprobante.numero_comprobante }}{% endif %}
+                                </div>
+                                {% endif %}
                             </td>
                             <td class="text-end fw-bold">{{ venta.total | fmt_ars }}</td>
                             <td class="text-center">
                                 <a href="{{ url_for('historial_detalle', vid=venta.id) }}" class="btn btn-sm btn-outline-primary" title="Ver Ticket">
                                     <i class="fas fa-receipt"></i>
                                 </a>
+                                {% if usuario_es_admin and arca_modulo_activo and venta.id in arca_puede_emitir_ids %}
+                                <form method="POST" action="{{ url_for('arca.emitir_comprobante_venta_route', venta_id=venta.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-info ms-1" title="Facturar con ARCA">
+                                        <i class="fas fa-file-invoice"></i>
+                                    </button>
+                                </form>
+                                {% elif usuario_es_admin and arca_modulo_activo and arca_comprobante %}
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" disabled title="Venta ya facturada con ARCA">
+                                    <i class="fas fa-file-circle-check"></i>
+                                </button>
+                                {% endif %}
                                 {% if not venta.anulada and usuario_es_admin %}
                                 <button
                                     type="button"
