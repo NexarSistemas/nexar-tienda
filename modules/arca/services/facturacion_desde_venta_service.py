@@ -109,6 +109,32 @@ def _serializar_respuesta_segura(data: dict[str, object]) -> str:
     return json.dumps(data, ensure_ascii=False, sort_keys=True)
 
 
+def _build_respuesta_tecnica_segura(
+    *,
+    respuesta: dict[str, object],
+    payload: dict[str, object],
+    numero_comprobante: int,
+    fecha_emision: str,
+    pdf_path: str,
+) -> str:
+    resumen = {
+        "resultado": _clean_text(respuesta.get("resultado")) or ("aprobado" if respuesta.get("ok") else "error"),
+        "estado": _clean_text(respuesta.get("estado")) or "PENDIENTE",
+        "tipo_comprobante": _clean_text(respuesta.get("tipo_comprobante")) or _clean_text(payload.get("tipo_comprobante")),
+        "punto_venta": int(respuesta.get("punto_venta") or payload.get("punto_venta") or 0),
+        "numero_comprobante": int(numero_comprobante or 0),
+        "cae": _clean_text(respuesta.get("cae")),
+        "cae_vencimiento": _clean_text(respuesta.get("cae_vencimiento")),
+        "fecha_emision": fecha_emision,
+        "importe_total": _to_float(respuesta.get("importe_total") or payload.get("totales", {}).get("importe_total")),
+        "modo": _clean_text(respuesta.get("modo")) or _clean_text(payload.get("metadata", {}).get("modo_sugerido")) or "wsfe",
+        "ambiente": _clean_text(respuesta.get("ambiente") or payload.get("metadata", {}).get("ambiente")) or "homologacion",
+        "observaciones": list(respuesta.get("observaciones") or []),
+        "pdf_path": pdf_path,
+    }
+    return _serializar_respuesta_segura(resumen)
+
+
 def _obtener_venta(venta_id: int) -> dict[str, object] | None:
     venta = db.q("SELECT * FROM ventas WHERE id = ?", (int(venta_id),), fetchone=True)
     return dict(venta) if venta else None
@@ -324,7 +350,13 @@ def facturar_venta_desde_existente(venta_id: int | None) -> dict[str, object]:
         fecha_emision=fecha_emision,
         payload=payload,
         respuesta=respuesta_safe,
-        respuesta_raw=_serializar_respuesta_segura(dict(respuesta)),
+        respuesta_raw=_build_respuesta_tecnica_segura(
+            respuesta=dict(respuesta),
+            payload=payload,
+            numero_comprobante=numero_comprobante,
+            fecha_emision=fecha_emision,
+            pdf_path=pdf_path,
+        ),
         pdf_path=pdf_path,
         modo=_clean_text(respuesta.get("modo")) or _clean_text(payload.get("metadata", {}).get("modo_sugerido")) or "wsfe",
         ambiente=_clean_text(respuesta.get("ambiente") or payload.get("metadata", {}).get("ambiente")) or "homologacion",

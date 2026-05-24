@@ -95,8 +95,10 @@
                                 {% set arca_comprobante = arca_estado_por_venta.get(venta.id) if arca_estado_por_venta else None %}
                                 {% if arca_comprobante %}
                                 <div class="small text-muted mt-1">
-                                    ARCA: {{ arca_comprobante.estado or 'PENDIENTE' }}
-                                    {% if arca_comprobante.numero_comprobante %} · N° {{ arca_comprobante.numero_comprobante }}{% endif %}
+                                    ARCA: {{ arca_comprobante.comprobante_formateado or (arca_comprobante.tipo_comprobante or 'Comprobante') }}
+                                </div>
+                                <div class="small text-muted">
+                                    Estado {{ arca_comprobante.estado or 'PENDIENTE' }} · CAE {{ arca_comprobante.cae or '-' }} · Vence {{ arca_comprobante.cae_vencimiento or '-' }}
                                 </div>
                                 {% endif %}
                             </td>
@@ -117,6 +119,7 @@
                                 <button type="button" class="btn btn-sm btn-outline-secondary ms-1" disabled title="Venta ya facturada con ARCA">
                                     <i class="fas fa-file-circle-check"></i>
                                 </button>
+                                <span class="small text-muted ms-1">Factura ARCA generada</span>
                                 {% endif %}
                                 {% if not venta.anulada and usuario_es_admin %}
                                 <button

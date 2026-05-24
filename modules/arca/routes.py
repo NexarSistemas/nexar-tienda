@@ -14,7 +14,7 @@ from modules.arca.services.certificados_service import (
     listar_certificados,
     registrar_certificado,
 )
-from modules.arca.services.comprobantes_service import listar_comprobantes
+from modules.arca.services.comprobantes_service import obtener_comprobante_por_id, listar_comprobantes
 from modules.arca.services.facturacion_desde_venta_service import facturar_venta_desde_existente
 from services.arca_config_service import (
     CONDICIONES_FISCALES_VALIDAS,
@@ -186,4 +186,17 @@ def comprobantes():
     return render_template(
         "arca/comprobantes.html",
         comprobantes=listar_comprobantes(),
+    )
+
+
+@arca_bp.route("/comprobantes/<int:comprobante_id>")
+@admin_required
+def comprobante_detalle(comprobante_id: int):
+    comprobante = obtener_comprobante_por_id(comprobante_id)
+    if not comprobante:
+        flash("El comprobante ARCA indicado no existe.", "warning")
+        return redirect(url_for("arca.comprobantes"))
+    return render_template(
+        "arca/comprobante_detalle.html",
+        comprobante=comprobante,
     )
