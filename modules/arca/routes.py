@@ -3,7 +3,12 @@ from __future__ import annotations
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from licensing.permisos import modulo_activo
-from modules.arca.services.arca_client import obtener_estado_conexion, probar_conexion
+from modules.arca.services.arca_client import (
+    obtener_estado_conexion,
+    obtener_estado_wsfe,
+    probar_conexion,
+    probar_wsfe_conexion,
+)
 from modules.arca.services.certificados_service import (
     activar_certificado,
     listar_certificados,
@@ -65,11 +70,13 @@ def _validar_modulo_activo():
 def estado():
     estado_modulo = obtener_estado_modulo()
     conexion = obtener_estado_conexion()
+    wsfe = obtener_estado_wsfe()
     return render_template(
         "arca/estado.html",
         estado_modulo=estado_modulo,
         config=estado_modulo["configuracion"],
         conexion=conexion,
+        wsfe=wsfe,
     )
 
 
@@ -149,6 +156,14 @@ def certificados_activar(certificado_id: int):
 @admin_required
 def probar_conexion_route():
     resultado = probar_conexion()
+    flash(resultado["mensaje"], "success" if resultado.get("ok") else "warning")
+    return redirect(url_for("arca.estado"))
+
+
+@arca_bp.route("/probar-wsfe", methods=["POST"])
+@admin_required
+def probar_wsfe_route():
+    resultado = probar_wsfe_conexion()
     flash(resultado["mensaje"], "success" if resultado.get("ok") else "warning")
     return redirect(url_for("arca.estado"))
 

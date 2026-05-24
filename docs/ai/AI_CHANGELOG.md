@@ -2,6 +2,34 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-23 - Codex - feature/arca-wsfe-fase4
+
+### Tarea
+Implementar Fase 4 del módulo ARCA con conexión mínima a WSFE homologación para consultas, reutilizando ticket WSAA y sin emitir comprobantes.
+
+### Archivos modificados
+- `services/arca/wsfe_client.py`
+- `services/arca/wsfe_service.py`
+- `services/arca/__init__.py`
+- `modules/arca/services/arca_client.py`
+- `modules/arca/routes.py`
+- `templates/arca/estado.html`
+- `tests/test_arca_fase4_wsfe.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregó un cliente SOAP mínimo para WSFE homologación con `FEDummy`, `FEParamGetTiposCbte`, `FEParamGetTiposDoc`, `FEParamGetPtosVenta` y `FECompUltimoAutorizado`, manteniendo el armado de `FEAuthRequest` fuera de las rutas.
+- Se creó un servicio desacoplado que valida configuración, reutiliza ticket WSAA vigente o renueva uno vía `auth_service`, ejecuta la prueba WSFE y guarda un resumen seguro en `arca_eventos`.
+- La pantalla Estado ARCA ahora incorpora el botón `Probar WSFE` y un bloque con el último resultado visible: estado de conexión, `FEDummy`, cantidades y previews de parámetros consultados, y último comprobante para PV configurado con Factura B.
+- Se mantuvieron logs seguros sin exponer token ni sign completos y sin habilitar emisión, CAE, POS ni integración con ventas.
+
+### Qué se probó
+- Tests unitarios para `FEAuthRequest`, error sin configuración, reutilización de ticket vigente y parseo de último comprobante.
+
+### Ajuste posterior
+- Se corrigió la serialización SOAP de WSFE para que `Auth`, `Token`, `Sign` y `Cuit` viajen dentro del namespace `http://ar.gov.afip.dif.FEV1/`, que AFIP exige para interpretar correctamente `FEAuthRequest`.
+- También se mejoró el manejo de `HTTP 500` para leer el `SOAP Fault` real antes de responder con error genérico, y se agregaron logs seguros con longitudes de `token`/`sign`, `cuit` y método WSFE invocado.
+
 ## 2026-05-23 - Codex - feature/arca-wsaa-fase31
 
 ### Tarea
