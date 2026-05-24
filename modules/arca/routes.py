@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from licensing.permisos import modulo_activo
-from modules.arca.services.arca_client import probar_conexion
+from modules.arca.services.arca_client import obtener_estado_conexion, probar_conexion
 from modules.arca.services.certificados_service import (
     activar_certificado,
     listar_certificados,
@@ -64,15 +64,12 @@ def _validar_modulo_activo():
 @admin_required
 def estado():
     estado_modulo = obtener_estado_modulo()
+    conexion = obtener_estado_conexion()
     return render_template(
         "arca/estado.html",
         estado_modulo=estado_modulo,
         config=estado_modulo["configuracion"],
-        conexion={
-            "ok": False,
-            "modo": "placeholder",
-            "mensaje": "Todavía no hay conexión real con ARCA en esta fase.",
-        },
+        conexion=conexion,
     )
 
 
@@ -150,9 +147,9 @@ def certificados_activar(certificado_id: int):
 
 @arca_bp.route("/probar-conexion", methods=["POST"])
 @admin_required
-def probar_conexion_placeholder():
+def probar_conexion_route():
     resultado = probar_conexion()
-    flash(resultado["mensaje"], "info")
+    flash(resultado["mensaje"], "success" if resultado.get("ok") else "warning")
     return redirect(url_for("arca.estado"))
 
 

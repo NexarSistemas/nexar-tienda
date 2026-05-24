@@ -69,7 +69,13 @@ class ArcaBaseTests(unittest.TestCase):
                 conn.close()
 
             self.assertTrue(
-                {"arca_configuracion", "arca_certificados", "arca_comprobantes", "arca_eventos"}.issubset(tablas)
+                {
+                    "arca_configuracion",
+                    "arca_certificados",
+                    "arca_comprobantes",
+                    "arca_eventos",
+                    "arca_wsaa_tickets",
+                }.issubset(tablas)
             )
         finally:
             database.DB_PATH = original_db_path

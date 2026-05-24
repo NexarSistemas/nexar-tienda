@@ -92,8 +92,7 @@
                                 <th>Estado</th>
                                 <th>Activo</th>
                                 <th>Observaciones</th>
-                                <th>Certificado</th>
-                                <th>Key</th>
+                                <th>Diagnóstico</th>
                                 <th class="text-end">Acción</th>
                             </tr>
                         </thead>
@@ -119,15 +118,48 @@
                                     </td>
                                     <td class="small">{{ certificado.observaciones or "-" }}</td>
                                     <td class="small">
-                                        <div>{{ certificado.certificado_path }}</div>
-                                        <div class="{% if certificado.certificado_existe %}text-success{% else %}text-danger{% endif %}">
-                                            {% if certificado.certificado_existe %}Ruta válida{% else %}Ruta inválida{% endif %}
+                                        <div class="mb-2">
+                                            <div class="fw-semibold">Certificado</div>
+                                            <div class="text-break">{{ certificado.certificado_path }}</div>
+                                            <div class="{% if certificado.certificado_existe %}text-success{% else %}text-danger{% endif %}">
+                                                Existe: {% if certificado.certificado_existe %}Sí{% else %}No{% endif %}
+                                            </div>
+                                            <div class="{% if certificado.certificado_valido %}text-success{% else %}text-danger{% endif %}">
+                                                Válido: {% if certificado.certificado_valido %}Sí{% else %}No{% endif %}
+                                                {% if certificado.certificado_formato %}· {{ certificado.certificado_formato }}{% endif %}
+                                            </div>
+                                            <div class="text-muted">
+                                                Vence: {{ certificado.certificado_vencimiento_detectado or certificado.vencimiento or "-" }}
+                                            </div>
+                                            {% if certificado.certificado_error %}
+                                            <div class="text-danger">{{ certificado.certificado_error }}</div>
+                                            {% endif %}
                                         </div>
-                                    </td>
-                                    <td class="small">
-                                        <div>{{ certificado.key_path }}</div>
-                                        <div class="{% if certificado.key_existe %}text-success{% else %}text-danger{% endif %}">
-                                            {% if certificado.key_existe %}Ruta válida{% else %}Ruta inválida{% endif %}
+                                        <div class="mb-2">
+                                            <div class="fw-semibold">Clave privada</div>
+                                            <div class="text-break">{{ certificado.key_path }}</div>
+                                            <div class="{% if certificado.key_existe %}text-success{% else %}text-danger{% endif %}">
+                                                Existe: {% if certificado.key_existe %}Sí{% else %}No{% endif %}
+                                            </div>
+                                            <div class="{% if certificado.key_valida %}text-success{% else %}text-danger{% endif %}">
+                                                Válida: {% if certificado.key_valida %}Sí{% else %}No{% endif %}
+                                                {% if certificado.key_formato %}· {{ certificado.key_formato }}{% endif %}
+                                            </div>
+                                            {% if certificado.key_requiere_password %}
+                                            <div class="text-warning">La key requiere contraseña.</div>
+                                            {% endif %}
+                                            {% if certificado.key_error %}
+                                            <div class="text-danger">{{ certificado.key_error }}</div>
+                                            {% endif %}
+                                        </div>
+                                        <div>
+                                            <div class="fw-semibold">Par certificado/key</div>
+                                            <div class="{% if certificado.par_coincide %}text-success{% else %}text-danger{% endif %}">
+                                                Coinciden: {% if certificado.par_coincide %}Sí{% else %}No{% endif %}
+                                            </div>
+                                            {% if certificado.par_error %}
+                                            <div class="text-danger">{{ certificado.par_error }}</div>
+                                            {% endif %}
                                         </div>
                                     </td>
                                     <td class="text-end">
@@ -142,7 +174,7 @@
                                 {% endfor %}
                             {% else %}
                                 <tr>
-                                    <td colspan="10" class="text-center text-muted py-4">
+                                    <td colspan="9" class="text-center text-muted py-4">
                                         Todavía no hay certificados ARCA registrados.
                                     </td>
                                 </tr>

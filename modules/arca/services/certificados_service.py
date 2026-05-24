@@ -6,6 +6,7 @@ from pathlib import Path
 import database as db
 from modules.arca.services.comprobantes_service import registrar_evento
 from modules.arca.services.config_service import AMBIENTES_VALIDOS, normalizar_cuit
+from services.arca.certificate_diagnostics import diagnose_certificate_pair
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -81,6 +82,21 @@ def _row_to_dict(row) -> dict[str, object]:
     data["key_existe"] = bool(key_path and key_path.exists())
     data["activo"] = int(data.get("activo") or 0)
     data["estado"] = _estado_desde_datos(data.get("vencimiento"), data["activo"])
+    diagnostico = diagnose_certificate_pair(
+        str(cert_path) if cert_path else "",
+        str(key_path) if key_path else "",
+    )
+    data["diagnostico"] = diagnostico
+    data["certificado_valido"] = diagnostico["certificate_valid"]
+    data["certificado_formato"] = diagnostico["certificate_format"]
+    data["certificado_error"] = diagnostico["certificate_error"]
+    data["certificado_vencimiento_detectado"] = diagnostico["certificate_not_valid_after"]
+    data["key_valida"] = diagnostico["key_valid"]
+    data["key_formato"] = diagnostico["key_format"]
+    data["key_requiere_password"] = diagnostico["key_requires_password"]
+    data["key_error"] = diagnostico["key_error"]
+    data["par_coincide"] = diagnostico["pair_match"]
+    data["par_error"] = diagnostico["pair_error"]
     return data
 
 

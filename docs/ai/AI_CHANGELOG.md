@@ -2,6 +2,65 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-23 - Codex - feature/arca-wsaa-fase31
+
+### Tarea
+Mejorar el diagnóstico técnico de certificados ARCA antes de intentar autenticación WSAA, con validación de X509, private key, passphrase y correspondencia del par.
+
+### Archivos modificados
+- `services/arca/certificate_diagnostics.py`
+- `services/arca/__init__.py`
+- `services/arca/auth_service.py`
+- `modules/arca/services/certificados_service.py`
+- `templates/arca/certificados.html`
+- `tests/test_arca_fase3_wsaa.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregó un servicio desacoplado de diagnóstico técnico para certificado y key, con detección de formato PEM/DER, validez X509, key encriptada y coincidencia del par.
+- `Probar conexión` ahora falla antes con mensajes claros si el certificado es inválido, si la key requiere contraseña o si el par no corresponde.
+- La pantalla de Certificados ahora muestra un bloque de diagnóstico por fila con existencia, validez, formato, vencimiento leído del certificado y consistencia del par.
+- Se mantuvieron logs seguros sin exponer contenido sensible de certificado, key, token ni sign.
+
+### Qué se probó
+- Tests con certificado y key válidos generados en runtime.
+- Detección de key con password.
+- Detección de certificado y key no coincidentes.
+- Exposición del diagnóstico en `certificados_service`.
+
+## 2026-05-23 - Codex - feature/arca-wsaa-fase3
+
+### Tarea
+Implementar Fase 3 del módulo ARCA con autenticación real WSAA en homologación, almacenamiento local de tickets y prueba de conexión desacoplada, sin emitir comprobantes.
+
+### Archivos modificados
+- `database.py`
+- `modules/arca/routes.py`
+- `modules/arca/services/arca_client.py`
+- `services/arca_config_service.py`
+- `templates/arca/config.html`
+- `templates/arca/estado.html`
+- `tests/test_arca_base.py`
+- `tests/test_arca_fase1.py`
+- `tests/test_arca_fase3_wsaa.py`
+- `services/arca/__init__.py`
+- `services/arca/auth_service.py`
+- `services/arca/ticket_storage.py`
+- `services/arca/wsaa_client.py`
+- `services/arca/xml_signer.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregó persistencia dedicada para tickets WSAA por ambiente y servicio en SQLite.
+- Se creó un paquete `services/arca` para separar generación de TRA, firmado CMS, cliente WSAA y orquestación de autenticación.
+- El botón `Probar conexión` ahora intenta autenticación real en homologación, reutiliza ticket vigente si existe y devuelve errores claros cuando falta configuración, firma o la respuesta WSAA es inválida.
+- El panel Estado ARCA ahora muestra estado de conexión WSAA, ticket vigente/vencido y mantiene el aviso de que aún no se emiten comprobantes.
+- Se agregaron logs y eventos seguros sin exponer token, sign ni contenido de la clave privada.
+
+### Qué se probó
+- Tests de creación de TRA, vigencia/vencimiento de tickets y configuración incompleta.
+- Ajustes de tests base para la nueva tabla de tickets y el nuevo flujo de `probar_conexion`.
+
 ## 2026-05-23 - Codex - fix/release-gh-token
 
 ### Tarea

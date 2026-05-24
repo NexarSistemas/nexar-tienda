@@ -11,7 +11,7 @@
                 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
                     <div>
                         <h2 class="h4 mb-1">Estado ARCA</h2>
-                        <p class="text-muted mb-0">Configuración fiscal y certificados locales listos para una futura integración.</p>
+                        <p class="text-muted mb-0">Configuración fiscal, certificados y autenticación WSAA desacoplada. La emisión de comprobantes sigue pendiente.</p>
                     </div>
                     <div class="d-flex flex-wrap gap-2">
                         <a href="{{ url_for('arca.config') }}" class="btn btn-primary">
@@ -20,7 +20,7 @@
                         <a href="{{ url_for('arca.certificados') }}" class="btn btn-outline-primary">
                             <i class="fas fa-id-card me-2"></i>Certificados
                         </a>
-                        <form method="POST" action="{{ url_for('arca.probar_conexion_placeholder') }}">
+                        <form method="POST" action="{{ url_for('arca.probar_conexion_route') }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-outline-secondary">
                                 <i class="fas fa-plug me-2"></i>Probar conexión
@@ -79,10 +79,38 @@
                             {% endif %}
                         </div>
                     </div>
+                    <div class="col-md-6">
+                        <div class="border rounded-3 p-3 h-100 bg-light">
+                            <div class="text-muted small mb-1">Conexión WSAA</div>
+                            <div class="fw-semibold">
+                                {% if conexion.ok %}
+                                Correcta
+                                {% else %}
+                                Pendiente
+                                {% endif %}
+                            </div>
+                            <div class="small text-muted">{{ conexion.detalle_corto }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="border rounded-3 p-3 h-100 bg-light">
+                            <div class="text-muted small mb-1">Ticket WSAA actual</div>
+                            {% if conexion.ticket_vigente %}
+                            <div class="fw-semibold">Válido hasta {{ conexion.expiration_time }}</div>
+                            <div class="small text-muted">Generado {{ conexion.generation_time }} para {{ conexion.service|upper }} en {{ conexion.ambiente|capitalize }}.</div>
+                            {% elif conexion.expiration_time %}
+                            <div class="fw-semibold">Vencido</div>
+                            <div class="small text-muted">Último vencimiento registrado: {{ conexion.expiration_time }}</div>
+                            {% else %}
+                            <div class="fw-semibold">Sin ticket almacenado</div>
+                            <div class="small text-muted">Usá “Probar conexión” para solicitar un ticket WSAA en homologación.</div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
 
                 <div class="alert alert-warning mt-4 mb-0" role="alert">
-                    <strong>Modo actual:</strong> {{ conexion.modo|capitalize }}.
+                    <strong>Modo actual:</strong> {{ conexion.modo|replace('-', ' ')|capitalize }}.
                     {{ conexion.mensaje }}
                 </div>
             </div>

@@ -241,22 +241,24 @@ class ArcaFase1Tests(unittest.TestCase):
         self.assertEqual(certificados[cert_1["id"]]["estado"], "pendiente")
         self.assertEqual(certificados[cert_2["id"]]["estado"], "activo")
 
-    def test_cliente_placeholder_siempre_devuelve_ok_false(self):
+    def test_probar_conexion_reporta_configuracion_incompleta_sin_romper(self):
         resultado_conexion = self.arca_client.probar_conexion()
         resultado_ultimo = self.arca_client.obtener_ultimo_comprobante()
         resultado_emitir = self.arca_client.emitir_comprobante({"venta_id": 10})
 
         self.assertFalse(resultado_conexion["ok"])
+        self.assertEqual(resultado_conexion["modo"], "wsaa")
+        self.assertEqual(resultado_conexion["error_code"], "configuracion_incompleta")
+        self.assertIn("Falta", resultado_conexion["mensaje"])
         self.assertFalse(resultado_ultimo["ok"])
         self.assertFalse(resultado_emitir["ok"])
-        self.assertEqual(resultado_conexion["modo"], "placeholder")
         self.assertEqual(resultado_emitir["operacion"], "emitir_comprobante")
 
         eventos = self.database.q(
             "SELECT mensaje, detalle_json FROM arca_eventos ORDER BY id DESC LIMIT 1"
         )
         self.assertTrue(eventos)
-        self.assertIn("Intento placeholder de conexión ARCA", eventos[0]["mensaje"])
+        self.assertIn("Conexión WSAA fallida", eventos[0]["mensaje"])
 
     def test_eventos_arca_registran_acciones_sin_secretos(self):
         self.config_service.save_config(
