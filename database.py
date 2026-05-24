@@ -1762,9 +1762,9 @@ def activar_licencia(token_b64: str) -> tuple:
     Valida el token RSA y, si es correcto, activa la licencia en la DB.
 
     Regla de negocio:
-      - TDA_BASICA: activa directamente y marca 'basica_activada' = '1'.
-      - TDA_PRO: solo se puede activar si antes se activÃ³ BASICA.
-        Si BASICA nunca fue activada, devuelve error explicativo.
+      - BASICA, PRO y FULL pueden activarse directamente como alta inicial.
+      - `basica_activada` queda reservada para fallback permanente, no como
+        requisito previo para activar PRO/FULL.
 
     Retorna: (ok: bool, mensaje: str)
     """
@@ -1773,16 +1773,6 @@ def activar_licencia(token_b64: str) -> tuple:
         return False, msg
 
     tier = normalize_license_plan(data.get("tier", "BASICA"))
-
-    # â”€â”€ Regla: Mensual Full requiere BASICA previa en el flujo legacy RSA â”€â”€â”€â”€
-    if tier == "FULL":
-        cfg = get_config()
-        if cfg.get("basica_activada", "0") != "1":
-            return (
-                False,
-                "Para activar la licencia Mensual Full primero debÃ©s activar la licencia BÃSICA.\n"
-                "ContactÃ¡ al desarrollador para obtener tu token BÃSICA.",
-            )
 
     expires_at = data.get("expires_at") or ""
     updates = {
@@ -1799,7 +1789,7 @@ def activar_licencia(token_b64: str) -> tuple:
         'license_updates':        '1' if TIER_LIMITS[tier].get('updates') else '0',
     }
 
-    # â”€â”€ Marcar BASICA como activada (necesario para poder activar PRO luego) â”€
+    # â”€â”€ Marcar BASICA como activada para fallback permanente â”€
     if tier == "BASICA":
         updates['basica_activada'] = '1'
 

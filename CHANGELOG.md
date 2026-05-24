@@ -4,6 +4,13 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.35.2] - 2026-05-24
+
+### Corregido
+- Se corrigió la activación directa de licencias PRO y FULL en instalaciones nuevas.
+- La app ya no exige una licencia BASICA previa para activar planes superiores.
+- Se mantiene la compatibilidad con BASICA, PRO y FULL como planes válidos de activación.
+
 ## [1.35.1] - 2026-05-19
 
 ### Changed
