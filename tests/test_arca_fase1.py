@@ -252,7 +252,7 @@ class ArcaFase1Tests(unittest.TestCase):
         self.assertIn("Falta", resultado_conexion["mensaje"])
         self.assertFalse(resultado_ultimo["ok"])
         self.assertFalse(resultado_emitir["ok"])
-        self.assertEqual(resultado_emitir["operacion"], "emitir_comprobante")
+        self.assertEqual(resultado_emitir["error_code"], "venta_no_encontrada")
 
         eventos = self.database.q(
             "SELECT mensaje, detalle_json FROM arca_eventos ORDER BY id DESC LIMIT 1"

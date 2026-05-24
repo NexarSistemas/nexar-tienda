@@ -36,7 +36,7 @@
                             <td>{{ comprobante.created_at | date }}</td>
                             <td>{{ comprobante.tipo_comprobante or "-" }}</td>
                             <td>{{ comprobante.punto_venta or "-" }}</td>
-                            <td>{{ comprobante.numero or "-" }}</td>
+                            <td>{{ comprobante.numero_comprobante or comprobante.numero or "-" }}</td>
                             <td><span class="badge text-bg-secondary">{{ comprobante.estado or "pendiente" }}</span></td>
                             <td>{{ comprobante.cae or "-" }}</td>
                             <td class="text-end">{{ comprobante.total | fmt_ars }}</td>

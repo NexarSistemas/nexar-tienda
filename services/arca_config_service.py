@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -23,6 +24,17 @@ def _clean_text(value: object) -> str:
 
 def _clean_bool(value: object) -> int:
     return 1 if str(value or "").strip().lower() in {"1", "true", "on", "yes", "si"} else 0
+
+
+def _env_flag(value: object) -> bool | None:
+    normalized = _clean_text(value).lower()
+    if not normalized:
+        return None
+    if normalized in {"1", "true", "on", "yes", "si"}:
+        return True
+    if normalized in {"0", "false", "off", "no"}:
+        return False
+    return None
 
 
 def _row_to_dict(row) -> dict[str, object]:
@@ -164,6 +176,26 @@ def get_config() -> dict[str, object]:
     return config
 
 
+def arca_modo_simulacion_activo() -> bool:
+    env_value = _env_flag(os.getenv("ARCA_MODO_SIMULACION"))
+    if env_value is not None:
+        return env_value
+
+    flask_env = _clean_text(os.getenv("FLASK_ENV") or os.getenv("ENV")).lower() or "development"
+    return flask_env != "production"
+
+
+def obtener_modo_arca() -> dict[str, object]:
+    env_value = _env_flag(os.getenv("ARCA_MODO_SIMULACION"))
+    simulacion = arca_modo_simulacion_activo()
+    source = "ARCA_MODO_SIMULACION" if env_value is not None else "default_desarrollo"
+    return {
+        "simulacion": simulacion,
+        "modo": "simulacion" if simulacion else "wsfe",
+        "origen": source,
+    }
+
+
 def save_config(data: dict[str, object] | None) -> dict[str, object]:
     normalized = validate_config(data)
     now = datetime.now().replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
@@ -244,6 +276,7 @@ def obtener_estado_modulo() -> dict[str, object]:
     config = get_config()
     configurado = arca_esta_configurado()
     conexion = get_connection_status()
+    modo_runtime = obtener_modo_arca()
     return {
         "configuracion": config,
         "configurado": configurado,
@@ -259,6 +292,9 @@ def obtener_estado_modulo() -> dict[str, object]:
         "wsaa_ok": conexion["ok"],
         "ticket_vigente": conexion["ticket_vigente"],
         "ticket_expiration_time": conexion["expiration_time"],
+        "modo_operacion": modo_runtime["modo"],
+        "modo_simulacion": modo_runtime["simulacion"],
+        "modo_origen": modo_runtime["origen"],
     }
 
 

@@ -312,9 +312,11 @@ def _init_arca_tables(c) -> None:
             tipo_comprobante TEXT,
             punto_venta INTEGER,
             numero INTEGER,
+            numero_comprobante INTEGER,
             cae TEXT,
             cae_vencimiento TEXT,
             estado TEXT DEFAULT 'pendiente',
+            modo TEXT DEFAULT 'wsfe',
             ambiente TEXT DEFAULT 'homologacion',
             total REAL,
             payload_json TEXT,
@@ -371,6 +373,38 @@ def _init_arca_tables(c) -> None:
             "observaciones": "TEXT DEFAULT ''",
         },
     )
+    _ensure_table_columns(
+        c,
+        "arca_comprobantes",
+        {
+            "numero_comprobante": "INTEGER",
+            "modo": "TEXT DEFAULT 'wsfe'",
+        },
+    )
+    c.execute(
+        """
+        UPDATE arca_comprobantes
+        SET numero_comprobante = numero
+        WHERE numero_comprobante IS NULL AND numero IS NOT NULL
+        """
+    )
+    c.execute(
+        """
+        UPDATE arca_comprobantes
+        SET numero = numero_comprobante
+        WHERE numero IS NULL AND numero_comprobante IS NOT NULL
+        """
+    )
+    c.execute(
+        """
+        UPDATE arca_comprobantes
+        SET modo = CASE
+            WHEN LOWER(TRIM(COALESCE(ambiente, ''))) = 'simulacion' THEN 'simulacion'
+            ELSE 'wsfe'
+        END
+        WHERE TRIM(COALESCE(modo, '')) = ''
+        """
+    )
     c.execute(
         """
         UPDATE arca_configuracion
@@ -381,6 +415,7 @@ def _init_arca_tables(c) -> None:
     )
     c.execute("CREATE INDEX IF NOT EXISTS idx_arca_comprobantes_venta_id ON arca_comprobantes(venta_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_arca_comprobantes_estado ON arca_comprobantes(estado)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_arca_comprobantes_numero ON arca_comprobantes(numero_comprobante)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_arca_eventos_comprobante_id ON arca_eventos(comprobante_id)")
     c.execute(
         """
