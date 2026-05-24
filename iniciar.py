@@ -9,6 +9,8 @@ import socket
 import webbrowser
 import threading as _threading
 import platform
+import tempfile
+import shutil
 
 from services.file_open_service import open_external_target
 
@@ -241,6 +243,195 @@ if __name__ == "__main__":
                         return
 
                     from PySide6.QtPrintSupport import QPrintDialog, QPrinter
+                    from PySide6.QtWidgets import QMessageBox
+
+                    if not getattr(window, "_linux_print_signal_hook_installed", False):
+                        try:
+                            if hasattr(browser, "printFinished"):
+                                browser.printFinished.connect(
+                                    lambda success: safe_print(
+                                        f"[ticket] Signal printFinished ok={bool(success)} renderer={renderer_name}"
+                                    )
+                                )
+                            if hasattr(page, "pdfPrintingFinished"):
+                                page.pdfPrintingFinished.connect(
+                                    lambda path, success: safe_print(
+                                        f"[ticket] Signal page.pdfPrintingFinished path={path} ok={bool(success)} "
+                                        f"renderer={renderer_name}"
+                                    )
+                                )
+                            window._linux_print_signal_hook_installed = True
+                        except Exception as exc:
+                            safe_print(f"[ticket] No se pudo conectar signal printFinished: {exc}")
+
+                    if not hasattr(window, "_linux_print_jobs"):
+                        window._linux_print_jobs = {}
+                    if not hasattr(window, "_linux_print_job_seq"):
+                        window._linux_print_job_seq = 0
+
+                    def _printer_state_name(printer):
+                        try:
+                            return str(printer.printerState()).split(".")[-1]
+                        except Exception:
+                            return "desconocido"
+
+                    def _output_format_name(printer):
+                        try:
+                            return str(printer.outputFormat()).split(".")[-1]
+                        except Exception:
+                            return "desconocido"
+
+                    def _log_printer(prefix, printer):
+                        safe_print(
+                            f"[ticket] {prefix} printerName={printer.printerName() or 'sin_nombre'} "
+                            f"isValid={bool(printer.isValid())} outputFormat={_output_format_name(printer)} "
+                            f"printerState={_printer_state_name(printer)}"
+                        )
+
+                    def _show_print_error(title, message):
+                        try:
+                            QMessageBox.warning(native_window, title, message)
+                        except Exception:
+                            safe_print(f"[ticket] No se pudo mostrar QMessageBox titulo={title} mensaje={message}")
+
+                    safe_print(
+                        f"[ticket] Objetos Qt view_type={type(browser).__name__} page_type={type(page).__name__} "
+                        f"view_print_methods={[name for name in dir(browser) if 'print' in name.lower()]} "
+                        f"page_print_methods={[name for name in dir(page) if 'print' in name.lower()]}"
+                    )
+
+                    def _cleanup_job(job_id):
+                        job = window._linux_print_jobs.pop(job_id, None)
+                        pdf_path = str(job.get("pdf_path") or "").strip() if job else ""
+                        remove_pdf = bool(job.get("remove_pdf")) if job else False
+                        if remove_pdf and pdf_path and os.path.exists(pdf_path):
+                            try:
+                                os.remove(pdf_path)
+                            except OSError:
+                                safe_print(f"[ticket] No se pudo borrar PDF temporal path={pdf_path}")
+
+                    def _send_pdf_to_cups(pdf_path, printer_name):
+                        printer_name = str(printer_name or "").strip()
+                        lp_path = shutil.which("lp")
+                        lpr_path = shutil.which("lpr")
+
+                        if lp_path:
+                            command = [lp_path]
+                            if printer_name:
+                                command.extend(["-d", printer_name])
+                            command.append(pdf_path)
+                        elif lpr_path:
+                            command = [lpr_path]
+                            if printer_name:
+                                command.extend(["-P", printer_name])
+                            command.append(pdf_path)
+                        else:
+                            return {
+                                "ok": False,
+                                "message": "No se encontró lp ni lpr para enviar el ticket a CUPS.",
+                                "command": [],
+                            }
+
+                        safe_print(
+                            f"[ticket] Fallback CUPS iniciado comando={' '.join(command)} printerName={printer_name or 'default'} "
+                            f"pdf={pdf_path}"
+                        )
+                        try:
+                            completed = subprocess.run(
+                                command,
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                                timeout=30,
+                            )
+                        except Exception as exc:
+                            return {
+                                "ok": False,
+                                "message": f"No se pudo ejecutar CUPS: {exc}",
+                                "command": command,
+                            }
+
+                        stdout = (completed.stdout or "").strip()
+                        stderr = (completed.stderr or "").strip()
+                        safe_print(
+                            f"[ticket] Fallback CUPS resultado returncode={completed.returncode} stdout={stdout or '-'} stderr={stderr or '-'}"
+                        )
+                        return {
+                            "ok": completed.returncode == 0,
+                            "message": stderr or stdout or f"CUPS devolvió código {completed.returncode}",
+                            "command": command,
+                        }
+
+                    def _fallback_pdf_to_cups(job_id, reason):
+                        job = window._linux_print_jobs.get(job_id)
+                        if not job:
+                            safe_print(f"[ticket] Fallback PDF omitido job={job_id} motivo=job_inexistente")
+                            return
+                        if job.get("fallback_started"):
+                            safe_print(f"[ticket] Fallback PDF omitido job={job_id} motivo=ya_iniciado")
+                            return
+
+                        job["fallback_started"] = True
+                        printer = job["printer"]
+                        printer_name = str(printer.printerName() or "").strip()
+                        pdf_path = os.path.join(tempfile.gettempdir(), f"nexar-ticket-{job_id}.pdf")
+                        job["pdf_path"] = pdf_path
+
+                        safe_print(
+                            f"[ticket] Fallback PDF iniciado job={job_id} motivo={reason} printerName={printer_name or 'default'} "
+                            f"path={pdf_path}"
+                        )
+
+                        def _pdf_done(path, ok):
+                            try:
+                                if hasattr(page, "pdfPrintingFinished"):
+                                    page.pdfPrintingFinished.disconnect(_pdf_done)
+                            except Exception:
+                                pass
+                            safe_print(
+                                f"[ticket] PDF temporal generado job={job_id} path={path} ok={bool(ok)} "
+                                f"printerName={printer_name or 'default'}"
+                            )
+                            if not ok:
+                                _cleanup_job(job_id)
+                                _show_print_error(
+                                    "No se pudo imprimir",
+                                    "La impresión nativa falló y tampoco se pudo generar el PDF temporal del ticket.",
+                                )
+                                return
+
+                            result = _send_pdf_to_cups(path, printer_name)
+                            if result.get("ok"):
+                                job["remove_pdf"] = True
+                                _cleanup_job(job_id)
+                                return
+
+                            _cleanup_job(job_id)
+                            _show_print_error(
+                                "No se pudo imprimir",
+                                f"La impresión falló también por CUPS. Detalle: {result.get('message', 'sin detalle')}",
+                            )
+
+                        try:
+                            if hasattr(page, "pdfPrintingFinished"):
+                                page.pdfPrintingFinished.connect(_pdf_done)
+                            safe_print(
+                                f"[ticket] Ejecutando printToPdf sobre page job={job_id} path={pdf_path} "
+                                f"page_type={type(page).__name__}"
+                            )
+                            page.printToPdf(pdf_path)
+                        except Exception as exc:
+                            safe_print(f"[ticket] Error iniciando fallback PDF job={job_id} detalle={exc}")
+                            try:
+                                if hasattr(page, "pdfPrintingFinished"):
+                                    page.pdfPrintingFinished.disconnect(_pdf_done)
+                            except Exception:
+                                pass
+                            _cleanup_job(job_id)
+                            _show_print_error(
+                                "No se pudo imprimir",
+                                f"La impresión nativa falló y no se pudo iniciar el fallback PDF. Detalle: {exc}",
+                            )
 
                     def _handle_print_request(*args):
                         safe_print(
@@ -254,14 +445,45 @@ if __name__ == "__main__":
                             browser.setFocus()
 
                             printer = QPrinter()
+                            _log_printer("Antes del dialog", printer)
                             dialog = QPrintDialog(printer, native_window)
                             dialog.setWindowTitle("Imprimir ticket")
+                            dialog_result = bool(dialog.exec())
+                            safe_print(f"[ticket] Dialogo de impresion resultado={dialog_result}")
+                            _log_printer("Despues del dialog", printer)
 
-                            if dialog.exec():
-                                def _print_finished(success):
-                                    safe_print(f"[ticket] Impresion Qt finalizada ok={bool(success)} renderer={renderer_name}")
+                            if dialog_result:
+                                window._linux_print_job_seq += 1
+                                job_id = f"{int(time.time())}-{window._linux_print_job_seq}"
+                                window._linux_print_jobs[job_id] = {
+                                    "printer": printer,
+                                    "created_at": time.time(),
+                                    "fallback_started": False,
+                                    "remove_pdf": False,
+                                }
+                                safe_print(f"[ticket] Job de impresion creado job={job_id}")
 
-                                browser.print(printer, _print_finished)
+                                if hasattr(page, "print"):
+                                    def _print_finished(success):
+                                        safe_print(
+                                            f"[ticket] Callback Qt page.print ok={bool(success)} renderer={renderer_name} job={job_id}"
+                                        )
+                                        _log_printer("Callback Qt", printer)
+                                        if success:
+                                            _cleanup_job(job_id)
+                                            return
+                                        _fallback_pdf_to_cups(job_id, "qt_callback_false")
+
+                                    safe_print(
+                                        f"[ticket] Ejecutando page.print job={job_id} page_type={type(page).__name__}"
+                                    )
+                                    page.print(printer, _print_finished)
+                                else:
+                                    safe_print(
+                                        f"[ticket] page.print no disponible; usando PDF+CUPS job={job_id} "
+                                        f"page_type={type(page).__name__}"
+                                    )
+                                    _fallback_pdf_to_cups(job_id, "page_print_unavailable")
                             else:
                                 safe_print(f"[ticket] Impresion Qt cancelada por usuario renderer={renderer_name}")
                         except Exception as exc:

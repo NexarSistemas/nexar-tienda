@@ -2,6 +2,31 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-24 - Codex - fix/linux-ticket-print-cups
+
+### Tarea
+Implementar impresión de tickets en Linux desktop desde backend/Python usando CUPS, sin depender de `window.print()` dentro de PyWebView.
+
+### Archivos modificados
+- `services/print_service.py`
+- `routes/main.py`
+- `templates/ticket.html`
+- `tests/test_print_service.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se creó `services/print_service.py` para centralizar detección de plataforma Linux, detección de `lp`/`lpr`, lectura de impresora por defecto con `lpstat -d`, generación de PDF temporal del ticket con `reportlab` y envío a CUPS con logs completos.
+- En Linux desktop/PyWebView el botón `Imprimir` del ticket ahora hace `POST` al endpoint interno `POST /api/ticket/<id>/print`, usando CSRF y sesión actual, en vez de depender de `window.print()`.
+- El PDF temporal se arma desde Python a partir de la venta y su detalle, ahora con ancho angosto y alto dinámico para evitar hojas finales en blanco, y se loguea cantidad de páginas junto con dimensiones generadas.
+- Después de `lp` se parsea el `job_id`, se consulta `lpstat` sobre cola y detalle del trabajo, y se devuelve un mensaje claro cuando CUPS deja el job demorado, retenido o detenido.
+- Se agregó soporte interno de opciones CUPS `fit-to-page` y `raw` mediante `NEXAR_CUPS_PRINT_MODE`, manteniendo `auto` como default.
+- Se ajustó el CSS `@media print` del ticket para quitar `min-height`/`overflow` problemáticos y evitar una página extra en el flujo de navegador.
+- Windows y navegador normal conservan el flujo previo con `window.print()`.
+
+### Qué se probó
+- Tests unitarios del servicio nuevo para archivo inexistente, ausencia de `lp/lpr`, impresión exitosa simulada, impresión con error simulado y detección de job CUPS demorado con `fit-to-page`.
+- Verificación sintáctica con `py_compile` de `services/print_service.py`, `routes/main.py` e `iniciar.py`.
+
 ## 2026-05-24 - Codex - fix/linux-native-ticket-print
 
 ### Tarea
@@ -17,6 +42,9 @@ Recuperar la impresión nativa de tickets en Linux dentro de PyWebView, dejando 
 - Se agregó en `iniciar.py` un hook nativo para Linux/Qt que intercepta `printRequested` del `QWebEnginePage`, abre `QPrintDialog` y ejecuta la impresión con `QPrinter` desde la ventana nativa.
 - En `templates/ticket.html` se volvió a un flujo principal simple con botón `Imprimir`, llamado directo a `window.print()`, `window.focus()` previo y logs JS de plataforma/backend.
 - Se retiraron el aviso visible para Linux y el botón principal `Abrir en navegador para imprimir`, para no degradar la UX del ticket.
+- Se reforzó el ciclo de vida del `QPrinter` manteniéndolo vivo hasta el callback de QtWebEngine y se agregaron logs de `printerName`, `isValid`, `outputFormat`, `printerState`, resultado del diálogo y señales `printFinished`.
+- Se agregó un fallback interno exclusivo para Linux: si la impresión Qt falla, el ticket se renderiza a PDF temporal y se envía a CUPS con `lp`/`lpr`, mostrando error claro solo si también falla ese camino.
+- Se corrigió el uso del objeto Qt real: el hook ya no llama `print(printer, callback)` sobre `BrowserView.WebView`, sino que inspecciona `QWebEnginePage` y usa `page.print(...)` solo si existe; en el entorno actual, como `page.print` no está disponible, cae a `page.printToPdf(...)` y luego envía el PDF a CUPS.
 
 ### Qué se probó
 - Revisión local del código instalado de `pywebview` para `qtwebengine`, validando la ausencia de override nativo de `window.print()` y la disponibilidad de `printRequested`, `QPrintDialog` y `QPrinter` en `PySide6`.

@@ -34,6 +34,7 @@ from licensing.permisos import get_modulos_activos, get_modulos_debug_info, requ
 from services.cuentas_corrientes import calcular_estado_factura, calcular_saldo_factura
 from services.file_open_service import open_file_cross_platform
 from services.license_storage import cargar_licencia, guardar_licencia
+from services.print_service import print_ticket_via_cups
 from services.rubros import (
     convertir_cantidad_a_base,
     convertir_cantidad_desde_base,
@@ -2685,6 +2686,14 @@ def ticket(vid):
         interes_formateado=formatear_precio_ticket(venta["interes_financiacion"]),
         total_formateado=formatear_precio_ticket(venta["total"]),
     )
+
+
+@main_bp.route("/api/ticket/<int:vid>/print", methods=["POST"])
+@login_required
+def print_ticket_backend(vid):
+    resultado = print_ticket_via_cups(vid)
+    status_code = 200 if resultado.get("ok") else 400
+    return jsonify(resultado), status_code
 
 
 @main_bp.route("/historial")

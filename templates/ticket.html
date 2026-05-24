@@ -486,6 +486,17 @@
             margin: 8mm;
         }
 
+        html,
+        body,
+        .ticket-page,
+        .ticket-shell,
+        .ticket-card,
+        .ticket-body {
+            min-height: 0 !important;
+            height: auto !important;
+            overflow: visible !important;
+        }
+
         body * {
             visibility: hidden;
         }
@@ -501,14 +512,15 @@
         }
 
         .ticket-card {
-            position: absolute;
-            left: 50%;
-            top: 0;
-            transform: translateX(-50%);
+            position: static;
+            transform: none;
+            margin: 0 auto;
             width: 152mm;
             border: 0;
             border-radius: 8px;
             box-shadow: none !important;
+            break-after: avoid-page;
+            page-break-after: avoid;
         }
 
         .ticket-header {
@@ -575,6 +587,7 @@
             gap: 2mm;
             padding: 2.2mm 3mm;
             page-break-inside: avoid;
+            break-inside: avoid;
         }
 
         .ticket-items-head,
@@ -608,6 +621,10 @@
         .ticket-actions {
             display: none !important;
         }
+
+        .ticket-browser-status {
+            display: none !important;
+        }
     }
 </style>
 <script>
@@ -617,6 +634,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const isDesktopWebview = Boolean(window.pywebview && window.pywebview.api);
     const isLinux = /linux/i.test(String(navigator.platform || '')) || /linux/i.test(String(navigator.userAgent || ''));
     const pywebviewPlatform = window.pywebview && window.pywebview.platform ? window.pywebview.platform : 'browser';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const linuxPrintUrl = '{{ url_for("main.print_ticket_backend", vid=venta_id) }}';
 
     function setStatus(message) {
         if (!statusBox) return;
@@ -624,7 +643,39 @@ document.addEventListener('DOMContentLoaded', function () {
         statusBox.classList.remove('d-none');
     }
 
-    window.__nexarTicketPrint = function () {
+    window.__nexarTicketPrint = async function () {
+        if (isLinux && isDesktopWebview) {
+            console.info('[ticket] Metodo de impresion solicitado', {
+                method: 'backend-cups',
+                platform: navigator.platform || 'desconocida',
+                userAgent: navigator.userAgent || 'desconocido',
+                isLinux: isLinux,
+                isDesktopWebview: isDesktopWebview,
+                pywebviewPlatform: pywebviewPlatform,
+                url: linuxPrintUrl,
+            });
+
+            try {
+                const response = await fetch(linuxPrintUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                    },
+                });
+                const payload = await response.json();
+                if (response.ok && payload.ok) {
+                    setStatus(payload.message || 'Ticket enviado a impresión.');
+                    return false;
+                }
+                setStatus(payload.message || 'No se pudo enviar el ticket a impresión.');
+            } catch (error) {
+                console.error('[ticket] Error ejecutando impresión backend Linux', error);
+                setStatus('No se pudo contactar el servicio de impresión Linux.');
+            }
+            return false;
+        }
+
         console.info('[ticket] Metodo de impresion solicitado', {
             method: 'window.print',
             platform: navigator.platform || 'desconocida',
