@@ -76,18 +76,17 @@
                 <div class="ticket-season" style="border-left-color:#2563eb;background:#eff6ff;">
                     <span class="label">ARCA</span>
                     {% if arca_comprobante %}
-                    <strong>
-                        {{ arca_comprobante.estado or 'PENDIENTE' }}
-                        {% if arca_comprobante.numero_comprobante %} · N° {{ arca_comprobante.numero_comprobante }}{% endif %}
-                    </strong>
-                    <div class="small text-muted mt-2">
-                        Modo: {{ arca_comprobante.modo or arca_modo_operacion or 'simulacion' }}
-                        {% if arca_comprobante.cae %} · CAE {{ arca_comprobante.cae }}{% endif %}
-                        {% if arca_comprobante.cae_vencimiento %} · Vence {{ arca_comprobante.cae_vencimiento }}{% endif %}
-                    </div>
+                    <strong>{{ arca_comprobante.comprobante_formateado or (arca_comprobante.tipo_comprobante or 'Comprobante ARCA') }}</strong>
+                    <div class="small text-muted mt-2">Estado: {{ arca_comprobante.estado or 'PENDIENTE' }} · Fecha emisión: {{ arca_comprobante.fecha_emision or '-' }}</div>
+                    <div class="small text-muted mt-1">CAE: {{ arca_comprobante.cae or '-' }} · Vencimiento CAE: {{ arca_comprobante.cae_vencimiento or '-' }}</div>
+                    <div class="small text-muted mt-1">PDF local: {% if arca_comprobante.pdf_generado %}{{ arca_comprobante.pdf_path }}{% else %}pendiente{% endif %}</div>
+                    <div class="small text-muted mt-1">Modo: {{ arca_comprobante.modo or arca_modo_operacion or 'simulacion' }}</div>
                     {% if arca_comprobante.error_mensaje %}
                     <div class="small text-muted mt-1">{{ arca_comprobante.error_mensaje }}</div>
                     {% endif %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary mt-3" disabled>
+                        <i class="fas fa-file-circle-check me-2"></i>Factura ARCA generada
+                    </button>
                     {% elif arca_puede_emitir %}
                     <strong>Sin comprobante ARCA emitido</strong>
                     <div class="small text-muted mt-2">Modo actual: {{ arca_modo_operacion or 'simulacion' }}.</div>
@@ -99,8 +98,8 @@
                         </button>
                     </form>
                     {% else %}
-                    <strong>No disponible para esta venta</strong>
-                    <div class="small text-muted mt-2">La venta ya tiene factura ARCA generada o no cumple las condiciones del módulo.</div>
+                    <strong>Factura ARCA generada</strong>
+                    <div class="small text-muted mt-2">La venta ya tiene un comprobante fiscal ARCA o no cumple las condiciones del módulo.</div>
                     {% endif %}
                 </div>
                 {% endif %}

@@ -2,6 +2,33 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-24 - Codex - feature/arca-fase7-datos-fiscales
+
+### Tarea
+Implementar la Fase 7 del módulo ARCA para consolidar el guardado y la visualización de datos fiscales generados desde ventas existentes.
+
+### Archivos modificados
+- `modules/arca/services/comprobantes_service.py`
+- `modules/arca/services/facturacion_desde_venta_service.py`
+- `modules/arca/routes.py`
+- `routes/main.py`
+- `templates/ticket.html`
+- `templates/historial.html`
+- `templates/arca/comprobantes.html`
+- `templates/arca/comprobante_detalle.html`
+- `tests/test_arca_fase7_datos_fiscales.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se consolidó la lectura de `arca_comprobantes` con helpers para detectar comprobantes finales, formatear `tipo + punto de venta + número` y exponer estado del PDF local como `generado` o `pendiente`.
+- La persistencia de facturación desde venta ahora guarda un resumen técnico seguro en `respuesta_raw`, evitando depender de payloads completos para consulta histórica.
+- El ticket de venta y el historial ahora muestran datos fiscales ARCA más completos: comprobante formateado, CAE, vencimiento, estado, fecha de emisión y estado del PDF.
+- Cuando una venta ya tiene comprobante ARCA, la acción de facturar queda reemplazada visualmente por el estado `Factura ARCA generada`.
+- Se convirtió `/arca/comprobantes` en un listado operativo con acceso al detalle individual y se agregó la vista `/arca/comprobantes/<id>` para consulta local del comprobante guardado.
+
+### Qué se probó
+- `python3 -m unittest tests.test_arca_fase6_factura_desde_venta tests.test_arca_fase7_datos_fiscales`
+
 ## 2026-05-24 - Codex - fix/activacion-directa-pro-full-release
 
 ### Tarea

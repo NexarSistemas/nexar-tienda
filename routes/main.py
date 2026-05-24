@@ -2603,14 +2603,15 @@ def ticket(vid):
 
         arca_modulo_activo = modulo_activo("arca_facturacion")
         if arca_modulo_activo:
-            from modules.arca.services.comprobantes_service import obtener_comprobante_por_venta
+            from modules.arca.services.comprobantes_service import (
+                comprobante_es_final,
+                obtener_comprobante_por_venta,
+            )
             from services.arca_config_service import obtener_modo_arca
 
             arca_comprobante = obtener_comprobante_por_venta(vid)
             arca_modo_operacion = str(obtener_modo_arca().get("modo") or "")
-            arca_puede_emitir = not bool(venta["anulada"]) and (
-                arca_comprobante is None or str(arca_comprobante.get("estado") or "").upper() not in {"AUTORIZADO", "AUTORIZADO_SIMULADO", "MODO_TEST"}
-            )
+            arca_puede_emitir = not bool(venta["anulada"]) and not comprobante_es_final(arca_comprobante)
 
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
@@ -2716,7 +2717,10 @@ def historial():
 
         arca_modulo_activo = modulo_activo("arca_facturacion")
         if arca_modulo_activo and ventas:
-            from modules.arca.services.comprobantes_service import obtener_comprobantes_por_venta_ids
+            from modules.arca.services.comprobantes_service import (
+                comprobante_es_final,
+                obtener_comprobantes_por_venta_ids,
+            )
 
             ids = [int(venta["id"]) for venta in ventas]
             arca_estado_por_venta = obtener_comprobantes_por_venta_ids(ids)
@@ -2724,10 +2728,7 @@ def historial():
                 int(venta["id"])
                 for venta in ventas
                 if not int(venta["anulada"] or 0)
-                and (
-                    int(venta["id"]) not in arca_estado_por_venta
-                    or str(arca_estado_por_venta[int(venta["id"])].get("estado") or "").upper() not in {"AUTORIZADO", "AUTORIZADO_SIMULADO", "MODO_TEST"}
-                )
+                and not comprobante_es_final(arca_estado_por_venta.get(int(venta["id"])))
             }
     return render_template(
         "historial.html",

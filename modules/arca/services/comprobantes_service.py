@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 
 import database as db
 
@@ -54,6 +55,10 @@ def _row_to_dict(row) -> dict[str, object] | None:
     data["modo"] = _clean_text(data.get("modo")) or "wsfe"
     data["payload"] = _safe_json_loads(data.get("payload_json"))
     data["respuesta"] = _safe_json_loads(data.get("respuesta_json"))
+    data["numero_formateado"] = formatear_numero_comprobante(data)
+    data["comprobante_formateado"] = formatear_comprobante(data)
+    data["pdf_generado"] = bool(_clean_text(data.get("pdf_path")) and Path(_clean_text(data.get("pdf_path"))).exists())
+    data["pdf_estado"] = "generado" if data["pdf_generado"] else "pendiente"
     return data
 
 
@@ -74,6 +79,24 @@ def listar_comprobantes() -> list[dict[str, object]]:
     return [item for row in rows if (item := _row_to_dict(row))]
 
 
+def obtener_comprobante_por_id(comprobante_id: int | None) -> dict[str, object] | None:
+    if not comprobante_id:
+        return None
+    row = db.q(
+        """
+        SELECT id, venta_id, tipo_comprobante, punto_venta, numero, numero_comprobante, cae,
+               cae_vencimiento, importe_total, estado, fecha_emision, respuesta_raw, pdf_path, modo, ambiente,
+               total, payload_json, respuesta_json, error_mensaje, created_at, updated_at
+        FROM arca_comprobantes
+        WHERE id = ?
+        LIMIT 1
+        """,
+        (int(comprobante_id),),
+        fetchone=True,
+    )
+    return _row_to_dict(row)
+
+
 def obtener_comprobante_por_venta(venta_id: int | None) -> dict[str, object] | None:
     if not venta_id:
         return None
@@ -91,6 +114,36 @@ def obtener_comprobante_por_venta(venta_id: int | None) -> dict[str, object] | N
         fetchone=True,
     )
     return _row_to_dict(row)
+
+
+def comprobante_es_final(comprobante: dict[str, object] | None) -> bool:
+    if not comprobante:
+        return False
+    return _clean_text(comprobante.get("estado")).upper() in ESTADOS_FINALES
+
+
+def venta_tiene_comprobante_final(venta_id: int | None) -> bool:
+    return comprobante_es_final(obtener_comprobante_por_venta(venta_id))
+
+
+def formatear_numero_comprobante(comprobante: dict[str, object] | None) -> str:
+    if not comprobante:
+        return "-"
+    punto_venta = int(comprobante.get("punto_venta") or 0)
+    numero = int(comprobante.get("numero_comprobante") or comprobante.get("numero") or 0)
+    if punto_venta <= 0 or numero <= 0:
+        return "-"
+    return f"{punto_venta:04d}-{numero:08d}"
+
+
+def formatear_comprobante(comprobante: dict[str, object] | None) -> str:
+    if not comprobante:
+        return "-"
+    tipo = _clean_text(comprobante.get("tipo_comprobante")) or "Comprobante"
+    numero = formatear_numero_comprobante(comprobante)
+    if numero == "-":
+        return tipo
+    return f"{tipo} {numero}"
 
 
 def obtener_comprobantes_por_venta_ids(venta_ids: list[int]) -> dict[int, dict[str, object]]:

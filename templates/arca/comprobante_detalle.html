@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Detalle de comprobante ARCA - {{ app_display_name }}{% endblock %}
+{% block page_title %}Detalle de comprobante ARCA{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm border-0">
+    <div class="card-body p-4">
+        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+            <div>
+                <h2 class="h4 mb-1">{{ comprobante.comprobante_formateado or "Comprobante ARCA" }}</h2>
+                <p class="text-muted mb-0">Resumen fiscal guardado localmente para consulta e historial.</p>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('arca.comprobantes') }}" class="btn btn-outline-secondary">Volver al listado</a>
+                {% if comprobante.venta_id %}
+                <a href="{{ url_for('ticket', vid=comprobante.venta_id) }}" class="btn btn-primary">Ver venta</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6 col-xl-3">
+                <div class="border rounded p-3 h-100">
+                    <div class="small text-muted">Estado</div>
+                    <div class="fw-semibold">{{ comprobante.estado or "PENDIENTE" }}</div>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="border rounded p-3 h-100">
+                    <div class="small text-muted">CAE</div>
+                    <div class="fw-semibold">{{ comprobante.cae or "-" }}</div>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="border rounded p-3 h-100">
+                    <div class="small text-muted">Vencimiento CAE</div>
+                    <div class="fw-semibold">{{ comprobante.cae_vencimiento or "-" }}</div>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="border rounded p-3 h-100">
+                    <div class="small text-muted">Total</div>
+                    <div class="fw-semibold">{{ comprobante.importe_total | fmt_ars }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="border rounded p-3 h-100">
+                    <h3 class="h6 mb-3">Datos fiscales</h3>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5">Venta</dt>
+                        <dd class="col-sm-7">{{ comprobante.venta_id or "-" }}</dd>
+                        <dt class="col-sm-5">Tipo</dt>
+                        <dd class="col-sm-7">{{ comprobante.tipo_comprobante or "-" }}</dd>
+                        <dt class="col-sm-5">Punto de venta</dt>
+                        <dd class="col-sm-7">{{ comprobante.punto_venta or "-" }}</dd>
+                        <dt class="col-sm-5">Número</dt>
+                        <dd class="col-sm-7">{{ comprobante.numero_formateado or "-" }}</dd>
+                        <dt class="col-sm-5">Fecha emisión</dt>
+                        <dd class="col-sm-7">{{ comprobante.fecha_emision or "-" }}</dd>
+                        <dt class="col-sm-5">Modo</dt>
+                        <dd class="col-sm-7">{{ comprobante.modo or "wsfe" }}</dd>
+                        <dt class="col-sm-5">Ambiente</dt>
+                        <dd class="col-sm-7">{{ comprobante.ambiente or "homologacion" }}</dd>
+                    </dl>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="border rounded p-3 h-100">
+                    <h3 class="h6 mb-3">PDF local</h3>
+                    <div class="small text-muted mb-2">Estado</div>
+                    <div class="fw-semibold mb-3">
+                        {% if comprobante.pdf_generado %}
+                        Disponible
+                        {% else %}
+                        Pendiente
+                        {% endif %}
+                    </div>
+                    <div class="small text-muted mb-2">Ruta esperada</div>
+                    <div class="font-monospace small">{{ comprobante.pdf_path or "-" }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="border rounded p-3 mt-4">
+            <h3 class="h6 mb-3">Resumen técnico seguro</h3>
+            <pre class="mb-0 small" style="white-space: pre-wrap;">{{ comprobante.respuesta_raw or "-" }}</pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
