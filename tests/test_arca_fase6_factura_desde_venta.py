@@ -45,6 +45,15 @@ class ArcaFase6FacturaDesdeVentaTests(unittest.TestCase):
         self.facturacion_service = importlib.reload(facturacion_desde_venta_service)
         self.facturacion_service.db = self.database
         self.facturacion_service.arca_client = self.arca_client
+        self.database.q(
+            """
+            INSERT INTO arca_configuracion
+            (id, cuit, razon_social, condicion_fiscal, punto_venta, ambiente, activo)
+            VALUES (1, ?, ?, ?, ?, ?, 1)
+            """,
+            ("20304050607", "Comercio Demo SA", "responsable_inscripto", 3, "homologacion"),
+            commit=True,
+        )
 
     def tearDown(self):
         _reset_env()
@@ -199,6 +208,44 @@ class ArcaFase6FacturaDesdeVentaTests(unittest.TestCase):
             comprobante["pdf_path"],
             "data/arca/comprobantes/2026/05/venta-1-pv-0003-cbte-00000456.pdf",
         )
+
+    def test_monotributo_prepara_factura_c(self):
+        venta_id = self._crear_venta()
+        self.database.q(
+            "UPDATE arca_configuracion SET condicion_fiscal = ?, punto_venta = ? WHERE id = 1",
+            ("monotributo", 4),
+            commit=True,
+        )
+        original_emitir = self.arca_client.emitir_factura
+        self.addCleanup(setattr, self.arca_client, "emitir_factura", original_emitir)
+
+        def fake_emitir(payload):
+            self.assertEqual(payload["tipo_comprobante"], "Factura C")
+            self.assertEqual(payload["tipo_cbte"], 11)
+            self.assertEqual(payload["wsfe"]["CbteTipo"], 11)
+            return {
+                "ok": True,
+                "modo": "wsfe",
+                "estado": "AUTORIZADO",
+                "resultado": "A",
+                "tipo_comprobante": "Factura C",
+                "punto_venta": 4,
+                "numero_comprobante": 4,
+                "cae": "61111111111112",
+                "cae_vencimiento": "2026-06-10",
+                "importe_total": 2000.0,
+                "fecha_emision": "2026-05-24",
+                "ambiente": "homologacion",
+                "pdf_path": "data/arca/comprobantes/2026/05/venta-1-pv-0004-cbte-00000004.pdf",
+                "observaciones": [],
+            }
+
+        self.arca_client.emitir_factura = fake_emitir
+
+        resultado = self.facturacion_service.facturar_venta_desde_existente(venta_id)
+
+        self.assertTrue(resultado["ok"])
+        self.assertEqual(resultado["comprobante"]["tipo_comprobante"], "Factura C")
 
 
 if __name__ == "__main__":

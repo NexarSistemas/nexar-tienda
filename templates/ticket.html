@@ -7,20 +7,21 @@
     <div class="ticket-shell">
         <div class="ticket-card shadow-sm">
             <div class="ticket-header">
-                <div class="ticket-eyebrow">Comprobante interno de venta</div>
+                <div class="ticket-eyebrow">COMPROBANTE INTERNO DE VENTA</div>
                 <div class="ticket-header-main">
                     <div>
                         <h1>{{ cfg.nombre_negocio or app_display_name }}</h1>
                         <div class="ticket-meta">
                             <span class="meta-pill">Rubro: {{ rubro_actual|capitalize }}</span>
-                            {% if cfg.cuit %}<span class="meta-pill">CUIT/DNI: {{ cfg.cuit }}</span>{% endif %}
+                            <span class="meta-pill ticket-meta-warning">No válido como factura</span>
                         </div>
                     </div>
-                    <div class="ticket-badge-block">
-                        <div class="ticket-number">Ticket #{{ venta.numero_ticket }}</div>
-                        <div class="ticket-internal">Venta interna #{{ venta_id }}</div>
+                    <div class="ticket-doc-card">
+                        <div class="ticket-doc-card-label">Comprobante</div>
+                        <div class="ticket-doc-card-title">INTERNO</div>
+                        <div class="ticket-doc-card-number">Nro. {{ venta.numero_ticket }}</div>
                         {% if venta.anulada %}
-                        <div class="ticket-internal" style="background:#fff3cd;color:#7c5700;">Venta anulada</div>
+                        <div class="ticket-doc-card-status">Venta anulada</div>
                         {% endif %}
                     </div>
                 </div>
@@ -32,22 +33,31 @@
             </div>
 
             <div class="ticket-body">
+                <div class="ticket-notice-strip">
+                    <strong>COMPROBANTE INTERNO DE VENTA</strong>
+                    <span>No válido como factura</span>
+                </div>
+
                 <div class="ticket-grid">
                     <div>
-                        <span class="label">Fecha y hora</span>
+                        <span class="label">Fecha de emisión</span>
                         <strong>{{ venta.fecha | date }} {{ venta.hora[:5] if venta.hora else '' }}</strong>
                     </div>
-                    <div class="text-end">
+                    <div>
+                        <span class="label">Número interno</span>
+                        <strong>{{ venta.numero_ticket }} / Venta #{{ venta_id }}</strong>
+                    </div>
+                    <div>
                         <span class="label">Medio de pago</span>
                         <strong>{{ venta.medio_pago or 'No informado' }}</strong>
                     </div>
                     <div>
                         <span class="label">Cliente</span>
-                        <strong>{{ venta.cliente_nombre or 'Mostrador' }}</strong>
+                        <strong>{{ venta.cliente_nombre or 'Consumidor final' }}</strong>
                     </div>
-                    <div class="text-end">
+                    <div>
                         <span class="label">Vendedor</span>
-                        <strong>{{ venta.vendedor or 'No informado' }}</strong>
+                        <strong>{{ vendedor_visible or 'No informado' }}</strong>
                     </div>
                 </div>
 
@@ -84,9 +94,14 @@
                     {% if arca_comprobante.error_mensaje %}
                     <div class="small text-muted mt-1">{{ arca_comprobante.error_mensaje }}</div>
                     {% endif %}
-                    <button type="button" class="btn btn-sm btn-outline-secondary mt-3" disabled>
-                        <i class="fas fa-file-circle-check me-2"></i>Factura ARCA generada
-                    </button>
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled>
+                            <i class="fas fa-file-circle-check me-2"></i>Factura ARCA generada
+                        </button>
+                        <a href="#" class="btn btn-sm btn-outline-primary js-arca-pdf-open" data-pdf-url="{{ url_for('arca.comprobante_pdf', venta_id=venta_id) }}" data-open-url="{{ url_for('arca.comprobante_pdf_abrir', venta_id=venta_id) }}">
+                            <i class="fas fa-file-pdf me-2"></i>Reimprimir comprobante ARCA
+                        </a>
+                    </div>
                     {% elif arca_puede_emitir %}
                     <strong>Sin comprobante ARCA emitido</strong>
                     <div class="small text-muted mt-2">Modo actual: {{ arca_modo_operacion or 'simulacion' }}.</div>
@@ -213,9 +228,12 @@
     }
 
     .ticket-header {
-        background: linear-gradient(135deg, #14324a 0%, #315f82 100%);
-        color: #fff;
-        padding: 2rem 1.5rem 1.35rem;
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 241, 232, 0.96)),
+            linear-gradient(135deg, #e6edf5 0%, #f7efe6 100%);
+        color: #0f172a;
+        padding: 1.75rem 1.5rem 1.35rem;
+        border-bottom: 1px solid rgba(20, 50, 74, 0.12);
     }
 
     .ticket-header-main {
@@ -236,7 +254,7 @@
         font-size: 0.78rem;
         text-transform: uppercase;
         letter-spacing: 0.14em;
-        opacity: 0.82;
+        color: #8a5a1f;
     }
 
     .ticket-meta {
@@ -257,24 +275,52 @@
     }
 
     .meta-pill {
-        background: rgba(255, 255, 255, 0.14);
+        background: rgba(15, 23, 42, 0.06);
         font-size: 0.85rem;
+        color: #334155;
     }
 
-    .ticket-badge-block {
-        display: flex;
-        flex-direction: column;
-        gap: 0.45rem;
-        align-items: flex-end;
+    .ticket-meta-warning {
+        background: #fff1f2;
+        color: #be123c;
     }
 
-    .ticket-number {
-        background: rgba(255, 255, 255, 0.14);
+    .ticket-doc-card {
+        min-width: 178px;
+        padding: 0.95rem 1rem;
+        border-radius: 18px;
+        background: #fff7ed;
+        border: 1px solid rgba(194, 120, 42, 0.25);
+        text-align: center;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
     }
 
-    .ticket-internal {
-        background: rgba(9, 19, 29, 0.18);
-        font-size: 0.82rem;
+    .ticket-doc-card-label {
+        font-size: 0.75rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #9a3412;
+        font-weight: 700;
+    }
+
+    .ticket-doc-card-title {
+        font-size: 1.7rem;
+        line-height: 1.1;
+        font-weight: 900;
+        color: #7c2d12;
+        margin-top: 0.2rem;
+    }
+
+    .ticket-doc-card-number,
+    .ticket-doc-card-status {
+        margin-top: 0.35rem;
+        font-size: 0.86rem;
+        color: #78350f;
+        font-weight: 700;
+    }
+
+    .ticket-doc-card-status {
+        color: #b45309;
     }
 
     .ticket-business-grid {
@@ -301,12 +347,31 @@
         padding: 1.5rem;
     }
 
+    .ticket-notice-strip {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.9rem 1rem;
+        border: 1px solid rgba(190, 24, 93, 0.14);
+        border-radius: 16px;
+        background: linear-gradient(135deg, #fff7ed 0%, #fff1f2 100%);
+        color: #7c2d12;
+        margin-bottom: 1rem;
+    }
+
+    .ticket-notice-strip strong,
+    .ticket-notice-strip span {
+        font-size: 0.92rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
     .ticket-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 1rem 1.5rem;
-        padding-bottom: 1.25rem;
-        border-bottom: 1px dashed rgba(20, 50, 74, 0.25);
+        padding-bottom: 0.25rem;
     }
 
     .ticket-season,
@@ -324,6 +389,13 @@
         letter-spacing: 0.08em;
         color: #7a6d59;
         margin-bottom: 0.2rem;
+    }
+
+    .ticket-grid > div {
+        border: 1px solid rgba(20, 50, 74, 0.1);
+        border-radius: 16px;
+        background: #fff;
+        padding: 0.95rem 1rem;
     }
 
     .ticket-section-title {
@@ -352,7 +424,7 @@
     }
 
     .ticket-items-head {
-        background: #f7f2e9;
+        background: #eef2f7;
         color: #6b5f4f;
         font-size: 0.74rem;
         text-transform: uppercase;
@@ -393,10 +465,12 @@
 
     .ticket-totals {
         margin-top: 1.25rem;
-        border-top: 1px dashed rgba(20, 50, 74, 0.25);
-        padding-top: 1rem;
+        border: 1px solid rgba(20, 50, 74, 0.1);
+        border-radius: 18px;
+        padding: 1rem 1rem 0.5rem;
         max-width: 360px;
         margin-left: auto;
+        background: #f8fafc;
     }
 
     .total-row,
@@ -449,7 +523,7 @@
 
     @media (max-width: 768px) {
         .ticket-header-main,
-        .ticket-badge-block {
+        .ticket-doc-card {
             align-items: flex-start;
         }
 
@@ -461,6 +535,11 @@
         .ticket-items-head,
         .ticket-item {
             grid-template-columns: 1fr;
+        }
+
+        .ticket-notice-strip {
+            flex-direction: column;
+            align-items: flex-start;
         }
 
         .ticket-items-head {
@@ -539,7 +618,8 @@
         .item-sub,
         .iva-note,
         .ticket-footer-note,
-        .ticket-internal {
+        .ticket-doc-card-number,
+        .ticket-doc-card-status {
             font-size: 8pt;
         }
 
@@ -556,6 +636,18 @@
         .ticket-grid {
             gap: 2mm 4mm;
             padding-bottom: 3mm;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .ticket-grid > div {
+            padding: 2.5mm 3mm;
+            border-radius: 6px;
+        }
+
+        .ticket-notice-strip {
+            margin-bottom: 3mm;
+            padding: 2.5mm 3mm;
+            border-radius: 6px;
         }
 
         .ticket-business-grid,
@@ -636,6 +728,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const pywebviewPlatform = window.pywebview && window.pywebview.platform ? window.pywebview.platform : 'browser';
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     const linuxPrintUrl = '{{ url_for("main.print_ticket_backend", vid=venta_id) }}';
+    const arcaPdfButtons = Array.from(document.querySelectorAll('.js-arca-pdf-open'));
 
     function setStatus(message) {
         if (!statusBox) return;
@@ -712,6 +805,50 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
+
+    arcaPdfButtons.forEach(function (button) {
+        button.addEventListener('click', async function (event) {
+            console.info('[ARCA REIMPRESION] click ticket', {
+                ventaId: {{ venta_id | tojson }},
+                routePdf: button.getAttribute('data-pdf-url') || '',
+                openUrl: button.getAttribute('data-open-url') || '',
+                isDesktopWebview: isDesktopWebview,
+                willUse: isDesktopWebview ? 'POST /arca/comprobante/<venta_id>/abrir' : 'GET /arca/comprobante/<venta_id>/pdf',
+                currentUrl: window.location.href,
+            });
+            if (!isDesktopWebview) {
+                event.preventDefault();
+                const pdfUrl = button.getAttribute('data-pdf-url') || '';
+                if (pdfUrl) {
+                    window.open(pdfUrl, '_blank', 'noopener');
+                }
+                return;
+            }
+
+            event.preventDefault();
+            const openUrl = button.getAttribute('data-open-url') || '';
+            if (!openUrl) {
+                setStatus('No se encontró la acción de apertura del PDF ARCA.');
+                return;
+            }
+
+            try {
+                const response = await fetch(openUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                    },
+                });
+                const payload = await response.json();
+                console.info('[ARCA REIMPRESION] response ticket', payload);
+                setStatus(payload.message || 'No se pudo abrir el PDF ARCA.');
+            } catch (error) {
+                console.error('[ticket] Error abriendo PDF ARCA en desktop', error);
+                setStatus('No se pudo abrir el PDF ARCA desde la app.');
+            }
+        });
+    });
 });
 </script>
 {% endblock %}

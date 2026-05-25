@@ -79,6 +79,10 @@ def open_external_target(target: str | Path) -> dict[str, object]:
 
 def open_file_cross_platform(path: str | Path) -> dict[str, object]:
     if _is_external_url(path):
+        logger.info(
+            "[ARCA REIMPRESION] open_file_cross_platform_redirige_a_url target=%s",
+            str(path).strip(),
+        )
         return open_external_target(path)
 
     target_path = Path(path).expanduser().resolve()
@@ -101,6 +105,12 @@ def open_file_cross_platform(path: str | Path) -> dict[str, object]:
             method_name,
             target_label,
             command or "os.startfile",
+        )
+        logger.info(
+            "[ARCA REIMPRESION] open_file_cross_platform_archivo_local platform=%s method=%s path=%s",
+            system_name,
+            method_name,
+            target_label,
         )
     except Exception as exc:
         logger.exception("No se pudo abrir destino path=%s plataforma=%s", target_label, system_name)

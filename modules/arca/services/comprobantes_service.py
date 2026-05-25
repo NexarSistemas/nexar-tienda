@@ -304,6 +304,22 @@ def registrar_comprobante_fiscal(
     )
 
 
+def actualizar_pdf_path(comprobante_id: int | None, pdf_path: str | None) -> dict[str, object] | None:
+    if not comprobante_id:
+        return None
+    now = _now()
+    db.q(
+        """
+        UPDATE arca_comprobantes
+        SET pdf_path = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (_clean_text(pdf_path), now, int(comprobante_id)),
+        commit=True,
+    )
+    return obtener_comprobante_por_id(int(comprobante_id))
+
+
 def registrar_comprobante_pendiente(
     *,
     venta_id: int | None = None,

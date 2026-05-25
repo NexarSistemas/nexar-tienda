@@ -2592,7 +2592,21 @@ def ticket(vid):
     venta = db.q("SELECT * FROM ventas WHERE id=?", (vid,), fetchone=True)
     if not venta:
         abort(404)
+    venta = dict(venta)
     detalle = db.get_venta_detalle(vid)
+    vendedor_visible = str(venta.get("vendedor") or "").strip() or "No informado"
+    if venta.get("vendedor"):
+        usuario_vendedor = db.q(
+            "SELECT username, nombre_completo FROM usuarios WHERE username = ? LIMIT 1",
+            (str(venta.get("vendedor")).strip(),),
+            fetchone=True,
+        )
+        if usuario_vendedor:
+            vendedor_visible = (
+                str(usuario_vendedor["nombre_completo"] or "").strip()
+                or str(usuario_vendedor["username"] or "").strip()
+                or vendedor_visible
+            )
     arca_comprobante = None
     arca_modulo_activo = False
     arca_es_admin = _is_admin_role(session.get("user", {}).get("rol"))
@@ -2674,6 +2688,7 @@ def ticket(vid):
     return render_template(
         "ticket.html",
         venta=venta,
+        vendedor_visible=vendedor_visible,
         detalle=iva_items,
         iva_resumen=iva_resumen,
         cfg=cfg,

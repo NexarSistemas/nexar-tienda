@@ -15,6 +15,7 @@
                 <a href="{{ url_for('arca.comprobantes') }}" class="btn btn-outline-secondary">Volver al listado</a>
                 {% if comprobante.venta_id %}
                 <a href="{{ url_for('ticket', vid=comprobante.venta_id) }}" class="btn btn-primary">Ver venta</a>
+                <a href="#" class="btn btn-outline-primary js-arca-pdf-open" data-pdf-url="{{ url_for('arca.comprobante_pdf', venta_id=comprobante.venta_id) }}" data-open-url="{{ url_for('arca.comprobante_pdf_abrir', venta_id=comprobante.venta_id) }}">Reimprimir PDF</a>
                 {% endif %}
             </div>
         </div>
@@ -91,4 +92,56 @@
         </div>
     </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const isDesktopWebview = Boolean(window.pywebview && window.pywebview.api);
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const button = document.querySelector('.js-arca-pdf-open');
+    if (!button) {
+        return;
+    }
+
+    button.addEventListener('click', async function (event) {
+        console.info('[ARCA REIMPRESION] click comprobante_detalle', {
+            ventaId: {{ comprobante.venta_id | tojson }},
+            routePdf: button.getAttribute('data-pdf-url') || '',
+            openUrl: button.getAttribute('data-open-url') || '',
+            isDesktopWebview: isDesktopWebview,
+            willUse: isDesktopWebview ? 'POST /arca/comprobante/<venta_id>/abrir' : 'GET /arca/comprobante/<venta_id>/pdf',
+            currentUrl: window.location.href,
+        });
+        if (!isDesktopWebview) {
+            event.preventDefault();
+            const pdfUrl = button.getAttribute('data-pdf-url') || '';
+            if (pdfUrl) {
+                window.open(pdfUrl, '_blank', 'noopener');
+            }
+            return;
+        }
+
+        event.preventDefault();
+        const openUrl = button.getAttribute('data-open-url') || '';
+        if (!openUrl) {
+            return;
+        }
+
+        try {
+            const response = await fetch(openUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                },
+            });
+            const payload = await response.json();
+            console.info('[ARCA REIMPRESION] response comprobante_detalle', payload);
+            if (!response.ok) {
+                alert(payload.message || 'No se pudo abrir el PDF ARCA.');
+            }
+        } catch (_error) {
+            alert('No se pudo abrir el PDF ARCA desde la app.');
+        }
+    });
+});
+</script>
 {% endblock %}

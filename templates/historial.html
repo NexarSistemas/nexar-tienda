@@ -116,10 +116,10 @@
                                     </button>
                                 </form>
                                 {% elif usuario_es_admin and arca_modulo_activo and arca_comprobante %}
-                                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" disabled title="Venta ya facturada con ARCA">
-                                    <i class="fas fa-file-circle-check"></i>
-                                </button>
-                                <span class="small text-muted ms-1">Factura ARCA generada</span>
+                                <a href="#" class="btn btn-sm btn-outline-primary ms-1 js-arca-pdf-open" data-pdf-url="{{ url_for('arca.comprobante_pdf', venta_id=venta.id) }}" data-open-url="{{ url_for('arca.comprobante_pdf_abrir', venta_id=venta.id) }}" title="Reimprimir comprobante ARCA">
+                                    <i class="fas fa-file-pdf"></i>
+                                </a>
+                                <span class="small text-muted ms-1">Reimprimir comprobante ARCA</span>
                                 {% endif %}
                                 {% if not venta.anulada and usuario_es_admin %}
                                 <button
@@ -159,6 +159,57 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const isDesktopWebview = Boolean(window.pywebview && window.pywebview.api);
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const buttons = Array.from(document.querySelectorAll('.js-arca-pdf-open'));
+
+    buttons.forEach(function (button) {
+        button.addEventListener('click', async function (event) {
+            console.info('[ARCA REIMPRESION] click historial', {
+                routePdf: button.getAttribute('data-pdf-url') || '',
+                openUrl: button.getAttribute('data-open-url') || '',
+                isDesktopWebview: isDesktopWebview,
+                willUse: isDesktopWebview ? 'POST /arca/comprobante/<venta_id>/abrir' : 'GET /arca/comprobante/<venta_id>/pdf',
+                currentUrl: window.location.href,
+            });
+            if (!isDesktopWebview) {
+                event.preventDefault();
+                const pdfUrl = button.getAttribute('data-pdf-url') || '';
+                if (pdfUrl) {
+                    window.open(pdfUrl, '_blank', 'noopener');
+                }
+                return;
+            }
+
+            event.preventDefault();
+            const openUrl = button.getAttribute('data-open-url') || '';
+            if (!openUrl) {
+                return;
+            }
+
+            try {
+                const response = await fetch(openUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                    },
+                });
+                const payload = await response.json();
+                console.info('[ARCA REIMPRESION] response historial', payload);
+                if (!response.ok) {
+                    alert(payload.message || 'No se pudo abrir el PDF ARCA.');
+                }
+            } catch (_error) {
+                alert('No se pudo abrir el PDF ARCA desde la app.');
+            }
+        });
+    });
+});
+</script>
 
 <div class="modal fade" id="modalEliminarVenta" tabindex="-1" aria-labelledby="modalEliminarVentaLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
