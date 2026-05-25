@@ -11,6 +11,7 @@ import threading as _threading
 import platform
 import tempfile
 import shutil
+import traceback
 
 from services.file_open_service import open_external_target
 
@@ -157,38 +158,96 @@ def configurar_logs_servidor_local():
     werkzeug_logger.propagate = False
 
 
+def _log_diagnostico(message):
+    safe_print(f"[diag] {message}")
+
+
 # ==============================
 # 🔹 Iniciar Flask
 # ==============================
 def iniciar_flask(port):
-    from app import app
+    _log_diagnostico(f"iniciar_flask: inicio host={APP_HOST} port={port}")
+    try:
+        _log_diagnostico("iniciar_flask: importando app (esto ejecuta create_app)")
+        from app import app
 
-    configurar_logs_servidor_local()
-    logger.info("Servidor local iniciado en http://%s:%s", APP_HOST, port)
-    app.run(
-        host=APP_HOST,
-        port=port,
-        debug=False,
-        use_reloader=False,
-        threaded=True,
-    )
+        _log_diagnostico("iniciar_flask: app importada correctamente")
+        configurar_logs_servidor_local()
+        _log_diagnostico(f"iniciar_flask: llamando app.run url=http://{APP_HOST}:{port}")
+        app.run(
+            host=APP_HOST,
+            port=port,
+            debug=False,
+            use_reloader=False,
+            threaded=True,
+        )
+        _log_diagnostico("iniciar_flask: app.run finalizo")
+    except Exception as exc:
+        _log_diagnostico(f"iniciar_flask: exception {exc.__class__.__name__}: {exc}")
+        traceback.print_exc()
+        raise
+    finally:
+        _log_diagnostico("iniciar_flask: fin")
 
 
 # ==============================
 # 🔹 Esperar servidor
 # ==============================
-def esperar_servidor(url, timeout=10):
+def esperar_servidor(url, timeout=10, flask_thread=None):
+    import urllib.error
     import urllib.request
 
     start = time.time()
+    attempt = 0
+    probe_url = url
+    suggested_ready_url = f"{url}/login"
+    _log_diagnostico(
+        "esperar_servidor: sin ruta /health explicita detectada en iniciar.py; "
+        f"probe actual={probe_url} sugerida_publica={suggested_ready_url}"
+    )
 
     while time.time() - start < timeout:
+        attempt += 1
+        elapsed = time.time() - start
+        thread_alive = flask_thread.is_alive() if flask_thread else None
+        _log_diagnostico(
+            f"esperar_servidor: intento={attempt} elapsed={elapsed:.2f}s "
+            f"thread_alive={thread_alive} url={probe_url}"
+        )
         try:
-            urllib.request.urlopen(url)
+            response = urllib.request.urlopen(probe_url)
+            status = getattr(response, "status", None) or response.getcode()
+            final_url = response.geturl()
+            _log_diagnostico(
+                f"esperar_servidor: respuesta status={status} final_url={final_url}"
+            )
             return True
-        except:
-            time.sleep(0.3)
+        except urllib.error.HTTPError as exc:
+            _log_diagnostico(
+                f"esperar_servidor: HTTPError status={exc.code} reason={exc.reason} url={exc.geturl()}"
+            )
+        except urllib.error.URLError as exc:
+            _log_diagnostico(f"esperar_servidor: URLError reason={exc.reason}")
+        except Exception as exc:
+            _log_diagnostico(
+                f"esperar_servidor: exception {exc.__class__.__name__}: {exc}"
+            )
 
+        if flask_thread and not flask_thread.is_alive():
+            _log_diagnostico(
+                "esperar_servidor: el hilo Flask ya no esta vivo antes de que el servidor responda"
+            )
+            return False
+
+        remaining = timeout - (time.time() - start)
+        _log_diagnostico(
+            f"esperar_servidor: reintentando en 0.3s remaining={max(remaining, 0):.2f}s"
+        )
+        time.sleep(0.3)
+
+    _log_diagnostico(
+        f"esperar_servidor: timeout agotado tras {timeout:.2f}s sin respuesta satisfactoria"
+    )
     return False
 
 
@@ -214,7 +273,7 @@ if __name__ == "__main__":
     )
     flask_thread.start()
 
-    if not esperar_servidor(url):
+    if not esperar_servidor(url, flask_thread=flask_thread):
         safe_print("❌ No se pudo iniciar el servidor")
         sys.exit(1)
 

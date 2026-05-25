@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+import logging
+from pathlib import Path
+
+from flask import Blueprint, flash, redirect, render_template, request, send_file, url_for
 
 from licensing.permisos import modulo_activo
 from modules.arca.services.arca_client import (
@@ -16,16 +19,19 @@ from modules.arca.services.certificados_service import (
 )
 from modules.arca.services.comprobantes_service import obtener_comprobante_por_id, listar_comprobantes
 from modules.arca.services.facturacion_desde_venta_service import facturar_venta_desde_existente
+from modules.arca.services.reimpresion_pdf_service import generar_pdf_comprobante_arca
 from services.arca_config_service import (
     CONDICIONES_FISCALES_VALIDAS,
     get_config,
     obtener_estado_modulo,
     save_config,
 )
+from services.file_open_service import open_file_cross_platform
 from routes.main import admin_required
 
 
 arca_bp = Blueprint("arca", __name__, url_prefix="/arca")
+logger = logging.getLogger(__name__)
 
 
 def _redirect_inactivo():
@@ -37,6 +43,7 @@ def _config_form_data() -> dict[str, object]:
     return {
         "cuit": request.form.get("cuit", ""),
         "razon_social": request.form.get("razon_social", ""),
+        "nombre_fantasia": request.form.get("nombre_fantasia", ""),
         "condicion_fiscal": request.form.get("condicion_fiscal", ""),
         "punto_venta": request.form.get("punto_venta", ""),
         "ambiente": request.form.get("ambiente", "homologacion"),
@@ -200,3 +207,94 @@ def comprobante_detalle(comprobante_id: int):
         "arca/comprobante_detalle.html",
         comprobante=comprobante,
     )
+
+
+@arca_bp.route("/comprobante/<int:venta_id>/pdf")
+@admin_required
+def comprobante_pdf(venta_id: int):
+    logger.info(
+        "[ARCA REIMPRESION] route_pdf venta_id=%s ruta=%s endpoint=%s method=%s referrer=%s user_agent=%s",
+        venta_id,
+        request.path,
+        request.endpoint,
+        request.method,
+        request.referrer,
+        request.headers.get("User-Agent", ""),
+    )
+    resultado = generar_pdf_comprobante_arca(venta_id, force_regenerate=True)
+    if not resultado.get("ok"):
+        logger.info(
+            "[ARCA REIMPRESION] route_pdf_error venta_id=%s message=%s",
+            venta_id,
+            resultado.get("message"),
+        )
+        flash(resultado["message"], "warning")
+        destino = request.referrer or url_for("ticket", vid=venta_id)
+        return redirect(destino)
+
+    pdf_path = Path(str(resultado["pdf_path"])).expanduser().resolve()
+    if not pdf_path.exists():
+        logger.info(
+            "[ARCA REIMPRESION] route_pdf_missing_file venta_id=%s pdf_path=%s",
+            venta_id,
+            pdf_path,
+        )
+        flash("No se pudo preparar el PDF del comprobante ARCA.", "warning")
+        destino = request.referrer or url_for("ticket", vid=venta_id)
+        return redirect(destino)
+
+    download_name = pdf_path.name
+    logger.info(
+        "[ARCA REIMPRESION] route_pdf_send_file venta_id=%s pdf_path=%s open_mode=url_web_send_file download_name=%s",
+        venta_id,
+        pdf_path,
+        download_name,
+    )
+    return send_file(
+        pdf_path,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=download_name,
+        conditional=True,
+    )
+
+
+@arca_bp.route("/comprobante/<int:venta_id>/abrir", methods=["POST"])
+@admin_required
+def comprobante_pdf_abrir(venta_id: int):
+    logger.info(
+        "[ARCA REIMPRESION] route_abrir venta_id=%s ruta=%s endpoint=%s method=%s referrer=%s user_agent=%s",
+        venta_id,
+        request.path,
+        request.endpoint,
+        request.method,
+        request.referrer,
+        request.headers.get("User-Agent", ""),
+    )
+    resultado = generar_pdf_comprobante_arca(venta_id, force_regenerate=True)
+    if not resultado.get("ok"):
+        logger.info(
+            "[ARCA REIMPRESION] route_abrir_error venta_id=%s message=%s",
+            venta_id,
+            resultado.get("message"),
+        )
+        return {"ok": False, "message": resultado["message"]}, 400
+
+    opened = open_file_cross_platform(str(resultado["pdf_path"]))
+    status_code = 200 if opened.get("ok") else 400
+    logger.info(
+        "[ARCA REIMPRESION] route_abrir_result venta_id=%s open_mode=archivo_local pdf_path=%s ok=%s platform=%s method=%s status_code=%s",
+        venta_id,
+        resultado.get("pdf_path"),
+        bool(opened.get("ok")),
+        opened.get("platform", ""),
+        opened.get("method", ""),
+        status_code,
+    )
+    return {
+        "ok": bool(opened.get("ok")),
+        "message": opened.get("message") or "No se pudo abrir el PDF ARCA.",
+        "pdf_path": str(resultado["pdf_path"]),
+        "platform": opened.get("platform", ""),
+        "method": opened.get("method", ""),
+    }, status_code

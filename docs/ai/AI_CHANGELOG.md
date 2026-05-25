@@ -2,6 +2,86 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-05-24 - Codex - fix/diagnostico-arranque-servidor
+
+### Tarea
+Instrumentar el arranque de `iniciar.py` para diagnosticar por qué aparece `❌ No se pudo iniciar el servidor` antes del bloque de `webview`.
+
+### Archivos modificados
+- `iniciar.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se envolvió `iniciar_flask(port)` con logs de inicio/fin y `traceback.print_exc()` para distinguir fallo en `create_app`/import de `app` versus fallo en `app.run()`.
+- Se agregó trazabilidad en `esperar_servidor(url)` para registrar cada intento, estado del hilo Flask, `status_code` o excepción HTTP/URL y agotamiento del timeout.
+- Se dejó explícito en logs que no existe una ruta `/health` dedicada en este arranque y que la alternativa pública candidata para readiness sería `/login`.
+
+### Qué se diagnosticó
+- La falla real ocurre antes de `app.run()`: el hilo Flask muere al ejecutar `from app import app` porque el entorno actual no tiene instalado `flask`.
+- `requirements.txt` sí declara `Flask>=3.0.3,<4`, pero `venv/bin/python3 -m pip show flask` devuelve `Package(s) not found`.
+- `esperar_servidor(url)` no estaba apuntando a una ruta incorrecta en este caso; recibe `Connection refused` porque el hilo ya murió antes de abrir el socket.
+
+## 2026-05-24 - Codex - fix/diagnostico-reimpresion-arca
+
+### Tarea
+Instrumentar el flujo de reimpresión ARCA para identificar ruta exacta, servicio real, origen de datos fiscales visibles y si en desktop se abre URL web o archivo local.
+
+### Archivos modificados
+- `modules/arca/routes.py`
+- `modules/arca/services/reimpresion_pdf_service.py`
+- `services/file_open_service.py`
+- `templates/ticket.html`
+- `templates/historial.html`
+- `templates/arca/comprobante_detalle.html`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregaron logs temporales `[ARCA REIMPRESION]` en las rutas Flask `/arca/comprobante/<venta_id>/pdf` y `/arca/comprobante/<venta_id>/abrir`.
+- Se instrumentó el servicio de reimpresión PDF para registrar `venta_id`, servicio ejecutado, ausencia de template HTML, `nombre_fantasia`, `razon_social`, tipo y número de comprobante, cliente fiscal resuelto y `pdf_path`.
+- Se reforzó el servicio de apertura de archivos para distinguir explícitamente entre apertura de URL y apertura de archivo local.
+- Se agregaron logs temporales de frontend en `ticket`, `historial` y detalle de comprobante para dejar visible si el click usa `POST /abrir` en desktop o `GET /pdf` en navegador.
+- Se agregó una marca visual temporal grande `DEBUG REIMPRESION ARCA` dentro del PDF generado para validar que el archivo abierto corresponde a la reimpresión instrumentada.
+
+### Qué se diagnosticó
+- La reimpresión ARCA no usa template HTML para generar PDF; el archivo se construye directamente con `reportlab` en `modules/arca/services/reimpresion_pdf_service.py`.
+- En la base activa, `arca_configuracion.nombre_fantasia` contiene `Nexar Demo`, por eso ese texto aparece en el encabezado del comprobante reimpreso.
+- En la base activa, `arca_comprobantes.tipo_comprobante` está persistido como `Factura B` para los comprobantes consultados; además la lógica fiscal actual resuelve `Factura B` para `responsable_inscripto`, `exento` y `consumidor_final`, y `Factura C` solo para `monotributo`.
+
+## 2026-05-24 - Codex - feature/arca-fase8-reimpresion-pdf
+
+### Tarea
+Implementar la Fase 8 del módulo ARCA para permitir la reimpresión en PDF de comprobantes fiscales ya emitidos, sin volver a solicitar CAE ni alterar ventas existentes.
+
+### Archivos modificados
+- `modules/arca/services/comprobantes_service.py`
+- `modules/arca/services/reimpresion_pdf_service.py`
+- `modules/arca/routes.py`
+- `templates/ticket.html`
+- `templates/historial.html`
+- `templates/arca/comprobante_detalle.html`
+- `tests/test_arca_fase8_reimpresion_pdf.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- Se agregó un servicio desacoplado de reimpresión PDF ARCA que arma el comprobante desde la venta, su detalle, la configuración fiscal y el comprobante ya persistido, sin invocar emisión ni WSFE.
+- La generación usa `reportlab`, guarda el archivo en `pdf_path`, reutiliza el PDF si ya existe y deja una estructura segura preparada para QR fiscal futuro con placeholder visible.
+- Se incorporó la ruta protegida `GET /arca/comprobante/<venta_id>/pdf` para ver o descargar el PDF fiscal desde una venta ya facturada.
+- El ticket, el historial de ventas y el detalle del comprobante ARCA ahora muestran la acción `Reimprimir comprobante ARCA` cuando corresponde.
+- Si la venta no tiene comprobante fiscal ARCA autorizado, la ruta responde con un mensaje claro y no afecta ventas, stock ni caja.
+
+### Qué se probó
+- `python3 -m unittest tests.test_arca_fase8_reimpresion_pdf`
+
+### Ajuste posterior
+- Se corrigió la tarjeta superior del PDF para mostrar el número completo del comprobante sin recortes, separando tipo y numeración.
+- La lógica fiscal de emisión ARCA ahora resuelve `Factura C` para emisor monotributista y mantiene `Factura B` para las demás condiciones soportadas.
+- La reimpresión PDF ahora toma cliente fiscal real desde `cliente_id` cuando existe, muestra nombre + documento y reemplaza `Mostrador` por `CONSUMIDOR FINAL` en el comprobante.
+- La configuración ARCA ahora persiste `nombre_fantasia`, y el encabezado del PDF usa ese valor o cae al `nombre_negocio` general del comercio antes de recurrir a cualquier fallback.
+- En desktop/PyWebView la acción de reimpresión ahora genera el PDF local y lo abre con el visor predeterminado del sistema, evitando sacar al usuario a una ruta protegida en navegador.
+- El diseño del PDF ARCA se normalizó hacia una estructura fiscal más estándar: encabezado comercial, bloque grande de letra/tipo, datos del cliente, detalle, totales, CAE, vencimiento y área reservada para QR.
+- El comprobante interno de venta se rediseñó para compartir jerarquía visual con la factura, marcando explícitamente `COMPROBANTE INTERNO DE VENTA` y `No válido como factura`, sin CAE ni QR.
+- Se agregaron tests para regeneración del PDF cuando falta el archivo físico, respeto del tipo persistido en facturas viejas, presencia de CAE/vencimiento, integridad de stock/venta y leyendas del comprobante interno.
+
 ## 2026-05-24 - Codex - feature/arca-fase7-datos-fiscales
 
 ### Tarea

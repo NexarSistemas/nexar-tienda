@@ -20,9 +20,27 @@ from services.arca_config_service import arca_modo_simulacion_activo, get_config
 logger = logging.getLogger(__name__)
 
 WSFE_TIPO_FACTURA_B = 6
+WSFE_TIPO_FACTURA_C = 11
 WSFE_CONCEPTO_PRODUCTOS = 1
 WSFE_DOC_TIPO_CONSUMIDOR_FINAL = 99
-ARCA_TIPO_COMPROBANTE = "Factura B"
+TIPOS_COMPROBANTE_POR_CONDICION_FISCAL = {
+    "monotributo": {
+        "descripcion": "Factura C",
+        "codigo": WSFE_TIPO_FACTURA_C,
+    },
+    "responsable_inscripto": {
+        "descripcion": "Factura B",
+        "codigo": WSFE_TIPO_FACTURA_B,
+    },
+    "exento": {
+        "descripcion": "Factura B",
+        "codigo": WSFE_TIPO_FACTURA_B,
+    },
+    "consumidor_final": {
+        "descripcion": "Factura B",
+        "codigo": WSFE_TIPO_FACTURA_B,
+    },
+}
 ALICUOTAS_IVA = {
     "0": {"id": 3, "rate": 0.0},
     "0%": {"id": 3, "rate": 0.0},
@@ -62,6 +80,14 @@ def _fecha_wsfe(fecha_iso: object) -> str:
         return datetime.strptime(raw, "%Y-%m-%d").strftime("%Y%m%d")
     except ValueError:
         return datetime.now().strftime("%Y%m%d")
+
+
+def resolver_tipo_comprobante_arca(condicion_fiscal: object) -> dict[str, object]:
+    condicion = _clean_text(condicion_fiscal).lower().replace(" ", "_")
+    return dict(
+        TIPOS_COMPROBANTE_POR_CONDICION_FISCAL.get(condicion)
+        or TIPOS_COMPROBANTE_POR_CONDICION_FISCAL["responsable_inscripto"]
+    )
 
 
 def calcular_pdf_path_futuro(*, venta_id: int, fecha_emision: object, punto_venta: int, numero_comprobante: int | None) -> str:
@@ -153,11 +179,12 @@ def _comprobante_final_existente(venta_id: int) -> dict[str, object] | None:
 
 def _build_payload_fiscal(venta: dict[str, object], items: list[dict[str, object]]) -> dict[str, object]:
     config = get_config()
+    tipo_comprobante = resolver_tipo_comprobante_arca(config.get("condicion_fiscal"))
     punto_venta = int(config.get("punto_venta") or 0) if _clean_text(config.get("punto_venta")) else 1
     total = _to_float(venta.get("total"))
     numero_sugerido = obtener_siguiente_numero_comprobante(
         punto_venta=punto_venta,
-        tipo_comprobante=ARCA_TIPO_COMPROBANTE,
+        tipo_comprobante=str(tipo_comprobante["descripcion"]),
     )
     iva = _agrupar_iva(items)
     importe_neto = round(sum(float(item["BaseImp"]) for item in iva), 2)
@@ -171,8 +198,8 @@ def _build_payload_fiscal(venta: dict[str, object], items: list[dict[str, object
     )
     return {
         "venta_id": int(venta["id"]),
-        "tipo_comprobante": ARCA_TIPO_COMPROBANTE,
-        "tipo_cbte": WSFE_TIPO_FACTURA_B,
+        "tipo_comprobante": str(tipo_comprobante["descripcion"]),
+        "tipo_cbte": int(tipo_comprobante["codigo"]),
         "punto_venta": punto_venta,
         "numero_sugerido": numero_sugerido,
         "fecha_emision": fecha_emision,
@@ -193,7 +220,7 @@ def _build_payload_fiscal(venta: dict[str, object], items: list[dict[str, object
             "Concepto": WSFE_CONCEPTO_PRODUCTOS,
             "DocTipo": WSFE_DOC_TIPO_CONSUMIDOR_FINAL,
             "DocNro": 0,
-            "CbteTipo": WSFE_TIPO_FACTURA_B,
+            "CbteTipo": int(tipo_comprobante["codigo"]),
             "PtoVta": punto_venta,
             "CbteDesde": numero_sugerido,
             "CbteHasta": numero_sugerido,

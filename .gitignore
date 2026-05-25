@@ -87,5 +87,6 @@ exports/*
 static/uploads/productos/*
 !static/uploads/productos/.gitkeep
 
+### --- carpeta de comprobantes de arca --- ###
+data/arca/comprobantes/*
 
-release-1.35.1

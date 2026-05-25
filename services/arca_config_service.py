@@ -46,6 +46,7 @@ def _default_config() -> dict[str, object]:
         "id": 1,
         "cuit": "",
         "razon_social": "",
+        "nombre_fantasia": "",
         "condicion_fiscal": "",
         "punto_venta": "",
         "ambiente": "homologacion",
@@ -123,6 +124,7 @@ def validate_config(data: dict[str, object] | None) -> dict[str, object]:
         raise ValueError("El ambiente debe ser homologacion o produccion.")
     if not _clean_text(payload.get("razon_social")):
         raise ValueError("La razón social es obligatoria.")
+    nombre_fantasia = _clean_text(payload.get("nombre_fantasia"))
     if condicion_fiscal not in CONDICIONES_FISCALES_VALIDAS:
         raise ValueError("Seleccioná una condición fiscal válida.")
 
@@ -144,6 +146,7 @@ def validate_config(data: dict[str, object] | None) -> dict[str, object]:
     return {
         "cuit": validar_cuit(payload.get("cuit")),
         "razon_social": _clean_text(payload.get("razon_social")),
+        "nombre_fantasia": nombre_fantasia,
         "condicion_fiscal": condicion_fiscal,
         "punto_venta": punto_venta,
         "ambiente": ambiente,
@@ -162,6 +165,7 @@ def get_config() -> dict[str, object]:
     config = _default_config()
     config.update(_row_to_dict(row))
     config["cuit"] = normalizar_cuit(config.get("cuit"))
+    config["nombre_fantasia"] = _clean_text(config.get("nombre_fantasia"))
     config["ambiente"] = _clean_text(config.get("ambiente")).lower() or "homologacion"
     config["activo"] = int(config.get("activo") or 0)
     config["certificado_path"] = _clean_text(config.get("certificado_path"))
@@ -207,6 +211,7 @@ def save_config(data: dict[str, object] | None) -> dict[str, object]:
     params = (
         normalized["cuit"],
         normalized["razon_social"],
+        normalized["nombre_fantasia"],
         normalized["condicion_fiscal"],
         normalized["punto_venta"],
         normalized["ambiente"],
@@ -220,7 +225,7 @@ def save_config(data: dict[str, object] | None) -> dict[str, object]:
         db.q(
             """
             UPDATE arca_configuracion
-            SET cuit = ?, razon_social = ?, condicion_fiscal = ?, punto_venta = ?, ambiente = ?,
+            SET cuit = ?, razon_social = ?, nombre_fantasia = ?, condicion_fiscal = ?, punto_venta = ?, ambiente = ?,
                 certificado_path = ?, key_path = ?, certificado_vencimiento = ?, activo = ?,
                 updated_at = ?
             WHERE id = 1
@@ -232,9 +237,9 @@ def save_config(data: dict[str, object] | None) -> dict[str, object]:
         db.q(
             """
             INSERT INTO arca_configuracion
-            (id, cuit, razon_social, condicion_fiscal, punto_venta, ambiente, certificado_path,
+            (id, cuit, razon_social, nombre_fantasia, condicion_fiscal, punto_venta, ambiente, certificado_path,
              key_path, certificado_vencimiento, activo, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 1,

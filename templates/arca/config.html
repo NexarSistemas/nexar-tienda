@@ -48,6 +48,11 @@
                                 </div>
 
                                 <div class="col-md-6">
+                                    <label for="nombre_fantasia" class="form-label">Nombre de fantasía</label>
+                                    <input type="text" class="form-control" id="nombre_fantasia" name="nombre_fantasia" value="{{ config.nombre_fantasia or '' }}" placeholder="Opcional. Si queda vacío, se usa el nombre comercial general.">
+                                </div>
+
+                                <div class="col-md-6">
                                     <label for="condicion_fiscal" class="form-label">Condición fiscal</label>
                                     <select class="form-select" id="condicion_fiscal" name="condicion_fiscal" required>
                                         <option value="">Seleccionar...</option>
