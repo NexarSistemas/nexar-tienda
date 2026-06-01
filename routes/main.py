@@ -2356,6 +2356,20 @@ def producto_editar(pid):
     )
 
 
+@main_bp.route("/productos/<int:pid>/eliminar", methods=["POST"])
+@vendedor_forbidden
+def producto_eliminar(pid):
+    producto = db.get_producto(pid)
+    if not producto:
+        flash("Producto inexistente.", "danger")
+        return redirect(url_for("productos"))
+    descripcion = (producto["descripcion"] or "").strip() or "Producto"
+    db.delete_producto(pid)
+    _auditar_accion("DESACTIVACION_PRODUCTO", "producto", pid, detalle=descripcion)
+    flash("Producto desactivado.", "success")
+    return redirect(url_for("productos"))
+
+
 @main_bp.route("/stock")
 @login_required
 def stock():
