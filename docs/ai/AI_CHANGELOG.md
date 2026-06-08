@@ -2,6 +2,48 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-06-08 - Codex - release/v1.36.0
+
+### Tarea
+Preparar la release `v1.36.0` para dejar el repositorio listo para PR contra `main`, sin hacer merge ni crear tag todavia.
+
+### Archivos modificados
+- `VERSION`
+- `README.md`
+- `CHANGELOG.md`
+- `build/nexar_tienda.iss`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se actualizo la version estable visible del proyecto a `v1.36.0` en archivos de release y documentacion principal.
+- Se agrego la entrada de release en `CHANGELOG.md` con el resumen de ARCA Fase 1 a 8, reimpresion PDF, persistencia fiscal, facturacion desde venta existente, fix de productos y fix de `venta_finalizar`.
+- Se dejo trazabilidad interna del proceso de preparacion de release en `docs/ai/AI_CHANGELOG.md`.
+- Se mantuvo sin cambios la logica funcional del sistema fuera de los fixes ya integrados previamente.
+
+### Que se probo
+- `python -m pytest`
+
+## 2026-06-08 - Codex - fix/venta-finalizar-temporada-row
+
+### Tarea
+Corregir el error 500 al confirmar una venta cuando existe una temporada activa y `db.get_temporada_actual()` devuelve `sqlite3.Row`.
+
+### Archivos modificados
+- `routes/main.py`
+- `tests/test_venta_finalizar_temporada.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Qué se cambió
+- En `venta_finalizar` se separó la lectura de la temporada activa en `temporada_actual` y `temporada_nombre`, accediendo por clave (`temporada_actual["nombre"]`) para compatibilidad con `sqlite3.Row`.
+- `db.crear_venta` ahora recibe `temporada=temporada_nombre`, sin cambiar la lógica de ventas, stock, caja ni ARCA.
+- Se revisó el patrón de `.get()` sobre resultados `sqlite3.Row` en `routes/main.py`; además se ajustó una lectura defensiva en edición de productos para reutilizar el diccionario `producto_validacion`.
+- Se agregó un test que finaliza una venta con temporada activa y verifica que el nombre quede persistido en `ventas.temporada`.
+
+### Qué se probó
+- `python3 -m py_compile tests/test_venta_finalizar_temporada.py routes/main.py`
+- `pytest tests/test_venta_finalizar_temporada.py -q`
+- `pytest -q`
+
 ## 2026-05-24 - Codex - fix/diagnostico-arranque-servidor
 
 ### Tarea

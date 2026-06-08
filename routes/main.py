@@ -2300,7 +2300,11 @@ def producto_editar(pid):
         )
         producto_validacion["por_peso"] = int(producto_validacion.get("por_peso", 0) or 0)
         unidad_formulario = normalizar_unidad(
-            data.get("tipo_unidad") or data.get("unidad") or producto.get("unidad") or producto.get("tipo_unidad") or "unidad"
+            data.get("tipo_unidad")
+            or data.get("unidad")
+            or producto_validacion.get("unidad")
+            or producto_validacion.get("tipo_unidad")
+            or "unidad"
         )
         stock_actual_base = (
             convertir_cantidad_a_base(data.get("stock_actual", 0), unidad_formulario)
@@ -2587,7 +2591,9 @@ def venta_finalizar():
     if cliente_id:
         cliente = db.get_cliente(cliente_id)
         cliente_nombre = cliente["nombre"] if cliente else cliente_nombre
-    venta_id = db.crear_venta(cart, cliente_nombre, medio_pago, float(request.form.get("descuento_adicional", 0) or 0), session["user"]["username"], cliente_id=cliente_id, temporada=(db.get_temporada_actual() or {}).get("nombre", ""))
+    temporada_actual = db.get_temporada_actual()
+    temporada_nombre = temporada_actual["nombre"] if temporada_actual else ""
+    venta_id = db.crear_venta(cart, cliente_nombre, medio_pago, float(request.form.get("descuento_adicional", 0) or 0), session["user"]["username"], cliente_id=cliente_id, temporada=temporada_nombre)
     db.reconciliar_cc_clientes_desde_ventas()
     db.decrementar_stock_venta(venta_id)
     venta = db.q("SELECT numero_ticket, total, cliente_nombre, medio_pago FROM ventas WHERE id=?", (venta_id,), fetchone=True)

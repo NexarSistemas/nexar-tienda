@@ -4,6 +4,22 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.36.0] - 2026-06-08
+
+### Added
+- Se consolida la integracion operativa de ARCA Fase 1 a Fase 8 dentro de Nexar Comercio.
+- Se incorpora la reimpresion PDF de comprobantes ARCA ya emitidos, sin alterar ventas existentes.
+
+### Changed
+- Se mantiene la facturacion ARCA desde una venta existente con persistencia de datos fiscales como CAE, vencimiento, tipo de comprobante y PDF.
+- Se ajustan detalles visuales del comprobante interno y de la factura ARCA para una lectura mas clara.
+- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG` e `Inno Setup` para el release estable `v1.36.0`.
+
+### Fixed
+- Se corrige la desactivacion y eliminacion de productos para no romper ventas historicas ni flujos comerciales relacionados.
+- Se corrige `venta_finalizar` para leer la temporada activa con compatibilidad `sqlite3.Row`, evitando el error 500 al confirmar una venta.
+- Se realiza validacion general previa a release sobre la base de pruebas automatizadas.
+
 ## [1.35.2] - 2026-05-24
 
 ### Corregido
