@@ -1,15 +1,17 @@
-# Nexar Comercio v1.35.2
+# Nexar Comercio v1.36.0
 
 Sistema integral de gestion comercial para tiendas y comercios minoristas.
 `Nexar Comercio` es la marca visible del producto. `nexar-tienda` se mantiene
 como identificador tecnico compatible para builds, instaladores, actualizaciones
 y artefactos existentes.
 
-Release comercial estable `v1.35.2`:
+Release comercial estable `v1.36.0`:
 
-- Correccion de activacion directa para licencias PRO y FULL en instalaciones nuevas.
-- Ya no se requiere una licencia BASICA previa para activar planes superiores.
-- Compatibilidad mantenida para activaciones BASICA, PRO y FULL.
+- Integracion consolidada de ARCA Fase 1 a Fase 8.
+- Reimpresion PDF de comprobantes ARCA y persistencia fiscal en ventas.
+- Facturacion ARCA desde venta existente mantenida en el flujo actual.
+- Fix de desactivar/eliminar productos sin romper ventas.
+- Fix de `venta_finalizar` para compatibilidad con `sqlite3.Row`.
 - Versionado sincronizado entre app, documentacion e instaladores.
 
 Desarrollado por Nexar Sistemas - 2026
