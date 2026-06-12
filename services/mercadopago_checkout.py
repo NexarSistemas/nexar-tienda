@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 import logging
-import os
 
 import requests
 
 from licensing.planes import normalize_plan
+from services import pricing_resolver
 
 DEFAULT_NEXAR_PAGOS_API = "https://nexar-pagos.netlify.app/.netlify/functions"
 REQUEST_TIMEOUT_SECONDS = 12
-PRICE_BY_PLAN = {
-    "BASICA": int(str(os.getenv("NEXAR_PRICE_BASICA", "49900") or "49900").strip() or 49900),
-    "PRO": int(str(os.getenv("NEXAR_PRICE_PRO", "9900") or "9900").strip() or 9900),
-    "FULL": int(str(os.getenv("NEXAR_PRICE_FULL", "19900") or "19900").strip() or 19900),
-}
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +35,11 @@ def get_nexar_pagos_api_base() -> str:
 
 def get_price_for_plan(plan_destino: str) -> int:
     plan = normalize_plan(plan_destino, default="")
-    price = PRICE_BY_PLAN.get(plan)
+    try:
+        resolved = pricing_resolver.resolve_plan_price(plan)
+    except ValueError as exc:
+        raise MercadoPagoCheckoutError("El plan solicitado no admite checkout online todavía.") from exc
+    price = int(resolved.get("monto") or 0)
     if not price:
         raise MercadoPagoCheckoutError("El plan solicitado no admite checkout online todavía.")
     return price
