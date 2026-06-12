@@ -1,49 +1,217 @@
-ACUERDO DE LICENCIA DE USUARIO FINAL
-Nexar Tienda
+ACUERDO DE LICENCIA DE USO Y CONTRATO DE SERVICIO
 
-Copyright (c) 2026 Nexar Sistemas.
+NEXAR SISTEMAS
 
-Al instalar o usar Nexar Tienda, el usuario acepta las condiciones de esta
-licencia. Si no acepta estas condiciones, no debe instalar ni usar el software.
+Copyright (c) 2026 Nexar Sistemas
 
-1. Uso permitido
-Nexar Sistemas concede una licencia de uso no exclusiva e intransferible para
-usar Nexar Tienda en los equipos y bajo el plan de licencia contratado o
-habilitado por el desarrollador.
+Al instalar, activar, acceder o utilizar cualquier software comercializado por Nexar Sistemas, el usuario acepta íntegramente las condiciones establecidas en el presente acuerdo.
 
-2. Activación y validación
-El software puede validar su licencia mediante identificadores técnicos del
-equipo, claves de licencia y servicios remotos de validación. La licencia puede
-ser Demo, Básica o Mensual Full, según corresponda.
+Si el usuario no acepta estas condiciones, no deberá instalar ni utilizar el software.
 
-3. Restricciones
-No se permite revender, redistribuir, alquilar, sublicenciar, descompilar,
-modificar mecanismos de activación, eludir límites de licencia ni usar claves
-no autorizadas.
+1. LICENCIA DE USO
 
-4. Datos locales
-Nexar Tienda almacena datos operativos localmente, incluyendo base SQLite,
-configuración, copias de seguridad, caché de licencia y datos necesarios para
-el funcionamiento del sistema. El usuario es responsable de mantener respaldos
-actualizados de su información comercial.
+Nexar Sistemas concede al usuario una licencia de uso personal, no exclusiva, intransferible y revocable para utilizar el software conforme al plan contratado.
 
-5. Servicio Demo y planes
-El modo Demo tiene una duración limitada. La licencia Básica es permanente con
-restricciones funcionales. La licencia Mensual Full agrega soporte,
-actualizaciones y límites ampliados mientras se encuentre vigente. Al vencer
-Mensual Full, el sistema puede volver al plan Básico si existe una activación
-válida.
+Esta licencia no implica transferencia de propiedad intelectual, derechos de autor, marcas, diseños, documentación ni código fuente.
 
-6. Garantía limitada
-El software se entrega "tal cual", sin garantía absoluta de disponibilidad,
-compatibilidad con todos los entornos ni ausencia total de errores. Nexar
-Sistemas no será responsable por pérdidas indirectas, lucro cesante o pérdida
-de datos derivada del uso del software.
+2. PROPIEDAD INTELECTUAL
 
-7. Soporte
-El soporte y las actualizaciones dependen del plan contratado. Las condiciones
-comerciales pueden variar según acuerdo con Nexar Sistemas.
+Todo el software, documentación, imágenes, marcas, logotipos, código fuente, componentes y materiales asociados son propiedad exclusiva de Nexar Sistemas.
 
-8. Aceptación
-La instalación y uso de Nexar Tienda implica la aceptación completa de este
-acuerdo.
+El usuario no adquiere ningún derecho de propiedad sobre el software más allá de los expresamente otorgados en este acuerdo.
+
+3. PLANES Y LICENCIAMIENTO
+
+Los productos podrán ofrecer distintos planes comerciales, incluyendo entre otros:
+
+- DEMO
+- BÁSICA
+- PRO
+- FULL
+
+Las funcionalidades disponibles dependerán del plan contratado y podrán modificarse o ampliarse con el tiempo.
+
+4. LICENCIA BÁSICA
+
+La Licencia BÁSICA constituye una licencia permanente de uso para la versión adquirida.
+
+Incluye únicamente las funcionalidades correspondientes al plan contratado.
+
+Salvo indicación expresa, no incluye:
+
+- Actualizaciones mayores futuras.
+- Soporte técnico permanente.
+- Servicios en la nube.
+- Implementaciones especiales.
+- Capacitación personalizada.
+
+5. PLANES PRO Y FULL
+
+Los planes PRO y FULL constituyen suscripciones periódicas.
+
+Mientras la suscripción permanezca vigente, el usuario podrá acceder a las funcionalidades, servicios y beneficios incluidos en el plan correspondiente.
+
+6. CAMBIO Y VENCIMIENTO DE PLANES
+
+Si un usuario posee una Licencia BÁSICA y posteriormente contrata PRO o FULL:
+
+- Mantendrá la titularidad de su Licencia BÁSICA.
+- Accederá a las funciones premium mientras la suscripción permanezca activa.
+- Al finalizar la suscripción, el sistema volverá automáticamente a las capacidades de la Licencia BÁSICA.
+
+Si el usuario no posee una Licencia BÁSICA y únicamente utiliza un plan PRO o FULL:
+
+- Al finalizar la suscripción, el sistema podrá regresar al modo DEMO o al modo definido por Nexar Sistemas.
+- Las funcionalidades premium quedarán deshabilitadas.
+- Los datos almacenados localmente permanecerán disponibles.
+
+7. ACTIVACIÓN Y VALIDACIÓN
+
+El software podrá utilizar mecanismos de activación y validación que incluyan:
+
+- Claves de licencia.
+- Identificadores técnicos del equipo.
+- Activaciones remotas.
+- Servicios de validación en línea.
+- Caché local de licencias.
+
+La utilización del software implica la aceptación de dichos mecanismos.
+
+8. RESTRICCIONES
+
+Queda prohibido:
+
+- Revender licencias sin autorización expresa.
+- Redistribuir el software.
+- Alquilar o sublicenciar licencias.
+- Descompilar o realizar ingeniería inversa.
+- Alterar mecanismos de activación.
+- Eludir controles de licencia.
+- Utilizar claves no autorizadas.
+- Crear herramientas destinadas a vulnerar el sistema de licenciamiento.
+
+9. INFORMACIÓN Y RESPONSABILIDAD DEL USUARIO
+
+El usuario es el único responsable de toda la información cargada, modificada o eliminada dentro del software.
+
+Esto incluye, entre otros:
+
+- Productos.
+- Clientes.
+- Proveedores.
+- Inventario.
+- Facturación.
+- Información contable.
+- Información fiscal.
+- Documentación comercial.
+
+Nexar Sistemas no valida ni audita la exactitud, legalidad o veracidad de los datos ingresados.
+
+10. COPIAS DE SEGURIDAD
+
+El usuario es responsable de mantener copias de seguridad adecuadas de su información.
+
+Cualquier servicio de respaldo ofrecido por Nexar Sistemas será considerado complementario y no reemplaza la obligación del usuario de conservar respaldos propios.
+
+11. SERVICIOS EXTERNOS
+
+El software puede integrarse con servicios de terceros.
+
+Nexar Sistemas no garantiza la disponibilidad permanente de dichos servicios y no será responsable por interrupciones, modificaciones o fallas ocasionadas por terceros.
+
+Esto incluye, entre otros:
+
+- Proveedores de internet.
+- Servicios cloud.
+- Plataformas de pago.
+- Organismos fiscales.
+- Organismos gubernamentales.
+- Servicios de terceros integrados.
+
+12. FACTURACIÓN ELECTRÓNICA Y SERVICIOS FISCALES
+
+Cuando el software interactúe con organismos fiscales o gubernamentales, incluyendo ARCA, AFIP o futuros organismos equivalentes, el usuario será responsable de:
+
+- Mantener su situación fiscal regularizada.
+- Configurar correctamente certificados y credenciales.
+- Cumplir con la normativa vigente.
+
+Nexar Sistemas no será responsable por rechazos, interrupciones o cambios normativos realizados por dichos organismos.
+
+13. SOPORTE
+
+Las condiciones de soporte dependerán del plan contratado.
+
+Salvo publicación expresa en contrario:
+
+- BÁSICA: sin soporte incluido.
+- PRO: soporte estándar.
+- FULL: soporte prioritario.
+
+El soporte no incluye:
+
+- Configuración de hardware.
+- Impresoras.
+- Lectores de código de barras.
+- Redes.
+- Sistemas operativos.
+- Equipos del usuario.
+- Recuperación de información eliminada por el usuario.
+
+14. ACTUALIZACIONES
+
+Nexar Sistemas podrá publicar correcciones, mejoras, actualizaciones de seguridad y nuevas funcionalidades.
+
+La disponibilidad de dichas actualizaciones dependerá del plan contratado.
+
+15. GARANTÍA LIMITADA
+
+EL SOFTWARE SE PROPORCIONA "TAL CUAL".
+
+NEXAR SISTEMAS NO GARANTIZA:
+
+- Ausencia total de errores.
+- Compatibilidad con cualquier entorno.
+- Funcionamiento ininterrumpido.
+- Disponibilidad permanente de servicios externos.
+
+Los errores propios del software que puedan ser reproducidos y verificados serán corregidos mediante actualizaciones dentro de un plazo razonable según su complejidad.
+
+16. LIMITACIÓN DE RESPONSABILIDAD
+
+En ningún caso Nexar Sistemas será responsable por:
+
+- Lucro cesante.
+- Pérdida de ventas.
+- Pérdida de clientes.
+- Interrupciones comerciales.
+- Daños indirectos.
+- Daños emergentes.
+- Pérdida de información ocasionada por terceros o por el propio usuario.
+
+La responsabilidad máxima total de Nexar Sistemas no podrá superar el importe efectivamente abonado por el usuario durante los últimos doce (12) meses.
+
+17. SUSPENSIÓN Y TERMINACIÓN
+
+Nexar Sistemas podrá suspender o cancelar licencias cuando exista:
+
+- Uso fraudulento.
+- Manipulación de licencias.
+- Violación de este acuerdo.
+- Uso ilegal del software.
+
+18. MODIFICACIONES
+
+Nexar Sistemas podrá actualizar este acuerdo cuando resulte necesario por razones técnicas, comerciales o legales.
+
+La versión vigente será la publicada oficialmente por Nexar Sistemas.
+
+19. LEY APLICABLE Y JURISDICCIÓN
+
+Este acuerdo se regirá por las leyes de la República Argentina.
+
+Toda controversia será sometida a la jurisdicción de los tribunales competentes de la Provincia de San Juan, República Argentina.
+
+20. ACEPTACIÓN
+
+La instalación, activación o utilización del software implica la aceptación total e incondicional del presente acuerdo.
