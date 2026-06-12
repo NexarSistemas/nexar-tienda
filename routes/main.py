@@ -88,6 +88,7 @@ BACKUP_DIR = None
 UPDATE_DIR = None
 LOG_DIR = None
 CHANGELOG_PATH = BASE_DIR / "CHANGELOG.md"
+LICENSE_TEXT_PATH = BASE_DIR / "LICENSE.txt"
 WINDOWS_UPDATE_STATUS_PATH = None
 WINDOWS_UPDATE_LAUNCHER_PATH = None
 WINDOWS_UPDATE_LOG_PATH = None
@@ -996,6 +997,22 @@ def _validate_initial_setup_payload(form_data: dict[str, str]) -> tuple[bool, st
     return True, ""
 
 
+def _has_license_agreement_acceptance(form_data) -> bool:
+    return str(form_data.get("accept_license_agreement", "") or "").strip().lower() in {"1", "on", "true", "si", "sí"}
+
+
+def _validate_license_agreement_acceptance(form_data) -> tuple[bool, str]:
+    if _has_license_agreement_acceptance(form_data):
+        return True, ""
+    return False, "Debés aceptar el Acuerdo de Licencia de Uso para continuar."
+
+
+def _requires_initial_license_acceptance(license_info: dict[str, object] | None = None) -> bool:
+    info = license_info or db.get_license_info()
+    tier = str(info.get("tier", "DEMO") or "DEMO").strip().upper()
+    return tier in {"DEMO", "SIN_PLAN"} and not _get_checkout_license_key(info)
+
+
 def _merge_categorias_visibles(rubro_actual: str, categorias_extra=None):
     categoria_actual = ""
     extras = categorias_extra or []
@@ -1598,17 +1615,22 @@ def registro_inicial():
             negocio = context["business_fields"]
             password = request.form.get("password", "")
             password_confirm = request.form.get("password_confirm", "")
+            accepted_license = _has_license_agreement_acceptance(form_data)
             ok, msg = _validate_initial_setup_payload(form_data)
             if not ok:
                 flash(f"⚠️ {msg}", "warning")
                 return render_template("registro_inicial.html", **context)
+            ok, msg = _validate_license_agreement_acceptance(form_data)
+            if not ok:
+                flash(f"⚠️ {msg}", "warning")
+                return render_template("registro_inicial.html", accepted_license=accepted_license, **context)
             ok, msg = _validate_password_confirmation(password, password_confirm)
             if not ok:
                 flash(f"❌ {msg}", "danger")
-                return render_template("registro_inicial.html", **context)
+                return render_template("registro_inicial.html", accepted_license=accepted_license, **context)
             if db.get_usuario_by_username(negocio["username"]):
                 flash("⚠️ Ese usuario administrador ya existe.", "warning")
-                return render_template("registro_inicial.html", **context)
+                return render_template("registro_inicial.html", accepted_license=accepted_license, **context)
             db.add_usuario(
                 negocio["username"],
                 password,
@@ -4191,6 +4213,7 @@ def licencia():
     license_info = db.get_license_info()
     demo_status = db.get_demo_status()
     license_status = _get_license_status_context(license_info, demo_status=demo_status)
+    requires_initial_acceptance = _requires_initial_license_acceptance(license_info)
     return render_template(
         "licencia.html",
         supabase_ok=supabase_configured(),
@@ -4206,12 +4229,18 @@ def licencia():
         plan_actions=_get_plan_actions_context(license_info, license_status=license_status),
         plan_request_options=get_commercial_plan_options(),
         license_holder=_get_license_holder_profile(license_info),
+        requires_initial_license_acceptance=requires_initial_acceptance,
     )
 
 
 @main_bp.route("/licencia/activar", methods=["POST"])
 @admin_required
 def licencia_activar():
+    if _requires_initial_license_acceptance():
+        ok, msg = _validate_license_agreement_acceptance(request.form)
+        if not ok:
+            flash(msg, "warning")
+            return redirect(url_for("licencia"))
     license_key = request.form.get("license_key", "")
     ok, msg = validate_license_key(request.form.get("license_key", ""), debug=False)
     if ok:
@@ -4225,6 +4254,11 @@ def licencia_activar():
 @main_bp.route("/licencia/solicitar", methods=["POST"])
 @admin_required
 def licencia_solicitar():
+    if _requires_initial_license_acceptance():
+        ok, msg = _validate_license_agreement_acceptance(request.form)
+        if not ok:
+            flash(msg, "warning")
+            return redirect(url_for("licencia"))
     machine_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
     activation_id = request.form.get("activation_id") or get_current_hwid() or machine_id
     holder_profile = {
@@ -4790,6 +4824,12 @@ def changelog():
     except Exception:
         html = "<pre>" + content + "</pre>"
     return render_template("changelog.html", contenido_html=html)
+
+
+@main_bp.route("/acuerdo-licencia")
+def acuerdo_licencia():
+    content = LICENSE_TEXT_PATH.read_text(encoding="utf-8") if LICENSE_TEXT_PATH.exists() else "No se encontró el acuerdo de licencia."
+    return render_template("acuerdo_licencia.html", license_content=content)
 
 
 @main_bp.route("/acerca")

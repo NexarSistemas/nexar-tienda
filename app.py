@@ -151,6 +151,7 @@ def create_app() -> Flask:
         public_paths = (
             "/login",
             "/registro-inicial",
+            "/acuerdo-licencia",
             "/activar",
             "/static",
             "/recuperar-password",
@@ -370,6 +371,7 @@ def create_app() -> Flask:
         "actualizacion_limpiar_estado",
         "ayuda",
         "changelog",
+        "acuerdo_licencia",
         "acerca",
         "logout",
         "desktop_close_warning",
