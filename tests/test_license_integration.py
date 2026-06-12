@@ -38,6 +38,7 @@ class LicenseIntegrationTests(unittest.TestCase):
         import licensing.permisos as permisos
         import routes.main as routes_main
         import app as app_module
+        import services.license_sdk as license_sdk
 
         os.environ["NEXAR_LICENSE_MODE"] = "prod"
         os.environ.pop("NEXAR_MODULES", None)
@@ -52,6 +53,7 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.permisos = importlib.reload(permisos)
         self.routes_main = importlib.reload(routes_main)
         self.app_module = importlib.reload(app_module)
+        self.license_sdk = importlib.reload(license_sdk)
 
     def _sync_license(self, **overrides):
         payload = {
@@ -155,9 +157,9 @@ class LicenseIntegrationTests(unittest.TestCase):
             expira=(date.today() - timedelta(days=2)).isoformat(),
         )
         self.assertEqual(info["plan_original"], "PRO")
-        self.assertEqual(info["tier"], "SIN_PLAN")
+        self.assertEqual(info["tier"], "DEMO")
         self.assertFalse(info["fallback_aplicado"])
-        self.assertEqual(self.permisos.get_modulos_activos(), set())
+        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("DEMO"))
         status = get_license_status_context(info)
         self.assertEqual(status["estado_comercial"], "mensual_vencido_sin_plan")
         self.assertTrue(status["recomendar_basica"])
@@ -188,11 +190,117 @@ class LicenseIntegrationTests(unittest.TestCase):
             expira=(date.today() - timedelta(days=2)).isoformat(),
         )
         self.assertEqual(info["plan_original"], "FULL")
-        self.assertEqual(info["tier"], "SIN_PLAN")
+        self.assertEqual(info["tier"], "DEMO")
         self.assertFalse(info["fallback_aplicado"])
-        self.assertEqual(self.permisos.get_modulos_activos(), set())
+        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("DEMO"))
         status = get_license_status_context(info)
         self.assertEqual(status["estado_comercial"], "mensual_vencido_sin_plan")
+
+    def test_refresh_licencia_no_encontrada_mantiene_full_local_vigente(self):
+        self._sync_license(
+            plan_original="FULL",
+            plan_efectivo="FULL",
+            plan="FULL",
+            tier="FULL",
+            plan_base_permanente=False,
+            expira=(date.today() + timedelta(days=10)).isoformat(),
+        )
+
+        with mock.patch("services.supabase_license_api.activate_license", return_value=(False, "No existe esa licencia para este producto.", None)), \
+             mock.patch("services.supabase_license_api.get_supabase_debug_state", return_value={"status": "not_found"}), \
+             mock.patch("services.license_storage.cargar_licencia", return_value={"license_key": "NXR-FULL-001"}), \
+             mock.patch.object(self.license_sdk, "get_current_hwid", return_value="HWID-1"):
+            ok, message, refreshed_info = self.license_sdk.refresh_saved_license_online(debug=False)
+
+        self.assertFalse(ok)
+        self.assertEqual(
+            message,
+            "No pudimos validar la licencia en el servidor. Tu plan seguira activo hasta la fecha registrada localmente. Contacta soporte si el problema continua.",
+        )
+        self.assertEqual(refreshed_info["tier"], "FULL")
+        self.assertEqual(self.database.get_license_info()["tier"], "FULL")
+
+    def test_refresh_licencia_suspendida_no_mantiene_full(self):
+        self._sync_license(
+            plan_original="FULL",
+            plan_efectivo="FULL",
+            plan="FULL",
+            tier="FULL",
+            plan_base_permanente=False,
+            expira=(date.today() + timedelta(days=10)).isoformat(),
+        )
+
+        remote_license = {
+            "license_key": "NXR-FULL-001",
+            "plan": "FULL",
+            "tier": "FULL",
+            "estado": "suspendida",
+            "activa": False,
+        }
+        with mock.patch("services.supabase_license_api.activate_license", return_value=(False, "La licencia esta desactivada/revocada.", remote_license)), \
+             mock.patch("services.supabase_license_api.get_supabase_debug_state", return_value={"status": "inactive"}), \
+             mock.patch("services.license_storage.cargar_licencia", return_value={"license_key": "NXR-FULL-001"}), \
+             mock.patch.object(self.license_sdk, "get_current_hwid", return_value="HWID-1"):
+            ok, message, refreshed_info = self.license_sdk.refresh_saved_license_online(debug=False)
+
+        self.assertFalse(ok)
+        self.assertEqual(message, "La licencia fue suspendida. Contacta soporte.")
+        self.assertEqual(refreshed_info["tier"], "DEMO")
+        self.assertNotEqual(self.database.get_license_info()["tier"], "FULL")
+
+    def test_refresh_licencia_vencida_degrada_a_demo_si_no_hay_basica(self):
+        self._sync_license(
+            plan_original="FULL",
+            plan_efectivo="FULL",
+            plan="FULL",
+            tier="FULL",
+            plan_base_permanente=False,
+            expira=(date.today() + timedelta(days=10)).isoformat(),
+        )
+
+        remote_license = {
+            "license_key": "NXR-FULL-001",
+            "plan": "FULL",
+            "tier": "FULL",
+            "estado": "activa",
+            "activa": True,
+            "expires_at": (date.today() - timedelta(days=1)).isoformat(),
+            "plan_base_permanente": False,
+            "modules": ["core", "reportes"],
+        }
+        with mock.patch("services.supabase_license_api.activate_license", return_value=(True, "ok", remote_license)), \
+             mock.patch("services.license_storage.cargar_licencia", return_value={"license_key": "NXR-FULL-001"}), \
+             mock.patch.object(self.license_sdk, "get_current_hwid", return_value="HWID-1"):
+            ok, message, refreshed_info = self.license_sdk.refresh_saved_license_online(debug=False)
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Licencia actualizada desde Supabase.")
+        self.assertEqual(refreshed_info["tier"], "DEMO")
+        self.assertTrue(refreshed_info["expirada"])
+
+    def test_refresh_licencia_error_conexion_mantiene_cache_local_vigente(self):
+        self._sync_license(
+            plan_original="FULL",
+            plan_efectivo="FULL",
+            plan="FULL",
+            tier="FULL",
+            plan_base_permanente=False,
+            expira=(date.today() + timedelta(days=10)).isoformat(),
+        )
+
+        with mock.patch("services.supabase_license_api.activate_license", return_value=(False, "network error", None)), \
+             mock.patch("services.supabase_license_api.get_supabase_debug_state", return_value={"status": "network_error"}), \
+             mock.patch("services.license_storage.cargar_licencia", return_value={"license_key": "NXR-FULL-001"}), \
+             mock.patch.object(self.license_sdk, "get_current_hwid", return_value="HWID-1"):
+            ok, message, refreshed_info = self.license_sdk.refresh_saved_license_online(debug=False)
+
+        self.assertFalse(ok)
+        self.assertEqual(
+            message,
+            "No pudimos conectar con el servidor de licencias. Se mantiene el estado local hasta el vencimiento.",
+        )
+        self.assertEqual(refreshed_info["tier"], "FULL")
+        self.assertEqual(self.database.get_license_info()["tier"], "FULL")
 
     def test_basica_no_vence(self):
         info = self._sync_license(

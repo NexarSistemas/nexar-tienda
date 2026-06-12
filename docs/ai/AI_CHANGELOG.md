@@ -2,6 +2,48 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-06-12 - Codex - release/v1.36.1
+
+### Tarea
+Cerrar la correccion de sincronizacion de licencias como release patch, sin tocar funcionalidad y actualizando solo versionado/documentacion minima.
+
+### Archivos modificados
+- `VERSION`
+- `README.md`
+- `CHANGELOG.md`
+- `build/nexar_tienda.iss`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se detecto la version actual `1.36.0` y se preparo el release patch `1.36.1`.
+- Se actualizo la version visible en `VERSION`, `README.md` e instalador Inno Setup.
+- Se agrego una entrada breve en `CHANGELOG.md` orientada a usuario final para el ajuste de sincronizacion de licencias.
+
+### Que se probo
+- `python -m unittest tests.test_license_integration.LicenseIntegrationTests.test_refresh_licencia_no_encontrada_mantiene_full_local_vigente tests.test_license_integration.LicenseIntegrationTests.test_refresh_licencia_suspendida_no_mantiene_full tests.test_license_integration.LicenseIntegrationTests.test_refresh_licencia_vencida_degrada_a_demo_si_no_hay_basica tests.test_license_integration.LicenseIntegrationTests.test_refresh_licencia_error_conexion_mantiene_cache_local_vigente tests.test_license_integration.LicenseIntegrationTests.test_pro_vencida_sin_base_permanente_no_regala_basica tests.test_license_integration.LicenseIntegrationTests.test_full_vencida_sin_base_permanente_no_regala_basica`
+
+## 2026-06-12 - Codex - fix/licencia-refresh-cache-vigente
+
+### Tarea
+Corregir solo el flujo de refresco/sincronizacion de licencia desde `Mi plan`, manteniendo diff minimo y sin tocar Mercado Pago, ARCA ni logica comercial fuera de licencias.
+
+### Archivos modificados
+- `services/license_sdk.py`
+- `database.py`
+- `routes/main.py`
+- `templates/mi_plan.html`
+- `tests/test_license_integration.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- El refresh de licencia ahora distingue entre licencia remota no encontrada, licencia suspendida/bloqueada/anulada, licencia remota vencida y errores temporales de conexion.
+- Si la licencia remota no aparece pero hay cache premium local vigente, la app mantiene PRO/FULL hasta `expires_at` local y muestra una advertencia clara en vez de dejar un mensaje ambiguo.
+- Si la licencia remota esta suspendida/bloqueada/anulada, o si la mensual remota ya vencio sin BASICA permanente, la app deja de mantener premium local y degrada a BASICA o DEMO segun corresponda.
+- La UI de `Mi plan` actualiza el estado visual aunque el refresh devuelva advertencia, y el texto auxiliar del boton se reemplazo por uno orientado a usuario final.
+
+### Que se probo
+- `python -m unittest tests.test_license_integration.LicenseIntegrationTests.test_refresh_licencia_no_encontrada_mantiene_full_local_vigente tests.test_license_integration.LicenseIntegrationTests.test_refresh_licencia_suspendida_no_mantiene_full tests.test_license_integration.LicenseIntegrationTests.test_refresh_licencia_vencida_degrada_a_demo_si_no_hay_basica tests.test_license_integration.LicenseIntegrationTests.test_refresh_licencia_error_conexion_mantiene_cache_local_vigente tests.test_license_integration.LicenseIntegrationTests.test_pro_vencida_sin_base_permanente_no_regala_basica tests.test_license_integration.LicenseIntegrationTests.test_full_vencida_sin_base_permanente_no_regala_basica`
+
 ## 2026-06-08 - Codex - release/v1.36.0
 
 ### Tarea

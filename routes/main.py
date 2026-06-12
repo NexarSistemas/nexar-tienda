@@ -655,7 +655,7 @@ def _refresh_license_response(force: bool = True) -> tuple[dict[str, object], bo
         current_effective_plan = str(current_info.get("plan_efectivo", current_info.get("tier", current_tier)) or current_tier)
         current_status = str(current_info.get("estado", "") or "")
         current_expires_at = str(current_info.get("expires_at", "") or "")
-        changed = ok and (
+        changed = (
             current_tier != previous_tier
             or current_effective_plan != previous_effective_plan
             or current_status != previous_status
@@ -3883,10 +3883,7 @@ def mi_plan_actualizar_licencia():
         plan_label = get_plan_display_name(plan)
         flash(f"Estado de licencia actualizado. Plan actual: {plan_label}.", "success")
     else:
-        flash(
-            "No se pudo actualizar online el estado de la licencia. Se mantiene el estado local actual.",
-            "warning",
-        )
+        flash(str(response.get("message") or "No se pudo actualizar online el estado de la licencia."), "warning")
     return redirect(url_for("main.mi_plan"))
 
 
