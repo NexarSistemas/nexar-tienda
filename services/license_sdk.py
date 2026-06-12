@@ -119,6 +119,58 @@ def _save_sdk_cache(license_data: dict) -> None:
         pass
 
 
+def _normalize_remote_status(license_data: dict | None) -> str:
+    payload = license_data or {}
+    status = str(payload.get("estado") or "").strip().lower()
+    if status in {"revocada", "suspendida", "bloqueada", "anulada"}:
+        return status
+    for flag_name, normalized in (
+        ("suspendida", "suspendida"),
+        ("bloqueada", "bloqueada"),
+        ("anulada", "anulada"),
+        ("revocada", "revocada"),
+    ):
+        if str(payload.get(flag_name, "")).strip().lower() in {"1", "true", "yes", "si", "on"}:
+            return normalized
+    if not payload.get("activa", True):
+        return "revocada"
+    return status
+
+
+def _has_valid_local_premium_cache(license_info: dict[str, object] | None) -> bool:
+    info = license_info or {}
+    return (
+        _resolve_remote_plan(info) in {"PRO", "FULL"}
+        and not bool(info.get("expirada"))
+        and _resolve_remote_plan({"plan": info.get("tier")}) in {"PRO", "FULL"}
+    )
+
+
+def _persist_local_license_state(
+    db_module,
+    previous_info: dict[str, object],
+    *,
+    target_plan: str,
+    status: str,
+) -> dict[str, object]:
+    normalized_plan = target_plan if target_plan in {"BASICA", "DEMO"} else "DEMO"
+    payload = {
+        "license_key": previous_info.get("key", ""),
+        "plan_original": normalized_plan,
+        "plan_efectivo": normalized_plan,
+        "plan": normalized_plan,
+        "tier": normalized_plan,
+        "estado": status,
+        "fallback_aplicado": normalized_plan == "BASICA",
+        "plan_base_permanente": normalized_plan == "BASICA",
+        "expires_at": "",
+        "max_machines": previous_info.get("max_machines", 1),
+        "modules": [],
+    }
+    db_module.sync_license_from_remote(payload)
+    return db_module.get_license_info()
+
+
 def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, str]:
     license_key = (license_key or "").strip()
     product = get_license_product()
@@ -324,7 +376,7 @@ def refresh_saved_license_online(debug: bool = False) -> tuple[bool, str, dict[s
     con cache vieja del SDK.
     """
     from services.license_storage import cargar_licencia, guardar_licencia
-    from services.supabase_license_api import activate_license, generate_activation_id
+    from services.supabase_license_api import activate_license, generate_activation_id, get_supabase_debug_state
     import database as db
 
     stored = cargar_licencia()
@@ -377,7 +429,43 @@ def refresh_saved_license_online(debug: bool = False) -> tuple[bool, str, dict[s
         hwid,
         get_license_product(),
     )
+    remote_status = _normalize_remote_status(remote_license)
+    supabase_status = str(get_supabase_debug_state().get("status", "") or "").strip().lower()
+
+    if (ok and remote_license and remote_status in {"suspendida", "bloqueada", "anulada", "revocada"}) or supabase_status == "inactive":
+        fallback_plan = "BASICA" if bool(previous_info.get("plan_base_permanente")) else "DEMO"
+        current_info = _persist_local_license_state(
+            db,
+            previous_info,
+            target_plan=fallback_plan,
+            status=remote_status or "suspendida",
+        )
+        return False, "La licencia fue suspendida. Contacta soporte.", current_info
+
     if not ok or not remote_license:
+        if supabase_status == "not_found":
+            if _has_valid_local_premium_cache(previous_info):
+                return (
+                    False,
+                    "No pudimos validar la licencia en el servidor. Tu plan seguira activo hasta la fecha registrada localmente. Contacta soporte si el problema continua.",
+                    previous_info,
+                )
+            fallback_plan = "BASICA" if bool(previous_info.get("plan_base_permanente")) else "DEMO"
+            current_info = _persist_local_license_state(
+                db,
+                previous_info,
+                target_plan=fallback_plan,
+                status="sin_licencia_remota",
+            )
+            return False, "No encontramos una licencia activa para esta instalacion.", current_info
+
+        if supabase_status in {"network_error", "http_error", "invalid_response", "not_configured"}:
+            return (
+                False,
+                "No pudimos conectar con el servidor de licencias. Se mantiene el estado local hasta el vencimiento.",
+                previous_info,
+            )
+
         logger.warning(
             "Refresco online licencia fallo clave=%s tier_local=%s plan_local=%s error=%s",
             masked_key,

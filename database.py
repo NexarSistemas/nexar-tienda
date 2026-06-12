@@ -104,6 +104,11 @@ def _is_subscription_plan(plan: str) -> bool:
     return plan in {"PRO", "FULL"}
 
 
+def _is_blocked_license_status(status: str | None) -> bool:
+    normalized = str(status or "").strip().lower()
+    return normalized in {"revocada", "suspendida", "bloqueada", "anulada"}
+
+
 def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
     cfg = cfg or get_config()
     original_plan = normalize_license_plan(
@@ -135,8 +140,8 @@ def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
         cfg.get("license_effective_plan") or cfg.get("license_tier") or original_plan
     )
 
-    if status == "revocada":
-        effective_plan = "SIN_PLAN"
+    if _is_blocked_license_status(status):
+        effective_plan = "BASICA" if plan_base_permanente else "DEMO"
         fallback_aplicado = False
     elif expired:
         if plan_base_permanente:
@@ -144,8 +149,8 @@ def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
             status = "vencida_con_fallback_basica"
             fallback_aplicado = True
         else:
-            effective_plan = "SIN_PLAN"
-            status = "vencida_sin_plan"
+            effective_plan = "DEMO"
+            status = "vencida_demo"
             fallback_aplicado = False
     elif not status:
         status = "activa"

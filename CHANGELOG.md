@@ -4,6 +4,12 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.36.1] - 2026-06-12
+
+### Changed
+- Mejora en la sincronizacion de licencias: ahora el sistema conserva correctamente el estado local vigente ante fallos temporales o ausencia remota, y bloquea planes suspendidos cuando corresponde.
+- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG` e `Inno Setup` para el release estable `v1.36.1`.
+
 ## [1.36.0] - 2026-06-08
 
 ### Added

@@ -62,7 +62,7 @@
                             {% if license_refresh_ok and license_refresh_message %}
                             {{ license_refresh_message }}
                             {% else %}
-                            Si aprobaste un upgrade en Nexar Admin, podes forzar la sincronizacion desde aca.
+                            Usa este boton para actualizar el estado de tu licencia.
                             {% endif %}
                         </div>
                         {% if plan_actions and plan_actions.puede_renovar %}
@@ -391,21 +391,21 @@ document.addEventListener('DOMContentLoaded', function () {
             const data = await response.json();
             const planText = renderPlanLabel(data.tier || data.plan || '');
 
-            if (data.ok && data.changed) {
+            if (data.changed) {
                 if (planLabel && planText) {
                     planLabel.textContent = planText;
                 }
                 renderStatusSummary(data);
                 renderModules(data.modules || []);
-                refreshMessage.className = 'small text-success mb-3';
-                refreshMessage.textContent = planText
-                    ? 'Tu licencia fue actualizada a ' + planText
-                    : 'Licencia actualizada correctamente.';
+                refreshMessage.className = 'small ' + (data.ok ? 'text-success' : 'text-warning') + ' mb-3';
+                refreshMessage.textContent = data.message || (
+                    planText
+                        ? 'Tu licencia fue actualizada a ' + planText
+                        : 'Licencia actualizada correctamente.'
+                );
             } else if (data.ok) {
-                if (opts.showNoChangeMessage) {
-                    refreshMessage.className = 'small text-muted mb-3';
-                    refreshMessage.textContent = 'La licencia ya estaba actualizada.';
-                }
+                refreshMessage.className = 'small text-muted mb-3';
+                refreshMessage.textContent = data.message || 'La licencia ya estaba actualizada.';
             } else if (opts.showErrors !== false) {
                 refreshMessage.className = 'small text-warning mb-3';
                 refreshMessage.textContent = data.message || 'No se pudo actualizar online la licencia. Se mantiene el estado local actual.';
