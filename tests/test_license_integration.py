@@ -1019,6 +1019,7 @@ class LicenseIntegrationTests(unittest.TestCase):
                     "admin_telefono": "264123456",
                     "password": "Abc123$",
                     "password_confirm": "Abc123$",
+                    "accept_license_agreement": "1",
                     "rubro": "almacen",
                     "nombre_negocio": "Comercio Central",
                     "cuit": "20-12345678-9",
@@ -1041,6 +1042,92 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(cfg["localidad"], "San Juan")
         self.assertEqual(cfg["provincia"], "San Juan")
         self.assertEqual(cfg["negocio_email"], "ventas@comercio.com")
+
+    def test_registro_inicial_requiere_aceptacion_licencia(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["_csrf_token"] = "test"
+            response = client.post(
+                "/registro-inicial",
+                data={
+                    "csrf_token": "test",
+                    "nombre_completo": "Admin Comercio",
+                    "username": "admin",
+                    "admin_email": "admin@comercio.com",
+                    "admin_telefono": "264123456",
+                    "password": "Abc123$",
+                    "password_confirm": "Abc123$",
+                    "rubro": "almacen",
+                    "nombre_negocio": "Comercio Central",
+                    "cuit": "20-12345678-9",
+                    "direccion": "Calle Falsa 123",
+                    "localidad": "San Juan",
+                    "provincia": "San Juan",
+                    "negocio_email": "ventas@comercio.com",
+                    "telefono": "264555000",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Debés aceptar el Acuerdo de Licencia de Uso para continuar.".encode("utf-8"), response.data)
+        self.assertIsNone(self.database.get_usuario_by_username("admin"))
+
+    def test_acuerdo_licencia_es_publico_y_muestra_license_txt(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            response = client.get("/acuerdo-licencia")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Nexar Sistemas".encode("utf-8"), response.data)
+        self.assertIn("aceptación completa".encode("utf-8"), response.data)
+
+    def test_licencia_activar_inicial_requiere_aceptacion(self):
+        app = self.app_module.create_app()
+        self.database.add_usuario("admin", "Abc123$", "Administrador", "Admin Comercio")
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"id": 1, "rol": "Administrador", "username": "admin"}
+                session["_csrf_token"] = "test"
+            with mock.patch.object(self.routes_main, "validate_license_key") as validate_mock:
+                response = client.post(
+                    "/licencia/activar",
+                    data={"csrf_token": "test", "license_key": "NXR-TEST-001"},
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/licencia"))
+        validate_mock.assert_not_called()
+
+    def test_licencia_solicitar_inicial_requiere_aceptacion(self):
+        app = self.app_module.create_app()
+        self.database.add_usuario("admin", "Abc123$", "Administrador", "Admin Comercio")
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"id": 1, "rol": "Administrador", "username": "admin"}
+                session["_csrf_token"] = "test"
+            with mock.patch.object(self.routes_main, "create_license_request") as request_mock:
+                response = client.post(
+                    "/licencia/solicitar",
+                    data={
+                        "csrf_token": "test",
+                        "activation_id": "HWID-1",
+                        "nombre": "Admin Comercio",
+                        "email": "admin@comercio.com",
+                        "whatsapp": "264123456",
+                        "plan": "BASICA",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/licencia"))
+        request_mock.assert_not_called()
 
     def test_rubro_inicial_queda_solo_lectura_si_ya_esta_configurado(self):
         self.database.set_rubro_configurado("tienda")

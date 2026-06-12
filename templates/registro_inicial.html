@@ -141,6 +141,13 @@
                 <button type="submit" class="btn-login-nexar mt-4">
                     <i class="fas fa-rocket me-2"></i>Finalizar configuración inicial
                 </button>
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" name="accept_license_agreement" id="acceptLicenseAgreementInitial" value="1" required {% if accepted_license %}checked{% endif %}>
+                    <label class="form-check-label small" for="acceptLicenseAgreementInitial">
+                        He leído y acepto el <a href="{{ url_for('acuerdo_licencia') }}" target="_blank" rel="noopener noreferrer">Acuerdo de Licencia de Uso y Contrato de Servicio de Nexar Sistemas</a>.
+                    </label>
+                    <div class="form-text">El uso del sistema implica la aceptación de las condiciones de licencia vigentes.</div>
+                </div>
             </form>
         </div>
 
