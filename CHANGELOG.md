@@ -4,6 +4,15 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.36.2] - 2026-06-12
+
+### Changed
+- Se mejora el checkout de licencias desde Mi Plan para los planes BASICA, PRO y FULL.
+- Se consolida la compatibilidad del flujo DEMO hacia BASICA, PRO y FULL sin alterar las reglas comerciales visibles.
+- Se centraliza la resolución de precios con fallback local para mantener continuidad operativa.
+- Se refuerza la estabilidad del flujo de Mercado Pago al crear checkouts de licencias.
+- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG` e `Inno Setup` para el release estable `v1.36.2`.
+
 ## [1.36.1] - 2026-06-12
 
 ### Changed

@@ -1,15 +1,16 @@
-# Nexar Comercio v1.36.1
+# Nexar Comercio v1.36.2
 
 Sistema integral de gestion comercial para tiendas y comercios minoristas.
 `Nexar Comercio` es la marca visible del producto. `nexar-tienda` se mantiene
 como identificador tecnico compatible para builds, instaladores, actualizaciones
 y artefactos existentes.
 
-Release comercial estable `v1.36.1`:
+Release comercial estable `v1.36.2`:
 
-- Mejora en la sincronizacion de licencias para conservar correctamente el estado local vigente.
-- La app mantiene el plan local ante fallos temporales o ausencia remota cuando corresponde.
-- Los planes suspendidos dejan de mantenerse activos localmente.
+- Mejora en el checkout de licencias desde Mi Plan para BASICA, PRO y FULL.
+- Compatibilidad directa del flujo DEMO hacia BASICA, PRO y FULL.
+- Resolucion centralizada de precios con fallback local para mantener continuidad.
+- Mayor estabilidad del flujo de Mercado Pago en la creacion de checkout.
 - Versionado sincronizado entre app, documentacion e instaladores.
 
 Desarrollado por Nexar Sistemas - 2026
