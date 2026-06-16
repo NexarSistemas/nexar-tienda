@@ -59,6 +59,10 @@ def _mask_license_key(value: str) -> str:
     return f"{key[:4]}...{key[-3:]}"
 
 
+def _normalize_vendor_code(value: str | None) -> str:
+    return str(value or "").strip().upper()
+
+
 def _set_license_debug(**values) -> None:
     _LAST_LICENSE_DEBUG.update(values)
 
@@ -171,8 +175,9 @@ def _persist_local_license_state(
     return db_module.get_license_info()
 
 
-def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, str]:
+def validate_license_key(license_key: str, debug: bool = False, vendor_code: str = "") -> tuple[bool, str]:
     license_key = (license_key or "").strip()
+    vendor_code = _normalize_vendor_code(vendor_code)
     product = get_license_product()
     license_mode = os.getenv("NEXAR_LICENSE_MODE", "prod").strip().lower()
     masked_key = _mask_license_key(license_key)
@@ -249,6 +254,7 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
                     license_key,
                     get_current_hwid(),
                     product,
+                    vendor_code=vendor_code,
                 )
                 if fallback_ok and fallback_data:
                     ok = True
@@ -287,6 +293,24 @@ def validate_license_key(license_key: str, debug: bool = False) -> tuple[bool, s
     _save_sdk_cache(license_data)
     modules = license_data.get("modules") or license_data.get("features") or license_data.get("modulos") or []
     plan = _resolve_remote_plan(license_data)
+
+    if vendor_code:
+        try:
+            from services.supabase_license_api import activate_license as sync_activation
+
+            sync_ok, _sync_msg, sync_data = sync_activation(
+                license_key,
+                get_current_hwid(),
+                product,
+                vendor_code=vendor_code,
+            )
+            if sync_ok and sync_data:
+                license_data = sync_data
+                modules = license_data.get("modules") or license_data.get("features") or license_data.get("modulos") or []
+                plan = _resolve_remote_plan(license_data)
+                _save_sdk_cache(license_data)
+        except Exception:
+            logger.warning("No se pudo sincronizar codigo_vendedor al activar la licencia", exc_info=True)
 
     try:
         import database as db
@@ -428,6 +452,7 @@ def refresh_saved_license_online(debug: bool = False) -> tuple[bool, str, dict[s
         license_key,
         hwid,
         get_license_product(),
+        vendor_code=str(previous_info.get("vendor_code", "") or ""),
     )
     remote_status = _normalize_remote_status(remote_license)
     supabase_status = str(get_supabase_debug_state().get("status", "") or "").strip().lower()

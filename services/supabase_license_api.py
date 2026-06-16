@@ -118,6 +118,10 @@ def build_machine_id(raw: str) -> str:
     return "".join(ch for ch in value if ch.isalnum() or ch in "-_")[:120]
 
 
+def _normalize_vendor_code(value: str | None) -> str:
+    return str(value or "").strip().upper()
+
+
 def _read_first(paths: list[str]) -> str:
     for path in paths:
         try:
@@ -163,6 +167,7 @@ def create_license_request(
     nombre: str,
     email: str,
     whatsapp: str = "",
+    codigo_vendedor: str = "",
     activation_id: str,
     producto: str = PRODUCTO_DEFAULT,
     plan: str = "BASICA",
@@ -182,6 +187,7 @@ def create_license_request(
     nombre = (nombre or "").strip()
     email = (email or "").strip().lower()
     whatsapp = (whatsapp or "").strip()
+    codigo_vendedor = _normalize_vendor_code(codigo_vendedor)
     activation_id = build_machine_id(activation_id)
     plan = normalize_plan(plan, default="BASICA")
 
@@ -198,6 +204,8 @@ def create_license_request(
         "estado": "pendiente",
         "machine_details": machine_details or {},
     }
+    if codigo_vendedor:
+        payload["codigo_vendedor"] = codigo_vendedor
     headers = {**_headers(), "Prefer": "return=minimal"}
     request_url = _requests_table_url()
     try:
@@ -314,6 +322,7 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
         default="BASICA",
     )
     payload["plan_solicitado"] = payload["plan_destino"]
+    payload["codigo_vendedor"] = _normalize_vendor_code(payload.get("codigo_vendedor") or "")
     payload["estado"] = "pendiente"
     payload["machine_details"] = dict(payload.get("machine_details") or {})
     payload["machine_details"]["request_context"] = {
@@ -332,6 +341,9 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
             "message": "La solicitud de actualización no tiene los datos mínimos requeridos.",
             "error": "missing_required_fields",
         }
+
+    if not payload["codigo_vendedor"]:
+        payload.pop("codigo_vendedor", None)
 
     if payload["tipo_solicitud"] == "cambio_plan":
         if payload["plan_actual"] == "FULL":
@@ -425,7 +437,12 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "message": "Solicitud de actualización enviada.", "status_code": resp.status_code}
 
 
-def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO_DEFAULT) -> tuple[bool, str, dict[str, Any] | None]:
+def activate_license(
+    license_key: str,
+    machine_id: str,
+    producto: str = PRODUCTO_DEFAULT,
+    vendor_code: str = "",
+) -> tuple[bool, str, dict[str, Any] | None]:
     operation = "activate_license"
     if not is_configured():
         _set_supabase_debug(operation=operation, status="not_configured", status_code=None, last_error="not_configured")
@@ -433,6 +450,7 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
 
     key = (license_key or "").strip()
     machine_id = build_machine_id(machine_id)
+    vendor_code = _normalize_vendor_code(vendor_code)
     if not key or not machine_id:
         _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_license_key_or_machine_id")
         return False, "La clave y el ID de maquina son obligatorios.", None
@@ -478,11 +496,14 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
         return False, "La licencia alcanzo el limite de dispositivos.", row
 
     try:
+        patch_payload = {"hwid": db_hwid or machine_id, "hwids": update_hwids}
+        if vendor_code:
+            patch_payload["codigo_vendedor"] = vendor_code
         upd = requests.patch(
             _table_url(),
             headers={**_headers(), "Prefer": "return=representation"},
             params={"id": f"eq.{row['id']}"},
-            json={"hwid": db_hwid or machine_id, "hwids": update_hwids},
+            json=patch_payload,
             timeout=12,
         )
     except requests.RequestException as exc:
@@ -503,3 +524,72 @@ def activate_license(license_key: str, machine_id: str, producto: str = PRODUCTO
     updated = updated_rows[0] if updated_rows else row
     _set_supabase_debug(operation=operation, status="ok", status_code=upd.status_code, last_error="")
     return True, "Licencia activada correctamente para esta maquina.", updated
+
+
+def update_license_vendor_code(
+    license_key: str,
+    vendor_code: str,
+    producto: str = PRODUCTO_DEFAULT,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    operation = "update_license_vendor_code"
+    if not is_configured():
+        _set_supabase_debug(operation=operation, status="not_configured", status_code=None, last_error="not_configured")
+        return False, "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY.", None
+
+    key = (license_key or "").strip()
+    normalized_vendor_code = _normalize_vendor_code(vendor_code)
+    if not key or not normalized_vendor_code:
+        _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_license_key_or_vendor_code")
+        return False, "La licencia y el código de vendedor son obligatorios.", None
+
+    params = {"license_key": f"eq.{key}", "producto": f"eq.{producto}", "select": "*"}
+    try:
+        resp = requests.get(_table_url(), headers=_headers(), params=params, timeout=12)
+    except requests.RequestException as exc:
+        message, error = _request_error_message(operation, exc)
+        _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
+        return False, message, None
+
+    if resp.status_code >= 300:
+        message, error = _response_error_message(operation, resp)
+        _set_supabase_debug(operation=operation, status="http_error", status_code=resp.status_code, last_error=error)
+        return False, message, None
+
+    try:
+        rows = resp.json() if resp.text else []
+    except ValueError:
+        _set_supabase_debug(operation=operation, status="invalid_response", status_code=resp.status_code, last_error="invalid_json")
+        return False, "Supabase devolvió una respuesta inválida al buscar la licencia.", None
+
+    if not rows:
+        _set_supabase_debug(operation=operation, status="not_found", status_code=resp.status_code, last_error="license_not_found")
+        return False, "No encontramos una licencia remota para sincronizar el código de vendedor.", None
+
+    row = rows[0]
+    try:
+        upd = requests.patch(
+            _table_url(),
+            headers={**_headers(), "Prefer": "return=representation"},
+            params={"id": f"eq.{row['id']}"},
+            json={"codigo_vendedor": normalized_vendor_code},
+            timeout=12,
+        )
+    except requests.RequestException as exc:
+        message, error = _request_error_message(operation, exc)
+        _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
+        return False, message, row
+
+    if upd.status_code >= 300:
+        message, error = _response_error_message(operation, upd)
+        _set_supabase_debug(operation=operation, status="http_error", status_code=upd.status_code, last_error=error)
+        return False, message, row
+
+    try:
+        updated_rows = upd.json() if upd.text else [row]
+    except ValueError:
+        _set_supabase_debug(operation=operation, status="invalid_response", status_code=upd.status_code, last_error="invalid_json")
+        return False, "Supabase devolvió una respuesta inválida al guardar el código de vendedor.", row
+
+    updated = updated_rows[0] if updated_rows else row
+    _set_supabase_debug(operation=operation, status="ok", status_code=upd.status_code, last_error="")
+    return True, "Código de vendedor sincronizado correctamente.", updated

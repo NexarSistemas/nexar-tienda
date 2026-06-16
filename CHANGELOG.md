@@ -4,14 +4,16 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
-## [1.36.2] - 2026-06-12
+## [1.36.3] - 2026-06-16
 
 ### Changed
-- Se mejora el checkout de licencias desde Mi Plan para los planes BASICA, PRO y FULL.
-- Se consolida la compatibilidad del flujo DEMO hacia BASICA, PRO y FULL sin alterar las reglas comerciales visibles.
-- Se centraliza la resolución de precios con fallback local para mantener continuidad operativa.
-- Se refuerza la estabilidad del flujo de Mercado Pago al crear checkouts de licencias.
-- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG` e `Inno Setup` para el release estable `v1.36.2`.
+
+- La DEMO para instalaciones nuevas ahora dura 14 dias, sin modificar el vencimiento ya existente de instalaciones DEMO previas.
+- Se agrega captura y asociacion opcional de codigo de vendedor en solicitud, activacion y gestion manual desde Mi Plan.
+- La sincronizacion de codigo_vendedor con Supabase se realiza sin recrear licencias ni alterar plan, tier, estado, expiracion o HWID.
+- Se preservan las mejoras recientes de checkout/licencias ya integradas en `main` antes de este release.
+- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG` e `Inno Setup` para el release estable `v1.36.3`.
+
 
 ## [1.36.1] - 2026-06-12
 

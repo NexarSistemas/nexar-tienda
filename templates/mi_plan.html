@@ -222,6 +222,32 @@
                 </div>
             </div>
 
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Código de vendedor</h5>
+                </div>
+                <div class="card-body">
+                    {% if license_holder.codigo_vendedor %}
+                    <div class="alert alert-info mb-0">
+                        <div class="fw-semibold">Código asociado</div>
+                        <div class="small mt-1">Esta instalación ya tiene asociado el código <strong>{{ license_holder.codigo_vendedor }}</strong>.</div>
+                    </div>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('main.mi_plan_guardar_codigo_vendedor') }}" class="row g-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="col-12">
+                            <label class="form-label">Código de vendedor (opcional)</label>
+                            <input type="text" class="form-control" name="codigo_vendedor" placeholder="Ej: VEND123">
+                            <div class="form-text">Si un vendedor te recomendó Nexar Comercio, ingresá su código.</div>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-outline-primary" type="submit">Guardar código de vendedor</button>
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
             <div class="card shadow-sm">
                 <div class="card-header bg-white">
                     <h5 class="mb-0">Modulos bloqueados</h5>

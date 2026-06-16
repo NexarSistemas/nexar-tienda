@@ -2,6 +2,71 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-06-16 - Codex - release/v1.36.3
+
+### Tarea
+Cerrar la feature de DEMO 14 dias y codigo de vendedor como release patch, actualizando solo versionado y documentacion minima sin agregar funcionalidad nueva.
+
+### Archivos modificados
+- `VERSION`
+- `README.md`
+- `CHANGELOG.md`
+- `build/nexar_tienda.iss`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se detecto la version actual `1.36.2` y se preparo el siguiente patch `1.36.3`.
+- Se alineo la metadata de version en app, README, changelog e instalador Windows.
+- El resumen comercial de release quedo enfocado en DEMO de 14 dias, compatibilidad con DEMO existentes y asociacion opcional de codigo de vendedor.
+
+### Que se probo
+- `python -m pytest` no pudo ejecutarse porque el entorno actual no tiene instalado el modulo `pytest` (`No module named pytest`).
+- `python -m unittest tests.test_license_integration.LicenseIntegrationTests.test_demo_vencido_no_se_convierte_en_basica_gratis tests.test_license_integration.LicenseIntegrationTests.test_demo_nuevo_arranca_con_14_dias tests.test_license_integration.LicenseIntegrationTests.test_licencia_solicitar_guarda_y_envia_codigo_vendedor_normalizado tests.test_license_integration.LicenseIntegrationTests.test_mi_plan_guardar_codigo_vendedor_demo_sin_license_key_guarda_local tests.test_license_integration.LicenseIntegrationTests.test_mi_plan_guardar_codigo_vendedor_licencia_activa_sincroniza_supabase tests.test_license_integration.LicenseIntegrationTests.test_solicitud_manual_upgrade_conserva_codigo_vendedor tests.test_license_integration.LicenseIntegrationTests.test_validate_license_key_sincroniza_codigo_vendedor_si_existe tests.test_license_integration.LicenseIntegrationTests.test_sync_license_from_remote_no_borra_codigo_vendedor_local`
+
+## 2026-06-16 - Codex - fix/demo-14-dias
+
+### Tarea
+Reducir la duracion de la DEMO de Nexar Comercio de 30 dias a 14 dias con diff minimo, manteniendo intacta la logica comercial existente de BASICA, PRO y FULL.
+
+### Archivos modificados
+- `database.py`
+- `licensing/planes.py`
+- `tests/test_license_integration.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se ajusto la definicion central de DEMO en `database.py` para que el periodo de prueba pase de 30 a 14 dias, tanto en `TIER_LIMITS` como en el default persistido `config.demo_dias` y en el fallback de `get_demo_status()`.
+- Se mantuvo compatibilidad con demos ya creadas: el calculo sigue leyendo `demo_install_date` y el valor persistido en `config`, por lo que no se alteran fechas ya registradas fuera del nuevo default para instalaciones nuevas.
+- Se hizo un ajuste visual minimo en `licensing/planes.py` para que, cuando la DEMO ya vencio, el usuario vea el mensaje claro `Tu demo de 14 dias vencio` y el aviso quede visible en la pantalla existente de licencia.
+- No se duplico logica de compra ni activacion: la app sigue usando los flujos comerciales ya existentes para BASICA, PRO y FULL.
+
+### Que se probo
+- `python -m unittest tests.test_license_integration.LicenseIntegrationTests.test_demo_vencido_no_se_convierte_en_basica_gratis tests.test_license_integration.LicenseIntegrationTests.test_demo_nuevo_arranca_con_14_dias tests.test_license_integration.LicenseIntegrationTests.test_demo_muestra_basica_pro_y_full tests.test_license_integration.LicenseIntegrationTests.test_checkout_disponible_en_demo_sin_license_key tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_permite_alta_licencia_desde_demo`
+
+## 2026-06-16 - Codex - fix/codigo-vendedor-licencia
+
+### Tarea
+Agregar un codigo de vendedor opcional al flujo de licencia para capturarlo localmente y enviarlo a Supabase al solicitar, activar o pedir upgrade de licencia, con diff minimo y sin tocar ARCA ni la logica comercial de planes.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `templates/licencia.html`
+- `services/supabase_license_api.py`
+- `services/license_sdk.py`
+- `tests/test_license_integration.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se agrego `license_vendor_code` a la configuracion local y se expone en `get_license_info()` como `vendor_code`.
+- La pantalla `licencia.html` ahora muestra el campo opcional `Codigo de vendedor` tanto para solicitar licencia como para activarla, reutilizando el valor guardado localmente.
+- El codigo se normaliza con `trim + uppercase`, se guarda localmente y se envia a Supabase solo cuando tiene valor en `create_license_request`, `create_upgrade_request` y `activate_license`.
+- La sincronizacion local de licencia preserva el codigo_vendedor ya guardado si el payload remoto no lo informa, para que un refresh no lo borre.
+- No se modifico `external_reference` ni el contrato actual del checkout Mercado Pago; el codigo_vendedor queda asociado en Supabase por los flujos de solicitud/activacion/upgrade ya existentes.
+
+### Que se probo
+- `python -m unittest tests.test_license_integration.LicenseIntegrationTests.test_solicitud_manual_desde_demo_envia_alta_licencia tests.test_license_integration.LicenseIntegrationTests.test_solicitud_manual_upgrade_conserva_codigo_vendedor tests.test_license_integration.LicenseIntegrationTests.test_validate_license_key_sincroniza_codigo_vendedor_si_existe tests.test_license_integration.LicenseIntegrationTests.test_sync_license_from_remote_no_borra_codigo_vendedor_local`
+
 ## 2026-06-12 - Codex - release/v1.36.1
 
 ### Tarea
