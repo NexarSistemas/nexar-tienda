@@ -58,6 +58,12 @@
           </div>
 
           <div class="col-12">
+            <label class="form-label">Código de vendedor (opcional)</label>
+            <input name="codigo_vendedor" class="form-control" placeholder="Ej: VEND123" value="{{ license_holder.codigo_vendedor }}">
+            <div class="form-text">Si un vendedor te recomendó Nexar Comercio, ingresá su código.</div>
+          </div>
+
+          <div class="col-12">
             <label class="form-label">Plan solicitado</label>
             <select name="plan" class="form-select">
               {% for option in plan_request_options %}
@@ -136,6 +142,12 @@
           <div class="col-12">
             <label class="form-label">Clave de licencia</label>
             <input name="license_key" class="form-control font-monospace" required placeholder="Ej: NXR-...">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Código de vendedor (opcional)</label>
+            <input name="codigo_vendedor" class="form-control" placeholder="Ej: VEND123" value="{{ license_holder.codigo_vendedor }}">
+            <div class="form-text">Si un vendedor te recomendó Nexar Comercio, ingresá su código.</div>
           </div>
 
           {% if requires_initial_license_acceptance %}

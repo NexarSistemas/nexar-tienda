@@ -375,9 +375,10 @@ def get_license_status_context(
         demo = demo_status or {}
         if bool(demo.get("vencido")):
             estado_comercial = "demo_vencido"
-            titulo_estado = "Periodo demo vencido"
-            mensaje_estado = "El demo vencio y no se convierte en BASICA automaticamente."
+            titulo_estado = "Tu demo de 14 dias vencio"
+            mensaje_estado = "Tu demo de 14 dias vencio. Podes adquirir BASICA, PRO o FULL desde esta pantalla."
             alert_class = "warning"
+            mostrar_aviso_vencimiento = True
         else:
             estado_comercial = "demo_activo"
             titulo_estado = "Periodo demo activo"

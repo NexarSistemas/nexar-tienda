@@ -43,13 +43,13 @@ from services.paths import get_database_path
 # Define limites de productos, clientes y proveedores por tipo de licencia
 TIER_LIMITS = {
     "DEMO": {
-        "productos": None,      # ilimitado por 30 dias
+        "productos": None,      # ilimitado por 14 dias
         "clientes": None,
         "proveedores": None,
-        "dias_prueba": 30,
+        "dias_prueba": 14,
         "support": False,
         "updates": False,
-        "descripcion": "Periodo de prueba (30 dias)"
+        "descripcion": "Periodo de prueba (14 dias)"
     },
     "BASICA": {
         "productos": 200,       # max 200 productos
@@ -1003,7 +1003,7 @@ def init_db():
         # â”€â”€â”€ SISTEMA DE LICENCIAS RSA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         ('demo_mode', '1'),                 # 1=demo, 0=licencia activa
         ('demo_install_date', ''),          # Fecha de primer arranque (demo)
-        ('demo_dias', '30'),                # Dias de prueba gratuita
+        ('demo_dias', '14'),                # Dias de prueba gratuita
         ('license_type', 'MONO'),           # Tipo de licencia (TDA_BASICA / TDA_PRO)
         ('license_tier', 'DEMO'),           # Tier: DEMO / BASICA / PRO
         ('license_key', ''),                # Clave de licencia (vacio en DEMO)
@@ -1015,6 +1015,7 @@ def init_db():
         ('license_owner_name', ''),         # Nombre titular
         ('license_owner_email', ''),        # Email titular
         ('license_owner_phone', ''),        # Telefono titular
+        ('license_vendor_code', ''),        # Codigo de vendedor opcional
         ('license_recovery_word', ''),      # Palabra de recuperacion local
         ('license_plan', 'DEMO'),           # Plan del token
         ('license_support', '0'),           # 1 = incluye soporte
@@ -1482,7 +1483,7 @@ def get_demo_status() -> dict:
             'ventas_bloqueado': False, 'productos_bloqueado': False,
         }
 
-    dias_demo   = int(cfg.get('demo_dias', '30'))
+    dias_demo   = int(cfg.get('demo_dias', '14'))
     install_str = cfg.get('demo_install_date', '')
     try:
         install_dt = date.fromisoformat(install_str)
@@ -1606,6 +1607,7 @@ def get_license_info() -> dict:
         'owner_name':  cfg.get('license_owner_name', ''),
         'owner_email': cfg.get('license_owner_email', ''),
         'owner_phone': cfg.get('license_owner_phone', ''),
+        'vendor_code': cfg.get('license_vendor_code', ''),
         'recovery_word': cfg.get('license_recovery_word', ''),
         'plan':        snapshot["plan_original"],
         'plan_original': snapshot["plan_original"],
@@ -1649,6 +1651,11 @@ def sync_license_from_remote(license_data: dict):
     if original_plan == 'BASICA':
         expira = ''
     plan_base_permanente = original_plan == "BASICA" or _as_bool(license_data.get("plan_base_permanente"))
+    vendor_code = str(
+        license_data.get("codigo_vendedor")
+        or license_data.get("vendor_code")
+        or ""
+    ).strip().upper()
 
     updates = {
         'demo_mode': '0' if original_plan != 'DEMO' else '1',
@@ -1668,6 +1675,8 @@ def sync_license_from_remote(license_data: dict):
         'license_support': '1' if effective_plan != "SIN_PLAN" and TIER_LIMITS.get(effective_plan, TIER_LIMITS["DEMO"]).get('support') else '0',
         'license_updates': '1' if effective_plan != "SIN_PLAN" and TIER_LIMITS.get(effective_plan, TIER_LIMITS["DEMO"]).get('updates') else '0',
     }
+    if vendor_code:
+        updates['license_vendor_code'] = vendor_code
     if effective_plan == "SIN_PLAN":
         modules = []
     else:

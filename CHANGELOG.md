@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.36.2] - 2026-06-16
+
+### Changed
+- La DEMO para instalaciones nuevas ahora dura 14 dias, sin modificar el vencimiento ya existente de instalaciones DEMO previas.
+- Se agrega captura y asociacion opcional de codigo de vendedor en solicitud, activacion y gestion manual desde Mi Plan.
+- La sincronizacion de codigo_vendedor con Supabase se realiza sin recrear licencias ni alterar plan, tier, estado, expiracion o HWID.
+- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG` e `Inno Setup` para el release estable `v1.36.2`.
+
 ## [1.36.1] - 2026-06-12
 
 ### Changed

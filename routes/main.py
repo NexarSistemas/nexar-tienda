@@ -77,6 +77,7 @@ from services.supabase_license_api import (
     generate_activation_id,
     get_supabase_debug_state,
     is_configured as supabase_configured,
+    update_license_vendor_code,
 )
 from services.update_checker import download_release_asset, get_cached_update_info
 
@@ -606,8 +607,19 @@ def _get_license_holder_profile(license_info: dict[str, object] | None = None) -
         "nombre": _first_non_empty(cfg.get("license_owner_name", ""), license_info.get("owner_name", "")),
         "email": _first_non_empty(cfg.get("license_owner_email", ""), license_info.get("owner_email", "")).lower(),
         "telefono": _first_non_empty(cfg.get("license_owner_phone", ""), license_info.get("owner_phone", "")),
+        "codigo_vendedor": _normalize_vendor_code(
+            _first_non_empty(
+                cfg.get("license_vendor_code", ""),
+                license_info.get("vendor_code", ""),
+                license_info.get("codigo_vendedor", ""),
+            )
+        ),
         "palabra_recuperacion": str(cfg.get("license_recovery_word", "") or "").strip(),
     }
+
+
+def _normalize_vendor_code(value: str | None) -> str:
+    return str(value or "").strip().upper()
 
 
 def _should_force_license_resolution_after_login() -> bool:
@@ -3984,6 +3996,45 @@ def mi_plan_guardar_titular():
     return redirect(url_for("main.mi_plan"))
 
 
+@main_bp.route("/mi-plan/codigo-vendedor", methods=["POST"])
+@admin_required
+def mi_plan_guardar_codigo_vendedor():
+    current_info = db.get_license_info()
+    current_vendor_code = _normalize_vendor_code(current_info.get("vendor_code", ""))
+    if current_vendor_code:
+        flash("Esta licencia ya tiene un código de vendedor asociado.", "info")
+        return redirect(url_for("main.mi_plan"))
+
+    vendor_code = _normalize_vendor_code(request.form.get("codigo_vendedor", ""))
+    if not vendor_code:
+        flash("Ingresá un código de vendedor válido.", "warning")
+        return redirect(url_for("main.mi_plan"))
+
+    db.set_config({"license_vendor_code": vendor_code})
+
+    license_key = str(current_info.get("key", "") or "").strip()
+    if not license_key:
+        flash(
+            "Código de vendedor guardado en esta instalación. Esta DEMO no tiene una licencia remota activa para sincronizar todavía.",
+            "info",
+        )
+        return redirect(url_for("main.mi_plan"))
+
+    ok, message, _remote_license = update_license_vendor_code(
+        license_key=license_key,
+        vendor_code=vendor_code,
+        producto=get_license_product(),
+    )
+    if ok:
+        flash("Código de vendedor guardado y sincronizado con la licencia actual.", "success")
+    else:
+        flash(
+            f"Se guardó el código de vendedor localmente, pero no pudimos sincronizarlo con Supabase. {message}",
+            "warning",
+        )
+    return redirect(url_for("main.mi_plan"))
+
+
 @main_bp.route("/mi-plan/checkout", methods=["POST"])
 @admin_required
 def mi_plan_checkout():
@@ -4097,6 +4148,7 @@ def mi_plan_solicitar_upgrade():
         "plan_destino": plan_solicitado,
         "plan_solicitado": plan_solicitado,
         "estado": "pendiente",
+        "codigo_vendedor": _get_license_holder_profile(license_info).get("codigo_vendedor", ""),
         "machine_details": machine_details,
     }
 
@@ -4241,8 +4293,13 @@ def licencia_activar():
         if not ok:
             flash(msg, "warning")
             return redirect(url_for("licencia"))
+    vendor_code = _normalize_vendor_code(
+        request.form.get("codigo_vendedor", "") or _get_license_holder_profile().get("codigo_vendedor", "")
+    )
+    if vendor_code:
+        db.set_config({"license_vendor_code": vendor_code})
     license_key = request.form.get("license_key", "")
-    ok, msg = validate_license_key(request.form.get("license_key", ""), debug=False)
+    ok, msg = validate_license_key(request.form.get("license_key", ""), debug=False, vendor_code=vendor_code)
     if ok:
         guardar_licencia(license_key, db.get_license_info())
         flash(f"✅ {msg} La licencia quedó vinculada a este equipo.", "success")
@@ -4265,6 +4322,9 @@ def licencia_solicitar():
         "nombre": request.form.get("nombre", "").strip(),
         "email": request.form.get("email", "").strip().lower(),
         "telefono": request.form.get("whatsapp", "").strip(),
+        "codigo_vendedor": _normalize_vendor_code(
+            request.form.get("codigo_vendedor", "") or _get_license_holder_profile().get("codigo_vendedor", "")
+        ),
         "palabra_recuperacion": _get_license_holder_profile().get("palabra_recuperacion", ""),
     }
     ok_profile, msg_profile = _validate_license_holder_profile(holder_profile)
@@ -4276,12 +4336,14 @@ def licencia_solicitar():
         "license_owner_name": holder_profile["nombre"],
         "license_owner_email": holder_profile["email"],
         "license_owner_phone": holder_profile["telefono"],
+        "license_vendor_code": holder_profile["codigo_vendedor"],
     })
 
     ok, msg, _ = create_license_request(
         nombre=holder_profile["nombre"],
         email=holder_profile["email"],
         whatsapp=holder_profile["telefono"],
+        codigo_vendedor=holder_profile["codigo_vendedor"],
         activation_id=activation_id,
         producto=get_license_product(),
         plan=request.form.get("plan", "BASICA"),

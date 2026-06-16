@@ -332,6 +332,12 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(status["estado_comercial"], "demo_vencido")
         self.assertEqual(status["plan_efectivo"], "DEMO")
         self.assertFalse(status["basica_activada"])
+        self.assertTrue(status["mostrar_aviso_vencimiento"])
+        self.assertEqual(status["titulo_estado"], "Tu demo de 14 dias vencio")
+        self.assertIn("BASICA, PRO o FULL", status["mensaje_estado"])
+
+    def test_demo_nuevo_arranca_con_14_dias(self):
+        self.assertEqual(self.database.get_demo_status()["dias_demo"], 14)
 
     def test_templates_no_exponen_demo_como_plan_comercial(self):
         licencia_template = (PROJECT_ROOT / "templates" / "licencia.html").read_text(encoding="utf-8")
@@ -540,6 +546,30 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(captured["plan_destino"], "FULL")
         self.assertEqual(captured["license_key"], "")
 
+    def test_solicitud_manual_upgrade_conserva_codigo_vendedor(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/solicitar-upgrade", method="POST", data={"plan_destino": "PRO"}):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin", "nombre_completo": "Administrador"}
+            captured = {}
+
+            def _fake_create_upgrade_request(payload):
+                captured.update(payload)
+                return {"ok": True}
+
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO", "key": "", "owner_name": "", "owner_email": "", "vendor_code": "vend123"}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"license_vendor_code": "vend123", "nombre_negocio": "Nexar Test", "email_contacto": "admin@test.com", "telefono": "123"}), \
+                 mock.patch.object(self.routes_main, "cargar_licencia", return_value={}), \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-456", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-456"), \
+                 mock.patch.object(self.routes_main, "create_upgrade_request", side_effect=_fake_create_upgrade_request):
+                response = self.routes_main.mi_plan_solicitar_upgrade()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(captured["codigo_vendedor"], "VEND123")
+
     def test_build_checkout_context_con_license_key_sigue_usando_cambio_plan(self):
         app = self.app_module.create_app()
         with app.test_request_context("/mi-plan/checkout", method="POST", json={"plan_destino": "PRO"}):
@@ -556,6 +586,74 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertIsNone(error_response)
         self.assertEqual(context["tipo_solicitud"], "cambio_plan")
         self.assertEqual(context["license_key"], "NXR-TDA-TEST-001")
+
+    def test_licencia_solicitar_guarda_y_envia_codigo_vendedor_normalizado(self):
+        app = self.app_module.create_app()
+        with app.test_request_context(
+            "/licencia/solicitar",
+            method="POST",
+            data={
+                "activation_id": "NXID-TEST-123",
+                "nombre": "Admin",
+                "email": "admin@test.com",
+                "whatsapp": "123",
+                "codigo_vendedor": " vend123 ",
+                "plan": "PRO",
+                "accept_license_agreement": "1",
+            },
+        ):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+
+            with mock.patch.object(self.routes_main.db, "set_config") as set_config_mock, \
+                 mock.patch.object(self.routes_main, "create_license_request", return_value=(True, "ok", None)) as request_mock, \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-TEST-123", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-TEST-123"):
+                response = self.routes_main.licencia_solicitar()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(set_config_mock.call_args.args[0]["license_vendor_code"], "VEND123")
+        self.assertEqual(request_mock.call_args.kwargs["codigo_vendedor"], "VEND123")
+
+    def test_mi_plan_guardar_codigo_vendedor_demo_sin_license_key_guarda_local(self):
+        app = self.app_module.create_app()
+        with app.test_request_context(
+            "/mi-plan/codigo-vendedor",
+            method="POST",
+            data={"codigo_vendedor": " vend123 "},
+        ):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO", "key": "", "vendor_code": ""}), \
+                 mock.patch.object(self.routes_main.db, "set_config") as set_config_mock:
+                response = self.routes_main.mi_plan_guardar_codigo_vendedor()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(set_config_mock.call_args.args[0]["license_vendor_code"], "VEND123")
+
+    def test_mi_plan_guardar_codigo_vendedor_licencia_activa_sincroniza_supabase(self):
+        app = self.app_module.create_app()
+        with app.test_request_context(
+            "/mi-plan/codigo-vendedor",
+            method="POST",
+            data={"codigo_vendedor": " vend123 "},
+        ):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "BASICA", "key": "NXR-BASICA-001", "vendor_code": ""}), \
+                 mock.patch.object(self.routes_main.db, "set_config") as set_config_mock, \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "update_license_vendor_code", return_value=(True, "ok", {"codigo_vendedor": "VEND123"})) as update_mock:
+                response = self.routes_main.mi_plan_guardar_codigo_vendedor()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(set_config_mock.call_args.args[0]["license_vendor_code"], "VEND123")
+        self.assertEqual(update_mock.call_args.kwargs["vendor_code"], "VEND123")
 
     def test_validate_license_key_permite_activar_basica_desde_demo(self):
         license_payload = {
@@ -574,6 +672,29 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(message, "Licencia validada correctamente.")
         sync_mock.assert_called_once_with(license_payload)
+
+    def test_validate_license_key_sincroniza_codigo_vendedor_si_existe(self):
+        license_payload = {
+            "license_key": "NXR-BASICA-001",
+            "plan": "BASICA",
+            "tier": "BASICA",
+            "modules": ["core", "clientes"],
+        }
+        remote_payload = dict(license_payload)
+        remote_payload["codigo_vendedor"] = "VEND123"
+
+        with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO"}), \
+             mock.patch.object(self.routes_main.db, "sync_license_from_remote") as sync_mock, \
+             mock.patch("services.license_sdk.import_validar_licencia_detalle", return_value=lambda *args, **kwargs: {"ok": True, "license": license_payload, "source": "online"}), \
+             mock.patch("services.license_sdk.import_validar_licencia", return_value=None), \
+             mock.patch("services.supabase_license_api.activate_license", return_value=(True, "ok", remote_payload)) as activate_mock:
+            ok, message = self.routes_main.validate_license_key("NXR-BASICA-001", debug=False, vendor_code=" vend123 ")
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Licencia validada correctamente.")
+        activate_mock.assert_called_once()
+        self.assertEqual(activate_mock.call_args.kwargs["vendor_code"], "VEND123")
+        sync_mock.assert_called_once_with(remote_payload)
 
     def test_validate_license_key_permite_activar_pro_desde_demo(self):
         license_payload = {
@@ -639,6 +760,18 @@ class LicenseIntegrationTests(unittest.TestCase):
         updates = set_config_mock.call_args.args[0]
         self.assertEqual(updates["license_tier"], "FULL")
         self.assertEqual(updates["license_plan"], "FULL")
+
+    def test_sync_license_from_remote_no_borra_codigo_vendedor_local(self):
+        self.database.set_config({"license_vendor_code": "VEND123"})
+
+        self.database.sync_license_from_remote({
+            "license_key": "NXR-BASICA-001",
+            "plan": "BASICA",
+            "tier": "BASICA",
+            "modules": ["core"],
+        })
+
+        self.assertEqual(self.database.get_license_info()["vendor_code"], "VEND123")
 
     def test_pro_no_colapsa_a_full(self):
         pro_modules = get_modulos_plan("PRO")
