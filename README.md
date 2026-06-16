@@ -10,6 +10,7 @@ Release comercial estable `v1.36.3`:
 - La DEMO nueva pasa a 14 dias sin alterar el vencimiento de instalaciones DEMO ya existentes.
 - Se incorpora codigo de vendedor opcional en activacion, solicitud y asociacion manual desde Mi Plan.
 - La sincronizacion con Supabase conserva licencias existentes y permite asociar vendedor sin reinstalar.
+- Se preservan tambien las mejoras recientes de checkout/licencias integradas en main antes de este release.
 - Versionado sincronizado entre app, documentacion e instaladores.
 
 Desarrollado por Nexar Sistemas - 2026
