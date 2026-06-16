@@ -2,7 +2,7 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
-## 2026-06-16 - Codex - release/v1.36.2
+## 2026-06-16 - Codex - release/v1.36.3
 
 ### Tarea
 Cerrar la feature de DEMO 14 dias y codigo de vendedor como release patch, actualizando solo versionado y documentacion minima sin agregar funcionalidad nueva.
@@ -15,7 +15,7 @@ Cerrar la feature de DEMO 14 dias y codigo de vendedor como release patch, actua
 - `docs/ai/AI_CHANGELOG.md`
 
 ### Que se cambio
-- Se detecto la version actual `1.36.1` y se preparo el siguiente patch `1.36.2`.
+- Se detecto la version actual `1.36.2` y se preparo el siguiente patch `1.36.3`.
 - Se alineo la metadata de version en app, README, changelog e instalador Windows.
 - El resumen comercial de release quedo enfocado en DEMO de 14 dias, compatibilidad con DEMO existentes y asociacion opcional de codigo de vendedor.
 
