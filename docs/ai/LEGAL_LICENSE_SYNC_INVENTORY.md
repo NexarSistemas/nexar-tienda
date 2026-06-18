@@ -27,6 +27,8 @@ La sincronización masiva contra todos los repositorios activos de `rolojnb` y `
 - `routes/main.py`: ruta `/acuerdo-licencia`, que lee `LICENSE.txt` desde `LICENSE_TEXT_PATH`.
 - `templates/registro_inicial.html`: aceptación obligatoria durante configuración inicial.
 - `templates/licencia.html`: aceptación obligatoria antes de solicitar o activar licencia cuando corresponde.
+- `build/nexar_tienda.iss`: usa `LICENSE.txt` como licencia visible del instalador Windows e incluye una copia dentro del directorio instalado.
+- `build_deb.sh`: copia `LICENSE.txt` dentro del paquete Debian cuando el archivo existe en la raíz del repositorio.
 
 ## Referencias legales detectadas en `nexar-tienda`
 
@@ -37,6 +39,9 @@ La sincronización masiva contra todos los repositorios activos de `rolojnb` y `
 | `templates/licencia.html` | Enlace al acuerdo mediante `url_for('acuerdo_licencia')` en activación de licencia | Apunta a la ruta local que muestra `LICENSE.txt` |
 | `routes/main.py` | Mensaje de validación cuando no se acepta el acuerdo | Consistente con el flujo de aceptación |
 | `CHANGELOG.md` | Mención histórica al instalador Windows con aceptación de licencia | Referencia informativa histórica; no se modificó |
+| `build/nexar_tienda.iss` | `LicenseFile=..\LICENSE.txt` | Usa `LICENSE.txt` como licencia presentada por el instalador Windows |
+| `build/nexar_tienda.iss` | `Source: "..\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion` | Incluye/copia `LICENSE.txt` dentro del instalador Windows |
+| `build_deb.sh` | Copia condicional de `${SCRIPT_DIR}/LICENSE.txt` a `${INSTALL_DIR}/` | Incluye/copia `LICENSE.txt` dentro del paquete Debian cuando existe |
 
 ## Flujos de aceptación identificados
 
