@@ -182,7 +182,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: release/**/*
+          path: release/*
+          retention-days: 2
 
   # ════════════════════════════════════════
   # 🪟 BUILD WINDOWS (.exe + Inno Setup)
@@ -328,7 +329,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: release/**/*
+          path: release/*
+          retention-days: 2
 
   # ════════════════════════════════════════
   # 📦 PACKAGE: SHA256 + FIRMA GPG
@@ -387,6 +389,7 @@ jobs:
         with:
           name: final
           path: final/*
+          retention-days: 2
 
   # ════════════════════════════════════════
   # 🚀 RELEASE EN GITHUB
