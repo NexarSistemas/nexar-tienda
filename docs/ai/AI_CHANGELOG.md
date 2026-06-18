@@ -2,6 +2,23 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-06-18 - Codex - docs/legal-packaging-license-inventory
+
+### Tarea
+Actualizar el inventario legal local para responder el comentario del PR #100 incorporando las referencias de empaquetado que usan o copian `LICENSE.txt`.
+
+### Archivos modificados
+- `docs/ai/LEGAL_LICENSE_SYNC_INVENTORY.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se agregaron al inventario las referencias de `build/nexar_tienda.iss` que usan `LICENSE.txt` como licencia del instalador Windows y lo incluyen dentro del instalador.
+- Se agrego la referencia de `build_deb.sh` que copia `LICENSE.txt` dentro del paquete Debian cuando existe.
+- No se modifico la logica de la app, `LICENSE.txt`, templates, rutas, licencia comercial ni validaciones.
+
+### Que se probo
+- `git diff --check`
+
 ## 2026-06-18 - Codex - chore/legal-license-sync
 
 ### Tarea
