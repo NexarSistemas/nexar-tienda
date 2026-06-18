@@ -2,6 +2,27 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-06-18 - Codex - release/v1.36.4
+
+### Tarea
+Cerrar el release de Nexar Comercio para la Fase 1B de activacion inicial obligatoria, limitando los cambios finales a versionado y documentacion de release.
+
+### Archivos modificados
+- `VERSION`
+- `README.md`
+- `CHANGELOG.md`
+- `build/nexar_tienda.iss`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se detecto la version actual `1.36.3` y se preparo el siguiente patch `1.36.4`.
+- Se alineo la metadata de version en app, README, changelog e instalador Windows.
+- El resumen comercial del release quedo enfocado en activacion inicial obligatoria, seleccion de plan, DEMO automatica de 14 dias y registro del lead DEMO en Supabase.
+
+### Que se probo
+- `python -m compileall routes services tests`
+- `.\.venv\Scripts\python.exe -m pytest tests\test_license_integration.py -k "activacion_inicial or create_demo_request_reintenta"` no se pudo usar como senal confiable por `PermissionError` del entorno al crear/limpiar temporales de Windows y escribir `.pytest_cache`.
+
 ## 2026-06-18 - Codex - docs/legal-packaging-license-inventory
 
 ### Tarea

@@ -1,16 +1,16 @@
-# Nexar Comercio v1.36.3
+# Nexar Comercio v1.36.4
 
 Sistema integral de gestion comercial para tiendas y comercios minoristas.
 `Nexar Comercio` es la marca visible del producto. `nexar-tienda` se mantiene
 como identificador tecnico compatible para builds, instaladores, actualizaciones
 y artefactos existentes.
 
-Release comercial estable `v1.36.3`:
+Release comercial estable `v1.36.4`:
 
-- La DEMO nueva pasa a 14 dias sin alterar el vencimiento de instalaciones DEMO ya existentes.
-- Se incorpora codigo de vendedor opcional en activacion, solicitud y asociacion manual desde Mi Plan.
-- La sincronizacion con Supabase conserva licencias existentes y permite asociar vendedor sin reinstalar.
-- Se preservan tambien las mejoras recientes de checkout/licencias integradas en main antes de este release.
+- Se agrega activacion inicial obligatoria con seleccion DEMO, BASICA, PRO o FULL antes del primer uso real del sistema.
+- La DEMO se activa automaticamente por 14 dias y registra el lead comercial en Supabase usando `solicitudes_demo`.
+- Se reutilizan datos del titular y del negocio para Mi Plan y checkout, evitando pedir email, telefono y responsable varias veces.
+- Se incorpora codigo de vendedor opcional, aceptacion obligatoria de terminos y consentimiento comercial opcional dentro del flujo inicial.
 - Versionado sincronizado entre app, documentacion e instaladores.
 
 Desarrollado por Nexar Sistemas - 2026

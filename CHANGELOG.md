@@ -4,6 +4,19 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.36.4] - 2026-06-18
+
+### Added
+
+- Se agrega activacion inicial obligatoria al primer inicio real de la app, con seleccion de plan DEMO, BASICA, PRO o FULL antes de habilitar el uso normal del sistema.
+
+### Changed
+
+- La DEMO inicial se activa automaticamente por 14 dias y registra el lead comercial en Supabase mediante `solicitudes_demo`, manteniendo el acceso local aun si el alta remota falla.
+- Se reutilizan datos del titular y del negocio entre activacion inicial, Mi Plan y checkout para evitar formularios duplicados.
+- Se incorpora codigo de vendedor opcional, aceptacion obligatoria de terminos y consentimiento comercial opcional dentro del flujo inicial.
+- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG` e `Inno Setup` para el release estable `v1.36.4`.
+
 ## [1.36.3] - 2026-06-16
 
 ### Changed

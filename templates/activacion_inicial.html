@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Activacion inicial - {{ app_display_name }}{% endblock %}
+{% block page_title %}<i class="fas fa-bolt me-2"></i>Activacion inicial{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Completa la activacion inicial</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-4">Antes de usar el sistema tenés que elegir DEMO, BASICA, PRO o FULL. Reutilizamos los datos del negocio para no pedirlos de nuevo más adelante.</p>
+
+                <form method="POST" action="{{ url_for('main.activacion_inicial') }}" class="row g-3">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="col-md-6">
+                        <label class="form-label">Nombre del titular</label>
+                        <input type="text" class="form-control" name="titular_nombre" value="{{ customer_profile.titular_nombre }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nombre del negocio</label>
+                        <input type="text" class="form-control" name="negocio" value="{{ customer_profile.negocio }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" value="{{ customer_profile.email }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Teléfono</label>
+                        <input type="text" class="form-control" name="telefono" value="{{ customer_profile.telefono }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Rubro / tipo de uso</label>
+                        <select class="form-select" name="rubro" required>
+                            <option value="tienda" {% if customer_profile.rubro == 'tienda' %}selected{% endif %}>Tienda</option>
+                            <option value="almacen" {% if customer_profile.rubro == 'almacen' %}selected{% endif %}>Almacén</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Código de vendedor</label>
+                        <input type="text" class="form-control" name="codigo_vendedor" value="{{ customer_profile.codigo_vendedor }}" placeholder="Opcional">
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label d-block">Plan inicial</label>
+                        <div class="row g-2">
+                            {% for plan in available_plans %}
+                            <div class="col-sm-6 col-xl-3">
+                                <label class="card h-100 border-2 {% if selected_plan == plan %}border-primary{% else %}border-light{% endif %}">
+                                    <div class="card-body">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="plan_destino" value="{{ plan }}" {% if selected_plan == plan %}checked{% endif %}>
+                                            <span class="form-check-label fw-semibold ms-1">
+                                                {% if plan == 'DEMO' %}DEMO 14 días{% else %}{{ plan }}{% endif %}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="accept_license_agreement" id="acceptActivationTerms" value="1" required {% if customer_profile.terms_accepted %}checked{% endif %}>
+                            <label class="form-check-label" for="acceptActivationTerms">
+                                Acepto los <a href="{{ url_for('acuerdo_licencia') }}" target="_blank" rel="noopener noreferrer">términos y condiciones</a>.
+                            </label>
+                        </div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="marketing_opt_in" id="marketingOptIn" value="1" {% if customer_profile.marketing_opt_in %}checked{% endif %}>
+                            <label class="form-check-label" for="marketingOptIn">
+                                Quiero recibir ofertas y novedades.
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <button class="btn btn-primary w-100" type="submit">
+                            Continuar con la activación
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Estado actual</h5>
+            </div>
+            <div class="card-body">
+                <div class="small text-muted mb-2">Plan detectado</div>
+                <div class="h4 mb-3">{{ plan_display }}</div>
+                {% if demo_status.demo %}
+                <div class="alert alert-warning mb-0">
+                    {% if demo_status.vencido %}
+                    La demo local está vencida. Elegí un plan para continuar.
+                    {% else %}
+                    La demo local sigue disponible por {{ demo_status.dias_restantes }} día{% if demo_status.dias_restantes != 1 %}s{% endif %}, pero primero tenés que completar esta activación inicial.
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Si ya pagaste o querés revisar</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a class="btn btn-outline-primary" href="{{ url_for('main.mi_plan') }}">Ir a Mi Plan</a>
+                    <a class="btn btn-outline-secondary" href="{{ url_for('licencia') }}">Activar manualmente una clave</a>
+                </div>
+                <p class="small text-muted mt-3 mb-0">Estas opciones siguen disponibles durante la activación inicial, pero el resto del sistema queda bloqueado hasta completar DEMO o una licencia paga.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
