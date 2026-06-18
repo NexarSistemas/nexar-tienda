@@ -49,12 +49,29 @@ def _support_requests_table_url() -> str:
     return build_supabase_rest_url("solicitudes_soporte")
 
 
+def _demo_requests_table_url() -> str:
+    return build_supabase_rest_url("solicitudes_demo")
+
+
 def _upgrade_requests_table_url() -> str:
     return build_supabase_rest_url("solicitudes_upgrade")
 
 
 def _anon_key() -> str:
-    return os.getenv("SUPABASE_ANON_KEY", "")
+    return (os.getenv("SUPABASE_ANON_KEY", "") or os.getenv("SUPABASE_KEY", "")).strip()
+
+
+def _missing_supabase_config_message(action: str) -> str:
+    missing = []
+    if not (os.getenv("SUPABASE_URL", "") or "").strip():
+        missing.append("SUPABASE_URL")
+    if not _anon_key():
+        missing.append("SUPABASE_ANON_KEY o SUPABASE_KEY")
+    missing_text = ", ".join(missing) if missing else "credenciales Supabase"
+    return (
+        f"Falta configurar {missing_text} para {action}. "
+        "Se esperan en variables de entorno, .env o license_runtime_config.json."
+    )
 
 
 def _headers() -> dict[str, str]:
@@ -182,7 +199,7 @@ def create_license_request(
             last_error="not_configured",
             url=_requests_table_url(),
         )
-        return False, "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY para enviar solicitudes.", None
+        return False, _missing_supabase_config_message("enviar solicitudes"), None
 
     nombre = (nombre or "").strip()
     email = (email or "").strip().lower()
@@ -256,7 +273,7 @@ def create_support_request(
     technical_details: dict[str, Any] | None = None,
 ) -> tuple[bool, str, dict[str, Any] | None]:
     if not is_configured():
-        return False, "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY para enviar solicitudes de soporte.", None
+        return False, _missing_supabase_config_message("enviar solicitudes de soporte"), None
 
     nombre = (nombre or "").strip()
     email = (email or "").strip().lower()
@@ -297,13 +314,132 @@ def create_support_request(
     return True, "Solicitud de soporte enviada correctamente.", None
 
 
+def create_demo_request(
+    *,
+    nombre: str,
+    email: str,
+    telefono: str = "",
+    negocio: str = "",
+    producto: str = PRODUCTO_DEFAULT,
+    plan_interes: str = "DEMO",
+    mensaje: str = "",
+    origen: str = "app_activacion_inicial",
+    estado: str = "pendiente",
+) -> tuple[bool, str]:
+    operation = "create_demo_request"
+    if not is_configured():
+        _set_supabase_debug(operation=operation, status="not_configured", status_code=None, last_error="not_configured")
+        return False, _missing_supabase_config_message("registrar la demo")
+
+    nombre = (nombre or "").strip()
+    email = (email or "").strip().lower()
+    telefono = (telefono or "").strip()
+    negocio = (negocio or "").strip()
+    plan_interes = (plan_interes or "DEMO").strip().upper()
+    mensaje = (mensaje or "").strip()
+    origen = (origen or "app_activacion_inicial").strip().lower()
+    estado = (estado or "pendiente").strip().lower()
+
+    if not nombre or not email:
+        _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_required_fields")
+        return False, "Nombre y email son obligatorios para registrar la demo."
+    if estado not in {"pendiente", "contactado", "demo_agendada", "cerrado"}:
+        estado = "pendiente"
+
+    payload = {
+        "nombre": nombre,
+        "email": email,
+        "telefono": telefono,
+        "negocio": negocio,
+        "producto": producto,
+        "plan_interes": plan_interes,
+        "mensaje": mensaje,
+        "estado": estado,
+        "origen": origen,
+        "leida": False,
+    }
+    headers = {**_headers(), "Prefer": "return=minimal"}
+    request_url = _demo_requests_table_url()
+    logger.info(
+        "Enviando solicitud DEMO a Supabase url=%s payload=%s",
+        request_url,
+        payload,
+    )
+    try:
+        resp = requests.post(request_url, headers=headers, json=payload, timeout=12)
+    except requests.RequestException as exc:
+        logger.warning("Error de conexion enviando solicitud DEMO a url=%s: %s", request_url, exc)
+        message, error = _request_error_message(operation, exc)
+        _set_supabase_debug(
+            operation=operation,
+            status="network_error",
+            status_code=None,
+            last_error=error or "network_error",
+            url=request_url,
+        )
+        return False, message
+
+    if resp.status_code >= 300:
+        _log_supabase_http_error(operation, request_url, resp)
+        fallback_payload = {
+            "nombre": nombre,
+            "email": email,
+            "telefono": telefono,
+            "negocio": negocio,
+            "producto": producto,
+            "plan_interes": plan_interes,
+            "mensaje": mensaje,
+        }
+        logger.warning(
+            "Solicitud DEMO rechazada; reintentando payload compatible url=%s status=%s body=%s fallback_payload=%s",
+            request_url,
+            resp.status_code,
+            (resp.text or "").strip()[:500],
+            fallback_payload,
+        )
+        try:
+            resp = requests.post(request_url, headers=headers, json=fallback_payload, timeout=12)
+        except requests.RequestException as exc:
+            logger.warning("Error de conexion reintentando solicitud DEMO a url=%s: %s", request_url, exc)
+            message, error = _request_error_message(operation, exc)
+            _set_supabase_debug(
+                operation=operation,
+                status="network_error",
+                status_code=None,
+                last_error=error or "network_error",
+                url=request_url,
+            )
+            return False, message
+
+        if resp.status_code >= 300:
+            _log_supabase_http_error(operation, request_url, resp)
+            message, error = _response_error_message(operation, resp)
+            _set_supabase_debug(
+                operation=operation,
+                status="http_error",
+                status_code=resp.status_code,
+                last_error=(resp.text or "").strip()[:240] or error,
+                url=request_url,
+            )
+            return False, message
+
+    _set_supabase_debug(
+        operation=operation,
+        status="ok",
+        status_code=resp.status_code,
+        last_error="",
+        url=request_url,
+    )
+    return True, "Solicitud DEMO registrada correctamente."
+
+
 def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
     operation = "create_upgrade_request"
     if not is_configured():
         _set_supabase_debug(operation=operation, status="not_configured", status_code=None, last_error="not_configured")
         return {
             "ok": False,
-            "message": "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY para enviar solicitudes.",
+            "message": _missing_supabase_config_message("enviar solicitudes"),
             "error": "not_configured",
         }
 
@@ -446,7 +582,7 @@ def activate_license(
     operation = "activate_license"
     if not is_configured():
         _set_supabase_debug(operation=operation, status="not_configured", status_code=None, last_error="not_configured")
-        return False, "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY.", None
+        return False, _missing_supabase_config_message("validar licencias online"), None
 
     key = (license_key or "").strip()
     machine_id = build_machine_id(machine_id)
@@ -534,7 +670,7 @@ def update_license_vendor_code(
     operation = "update_license_vendor_code"
     if not is_configured():
         _set_supabase_debug(operation=operation, status="not_configured", status_code=None, last_error="not_configured")
-        return False, "Falta configurar SUPABASE_URL y SUPABASE_ANON_KEY.", None
+        return False, _missing_supabase_config_message("actualizar el codigo de vendedor"), None
 
     key = (license_key or "").strip()
     normalized_vendor_code = _normalize_vendor_code(vendor_code)

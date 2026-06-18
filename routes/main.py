@@ -71,6 +71,7 @@ from services.paths import (
     get_updates_dir,
 )
 from services.supabase_license_api import (
+    create_demo_request,
     create_license_request,
     create_support_request,
     create_upgrade_request,
@@ -601,25 +602,238 @@ def _resolve_checkout_request_type(license_info: dict[str, object] | None) -> st
 
 
 def _get_license_holder_profile(license_info: dict[str, object] | None = None) -> dict[str, str]:
+    profile = _get_activation_customer_profile(license_info=license_info)
+    return {
+        "nombre": profile["titular_nombre"],
+        "email": profile["email"],
+        "telefono": profile["telefono"],
+        "codigo_vendedor": profile["codigo_vendedor"],
+        "palabra_recuperacion": profile["palabra_recuperacion"],
+    }
+
+
+def _get_current_user_contact_profile() -> dict[str, str]:
+    user_id = session.get("user", {}).get("id")
+    if not user_id:
+        return {}
+    row = db.q(
+        "SELECT nombre_completo, email, telefono FROM usuarios WHERE id=?",
+        (user_id,),
+        fetchone=True,
+    )
+    if not row:
+        return {}
+    return {
+        "nombre_completo": str(row["nombre_completo"] or "").strip(),
+        "email": str(row["email"] or "").strip().lower(),
+        "telefono": str(row["telefono"] or "").strip(),
+    }
+
+
+def _get_activation_customer_profile(
+    license_info: dict[str, object] | None = None,
+    form_data: dict[str, str] | None = None,
+) -> dict[str, str]:
     cfg = db.get_config()
     license_info = license_info or {}
+    data = form_data or {}
+    user_profile = _get_current_user_contact_profile()
+    rubro_actual = get_rubro_actual(cfg)
+    rubro = normalizar_rubro(
+        data.get("rubro")
+        or db.get_rubro_configurado()
+        or rubro_actual
+        or "tienda"
+    )
+    if rubro not in set(get_rubros_disponibles()):
+        rubro = "tienda"
+
     return {
-        "nombre": _first_non_empty(cfg.get("license_owner_name", ""), license_info.get("owner_name", "")),
-        "email": _first_non_empty(cfg.get("license_owner_email", ""), license_info.get("owner_email", "")).lower(),
-        "telefono": _first_non_empty(cfg.get("license_owner_phone", ""), license_info.get("owner_phone", "")),
+        "titular_nombre": _first_non_empty(
+            data.get("titular_nombre", ""),
+            data.get("nombre", ""),
+            cfg.get("license_owner_name", ""),
+            license_info.get("owner_name", ""),
+            cfg.get("responsable", ""),
+            user_profile.get("nombre_completo", ""),
+            cfg.get("nombre_negocio", ""),
+        ),
+        "negocio": _first_non_empty(
+            data.get("negocio", ""),
+            data.get("nombre_negocio", ""),
+            cfg.get("nombre_negocio", ""),
+        ),
+        "email": _first_non_empty(
+            data.get("email", ""),
+            data.get("titular_email", ""),
+            cfg.get("license_owner_email", ""),
+            license_info.get("owner_email", ""),
+            user_profile.get("email", ""),
+            cfg.get("negocio_email", ""),
+        ).lower(),
+        "telefono": _first_non_empty(
+            data.get("telefono", ""),
+            data.get("titular_telefono", ""),
+            data.get("whatsapp", ""),
+            cfg.get("license_owner_phone", ""),
+            license_info.get("owner_phone", ""),
+            cfg.get("telefono", ""),
+            user_profile.get("telefono", ""),
+        ),
         "codigo_vendedor": _normalize_vendor_code(
             _first_non_empty(
+                data.get("codigo_vendedor", ""),
                 cfg.get("license_vendor_code", ""),
                 license_info.get("vendor_code", ""),
                 license_info.get("codigo_vendedor", ""),
             )
         ),
         "palabra_recuperacion": str(cfg.get("license_recovery_word", "") or "").strip(),
+        "rubro": rubro,
+        "terms_accepted": str(cfg.get("license_terms_accepted_at", "") or "").strip() != "",
+        "marketing_opt_in": _as_bool(data.get("marketing_opt_in", cfg.get("license_marketing_opt_in", "0"))),
     }
 
 
 def _normalize_vendor_code(value: str | None) -> str:
     return str(value or "").strip().upper()
+
+
+def _is_valid_paid_license_tier(value: object) -> bool:
+    return normalize_plan(value, default="") in {"BASICA", "PRO", "FULL"}
+
+
+def _is_initial_activation_completed(license_info: dict[str, object] | None = None) -> bool:
+    info = license_info or db.get_license_info()
+    if _is_valid_paid_license_tier(info.get("tier")):
+        return True
+    return _as_bool(db.get_config_valor("activation_initial_completed", "1"))
+
+
+def _persist_activation_customer_profile(profile: dict[str, str], *, completed: bool, selected_plan: str) -> None:
+    normalized_plan = normalize_plan(selected_plan, default="DEMO")
+    db.set_config({
+        "license_owner_name": profile["titular_nombre"],
+        "license_owner_email": profile["email"],
+        "license_owner_phone": profile["telefono"],
+        "license_vendor_code": profile["codigo_vendedor"],
+        "license_marketing_opt_in": "1" if profile["marketing_opt_in"] else "0",
+        "license_terms_accepted_at": datetime.now().isoformat(),
+        "activation_initial_completed": "1" if completed else "0",
+        "activation_initial_plan": normalized_plan,
+        "nombre_negocio": profile["negocio"],
+        "negocio_email": profile["email"],
+        "telefono": profile["telefono"],
+        "responsable": profile["titular_nombre"],
+    })
+    if db.get_rubro_configurado() is None:
+        db.set_rubro_configurado(profile["rubro"])
+
+
+def _validate_activation_customer_profile(profile: dict[str, str]) -> tuple[bool, str]:
+    if not str(profile.get("titular_nombre", "") or "").strip():
+        return False, "Completá el nombre del titular."
+    if not str(profile.get("negocio", "") or "").strip():
+        return False, "Completá el nombre del negocio."
+    ok, msg = _validate_email(profile.get("email", ""))
+    if not ok:
+        return False, msg
+    if not str(profile.get("telefono", "") or "").strip():
+        return False, "Completá un teléfono de contacto."
+    if not profile.get("terms_accepted"):
+        return False, "Debés aceptar los términos y condiciones para continuar."
+    if profile.get("rubro") not in set(get_rubros_disponibles()):
+        return False, "Seleccioná un rubro válido para continuar."
+    return True, ""
+
+
+def _retry_pending_demo_request_if_needed() -> None:
+    license_info = db.get_license_info()
+    if _is_valid_paid_license_tier(license_info.get("tier")):
+        return
+
+    demo_status = db.get_demo_status()
+    if not demo_status.get("demo") or demo_status.get("vencido"):
+        return
+
+    if str(db.get_config_valor("activation_demo_request_key", "") or "").strip():
+        return
+
+    last_attempt_at = str(db.get_config_valor("activation_demo_request_retry_at", "") or "").strip()
+    if last_attempt_at:
+        try:
+            if (datetime.now() - datetime.fromisoformat(last_attempt_at)).total_seconds() < 3600:
+                return
+        except Exception:
+            pass
+
+    profile = _get_activation_customer_profile(license_info=license_info)
+    ok_profile, _msg_profile = _validate_activation_customer_profile(profile)
+    if not ok_profile:
+        return
+
+    activation_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
+    activation_id = get_current_hwid() or activation_id
+    product_name = get_license_product()
+    install_date = str(demo_status.get("install_date", "") or "").strip()
+    try:
+        started_on = date.fromisoformat(install_date) if install_date else date.today()
+    except Exception:
+        started_on = date.today()
+    expires_on = started_on + timedelta(days=max(int(demo_status.get("dias_demo", 14) or 14), 1))
+    remote_demo_dedupe_key = "|".join([
+        str(activation_id or "").strip(),
+        str(profile["email"] or "").strip().lower(),
+        str(product_name or "").strip().lower(),
+    ])
+
+    demo_metadata = {
+        "activation_id": activation_id,
+        "producto": product_name,
+        "plan": "DEMO",
+        "plan_interes": "DEMO_14_DIAS",
+        "rubro": profile["rubro"],
+        "codigo_vendedor": profile["codigo_vendedor"],
+        "terms_accepted": bool(profile["terms_accepted"]),
+        "marketing_opt_in": bool(profile["marketing_opt_in"]),
+        "demo_started_at": started_on.isoformat(),
+        "demo_expires_at": expires_on.isoformat(),
+        "demo_status": "demo_activa",
+        "machine_details": machine_details,
+    }
+
+    db.set_config({"activation_demo_request_retry_at": datetime.now().isoformat()})
+    ok_demo, msg_demo = create_demo_request(
+        nombre=profile["titular_nombre"],
+        email=profile["email"],
+        telefono=profile["telefono"],
+        negocio=profile["negocio"],
+        producto=product_name,
+        plan_interes="DEMO_14_DIAS",
+        mensaje=json.dumps(demo_metadata, ensure_ascii=False),
+        origen="app_demo_retry",
+        estado="pendiente",
+    )
+    if ok_demo:
+        db.set_config({
+            "activation_demo_request_key": remote_demo_dedupe_key,
+            "activation_demo_request_sent_at": datetime.now().isoformat(),
+        })
+        logger.info(
+            "Solicitud DEMO pendiente registrada correctamente activation_id=%s email=%s producto=%s",
+            str(activation_id)[:24],
+            profile["email"],
+            product_name,
+        )
+        return
+
+    logger.warning(
+        "No se pudo reintentar el registro DEMO en Supabase activation_id=%s email=%s producto=%s detalle=%s",
+        str(activation_id)[:24],
+        profile["email"],
+        product_name,
+        msg_demo,
+    )
 
 
 def _should_force_license_resolution_after_login() -> bool:
@@ -1662,6 +1876,8 @@ def registro_inicial():
                     "telefono": negocio["telefono"],
                     "negocio_email": negocio["negocio_email"],
                     "responsable": negocio["nombre_completo"],
+                    "activation_initial_completed": "0",
+                    "activation_initial_plan": "",
                 }
             )
             flash("✅ Configuración inicial completada. Ya podés iniciar sesión.", "success")
@@ -4169,6 +4385,124 @@ def mi_plan_solicitar_upgrade():
     else:
         flash(result.get("message", "No se pudo enviar la solicitud de actualización."), "danger")
     return redirect(url_for("main.mi_plan"))
+
+
+@main_bp.route("/activacion-inicial", methods=["GET", "POST"])
+@login_required
+def activacion_inicial():
+    license_info = db.get_license_info()
+    if _is_initial_activation_completed(license_info):
+        if not _as_bool(db.get_config_valor("activation_initial_completed", "1")):
+            db.set_config({"activation_initial_completed": "1"})
+        return redirect(url_for("dashboard"))
+
+    profile = _get_activation_customer_profile(
+        license_info=license_info,
+        form_data=request.form.to_dict() if request.method == "POST" else None,
+    )
+    selected_plan = normalize_plan(
+        request.form.get("plan_destino", "")
+        or request.form.get("plan", "")
+        or db.get_config_valor("activation_initial_plan", ""),
+        default="DEMO",
+    )
+
+    if request.method == "POST":
+        profile["terms_accepted"] = _has_license_agreement_acceptance(request.form)
+        ok_profile, msg_profile = _validate_activation_customer_profile(profile)
+        if not ok_profile:
+            flash(msg_profile, "warning")
+        elif selected_plan == "DEMO":
+            activation_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
+            activation_id = get_current_hwid() or activation_id
+            today = date.today()
+            expires_on = today + timedelta(days=14)
+            product_name = get_license_product()
+            remote_demo_dedupe_key = "|".join([
+                str(activation_id or "").strip(),
+                str(profile["email"] or "").strip().lower(),
+                str(product_name or "").strip().lower(),
+            ])
+            _persist_activation_customer_profile(profile, completed=True, selected_plan=selected_plan)
+            already_sent = str(db.get_config_valor("activation_demo_request_key", "") or "").strip() == remote_demo_dedupe_key
+            if already_sent:
+                ok_demo, msg_demo = True, "La solicitud DEMO ya habÃ­a sido registrada para esta instalaciÃ³n."
+            else:
+                demo_metadata = {
+                    "activation_id": activation_id,
+                    "producto": product_name,
+                    "plan": "DEMO",
+                    "plan_interes": "DEMO_14_DIAS",
+                    "rubro": profile["rubro"],
+                    "codigo_vendedor": profile["codigo_vendedor"],
+                    "terms_accepted": bool(profile["terms_accepted"]),
+                    "marketing_opt_in": bool(profile["marketing_opt_in"]),
+                    "demo_started_at": today.isoformat(),
+                    "demo_expires_at": expires_on.isoformat(),
+                    "demo_status": "demo_activa",
+                    "machine_details": machine_details,
+                }
+                ok_demo, msg_demo = create_demo_request(
+                    nombre=profile["titular_nombre"],
+                    email=profile["email"],
+                    telefono=profile["telefono"],
+                    negocio=profile["negocio"],
+                    producto=product_name,
+                    plan_interes="DEMO_14_DIAS",
+                    mensaje=json.dumps(demo_metadata, ensure_ascii=False),
+                    origen="app_activacion_inicial",
+                    estado="pendiente",
+                )
+                if ok_demo:
+                    db.set_config({
+                        "activation_demo_request_key": remote_demo_dedupe_key,
+                        "activation_demo_request_sent_at": datetime.now().isoformat(),
+                    })
+            if ok_demo:
+                flash("DEMO activada correctamente por 14 días. Ya podés usar el sistema.", "success")
+            else:
+                logger.warning(
+                    "No se pudo registrar la DEMO inicial en Supabase activation_id=%s email=%s producto=%s detalle=%s",
+                    str(activation_id)[:24],
+                    profile["email"],
+                    product_name,
+                    msg_demo,
+                )
+                flash(
+                    f"DEMO local activada por 14 días. No pudimos registrar la solicitud online ahora: {msg_demo}",
+                    "warning",
+                )
+            return redirect(url_for("dashboard"))
+        else:
+            _persist_activation_customer_profile(profile, completed=False, selected_plan=selected_plan)
+            init_point, _checkout_context, error_response = _create_checkout_init_point()
+            if error_response:
+                response, _status_code = error_response
+                payload = response.get_json(silent=True) or {}
+                flash(payload.get("message") or "No se pudo iniciar el checkout en este momento.", "danger")
+            elif init_point:
+                try:
+                    opened = webbrowser.open(init_point)
+                except Exception:
+                    logger.exception("No se pudo abrir el checkout inicial en navegador externo")
+                    opened = False
+                if opened:
+                    flash(
+                        "Abrimos Mercado Pago en tu navegador. Cuando termines el pago, refrescá la licencia para completar la activación.",
+                        "info",
+                    )
+                    return redirect(url_for("main.activacion_inicial"))
+                return redirect(init_point)
+
+    return render_template(
+        "activacion_inicial.html",
+        customer_profile=profile,
+        selected_plan=selected_plan,
+        available_plans=["DEMO", "BASICA", "PRO", "FULL"],
+        license_info=license_info,
+        plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+        demo_status=db.get_demo_status(),
+    )
 
 
 @main_bp.route("/config/categoria", methods=["POST"])

@@ -202,6 +202,45 @@ def create_app() -> Flask:
         if not request.path.startswith(rubro_allowed_paths) and db.necesita_configuracion_inicial_rubro():
             return redirect("/configuracion/rubro-inicial")
 
+        license_info = db.get_license_info()
+        if (
+            license_info.get("tier") in {"BASICA", "PRO", "FULL"}
+            and db.get_config_valor("activation_initial_completed", "1") == "0"
+        ):
+            db.set_config({"activation_initial_completed": "1"})
+
+        activation_allowed_paths = (
+            "/activacion-inicial",
+            "/mi-plan",
+            "/licencia",
+            "/configurar-recuperacion",
+            "/configuracion/rubro-inicial",
+            "/logout",
+            "/static",
+            "/api/desktop/close-warning",
+            "/apagar",
+            "/apagar-rapido",
+            "/shutdown",
+            "/acuerdo-licencia",
+        )
+        if (
+            db.get_config_valor("activation_initial_completed", "1") == "0"
+            and license_info.get("tier") not in {"BASICA", "PRO", "FULL"}
+            and not request.path.startswith(activation_allowed_paths)
+        ):
+            return redirect("/activacion-inicial")
+
+        if (
+            db.get_config_valor("activation_initial_completed", "1") == "1"
+            and license_info.get("tier") not in {"BASICA", "PRO", "FULL"}
+        ):
+            try:
+                from routes.main import _retry_pending_demo_request_if_needed
+
+                _retry_pending_demo_request_if_needed()
+            except Exception:
+                logger.exception("No se pudo reintentar el registro DEMO pendiente")
+
         # Permitir rutas libres de chequeo de licencia.
         license_allowed_paths = (
             "/activar",
@@ -229,7 +268,7 @@ def create_app() -> Flask:
                 return None
             return redirect("/licencia")
 
-        local_info = db.get_license_info()
+        local_info = license_info
         if local_info.get("tier") in {"BASICA", "PRO", "FULL"}:
             return None
 
@@ -275,6 +314,7 @@ def create_app() -> Flask:
         "login",
         "recuperar_password",
         "configurar_recuperacion",
+        "activacion_inicial",
         "dashboard",
         "productos",
         "productos_importar",

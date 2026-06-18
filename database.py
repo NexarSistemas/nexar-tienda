@@ -1017,10 +1017,14 @@ def init_db():
         ('license_owner_phone', ''),        # Telefono titular
         ('license_vendor_code', ''),        # Codigo de vendedor opcional
         ('license_recovery_word', ''),      # Palabra de recuperacion local
+        ('license_terms_accepted_at', ''),  # Aceptacion de terminos
+        ('license_marketing_opt_in', '0'),  # Preferencia comercial opcional
         ('license_plan', 'DEMO'),           # Plan del token
         ('license_support', '0'),           # 1 = incluye soporte
         ('license_updates', '0'),           # 1 = incluye actualizaciones
         ('license_modules', '[]'),          # Modulos remotos sincronizados desde SDK
+        ('activation_initial_completed', '1'),
+        ('activation_initial_plan', ''),
     ]
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO config VALUES (?,?)", (k, v))

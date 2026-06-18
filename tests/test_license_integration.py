@@ -911,6 +911,8 @@ class LicenseIntegrationTests(unittest.TestCase):
 
             def fake_q(query, params=(), fetchone=False, **kwargs):
                 if "FROM usuarios" in query:
+                    if "nombre_completo, email, telefono" in query:
+                        return {"nombre_completo": "Admin Comercio", "email": "admin@comercio.com", "telefono": "264555000"}
                     return {"security_question": "Color", "security_answer_hash": "hash"}
                 return {"valor": None} if fetchone else []
 
@@ -1019,6 +1021,8 @@ class LicenseIntegrationTests(unittest.TestCase):
 
             def fake_q(query, params=(), fetchone=False, **kwargs):
                 if "FROM usuarios" in query:
+                    if "nombre_completo, email, telefono" in query:
+                        return {"nombre_completo": "Admin Comercio", "email": "admin@comercio.com", "telefono": "264555000"}
                     return {"security_question": "Color", "security_answer_hash": "hash"}
                 return {"valor": None} if fetchone else []
 
@@ -1261,6 +1265,211 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.headers["Location"].endswith("/licencia"))
         request_mock.assert_not_called()
+
+    def test_middleware_redirige_a_activacion_inicial_si_queda_pendiente(self):
+        app = self.app_module.create_app()
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "DEMO", "key": ""}), \
+                 mock.patch.object(self.app_module.db, "get_demo_status", return_value={"demo": True, "vencido": False, "dias_restantes": 14}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: "0" if key == "activation_initial_completed" else default), \
+                 mock.patch.object(self.app_module.db, "get_config", return_value={}), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q):
+                response = client.get("/", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/activacion-inicial"))
+
+    def test_activacion_inicial_demo_guarda_datos_y_habilita_ingreso(self):
+        app = self.app_module.create_app()
+        self.database.add_usuario("admin", "Abc123$", "Administrador", "Admin Comercio")
+        self.database.set_config({"activation_initial_completed": "0"})
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "Administrador", "id": 1, "username": "admin"}
+                session["_csrf_token"] = "test"
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    if "nombre_completo, email, telefono" in query:
+                        return {"nombre_completo": "Admin Comercio", "email": "admin@comercio.com", "telefono": "264555000"}
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.routes_main, "create_demo_request", return_value=(True, "ok")) as create_demo_request_mock, \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-001", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-001"):
+                response = client.post(
+                    "/activacion-inicial",
+                    data={
+                        "csrf_token": "test",
+                        "titular_nombre": "Admin Comercio",
+                        "negocio": "Comercio Central",
+                        "email": "admin@comercio.com",
+                        "telefono": "264555000",
+                        "rubro": "almacen",
+                        "plan_destino": "DEMO",
+                        "accept_license_agreement": "1",
+                        "marketing_opt_in": "1",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/"))
+        cfg = self.database.get_config()
+        self.assertEqual(cfg["activation_initial_completed"], "1")
+        self.assertEqual(cfg["activation_initial_plan"], "DEMO")
+        self.assertEqual(cfg["license_owner_name"], "Admin Comercio")
+        self.assertEqual(cfg["license_owner_email"], "admin@comercio.com")
+        self.assertEqual(cfg["license_marketing_opt_in"], "1")
+        self.assertEqual(cfg["activation_demo_request_key"], "NXID-DEMO-001|admin@comercio.com|nexar-tienda")
+        self.assertEqual(self.database.get_rubro_configurado(), "almacen")
+        self.assertEqual(create_demo_request_mock.call_args.kwargs["estado"], "pendiente")
+        self.assertEqual(create_demo_request_mock.call_args.kwargs["plan_interes"], "DEMO_14_DIAS")
+        self.assertIn('"activation_id": "NXID-DEMO-001"', create_demo_request_mock.call_args.kwargs["mensaje"])
+        self.assertIn('"demo_status": "demo_activa"', create_demo_request_mock.call_args.kwargs["mensaje"])
+
+    def test_activacion_inicial_demo_reintento_no_duplica_envio_remoto(self):
+        app = self.app_module.create_app()
+        self.database.add_usuario("admin", "Abc123$", "Administrador", "Admin Comercio")
+        self.database.set_config({
+            "activation_initial_completed": "0",
+            "activation_demo_request_key": "NXID-DEMO-001|admin@comercio.com|nexar-tienda",
+        })
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "Administrador", "id": 1, "username": "admin"}
+                session["_csrf_token"] = "test"
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    if "nombre_completo, email, telefono" in query:
+                        return {"nombre_completo": "Admin Comercio", "email": "admin@comercio.com", "telefono": "264555000"}
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.routes_main, "create_demo_request") as create_demo_request_mock, \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-001", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-001"):
+                response = client.post(
+                    "/activacion-inicial",
+                    data={
+                        "csrf_token": "test",
+                        "titular_nombre": "Admin Comercio",
+                        "negocio": "Comercio Central",
+                        "email": "admin@comercio.com",
+                        "telefono": "264555000",
+                        "rubro": "almacen",
+                        "plan_destino": "DEMO",
+                        "accept_license_agreement": "1",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/"))
+        create_demo_request_mock.assert_not_called()
+
+    def test_activacion_inicial_demo_no_guarda_dedupe_si_falla_envio_remoto(self):
+        app = self.app_module.create_app()
+        self.database.add_usuario("admin", "Abc123$", "Administrador", "Admin Comercio")
+        self.database.set_config({"activation_initial_completed": "0"})
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "Administrador", "id": 1, "username": "admin"}
+                session["_csrf_token"] = "test"
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    if "nombre_completo, email, telefono" in query:
+                        return {"nombre_completo": "Admin Comercio", "email": "admin@comercio.com", "telefono": "264555000"}
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.routes_main, "create_demo_request", return_value=(False, "Error en Supabase (400).")) as create_demo_request_mock, \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-001", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-001"):
+                response = client.post(
+                    "/activacion-inicial",
+                    data={
+                        "csrf_token": "test",
+                        "titular_nombre": "Admin Comercio",
+                        "negocio": "Comercio Central",
+                        "email": "admin@comercio.com",
+                        "telefono": "264555000",
+                        "rubro": "almacen",
+                        "plan_destino": "DEMO",
+                        "accept_license_agreement": "1",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/"))
+        cfg = self.database.get_config()
+        self.assertEqual(cfg["activation_initial_completed"], "1")
+        self.assertNotIn("activation_demo_request_key", cfg)
+        create_demo_request_mock.assert_called_once()
+
+    def test_create_demo_request_reintenta_con_payload_compatible(self):
+        import services.supabase_license_api as supabase_api
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ.pop("SUPABASE_ANON_KEY", None)
+        os.environ["SUPABASE_KEY"] = "service-key"
+
+        bad_response = mock.Mock(status_code=400, text='{"message":"column origen does not exist"}')
+        ok_response = mock.Mock(status_code=201, text='[{"id":1}]')
+
+        with mock.patch.object(supabase_api.requests, "post", side_effect=[bad_response, ok_response]) as post_mock:
+            ok, message = supabase_api.create_demo_request(
+                nombre="Admin Comercio",
+                email="admin@comercio.com",
+                telefono="264555000",
+                negocio="Comercio Central",
+                producto="nexar-tienda",
+                plan_interes="DEMO_14_DIAS",
+                mensaje='{"activation_id":"NXID-DEMO-001"}',
+                origen="app_activacion_inicial",
+                estado="pendiente",
+            )
+
+        self.assertTrue(ok)
+        self.assertIn("registrada correctamente", message.lower())
+        self.assertEqual(post_mock.call_count, 2)
+        self.assertEqual(post_mock.call_args_list[0].kwargs["url"], "https://demo.supabase.co/rest/v1/solicitudes_demo")
+        self.assertEqual(post_mock.call_args_list[0].kwargs["headers"]["apikey"], "service-key")
+        self.assertEqual(post_mock.call_args_list[0].kwargs["headers"]["Authorization"], "Bearer service-key")
+        self.assertEqual(post_mock.call_args_list[0].kwargs["headers"]["Prefer"], "return=minimal")
+        self.assertEqual(post_mock.call_args_list[0].kwargs["json"]["estado"], "pendiente")
+        self.assertEqual(post_mock.call_args_list[0].kwargs["json"]["origen"], "app_activacion_inicial")
+        self.assertEqual(post_mock.call_args_list[0].kwargs["json"]["leida"], False)
+        self.assertNotIn("estado", post_mock.call_args_list[1].kwargs["json"])
+        self.assertNotIn("origen", post_mock.call_args_list[1].kwargs["json"])
+        self.assertNotIn("leida", post_mock.call_args_list[1].kwargs["json"])
 
     def test_rubro_inicial_queda_solo_lectura_si_ya_esta_configurado(self):
         self.database.set_rubro_configurado("tienda")
