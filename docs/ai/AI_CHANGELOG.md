@@ -2,6 +2,24 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-06-18 - Codex - chore/legal-license-sync
+
+### Tarea
+Iniciar la sincronizacion legal solicitada para Nexar Sistemas con inventario local de `nexar-tienda` y trazabilidad de las limitaciones para completar el inventario remoto.
+
+### Archivos modificados
+- `docs/ai/LEGAL_LICENSE_SYNC_INVENTORY.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se documento el inventario legal local del repositorio disponible, incluyendo presencia de `LICENSE.txt`, ausencia de `LICENSE`/`LICENSE.md`, referencias legales y flujos de aceptacion existentes.
+- Se dejo registrado que no se pudo comparar contra `rolojnb/nexar-legal/LICENSE.txt` ni inventariar todos los repositorios activos de `rolojnb` y `NexarSistemas` porque el entorno no puede acceder a GitHub por bloqueo de proxy/API.
+- No se modifico contenido legal ni logica funcional de licencias, planes, pagos, Supabase, workflows, builds o deploys.
+
+### Que se probo
+- `python3 -m py_compile routes/main.py`
+- `git diff --check`
+
 ## 2026-06-16 - Codex - release/v1.36.3
 
 ### Tarea
