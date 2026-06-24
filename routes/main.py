@@ -623,10 +623,17 @@ def _get_current_user_contact_profile() -> dict[str, str]:
     )
     if not row:
         return {}
+
+    def _row_value(key: str) -> str:
+        try:
+            return str(row[key] or "").strip()
+        except Exception:
+            return ""
+
     return {
-        "nombre_completo": str(row["nombre_completo"] or "").strip(),
-        "email": str(row["email"] or "").strip().lower(),
-        "telefono": str(row["telefono"] or "").strip(),
+        "nombre_completo": _row_value("nombre_completo"),
+        "email": _row_value("email").lower(),
+        "telefono": _row_value("telefono"),
     }
 
 
@@ -4367,6 +4374,10 @@ def mi_plan_solicitar_upgrade():
         "codigo_vendedor": _get_license_holder_profile(license_info).get("codigo_vendedor", ""),
         "machine_details": machine_details,
     }
+
+    if not payload["email"]:
+        flash("Completá el email del titular antes de solicitar el upgrade.", "warning")
+        return redirect(url_for("main.mi_plan"))
 
     logger.info(
         "Solicitud manual de licencia tipo=%s plan_actual=%s plan_destino=%s licencia=%s activation_id=%s",

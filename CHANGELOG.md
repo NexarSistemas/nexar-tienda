@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.36.6] - 2026-06-24
+
+### Fixed
+
+- Se corrige la solicitud manual de upgrade desde `Mi Plan` para que nunca cree filas con `email=""` en `solicitudes_upgrade`.
+- Cuando falta el email del titular, Nexar Comercio ahora mantiene al usuario en `Mi Plan`, muestra un mensaje claro y evita el envio manual a Supabase.
+- Se agrega la migracion minima para incorporar `codigo_vendedor` en `solicitudes_upgrade`, manteniendo el dato en el payload cuando existe y sin tocar Mercado Pago, webhooks ni `nexar-pagos`.
+
 ## [1.36.5] - 2026-06-24
 
 ### Fixed

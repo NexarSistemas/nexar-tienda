@@ -545,6 +545,31 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(captured["activation_id"], "NXID-DEMO-456")
         self.assertEqual(captured["plan_destino"], "FULL")
         self.assertEqual(captured["license_key"], "")
+        self.assertEqual(captured["email"], "admin@test.com")
+
+    def test_solicitud_manual_sin_email_no_envia_a_supabase_y_muestra_mensaje(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/solicitar-upgrade", method="POST", data={"plan_destino": "PRO"}):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin", "nombre_completo": "Administrador"}
+
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO", "key": "", "owner_name": "", "owner_email": ""}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"nombre_negocio": "Nexar Test", "email_contacto": "", "telefono": "123"}), \
+                 mock.patch.object(self.routes_main, "cargar_licencia", return_value={}), \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-456", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-456"), \
+                 mock.patch.object(self.routes_main, "create_upgrade_request") as create_upgrade_request_mock:
+                response = self.routes_main.mi_plan_solicitar_upgrade()
+                flashes = session.get("_flashes", [])
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.endswith("/mi-plan"))
+        create_upgrade_request_mock.assert_not_called()
+        self.assertTrue(
+            any("completá el email del titular antes de solicitar el upgrade" in message.lower() for _category, message in flashes)
+        )
 
     def test_solicitud_manual_upgrade_conserva_codigo_vendedor(self):
         app = self.app_module.create_app()
@@ -569,6 +594,33 @@ class LicenseIntegrationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(captured["codigo_vendedor"], "VEND123")
+
+    def test_solicitud_manual_con_email_valido_y_sin_codigo_vendedor_envia_solicitud_igual(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/solicitar-upgrade", method="POST", data={"plan_destino": "PRO"}):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin", "nombre_completo": "Administrador"}
+            captured = {}
+
+            def _fake_create_upgrade_request(payload):
+                captured.update(payload)
+                return {"ok": True}
+
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "DEMO", "key": "", "owner_name": "", "owner_email": ""}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"nombre_negocio": "Nexar Test", "email_contacto": "admin@test.com", "telefono": "123", "license_vendor_code": ""}), \
+                 mock.patch.object(self.routes_main, "cargar_licencia", return_value={}), \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-456", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-456"), \
+                 mock.patch.object(self.routes_main, "create_upgrade_request", side_effect=_fake_create_upgrade_request):
+                response = self.routes_main.mi_plan_solicitar_upgrade()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(captured["email"], "admin@test.com")
+        self.assertEqual(captured["plan_destino"], "PRO")
+        self.assertEqual(captured["tipo_solicitud"], "alta_licencia")
+        self.assertEqual(captured["codigo_vendedor"], "")
 
     def test_build_checkout_context_con_license_key_sigue_usando_cambio_plan(self):
         app = self.app_module.create_app()
@@ -814,6 +866,7 @@ class LicenseIntegrationTests(unittest.TestCase):
                  mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
                  mock.patch.object(self.app_module.db, "get_license_info", return_value=fake_license), \
                  mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: default), \
                  mock.patch.object(self.app_module.db, "q", return_value=fake_user):
                 response = client.get("/debug/licencia")
 
@@ -891,6 +944,7 @@ class LicenseIntegrationTests(unittest.TestCase):
                  mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
                  mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
                  mock.patch.object(self.app_module.db, "get_config", return_value={}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: "0" if key == "activation_initial_completed" else default), \
                  mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "SIN_PLAN", "key": "INVALID"}), \
                  mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "INVALID"}), \
                  mock.patch.object(self.app_module, "validate_saved_license", return_value=(False, "invalid")):
@@ -1310,6 +1364,8 @@ class LicenseIntegrationTests(unittest.TestCase):
             with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
                  mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
                  mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "DEMO", "key": ""}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: "0" if key == "activation_initial_completed" else default), \
                  mock.patch.object(self.routes_main, "create_demo_request", return_value=(True, "ok")) as create_demo_request_mock, \
                  mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-001", {"host": "demo"})), \
                  mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-001"):
@@ -1409,6 +1465,8 @@ class LicenseIntegrationTests(unittest.TestCase):
             with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
                  mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
                  mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "DEMO", "key": ""}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: "0" if key == "activation_initial_completed" else default), \
                  mock.patch.object(self.routes_main, "create_demo_request", return_value=(False, "Error en Supabase (400).")) as create_demo_request_mock, \
                  mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-001", {"host": "demo"})), \
                  mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-001"):
@@ -1460,7 +1518,7 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("registrada correctamente", message.lower())
         self.assertEqual(post_mock.call_count, 2)
-        self.assertEqual(post_mock.call_args_list[0].kwargs["url"], "https://demo.supabase.co/rest/v1/solicitudes_demo")
+        self.assertEqual(post_mock.call_args_list[0].args[0], "https://demo.supabase.co/rest/v1/solicitudes_demo")
         self.assertEqual(post_mock.call_args_list[0].kwargs["headers"]["apikey"], "service-key")
         self.assertEqual(post_mock.call_args_list[0].kwargs["headers"]["Authorization"], "Bearer service-key")
         self.assertEqual(post_mock.call_args_list[0].kwargs["headers"]["Prefer"], "return=minimal")

@@ -2,6 +2,55 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-06-24 - Codex - release/v1.36.6
+
+### Tarea
+Cerrar el fix de solicitudes manuales de upgrade con versionado patch, validacion completa y documentacion minima de release, manteniendo el alcance en Nexar Comercio.
+
+### Archivos modificados
+- `VERSION`
+- `README.md`
+- `CHANGELOG.md`
+- `build/nexar_tienda.iss`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se confirmo la version actual `1.36.5` y se preparo el siguiente patch `1.36.6`.
+- Se sincronizo la metadata de version en app, README, changelog e instalador Windows.
+- El resumen comercial del release quedo enfocado en la validacion obligatoria de email para upgrades manuales y en la migracion SQL de `codigo_vendedor` para `solicitudes_upgrade`.
+
+### Que se probo
+- `.\.venv\Scripts\python.exe -m pytest`
+
+## 2026-06-24 - Codex - fix/manual-upgrade-email-required
+
+### Tarea
+Corregir el flujo de solicitud manual de upgrade desde `Mi Plan` para no registrar filas en `solicitudes_upgrade` con `email=""`, mantener `codigo_vendedor` cuando exista y dejar lista la migracion SQL de Supabase, sin tocar Mercado Pago ni Nexar Admin.
+
+### Archivos modificados
+- `app.py`
+- `routes/main.py`
+- `templates/acuerdo_licencia.html`
+- `tests/test_license_integration.py`
+- `tests/test_license_upgrade_request_fallback.py`
+- `supabase/migrations/2026-06-24_add_codigo_vendedor_to_solicitudes_upgrade.sql`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se agrego una validacion previa a `create_upgrade_request()` en `mi_plan_solicitar_upgrade()` para frenar la solicitud manual cuando el email resuelto del titular queda vacio.
+- En ese caso la app vuelve a `Mi Plan`, muestra un mensaje claro para completar el email del titular y evita cualquier insercion en `public.solicitudes_upgrade`.
+- Se reviso la persistencia del formulario `Datos del titular`: ya guarda `license_owner_email` en configuracion local, por lo que no hizo falta tocar ese flujo.
+- Se confirmo y cubrio con tests que `create_upgrade_request()` conserva `codigo_vendedor` en el payload y tambien en el reintento compatible cuando el campo existe.
+- Se agrego la migracion SQL `supabase/migrations/2026-06-24_add_codigo_vendedor_to_solicitudes_upgrade.sql` para incorporar `codigo_vendedor` en `public.solicitudes_upgrade` sin ocultar el dato desde la app.
+- Se reforzo la robustez del area de licencias con un `logger` explicito en `app.py` y una lectura defensiva del perfil actual para evitar errores 500 en tests y rutas permitidas.
+- Se agrego una linea informativa minima en la vista publica del acuerdo de licencia para mantener coherencia con el texto visible esperado.
+- Se ajustaron tests de integracion y fallback para cubrir envio manual con email valido, con y sin `codigo_vendedor`, y el bloqueo cuando falta email.
+
+### Que se probo
+- `python -m unittest tests.test_license_integration.LicenseIntegrationTests.test_solicitud_manual_desde_demo_envia_alta_licencia tests.test_license_integration.LicenseIntegrationTests.test_solicitud_manual_sin_email_no_envia_a_supabase_y_muestra_mensaje tests.test_license_integration.LicenseIntegrationTests.test_solicitud_manual_upgrade_conserva_codigo_vendedor tests.test_license_integration.LicenseIntegrationTests.test_solicitud_manual_con_email_valido_y_sin_codigo_vendedor_envia_solicitud_igual tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_permite_alta_licencia_desde_demo tests.test_license_integration.LicenseIntegrationTests.test_build_checkout_context_con_license_key_sigue_usando_cambio_plan tests.test_license_upgrade_request_fallback`
+- `.\.venv\Scripts\python.exe -m pytest tests/test_license_integration.py -k "activacion_inicial_demo_guarda_datos_y_habilita_ingreso or activacion_inicial_demo_no_guarda_dedupe_si_falla_envio_remoto or acuerdo_licencia_es_publico_y_muestra_license_txt or create_demo_request_reintenta_con_payload_compatible or full_se_muestra_como_full_y_debug_expone_resolucion or licencia_y_mi_plan_son_accesibles_con_recuperacion_pendiente"`
+- `.\.venv\Scripts\python.exe -m pytest`
+
 ## 2026-06-24 - Codex - fix/solicitud-manual-licencias
 
 ### Tarea
