@@ -564,6 +564,18 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
         _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
         return {"ok": False, "message": message, "error": error or "network_error"}
 
+    if resp.status_code >= 300 and any(payload.get(field) for field in ("tipo_solicitud", "origen", "plan_destino")):
+        fallback_payload = dict(payload)
+        fallback_payload.pop("tipo_solicitud", None)
+        fallback_payload.pop("origen", None)
+        fallback_payload.pop("plan_destino", None)
+        try:
+            resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=fallback_payload, timeout=12)
+        except requests.RequestException as exc:
+            message, error = _request_error_message(operation, exc)
+            _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
+            return {"ok": False, "message": message, "error": error or "network_error"}
+
     if resp.status_code >= 300:
         message, error = _response_error_message(operation, resp)
         _set_supabase_debug(operation=operation, status="http_error", status_code=resp.status_code, last_error=error)
