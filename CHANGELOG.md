@@ -4,6 +4,14 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.36.5] - 2026-06-24
+
+### Fixed
+
+- Se corrige la solicitud manual de licencias BASICA, PRO y FULL cuando Supabase responde `PGRST204` porque todavia no reconoce el campo `origen` en `solicitudes_upgrade`.
+- El envio manual desde `Mi Plan` ahora reintenta con un payload compatible para no cortar el flujo mientras el esquema remoto se actualiza.
+- Se agrega la migracion minima para incorporar `origen` en `solicitudes_upgrade` y se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG` e `Inno Setup` para el release estable `v1.36.5`.
+
 ## [1.36.4] - 2026-06-18
 
 ### Added

@@ -2,6 +2,32 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-06-24 - Codex - fix/solicitud-manual-licencias
+
+### Tarea
+Cerrar el fix de solicitudes manuales de licencia con versionado patch y release minimo, manteniendo el alcance acotado al error `PGRST204` por `origen` en `solicitudes_upgrade`.
+
+### Archivos modificados
+- `services/supabase_license_api.py`
+- `tests/test_license_upgrade_request_fallback.py`
+- `supabase/migrations/2026-06-24_add_origen_to_solicitudes_upgrade.sql`
+- `VERSION`
+- `README.md`
+- `CHANGELOG.md`
+- `build/nexar_tienda.iss`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- `create_upgrade_request` ahora reintenta con un payload compatible cuando Supabase rechaza campos nuevos como `origen`, cubriendo tambien la solicitud manual `alta_licencia` desde `Mi Plan`.
+- Se agrego un test puntual para el fallback de `solicitudes_upgrade` y una migracion SQL minima para incorporar `origen` sin romper datos existentes.
+- Se cerro el release patch `v1.36.5` sincronizando version en app, README, changelog e instalador Windows.
+
+### Que se probo
+- `python -m py_compile services/supabase_license_api.py tests/test_license_upgrade_request_fallback.py`
+- `python -m unittest tests.test_license_upgrade_request_fallback tests.test_license_integration.LicenseIntegrationTests.test_solicitud_manual_desde_demo_envia_alta_licencia tests.test_license_integration.LicenseIntegrationTests.test_solicitud_manual_upgrade_conserva_codigo_vendedor`
+- `python -m pytest` fallo porque el entorno actual no tiene instalado `pytest` (`No module named pytest`).
+- `python -m unittest` se ejecuto como suite global y expuso fallas ajenas a este fix en areas preexistentes del repo, por lo que no se uso como senal limpia de regresion de esta correccion.
+
 ## 2026-06-18 - Codex - release/v1.36.4
 
 ### Tarea
