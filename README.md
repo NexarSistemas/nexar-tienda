@@ -1,15 +1,15 @@
-# Nexar Comercio v1.36.5
+# Nexar Comercio v1.36.6
 
 Sistema integral de gestion comercial para tiendas y comercios minoristas.
 `Nexar Comercio` es la marca visible del producto. `nexar-tienda` se mantiene
 como identificador tecnico compatible para builds, instaladores, actualizaciones
 y artefactos existentes.
 
-Release comercial estable `v1.36.5`:
+Release comercial estable `v1.36.6`:
 
-- Se corrige la solicitud manual de licencias BASICA, PRO y FULL cuando Supabase todavia no reconoce el campo `origen` en `solicitudes_upgrade`.
-- La app reintenta con un payload compatible para no cortar el flujo manual desde `Mi Plan` mientras se alinea el esquema remoto.
-- Se incluye una migracion SQL minima para agregar `origen` en `solicitudes_upgrade` sin romper datos existentes.
+- Se corrige la solicitud manual de upgrade desde `Mi Plan` para no registrar filas con `email=""` en `solicitudes_upgrade`.
+- Si el email del titular falta, la app vuelve a `Mi Plan`, muestra un mensaje claro y no envia la solicitud manual a Supabase.
+- Se incluye la migracion SQL minima para agregar `codigo_vendedor` en `solicitudes_upgrade` y mantener ese dato cuando exista.
 - Versionado sincronizado entre app, documentacion e instaladores.
 
 Desarrollado por Nexar Sistemas - 2026

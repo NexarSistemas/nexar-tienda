@@ -12,6 +12,7 @@ from services.runtime_config import load_runtime_env
 
 load_runtime_env()
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 import database as db
 from licensing.planes import get_plan_display_name, get_update_access_context
