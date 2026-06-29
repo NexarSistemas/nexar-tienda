@@ -8,6 +8,7 @@ Antes de modificar código, leer:
 2. docs/ai/ROADMAP_NEXAR_COMERCIO.md
 3. docs/ai/AI_WORKFLOW.md
 4. docs/ai/AI_CHANGELOG.md
+5. El repositorio central `../nexar-ai-context` para el contexto transversal del ecosistema Nexar.
 
 ## Regla de ramas
 
