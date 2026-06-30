@@ -5,6 +5,13 @@ Sistema integral de gestion comercial para tiendas y comercios minoristas.
 como identificador tecnico compatible para builds, instaladores, actualizaciones
 y artefactos existentes.
 
+Estado actual:
+
+- Estado del repositorio: activo
+- Version actual: `1.36.6`
+- Contexto central del ecosistema: `nexar-ai-context/CONTEXTO_NEXAR.md`
+- Relacion con `nexar-comercio`: conviven como repos separados. `nexar-comercio` se documenta como app nueva modular. Reemplazo operativo total: `TODO(confirmar)`.
+
 Release comercial estable `v1.36.6`:
 
 - Se corrige la solicitud manual de upgrade desde `Mi Plan` para no registrar filas con `email=""` en `solicitudes_upgrade`.

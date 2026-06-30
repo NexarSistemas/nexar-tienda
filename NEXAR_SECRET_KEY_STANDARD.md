@@ -1,4 +1,4 @@
-Archivo: NEXAR_SECRET_KEY_STANDARD.md 
+> Fuente central: nexar-ai-context/standards/NEXAR_SECRET_KEY_STANDARD.md. Mantener sincronizado. No editar divergente sin actualizar la fuente central.
 
 ---
 

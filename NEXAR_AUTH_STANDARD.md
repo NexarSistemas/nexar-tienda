@@ -1,4 +1,4 @@
-Archivo: NEXAR_AUTH_STANDARD.md
+> Fuente central: nexar-ai-context/standards/NEXAR_AUTH_STANDARD.md. Mantener sincronizado. No editar divergente sin actualizar la fuente central.
 
 ---
 
