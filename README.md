@@ -9,8 +9,9 @@ Estado actual:
 
 - Estado del repositorio: activo
 - Version actual: `1.36.6`
-- Contexto central del ecosistema: `nexar-ai-context/CONTEXTO_NEXAR.md`
-- Relacion con `nexar-comercio`: conviven como repos separados. `nexar-comercio` se documenta como app nueva modular. Reemplazo operativo total: `TODO(confirmar)`.
+- Contexto central del ecosistema: repo externo `nexar-ai-context`, archivo `CONTEXTO_NEXAR.md`
+- Relacion con `nexar-comercio`: repo legacy/no activo dentro del ecosistema vigente; no usarlo como reemplazo operativo de `nexar-tienda`.
+- Relacion con `nexar-almacen`: si aparece como repo separado, tratarlo tambien como legacy/no activo.
 
 Release comercial estable `v1.36.6`:
 

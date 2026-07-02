@@ -2,6 +2,24 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-02 - Codex - docs/issue-107-context-alignment
+
+### Tarea
+Validar la documentacion local de Nexar Comercio contra el contexto central actualizado, sin tocar logica funcional ni areas protegidas.
+
+### Archivos modificados
+- `AGENTS.md`
+- `README.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se aclaro que `nexar-ai-context` es un repo externo usado como contexto transversal del ecosistema.
+- Se confirmo en la documentacion local que el producto visible sigue siendo `Nexar Comercio` y que el repo tecnico se mantiene como `nexar-tienda`.
+- Se corrigio la referencia a `nexar-comercio` y `nexar-almacen` para tratarlos como repos legacy/no activos, evitando confusiones con el producto vigente.
+
+### Que se probo
+- Relevamiento documental de `AGENTS.md`, `README.md`, `CHANGELOG.md` y `docs/ai/AI_CONTEXT.md` contra `nexar-ai-context`.
+
 ## 2026-06-24 - Codex - release/v1.36.6
 
 ### Tarea
