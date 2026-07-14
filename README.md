@@ -156,10 +156,27 @@ with check (
 La policy anterior es solo para `insert`. No agregar policies de `select`,
 `update` ni `delete` para `anon`.
 
-Para probar localmente, usar `.env.example` como referencia. El envio de
-solicitudes en Nexar Comercio necesita `SUPABASE_URL` y `SUPABASE_ANON_KEY`.
-La service role key debe quedar solo en `nexar-admin`, nunca dentro del
-instalador de Nexar Comercio.
+Para probar localmente, usar `.env.example` como referencia. La configuracion
+recomendada para validacion de licencias y solicitudes usa las variables
+centralizadas del SDK `nexar_licencias`:
+
+- `NEXAR_LICENSES_VALIDATION_URL`
+- `NEXAR_LICENSES_SUPABASE_KEY`
+- `NEXAR_LICENSES_TIMEOUT`
+- `NEXAR_LICENSES_CONNECT_TIMEOUT`
+- `NEXAR_LICENSES_READ_TIMEOUT`
+- `NEXAR_LICENSES_MAX_RETRIES`
+- `NEXAR_LICENSES_RETRY_BACKOFF`
+- `NEXAR_LICENSES_RETRY_STATUS_CODES`
+- `NEXAR_LICENSES_CACHE_FILE`
+- `NEXAR_LICENSES_CACHE_DIR`
+- `NEXAR_LICENSES_CACHE_TTL`
+- `NEXAR_LICENSES_OFFLINE_FALLBACK`
+
+Por compatibilidad, las instalaciones existentes pueden seguir usando
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_KEY`, `NEXAR_CACHE_FILE` y
+`NEXAR_CACHE_DAYS`. La service role key debe quedar solo en `nexar-admin`,
+nunca dentro del instalador de Nexar Comercio.
 
 ### Solicitudes de soporte desde la app
 

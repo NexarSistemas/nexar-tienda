@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,11 +36,50 @@ def _resolve_remote_plan(license_data: dict | None) -> str:
         or "DEMO"
     )
     try:
+        sdk_normalize_plan = import_sdk_contracts().get("normalize_plan")
+        if callable(sdk_normalize_plan):
+            normalized = str(sdk_normalize_plan(raw_plan) or "").strip().upper()
+            if normalized == "MENSUAL_FULL":
+                return "FULL"
+            if normalized in {"DEMO", "BASICA", "PRO", "FULL"}:
+                return normalized
+    except Exception:
+        pass
+    try:
         import database as db
 
         return db.normalize_license_plan(raw_plan)
     except Exception:
         return str(raw_plan or "DEMO").strip().upper().replace("-", "_").replace(" ", "_")
+
+
+def _resolve_effective_license_data(license_data: dict | None) -> dict:
+    payload = dict(license_data or {})
+    if not payload:
+        return {}
+
+    original_remote_status = _normalize_remote_status(payload)
+    resolver = import_sdk_contracts().get("resolve_effective_license")
+    if callable(resolver):
+        try:
+            resolved = dict(resolver(payload) or {})
+            if resolved:
+                payload.update(resolved)
+        except Exception as ex:
+            logger.debug("No se pudo resolver licencia con SDK central: %s", ex.__class__.__name__)
+
+    remote_status = original_remote_status or _normalize_remote_status(payload)
+    if remote_status in {"suspendida", "bloqueada", "anulada", "revocada"}:
+        effective_plan = "BASICA" if bool(payload.get("plan_base_permanente")) else "DEMO"
+        payload.update({
+            "estado": remote_status,
+            "plan_efectivo": effective_plan,
+            "effective_plan": effective_plan,
+            "tier": effective_plan,
+            "fallback_aplicado": False,
+        })
+
+    return payload
 
 
 def _ensure_sdk_path() -> None:
@@ -50,6 +91,51 @@ def _ensure_sdk_path() -> None:
 def _import_module(module_name: str):
     _ensure_sdk_path()
     return importlib.import_module(module_name)
+
+
+def import_sdk_contracts() -> dict[str, Any]:
+    try:
+        module = _import_module("nexar_licencias")
+    except Exception:
+        return {}
+    return {
+        "SDKConfig": getattr(module, "SDKConfig", None),
+        "DEFAULT_CONFIG": getattr(module, "DEFAULT_CONFIG", None),
+        "normalize_plan": getattr(module, "normalize_plan", None),
+        "resolve_effective_license": getattr(module, "resolve_effective_license", None),
+    }
+
+
+def get_sdk_config():
+    contracts = import_sdk_contracts()
+    SDKConfig = contracts.get("SDKConfig")
+    if SDKConfig is None:
+        return contracts.get("DEFAULT_CONFIG")
+    try:
+        return SDKConfig.from_env()
+    except Exception as ex:
+        logger.warning("No se pudo cargar configuracion del SDK de licencias: %s", ex.__class__.__name__)
+        _set_license_debug(last_error=ex.__class__.__name__)
+        return contracts.get("DEFAULT_CONFIG")
+
+
+def _supports_keyword(func, keyword: str) -> bool:
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return True
+    return keyword in signature.parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+
+
+def _call_sdk_validator(func, licencia_dict: dict, public_key: str | None, product: str, debug: bool):
+    config = get_sdk_config()
+    kwargs = {"debug": debug}
+    if config is not None and _supports_keyword(func, "config"):
+        kwargs["config"] = config
+    return func(licencia_dict, public_key, product, **kwargs)
 
 
 def _mask_license_key(value: str) -> str:
@@ -118,7 +204,10 @@ def _save_sdk_cache(license_data: dict) -> None:
         cache_module = _import_module("nexar_licencias.cache")
         save_cache = getattr(cache_module, "save_cache", None)
         if callable(save_cache):
-            save_cache(license_data)
+            if _supports_keyword(save_cache, "config"):
+                save_cache(license_data, config=get_sdk_config())
+            else:
+                save_cache(license_data)
     except Exception:
         pass
 
@@ -211,21 +300,23 @@ def validate_license_key(license_key: str, debug: bool = False, vendor_code: str
 
     try:
         if validar_detalle is not None:
-            result = validar_detalle(
+            result = _call_sdk_validator(
+                validar_detalle,
                 {"license_key": license_key},
                 load_public_key(),
                 product,
-                debug=debug,
+                debug,
             )
             ok = bool(result.get("ok"))
             license_data = result.get("license") or {}
             source = str(result.get("source") or "online")
         else:
-            ok = bool(validar_licencia(
+            ok = bool(_call_sdk_validator(
+                validar_licencia,
                 {"license_key": license_key},
                 load_public_key(),
                 product,
-                debug=debug,
+                debug,
             ))
             license_data = {"license_key": license_key}
             source = "fallback"
@@ -258,7 +349,7 @@ def validate_license_key(license_key: str, debug: bool = False, vendor_code: str
                 )
                 if fallback_ok and fallback_data:
                     ok = True
-                    license_data = fallback_data
+                    license_data = _resolve_effective_license_data(fallback_data)
                     source = "fallback"
                     _save_sdk_cache(license_data)
                     logger.info("Fallback online exitoso producto=%s clave=%s", product, masked_key)
@@ -290,6 +381,7 @@ def validate_license_key(license_key: str, debug: bool = False, vendor_code: str
         )
         return False, messages.get(reason, "La licencia es inválida, expiró o fue revocada.")
 
+    license_data = _resolve_effective_license_data(license_data)
     _save_sdk_cache(license_data)
     modules = license_data.get("modules") or license_data.get("features") or license_data.get("modulos") or []
     plan = _resolve_remote_plan(license_data)
@@ -305,7 +397,7 @@ def validate_license_key(license_key: str, debug: bool = False, vendor_code: str
                 vendor_code=vendor_code,
             )
             if sync_ok and sync_data:
-                license_data = sync_data
+                license_data = _resolve_effective_license_data(sync_data)
                 modules = license_data.get("modules") or license_data.get("features") or license_data.get("modulos") or []
                 plan = _resolve_remote_plan(license_data)
                 _save_sdk_cache(license_data)
@@ -360,13 +452,14 @@ def get_license_details(license_key: str, debug: bool = False) -> dict:
     if validar_detalle is None:
         return {}
     try:
-        result = validar_detalle(
+        result = _call_sdk_validator(
+            validar_detalle,
             {"license_key": license_key},
             load_public_key(),
             get_license_product(),
-            debug=debug,
+            debug,
         )
-        return result.get("license") if result.get("ok") else {}
+        return _resolve_effective_license_data(result.get("license")) if result.get("ok") else {}
     except Exception:
         return {}
 
@@ -517,6 +610,7 @@ def refresh_saved_license_online(debug: bool = False) -> tuple[bool, str, dict[s
     normalized_plan = db.normalize_license_plan(remote_plan)
     remote_modules = remote_license.get("modules") or remote_license.get("features") or remote_license.get("modulos") or []
 
+    remote_license = _resolve_effective_license_data(remote_license)
     db.sync_license_from_remote(remote_license)
     refreshed_info = db.get_license_info()
     merged_license = dict(stored)
