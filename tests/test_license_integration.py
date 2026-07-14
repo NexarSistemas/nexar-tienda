@@ -33,6 +33,26 @@ class LicenseIntegrationTests(unittest.TestCase):
         os.environ.pop("NEXAR_EXTRA_MODULES", None)
         os.environ.pop("NEXAR_PLAN", None)
         os.environ.pop("NEXAR_LICENSE_MODE", None)
+        for key in (
+            "NEXAR_LICENSES_VALIDATION_URL",
+            "NEXAR_LICENSES_SUPABASE_KEY",
+            "NEXAR_LICENSES_TIMEOUT",
+            "NEXAR_LICENSES_CONNECT_TIMEOUT",
+            "NEXAR_LICENSES_READ_TIMEOUT",
+            "NEXAR_LICENSES_MAX_RETRIES",
+            "NEXAR_LICENSES_RETRY_BACKOFF",
+            "NEXAR_LICENSES_RETRY_STATUS_CODES",
+            "NEXAR_LICENSES_CACHE_FILE",
+            "NEXAR_LICENSES_CACHE_DIR",
+            "NEXAR_LICENSES_CACHE_TTL",
+            "NEXAR_LICENSES_OFFLINE_FALLBACK",
+            "SUPABASE_URL",
+            "SUPABASE_KEY",
+            "SUPABASE_ANON_KEY",
+            "NEXAR_CACHE_FILE",
+            "NEXAR_CACHE_DAYS",
+        ):
+            os.environ.pop(key, None)
 
         import database
         import licensing.permisos as permisos
@@ -723,7 +743,12 @@ class LicenseIntegrationTests(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertEqual(message, "Licencia validada correctamente.")
-        sync_mock.assert_called_once_with(license_payload)
+        sync_mock.assert_called_once()
+        synced = sync_mock.call_args.args[0]
+        self.assertEqual(synced["license_key"], license_payload["license_key"])
+        self.assertEqual(synced["plan_original"], "BASICA")
+        self.assertEqual(synced["plan_efectivo"], "BASICA")
+        self.assertEqual(synced["tier"], "BASICA")
 
     def test_validate_license_key_sincroniza_codigo_vendedor_si_existe(self):
         license_payload = {
@@ -746,7 +771,12 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(message, "Licencia validada correctamente.")
         activate_mock.assert_called_once()
         self.assertEqual(activate_mock.call_args.kwargs["vendor_code"], "VEND123")
-        sync_mock.assert_called_once_with(remote_payload)
+        sync_mock.assert_called_once()
+        synced = sync_mock.call_args.args[0]
+        self.assertEqual(synced["license_key"], remote_payload["license_key"])
+        self.assertEqual(synced["codigo_vendedor"], "VEND123")
+        self.assertEqual(synced["plan_original"], "BASICA")
+        self.assertEqual(synced["plan_efectivo"], "BASICA")
 
     def test_validate_license_key_permite_activar_pro_desde_demo(self):
         license_payload = {
@@ -764,7 +794,12 @@ class LicenseIntegrationTests(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertEqual(message, "Licencia validada correctamente.")
-        sync_mock.assert_called_once_with(license_payload)
+        sync_mock.assert_called_once()
+        synced = sync_mock.call_args.args[0]
+        self.assertEqual(synced["license_key"], license_payload["license_key"])
+        self.assertEqual(synced["plan_original"], "PRO")
+        self.assertEqual(synced["plan_efectivo"], "PRO")
+        self.assertEqual(synced["tier"], "PRO")
 
     def test_validate_license_key_permite_activar_full_desde_demo_sin_basica_previa(self):
         license_payload = {
@@ -783,7 +818,12 @@ class LicenseIntegrationTests(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertEqual(message, "Licencia validada correctamente.")
-        sync_mock.assert_called_once_with(license_payload)
+        sync_mock.assert_called_once()
+        synced = sync_mock.call_args.args[0]
+        self.assertEqual(synced["license_key"], license_payload["license_key"])
+        self.assertEqual(synced["plan_original"], "MENSUAL_FULL")
+        self.assertEqual(synced["plan_efectivo"], "MENSUAL_FULL")
+        self.assertEqual(synced["tier"], "MENSUAL_FULL")
 
     def test_licensing_payload_acepta_full_y_alias_mensual_full(self):
         from services.licensing import validate_license_payload
@@ -824,6 +864,171 @@ class LicenseIntegrationTests(unittest.TestCase):
         })
 
         self.assertEqual(self.database.get_license_info()["vendor_code"], "VEND123")
+
+    def test_sdk_config_central_usa_variables_nuevas_y_pasa_config_a_validacion(self):
+        captured = {}
+
+        class FakeConfig:
+            def __init__(self, validation_url="", supabase_key="", cache_file="", cache_ttl_days=""):
+                self.validation_url = validation_url
+                self.supabase_key = supabase_key
+                self.cache_file = cache_file
+                self.cache_ttl_days = cache_ttl_days
+
+            @classmethod
+            def from_env(cls):
+                return cls(
+                    validation_url=os.environ.get("NEXAR_LICENSES_VALIDATION_URL") or os.environ.get("SUPABASE_URL", ""),
+                    supabase_key=os.environ.get("NEXAR_LICENSES_SUPABASE_KEY") or os.environ.get("SUPABASE_KEY", ""),
+                    cache_file=os.environ.get("NEXAR_LICENSES_CACHE_FILE") or os.environ.get("NEXAR_CACHE_FILE", ""),
+                    cache_ttl_days=os.environ.get("NEXAR_LICENSES_CACHE_TTL") or os.environ.get("NEXAR_CACHE_DAYS", ""),
+                )
+
+        def fake_validator(licencia_dict, public_key, product_name, debug=False, *, config=None):
+            captured["config"] = config
+            return {
+                "ok": True,
+                "source": "online",
+                "license": {"license_key": licencia_dict["license_key"], "plan": "BASICA", "tier": "BASICA"},
+            }
+
+        os.environ["NEXAR_LICENSES_VALIDATION_URL"] = "https://nuevo.supabase.co"
+        os.environ["NEXAR_LICENSES_SUPABASE_KEY"] = "new-public-key"
+        os.environ["NEXAR_LICENSES_CACHE_FILE"] = "nuevo-cache.json"
+        os.environ["NEXAR_LICENSES_CACHE_TTL"] = "7"
+        os.environ["SUPABASE_URL"] = "https://legacy.supabase.co"
+        os.environ["SUPABASE_KEY"] = "legacy-key"
+        os.environ["NEXAR_CACHE_FILE"] = "legacy-cache.json"
+        os.environ["NEXAR_CACHE_DAYS"] = "3"
+
+        with mock.patch("services.license_sdk.import_sdk_contracts", return_value={"SDKConfig": FakeConfig, "DEFAULT_CONFIG": FakeConfig()}), \
+             mock.patch("services.license_sdk.import_validar_licencia_detalle", return_value=fake_validator), \
+             mock.patch("services.license_sdk.import_validar_licencia", return_value=None), \
+             mock.patch.object(self.routes_main.db, "sync_license_from_remote") as sync_mock:
+            ok, message = self.routes_main.validate_license_key("NXR-BASICA-001", debug=False)
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Licencia validada correctamente.")
+        self.assertEqual(captured["config"].validation_url, "https://nuevo.supabase.co")
+        self.assertEqual(captured["config"].supabase_key, "new-public-key")
+        self.assertEqual(captured["config"].cache_file, "nuevo-cache.json")
+        self.assertEqual(captured["config"].cache_ttl_days, "7")
+        sync_mock.assert_called_once()
+
+    def test_sdk_config_central_conserva_aliases_legacy(self):
+        captured = {}
+
+        class FakeConfig:
+            @classmethod
+            def from_env(cls):
+                config = cls()
+                config.validation_url = os.environ.get("NEXAR_LICENSES_VALIDATION_URL") or os.environ.get("SUPABASE_URL", "")
+                config.supabase_key = os.environ.get("NEXAR_LICENSES_SUPABASE_KEY") or os.environ.get("SUPABASE_KEY", "")
+                config.cache_file = os.environ.get("NEXAR_LICENSES_CACHE_FILE") or os.environ.get("NEXAR_CACHE_FILE", "")
+                config.cache_ttl_days = os.environ.get("NEXAR_LICENSES_CACHE_TTL") or os.environ.get("NEXAR_CACHE_DAYS", "")
+                return config
+
+        def fake_validator(_licencia_dict, _public_key, _product_name, debug=False, *, config=None):
+            captured["config"] = config
+            return {"ok": False, "reason": "no_existe", "source": "online"}
+
+        os.environ["SUPABASE_URL"] = "https://legacy.supabase.co"
+        os.environ["SUPABASE_KEY"] = "legacy-key"
+        os.environ["NEXAR_CACHE_FILE"] = "legacy-cache.json"
+        os.environ["NEXAR_CACHE_DAYS"] = "4"
+
+        with mock.patch("services.license_sdk.import_sdk_contracts", return_value={"SDKConfig": FakeConfig, "DEFAULT_CONFIG": FakeConfig()}), \
+             mock.patch("services.license_sdk.import_validar_licencia_detalle", return_value=fake_validator), \
+             mock.patch("services.license_sdk.import_validar_licencia", return_value=None):
+            ok, _message = self.routes_main.validate_license_key("NXR-NOEXISTE-001", debug=False)
+
+        self.assertFalse(ok)
+        self.assertEqual(captured["config"].validation_url, "https://legacy.supabase.co")
+        self.assertEqual(captured["config"].supabase_key, "legacy-key")
+        self.assertEqual(captured["config"].cache_file, "legacy-cache.json")
+        self.assertEqual(captured["config"].cache_ttl_days, "4")
+
+    def test_validate_license_key_fallback_online_resuelve_y_persiste_cache(self):
+        remote_payload = {
+            "license_key": "NXR-PRO-001",
+            "plan": "PRO",
+            "tier": "PRO",
+            "expires_at": (date.today() + timedelta(days=15)).isoformat(),
+            "modules": ["core", "reportes"],
+        }
+
+        def fake_resolver(payload):
+            resolved = dict(payload)
+            resolved["plan_original"] = "PRO"
+            resolved["plan_efectivo"] = "PRO"
+            resolved["effective_plan"] = "PRO"
+            return resolved
+
+        with mock.patch("services.license_sdk.import_sdk_contracts", return_value={"resolve_effective_license": fake_resolver}), \
+             mock.patch("services.license_sdk.import_validar_licencia_detalle", return_value=lambda *args, **kwargs: {"ok": False, "reason": "sin_cache", "source": "online"}), \
+             mock.patch("services.license_sdk.import_validar_licencia", return_value=None), \
+             mock.patch("services.license_sdk.get_current_hwid", return_value="HWID-1"), \
+             mock.patch("services.license_sdk._save_sdk_cache") as save_cache_mock, \
+             mock.patch("services.supabase_license_api.activate_license", return_value=(True, "ok", remote_payload)), \
+             mock.patch.object(self.routes_main.db, "sync_license_from_remote") as sync_mock:
+            ok, message = self.routes_main.validate_license_key("NXR-PRO-001", debug=False)
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Licencia validada correctamente.")
+        sync_mock.assert_called_once()
+        self.assertEqual(sync_mock.call_args.args[0]["plan_original"], "PRO")
+        self.assertEqual(sync_mock.call_args.args[0]["plan_efectivo"], "PRO")
+        save_cache_mock.assert_called()
+
+    def test_resolucion_sdk_no_mantiene_full_si_licencia_remota_esta_suspendida(self):
+        resolved = self.license_sdk._resolve_effective_license_data({
+            "license_key": "NXR-FULL-001",
+            "plan": "FULL",
+            "tier": "FULL",
+            "estado": "suspendida",
+            "activa": True,
+            "plan_base_permanente": False,
+        })
+
+        self.assertEqual(resolved["estado"], "suspendida")
+        self.assertEqual(resolved["tier"], "DEMO")
+        self.assertEqual(resolved["plan_efectivo"], "DEMO")
+
+    def test_supabase_license_api_prefiere_variables_nexar_licenses_y_timeouts(self):
+        import services.supabase_license_api as supabase_api
+
+        os.environ["NEXAR_LICENSES_VALIDATION_URL"] = "https://nuevo.supabase.co/rest/v1"
+        os.environ["NEXAR_LICENSES_SUPABASE_KEY"] = "new-public-key"
+        os.environ["NEXAR_LICENSES_CONNECT_TIMEOUT"] = "2"
+        os.environ["NEXAR_LICENSES_READ_TIMEOUT"] = "8"
+        os.environ["SUPABASE_URL"] = "https://legacy.supabase.co"
+        os.environ["SUPABASE_ANON_KEY"] = "legacy-anon"
+
+        self.assertTrue(supabase_api.is_configured())
+        self.assertEqual(
+            supabase_api.build_supabase_rest_url("licencias"),
+            "https://nuevo.supabase.co/rest/v1/licencias",
+        )
+        self.assertEqual(supabase_api._headers()["apikey"], "new-public-key")
+        self.assertEqual(supabase_api._request_timeout(), (2.0, 8.0))
+
+    def test_debug_y_logs_no_exponen_secretos_de_configuracion_sdk(self):
+        secret = "super-secret-token"
+
+        class BrokenConfig:
+            @classmethod
+            def from_env(cls):
+                raise RuntimeError(secret)
+
+        os.environ["NEXAR_LICENSES_SUPABASE_KEY"] = secret
+
+        with self.assertLogs("services.license_sdk", level="WARNING") as logs:
+            with mock.patch("services.license_sdk.import_sdk_contracts", return_value={"SDKConfig": BrokenConfig, "DEFAULT_CONFIG": None}):
+                config = self.license_sdk.get_sdk_config()
+
+        self.assertIsNone(config)
+        self.assertNotIn(secret, "\n".join(logs.output))
+        self.assertNotIn(secret, str(self.license_sdk.get_license_debug_state()))
 
     def test_pro_no_colapsa_a_full(self):
         pro_modules = get_modulos_plan("PRO")

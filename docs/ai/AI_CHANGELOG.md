@@ -2,6 +2,30 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-14 - Codex - feature/integrar-sdk-licencias-centralizado
+
+### Tarea
+Integrar Nexar Comercio con el contrato publico actual del SDK `nexar_licencias` para centralizar configuracion, mantener compatibilidad legacy y reforzar tests de licencias.
+
+### Archivos modificados
+- `services/license_sdk.py`
+- `services/supabase_license_api.py`
+- `tests/test_license_integration.py`
+- `.env.example`
+- `README.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- `services/license_sdk.py` ahora carga `SDKConfig`/`DEFAULT_CONFIG` desde el SDK cuando estan disponibles, pasa `config=` a `validar_licencia_detalle`, `validar_licencia` y cache si el contrato lo soporta, y usa `normalize_plan`/`resolve_effective_license` del SDK como fuente preferente.
+- Se conservaron defensas locales para estados suspendida/bloqueada/anulada/revocada, evitando mantener FULL/PRO activo cuando el remoto indica bloqueo.
+- El fallback online de `services/supabase_license_api.py` ahora prefiere `NEXAR_LICENSES_VALIDATION_URL` y `NEXAR_LICENSES_SUPABASE_KEY`, conserva `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_KEY`, `NEXAR_CACHE_FILE` y `NEXAR_CACHE_DAYS`, y respeta timeouts `NEXAR_LICENSES_*`.
+- Se documentaron las variables recomendadas del SDK en `.env.example` y `README.md`.
+- Se agregaron tests para configuracion central/aliases legacy, fallback online con cache, licencias suspendidas, timeouts Supabase y no exposicion de secretos en logs/debug.
+
+### Que se probo
+- `python -m pytest tests/test_license_integration.py`
+- `python -m pytest`
+
 ## 2026-07-02 - Codex - docs/issue-107-context-alignment
 
 ### Tarea

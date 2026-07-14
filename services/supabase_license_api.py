@@ -24,7 +24,11 @@ def _clean_base_url(url: str) -> str:
 
 
 def build_supabase_rest_url(table_name: str) -> str:
-    raw_base = (os.getenv("SUPABASE_URL", "") or "").strip()
+    raw_base = (
+        os.getenv("NEXAR_LICENSES_VALIDATION_URL", "")
+        or os.getenv("SUPABASE_URL", "")
+        or ""
+    ).strip()
     table = (table_name or "").strip().strip("/")
     if not raw_base or not table:
         return ""
@@ -58,15 +62,41 @@ def _upgrade_requests_table_url() -> str:
 
 
 def _anon_key() -> str:
-    return (os.getenv("SUPABASE_ANON_KEY", "") or os.getenv("SUPABASE_KEY", "")).strip()
+    return (
+        os.getenv("NEXAR_LICENSES_SUPABASE_KEY", "")
+        or os.getenv("SUPABASE_ANON_KEY", "")
+        or os.getenv("SUPABASE_KEY", "")
+    ).strip()
+
+
+def _has_validation_url() -> bool:
+    return bool(
+        (os.getenv("NEXAR_LICENSES_VALIDATION_URL", "") or os.getenv("SUPABASE_URL", "") or "").strip()
+    )
+
+
+def _request_timeout():
+    timeout = (os.getenv("NEXAR_LICENSES_TIMEOUT", "") or "").strip()
+    connect_timeout = (os.getenv("NEXAR_LICENSES_CONNECT_TIMEOUT", "") or "").strip()
+    read_timeout = (os.getenv("NEXAR_LICENSES_READ_TIMEOUT", "") or "").strip()
+    try:
+        if connect_timeout or read_timeout:
+            base = float(timeout or 12)
+            return (
+                float(connect_timeout) if connect_timeout else base,
+                float(read_timeout) if read_timeout else base,
+            )
+        return float(timeout) if timeout else 12
+    except ValueError:
+        return 12
 
 
 def _missing_supabase_config_message(action: str) -> str:
     missing = []
-    if not (os.getenv("SUPABASE_URL", "") or "").strip():
-        missing.append("SUPABASE_URL")
+    if not _has_validation_url():
+        missing.append("NEXAR_LICENSES_VALIDATION_URL o SUPABASE_URL")
     if not _anon_key():
-        missing.append("SUPABASE_ANON_KEY o SUPABASE_KEY")
+        missing.append("NEXAR_LICENSES_SUPABASE_KEY, SUPABASE_ANON_KEY o SUPABASE_KEY")
     missing_text = ", ".join(missing) if missing else "credenciales Supabase"
     return (
         f"Falta configurar {missing_text} para {action}. "
@@ -85,7 +115,7 @@ def _headers() -> dict[str, str]:
 
 
 def is_configured() -> bool:
-    return bool(os.getenv("SUPABASE_URL") and _anon_key())
+    return bool(_has_validation_url() and _anon_key())
 
 
 def _set_supabase_debug(**values: Any) -> None:
@@ -226,7 +256,7 @@ def create_license_request(
     headers = {**_headers(), "Prefer": "return=minimal"}
     request_url = _requests_table_url()
     try:
-        resp = requests.post(request_url, headers=headers, json=payload, timeout=12)
+        resp = requests.post(request_url, headers=headers, json=payload, timeout=_request_timeout())
     except requests.RequestException as exc:
         logger.warning("Error de conexion enviando solicitud de licencia a url=%s: %s", request_url, exc)
         _set_supabase_debug(
@@ -304,7 +334,7 @@ def create_support_request(
     }
     headers = {**_headers(), "Prefer": "return=minimal"}
     try:
-        resp = requests.post(_support_requests_table_url(), headers=headers, json=payload, timeout=12)
+        resp = requests.post(_support_requests_table_url(), headers=headers, json=payload, timeout=_request_timeout())
     except requests.RequestException as exc:
         logger.warning("Error de conexion enviando solicitud de soporte: %s", exc)
         return False, "No se pudo conectar con Supabase para enviar la solicitud de soporte.", None
@@ -366,7 +396,7 @@ def create_demo_request(
         payload,
     )
     try:
-        resp = requests.post(request_url, headers=headers, json=payload, timeout=12)
+        resp = requests.post(request_url, headers=headers, json=payload, timeout=_request_timeout())
     except requests.RequestException as exc:
         logger.warning("Error de conexion enviando solicitud DEMO a url=%s: %s", request_url, exc)
         message, error = _request_error_message(operation, exc)
@@ -398,7 +428,7 @@ def create_demo_request(
             fallback_payload,
         )
         try:
-            resp = requests.post(request_url, headers=headers, json=fallback_payload, timeout=12)
+            resp = requests.post(request_url, headers=headers, json=fallback_payload, timeout=_request_timeout())
         except requests.RequestException as exc:
             logger.warning("Error de conexion reintentando solicitud DEMO a url=%s: %s", request_url, exc)
             message, error = _request_error_message(operation, exc)
@@ -506,7 +536,7 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
 
         headers = {**_headers(), "Prefer": "return=minimal"}
         try:
-            resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=payload, timeout=12)
+            resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=payload, timeout=_request_timeout())
         except requests.RequestException as exc:
             message, error = _request_error_message(operation, exc)
             _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
@@ -518,7 +548,7 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
             fallback_payload.pop("origen", None)
             fallback_payload.pop("plan_destino", None)
             try:
-                resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=fallback_payload, timeout=12)
+                resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=fallback_payload, timeout=_request_timeout())
             except requests.RequestException as exc:
                 message, error = _request_error_message(operation, exc)
                 _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
@@ -558,7 +588,7 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
 
     headers = {**_headers(), "Prefer": "return=minimal"}
     try:
-        resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=payload, timeout=12)
+        resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=payload, timeout=_request_timeout())
     except requests.RequestException as exc:
         message, error = _request_error_message(operation, exc)
         _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
@@ -570,7 +600,7 @@ def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
         fallback_payload.pop("origen", None)
         fallback_payload.pop("plan_destino", None)
         try:
-            resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=fallback_payload, timeout=12)
+            resp = requests.post(_upgrade_requests_table_url(), headers=headers, json=fallback_payload, timeout=_request_timeout())
         except requests.RequestException as exc:
             message, error = _request_error_message(operation, exc)
             _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
@@ -605,7 +635,7 @@ def activate_license(
 
     params = {"license_key": f"eq.{key}", "producto": f"eq.{producto}", "select": "*"}
     try:
-        resp = requests.get(_table_url(), headers=_headers(), params=params, timeout=12)
+        resp = requests.get(_table_url(), headers=_headers(), params=params, timeout=_request_timeout())
     except requests.RequestException as exc:
         message, error = _request_error_message(operation, exc)
         _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
@@ -652,7 +682,7 @@ def activate_license(
             headers={**_headers(), "Prefer": "return=representation"},
             params={"id": f"eq.{row['id']}"},
             json=patch_payload,
-            timeout=12,
+            timeout=_request_timeout(),
         )
     except requests.RequestException as exc:
         message, error = _request_error_message(operation, exc)
@@ -692,7 +722,7 @@ def update_license_vendor_code(
 
     params = {"license_key": f"eq.{key}", "producto": f"eq.{producto}", "select": "*"}
     try:
-        resp = requests.get(_table_url(), headers=_headers(), params=params, timeout=12)
+        resp = requests.get(_table_url(), headers=_headers(), params=params, timeout=_request_timeout())
     except requests.RequestException as exc:
         message, error = _request_error_message(operation, exc)
         _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
@@ -720,7 +750,7 @@ def update_license_vendor_code(
             headers={**_headers(), "Prefer": "return=representation"},
             params={"id": f"eq.{row['id']}"},
             json={"codigo_vendedor": normalized_vendor_code},
-            timeout=12,
+            timeout=_request_timeout(),
         )
     except requests.RequestException as exc:
         message, error = _request_error_message(operation, exc)
