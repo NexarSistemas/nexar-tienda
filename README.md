@@ -113,6 +113,23 @@ Tambien se puede usar el helper del repo:
 - Activacion online mediante `nexar_licencias`
 - `nexar-tienda` se conserva como `LICENSE_PRODUCT` compatible
 
+### Ciclo de vida DEMO
+
+Las instalaciones nuevas de Nexar Comercio reciben una DEMO de 14 dias. La app
+persiste la fecha de inicio en `demo_install_date` y la fecha exclusiva de
+vencimiento en `demo_expires_at`, por lo que reiniciar la aplicacion o completar
+otra vez el onboarding no reinicia ni extiende el periodo.
+
+Convencion de fechas: se usan fechas locales de calendario. El dia de activacion
+cuenta como dia valido; una DEMO iniciada el `2026-01-01` queda activa hasta el
+`2026-01-14` inclusive y vence al comenzar el `2026-01-15`. Los dias restantes
+se muestran sin valores negativos.
+
+Compatibilidad: las DEMO historicas conservan el periodo ya otorgado. Si una
+instalacion existente tiene fechas validas o una duracion previa de 30 dias, la
+migracion local respeta esos datos, completa solo campos faltantes de forma
+deterministica y no reactiva DEMO vencidas.
+
 ### Flujo manual de solicitudes de licencia
 
 La pantalla de licencia permite que el cliente envie una solicitud con nombre,

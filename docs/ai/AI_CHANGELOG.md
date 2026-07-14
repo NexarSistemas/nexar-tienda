@@ -2,6 +2,32 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-14 - Codex - fix/demo-lifecycle-14-days
+
+### Tarea
+Auditar y asegurar el ciclo de vida de la licencia DEMO para que las nuevas instalaciones duren exactamente 14 dias, sin recortar ni reactivar DEMO historicas.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `licensing/planes.py`
+- `tests/test_license_integration.py`
+- `README.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Se centralizo el calculo deterministico de DEMO en `calculate_demo_lifecycle()`, con soporte para fecha fija en tests y vencimiento exclusivo persistido en `demo_expires_at`.
+- Se definio la convencion: el dia de activacion cuenta como dia valido; una DEMO de 14 dias iniciada el `2026-01-01` vence al comenzar el `2026-01-15`.
+- `get_demo_status()` ahora migra datos legacy de forma idempotente, completa `demo_expires_at` cuando falta, conserva vencimientos validos ya otorgados y no muestra dias negativos.
+- El onboarding y el reintento remoto de solicitud DEMO usan las fechas persistidas para no extender la prueba al completar el flujo nuevamente.
+- Los mensajes de estado diferencian DEMO nuevas de 14 dias y DEMO historicas, evitando afirmar que una DEMO antigua fue originalmente de 14 dias.
+
+### Que se probo
+- `python -m pytest tests/test_license_integration.py -k "activacion_inicial_demo_guarda_datos_y_habilita_ingreso"`
+- `python -m pytest tests/test_license_integration.py`
+- `python -m pytest tests/test_license_tiers.py tests/test_license_upgrade_request_fallback.py`
+- `python -m pytest`
+
 ## 2026-07-14 - Codex - feature/integrar-sdk-licencias-centralizado
 
 ### Tarea
