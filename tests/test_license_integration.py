@@ -359,11 +359,217 @@ class LicenseIntegrationTests(unittest.TestCase):
     def test_demo_nuevo_arranca_con_14_dias(self):
         self.assertEqual(self.database.get_demo_status()["dias_demo"], 14)
 
+    def test_demo_nueva_persiste_inicio_y_vencimiento_14_dias(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "14",
+            "demo_expires_at": "",
+        })
+
+        status = self.database.get_demo_status(today="2026-01-01")
+        cfg = self.database.get_config()
+
+        self.assertEqual(status["install_date"], "2026-01-01")
+        self.assertEqual(status["expires_at"], "2026-01-15")
+        self.assertEqual(status["dias_demo"], 14)
+        self.assertEqual(status["dias_restantes"], 14)
+        self.assertFalse(status["vencido"])
+        self.assertEqual(cfg["demo_install_date"], "2026-01-01")
+        self.assertEqual(cfg["demo_expires_at"], "2026-01-15")
+
+    def test_demo_reinicio_conserva_fechas_persistidas(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "14",
+            "demo_expires_at": "2026-01-15",
+        })
+
+        first = self.database.get_demo_status(today="2026-01-05")
+        second = self.database.get_demo_status(today="2026-01-05")
+
+        self.assertEqual(first["install_date"], "2026-01-01")
+        self.assertEqual(first["expires_at"], "2026-01-15")
+        self.assertEqual(second["install_date"], "2026-01-01")
+        self.assertEqual(second["expires_at"], "2026-01-15")
+        self.assertEqual(second["dias_restantes"], 10)
+
+    def test_demo_ultimo_dia_valido_no_vence_por_off_by_one(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "14",
+            "demo_expires_at": "2026-01-15",
+        })
+
+        status = self.database.get_demo_status(today="2026-01-14")
+
+        self.assertFalse(status["vencido"])
+        self.assertEqual(status["dias_restantes"], 1)
+        self.assertEqual(status["dias_usados"], 13)
+
+    def test_demo_vence_al_dia_siguiente_del_periodo_otorgado(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "14",
+            "demo_expires_at": "2026-01-15",
+        })
+
+        status = self.database.get_demo_status(today="2026-01-15")
+
+        self.assertTrue(status["vencido"])
+        self.assertEqual(status["dias_restantes"], 0)
+        self.assertEqual(status["dias_usados"], 14)
+
+    def test_demo_historica_30_dias_conserva_vencimiento_original(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "30",
+            "demo_expires_at": "2026-01-31",
+        })
+
+        status = self.database.get_demo_status(today="2026-01-15")
+
+        self.assertFalse(status["vencido"])
+        self.assertEqual(status["dias_demo"], 30)
+        self.assertEqual(status["dias_restantes"], 16)
+        self.assertEqual(self.database.get_config()["demo_expires_at"], "2026-01-31")
+
+    def test_demo_antigua_activa_no_se_reduce_a_14_dias(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "30",
+            "demo_expires_at": "",
+        })
+
+        status = self.database.get_demo_status(today="2026-01-20")
+
+        self.assertFalse(status["vencido"])
+        self.assertEqual(status["dias_demo"], 30)
+        self.assertEqual(status["expires_at"], "2026-01-31")
+        self.assertEqual(status["dias_restantes"], 11)
+
+    def test_demo_antigua_vencida_no_se_reactiva_en_migracion(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2025-12-01",
+            "demo_dias": "30",
+            "demo_expires_at": "2025-12-31",
+        })
+
+        status = self.database.get_demo_status(today="2026-01-20")
+
+        self.assertTrue(status["vencido"])
+        self.assertEqual(status["dias_restantes"], 0)
+        self.assertEqual(self.database.get_config()["demo_expires_at"], "2025-12-31")
+
+    def test_demo_legacy_sin_vencimiento_migra_de_forma_segura(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "14",
+            "demo_expires_at": "",
+        })
+
+        status = self.database.get_demo_status(today="2026-01-02")
+        cfg = self.database.get_config()
+
+        self.assertEqual(status["expires_at"], "2026-01-15")
+        self.assertEqual(cfg["demo_expires_at"], "2026-01-15")
+        self.assertFalse(status["vencido"])
+
+    def test_demo_legacy_con_vencimiento_valido_gana_sobre_duracion_discrepante(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "14",
+            "demo_expires_at": "2026-01-31",
+        })
+
+        status = self.database.get_demo_status(today="2026-01-20")
+        cfg = self.database.get_config()
+
+        self.assertFalse(status["vencido"])
+        self.assertEqual(status["dias_demo"], 30)
+        self.assertEqual(status["dias_restantes"], 11)
+        self.assertEqual(cfg["demo_expires_at"], "2026-01-31")
+        self.assertEqual(cfg["demo_dias"], "30")
+
+    def test_demo_migracion_es_idempotente(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "14",
+            "demo_expires_at": "",
+        })
+
+        first = self.database.get_demo_status(today="2026-01-03")
+        cfg_first = self.database.get_config()
+        second = self.database.get_demo_status(today="2026-01-03")
+        cfg_second = self.database.get_config()
+
+        self.assertEqual(first, second)
+        self.assertEqual(cfg_first["demo_install_date"], cfg_second["demo_install_date"])
+        self.assertEqual(cfg_first["demo_expires_at"], cfg_second["demo_expires_at"])
+        self.assertEqual(cfg_first["demo_dias"], cfg_second["demo_dias"])
+
+    def test_demo_vencida_no_habilita_modulos_pagos(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "license_tier": "DEMO",
+            "license_plan": "DEMO",
+            "license_modules": "[]",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "14",
+            "demo_expires_at": "2026-01-15",
+        })
+
+        status = self.database.get_demo_status(today="2026-01-16")
+        modules = self.permisos.get_modulos_activos()
+
+        self.assertTrue(status["vencido"])
+        self.assertEqual(self.database.get_license_info()["tier"], "DEMO")
+        self.assertEqual(modules, get_modulos_plan("DEMO"))
+        self.assertNotIn("compras", modules)
+        self.assertNotIn("multiusuario", modules)
+
+    def test_demo_status_no_muestra_dias_negativos(self):
+        self.database.set_config({
+            "demo_mode": "1",
+            "demo_install_date": "2026-01-01",
+            "demo_dias": "14",
+            "demo_expires_at": "2026-01-15",
+        })
+
+        status = self.database.get_demo_status(today="2026-02-20")
+
+        self.assertTrue(status["vencido"])
+        self.assertEqual(status["dias_restantes"], 0)
+
+    def test_demo_calculo_puro_usa_fecha_fija_sin_reloj_real(self):
+        lifecycle = self.database.calculate_demo_lifecycle(
+            install_date="2026-01-01",
+            demo_days=14,
+            today="2026-01-14",
+        )
+
+        self.assertEqual(lifecycle["expires_at"], "2026-01-15")
+        self.assertEqual(lifecycle["dias_restantes"], 1)
+        self.assertFalse(lifecycle["vencido"])
+
     def test_templates_no_exponen_demo_como_plan_comercial(self):
         licencia_template = (PROJECT_ROOT / "templates" / "licencia.html").read_text(encoding="utf-8")
         self.assertNotIn('<option value="DEMO">', licencia_template)
         self.assertIn('value="{{ option.plan }}"', licencia_template)
         self.assertIn('{{ option.plan_display }}', licencia_template)
+
+    def test_template_activacion_inicial_muestra_demo_14_dias(self):
+        activation_template = (PROJECT_ROOT / "templates" / "activacion_inicial.html").read_text(encoding="utf-8")
+        self.assertIn("DEMO 14 días", activation_template)
 
     def test_demo_muestra_basica_pro_y_full(self):
         actions = get_plan_actions("DEMO", tiene_checkout=False)
@@ -1552,7 +1758,13 @@ class LicenseIntegrationTests(unittest.TestCase):
     def test_activacion_inicial_demo_guarda_datos_y_habilita_ingreso(self):
         app = self.app_module.create_app()
         self.database.add_usuario("admin", "Abc123$", "Administrador", "Admin Comercio")
-        self.database.set_config({"activation_initial_completed": "0"})
+        self.database.set_config({
+            "activation_initial_completed": "0",
+            "demo_install_date": "2099-01-01",
+            "demo_dias": "14",
+            "demo_expires_at": "2099-01-15",
+        })
+        config_snapshot = dict(self.database.get_config())
 
         with app.test_client() as client:
             with client.session_transaction() as session:
@@ -1564,6 +1776,10 @@ class LicenseIntegrationTests(unittest.TestCase):
                     if "nombre_completo, email, telefono" in query:
                         return {"nombre_completo": "Admin Comercio", "email": "admin@comercio.com", "telefono": "264555000"}
                     return {"security_question": "Color", "security_answer_hash": "hash"}
+                if "FROM config" in query:
+                    if fetchone and params:
+                        return {"valor": config_snapshot.get(params[0])}
+                    return [{"clave": key, "valor": value} for key, value in config_snapshot.items()]
                 return {"valor": None} if fetchone else []
 
             with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
@@ -1571,6 +1787,7 @@ class LicenseIntegrationTests(unittest.TestCase):
                  mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
                  mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "DEMO", "key": ""}), \
                  mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: "0" if key == "activation_initial_completed" else default), \
+                 mock.patch.object(self.app_module, "cargar_licencia", return_value=None), \
                  mock.patch.object(self.routes_main, "create_demo_request", return_value=(True, "ok")) as create_demo_request_mock, \
                  mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-001", {"host": "demo"})), \
                  mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-001"):
@@ -1599,10 +1816,14 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(cfg["license_owner_email"], "admin@comercio.com")
         self.assertEqual(cfg["license_marketing_opt_in"], "1")
         self.assertEqual(cfg["activation_demo_request_key"], "NXID-DEMO-001|admin@comercio.com|nexar-tienda")
+        self.assertEqual(cfg["demo_install_date"], "2099-01-01")
+        self.assertEqual(cfg["demo_expires_at"], "2099-01-15")
         self.assertEqual(self.database.get_rubro_configurado(), "almacen")
         self.assertEqual(create_demo_request_mock.call_args.kwargs["estado"], "pendiente")
         self.assertEqual(create_demo_request_mock.call_args.kwargs["plan_interes"], "DEMO_14_DIAS")
         self.assertIn('"activation_id": "NXID-DEMO-001"', create_demo_request_mock.call_args.kwargs["mensaje"])
+        self.assertIn('"demo_started_at": "2099-01-01"', create_demo_request_mock.call_args.kwargs["mensaje"])
+        self.assertIn('"demo_expires_at": "2099-01-15"', create_demo_request_mock.call_args.kwargs["mensaje"])
         self.assertIn('"demo_status": "demo_activa"', create_demo_request_mock.call_args.kwargs["mensaje"])
 
     def test_activacion_inicial_demo_reintento_no_duplica_envio_remoto(self):

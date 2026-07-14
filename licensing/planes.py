@@ -373,17 +373,27 @@ def get_license_status_context(
         alert_class = "success"
     elif plan_original == "DEMO":
         demo = demo_status or {}
+        demo_days = int(demo.get("dias_demo") or 14)
+        demo_remaining = max(int(demo.get("dias_restantes") or 0), 0)
         if bool(demo.get("vencido")):
             estado_comercial = "demo_vencido"
-            titulo_estado = "Tu demo de 14 dias vencio"
-            mensaje_estado = "Tu demo de 14 dias vencio. Podes adquirir BASICA, PRO o FULL desde esta pantalla."
+            titulo_estado = "Tu demo vencio" if demo_days != 14 else "Tu demo de 14 dias vencio"
+            mensaje_estado = (
+                "Tu demo vencio. Podes adquirir BASICA, PRO o FULL desde esta pantalla."
+                if demo_days != 14
+                else "Tu demo de 14 dias vencio. Podes adquirir BASICA, PRO o FULL desde esta pantalla."
+            )
             alert_class = "warning"
             mostrar_aviso_vencimiento = True
         else:
             estado_comercial = "demo_activo"
             titulo_estado = "Periodo demo activo"
-            mensaje_estado = "Estas usando el periodo de prueba."
+            if demo_remaining == 1:
+                mensaje_estado = f"Estas en el ultimo dia valido de tu prueba de {demo_days} dias."
+            else:
+                mensaje_estado = f"Tu prueba de {demo_days} dias tiene {demo_remaining} dias restantes."
             alert_class = "warning"
+            mostrar_aviso_preventivo = demo_remaining <= 7
     elif plan_efectivo == SIN_PLAN:
         estado_comercial = "sin_plan"
         titulo_estado = "App limitada"

@@ -787,7 +787,11 @@ def _retry_pending_demo_request_if_needed() -> None:
         started_on = date.fromisoformat(install_date) if install_date else date.today()
     except Exception:
         started_on = date.today()
-    expires_on = started_on + timedelta(days=max(int(demo_status.get("dias_demo", 14) or 14), 1))
+    expires_at = str(demo_status.get("expires_at", "") or "").strip()
+    try:
+        expires_on = date.fromisoformat(expires_at) if expires_at else started_on + timedelta(days=max(int(demo_status.get("dias_demo", 14) or 14), 1))
+    except Exception:
+        expires_on = started_on + timedelta(days=max(int(demo_status.get("dias_demo", 14) or 14), 1))
     remote_demo_dedupe_key = "|".join([
         str(activation_id or "").strip(),
         str(profile["email"] or "").strip().lower(),
@@ -4426,8 +4430,17 @@ def activacion_inicial():
         elif selected_plan == "DEMO":
             activation_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
             activation_id = get_current_hwid() or activation_id
-            today = date.today()
-            expires_on = today + timedelta(days=14)
+            demo_status = db.get_demo_status()
+            install_date = str(demo_status.get("install_date", "") or "").strip()
+            expires_at = str(demo_status.get("expires_at", "") or "").strip()
+            try:
+                started_on = date.fromisoformat(install_date) if install_date else date.today()
+            except Exception:
+                started_on = date.today()
+            try:
+                expires_on = date.fromisoformat(expires_at) if expires_at else started_on + timedelta(days=max(int(demo_status.get("dias_demo", 14) or 14), 1))
+            except Exception:
+                expires_on = started_on + timedelta(days=max(int(demo_status.get("dias_demo", 14) or 14), 1))
             product_name = get_license_product()
             remote_demo_dedupe_key = "|".join([
                 str(activation_id or "").strip(),
@@ -4448,7 +4461,7 @@ def activacion_inicial():
                     "codigo_vendedor": profile["codigo_vendedor"],
                     "terms_accepted": bool(profile["terms_accepted"]),
                     "marketing_opt_in": bool(profile["marketing_opt_in"]),
-                    "demo_started_at": today.isoformat(),
+                    "demo_started_at": started_on.isoformat(),
                     "demo_expires_at": expires_on.isoformat(),
                     "demo_status": "demo_activa",
                     "machine_details": machine_details,

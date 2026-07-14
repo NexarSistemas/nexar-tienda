@@ -80,6 +80,8 @@ TIER_LIMITS = {
     },
 }
 
+DEMO_DEFAULT_DAYS = 14
+
 
 def normalize_license_plan(plan: str = None) -> str:
     return normalize_plan(plan, default="BASICA")
@@ -107,6 +109,75 @@ def _is_subscription_plan(plan: str) -> bool:
 def _is_blocked_license_status(status: str | None) -> bool:
     normalized = str(status or "").strip().lower()
     return normalized in {"revocada", "suspendida", "bloqueada", "anulada"}
+
+
+def _parse_date(value, default: date | None = None) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value or "").strip()[:10])
+    except Exception:
+        return default
+
+
+def _parse_positive_int(value, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def calculate_demo_lifecycle(
+    *,
+    install_date: str | date | None,
+    demo_days: str | int | None = DEMO_DEFAULT_DAYS,
+    expires_at: str | date | None = None,
+    today: str | date | None = None,
+) -> dict:
+    """
+    Calcula el ciclo de DEMO con fechas locales inclusivas.
+
+    Convencion: el dia de activacion cuenta como dia valido. Una DEMO de 14 dias
+    iniciada el 2026-01-01 es utilizable hasta el 2026-01-14 inclusive y vence al
+    comenzar el 2026-01-15. La fecha `expires_at` es exclusiva.
+    """
+    current_date = _parse_date(today, date.today()) or date.today()
+    started_on = _parse_date(install_date)
+    install_was_valid = started_on is not None
+    if started_on is None:
+        started_on = current_date
+
+    configured_days = _parse_positive_int(demo_days, DEMO_DEFAULT_DAYS)
+    configured_expires_on = _parse_date(expires_at)
+    if configured_expires_on and configured_expires_on > started_on:
+        expires_on = configured_expires_on
+        granted_days = max((expires_on - started_on).days, 1)
+        expires_was_valid = True
+    else:
+        expires_on = started_on + timedelta(days=configured_days)
+        granted_days = configured_days
+        expires_was_valid = False
+
+    elapsed_days = max(0, (current_date - started_on).days)
+    remaining_days = max(0, (expires_on - current_date).days)
+    expired = current_date >= expires_on
+    return {
+        "install_date": started_on.isoformat(),
+        "expires_at": expires_on.isoformat(),
+        "dias_demo": granted_days,
+        "dias_usados": elapsed_days,
+        "dias_restantes": remaining_days,
+        "vencido": expired,
+        "aviso_proximo": not expired and remaining_days <= 7,
+        "ventas_bloqueado": expired,
+        "productos_bloqueado": expired,
+        "ventas_pct": min(100, int(elapsed_days / max(granted_days, 1) * 100)),
+        "install_date_valid": install_was_valid,
+        "expires_at_valid": expires_was_valid,
+    }
 
 
 def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
@@ -1004,6 +1075,7 @@ def init_db():
         ('demo_mode', '1'),                 # 1=demo, 0=licencia activa
         ('demo_install_date', ''),          # Fecha de primer arranque (demo)
         ('demo_dias', '14'),                # Dias de prueba gratuita
+        ('demo_expires_at', ''),            # Fecha exclusiva de vencimiento demo
         ('license_type', 'MONO'),           # Tipo de licencia (TDA_BASICA / TDA_PRO)
         ('license_tier', 'DEMO'),           # Tier: DEMO / BASICA / PRO
         ('license_key', ''),                # Clave de licencia (vacio en DEMO)
@@ -1476,41 +1548,46 @@ def is_demo_mode() -> bool:
     return cfg.get('demo_mode', '1') == '1'
 
 
-def get_demo_status() -> dict:
+def get_demo_status(today: str | date | None = None) -> dict:
     """Devuelve el estado del periodo de prueba."""
     cfg  = get_config()
     demo = cfg.get('demo_mode', '1') == '1'
     if not demo:
         return {
             'demo': False, 'dias_restantes': 0, 'vencido': False,
-            'aviso_proximo': False, 'install_date': '', 'dias_usados': 0,
+            'aviso_proximo': False, 'install_date': '', 'expires_at': '',
+            'dias_usados': 0, 'dias_demo': 0,
             'ventas_bloqueado': False, 'productos_bloqueado': False,
         }
 
-    dias_demo   = int(cfg.get('demo_dias', '14'))
-    install_str = cfg.get('demo_install_date', '')
-    try:
-        install_dt = date.fromisoformat(install_str)
-    except Exception:
-        install_dt = date.today()
-        set_config({'demo_install_date': install_dt.isoformat()})
-
-    dias_usados    = (date.today() - install_dt).days
-    dias_restantes = max(0, dias_demo - dias_usados)
-    vencido        = dias_restantes == 0
-    aviso_proximo  = not vencido and dias_restantes <= 7
+    lifecycle = calculate_demo_lifecycle(
+        install_date=cfg.get('demo_install_date', ''),
+        demo_days=cfg.get('demo_dias', str(DEMO_DEFAULT_DAYS)),
+        expires_at=cfg.get('demo_expires_at', ''),
+        today=today,
+    )
+    updates = {}
+    if cfg.get('demo_install_date', '') != lifecycle['install_date']:
+        updates['demo_install_date'] = lifecycle['install_date']
+    if not lifecycle['expires_at_valid'] and cfg.get('demo_expires_at', '') != lifecycle['expires_at']:
+        updates['demo_expires_at'] = lifecycle['expires_at']
+    if _parse_positive_int(cfg.get('demo_dias', ''), DEMO_DEFAULT_DAYS) != lifecycle['dias_demo']:
+        updates['demo_dias'] = str(lifecycle['dias_demo'])
+    if updates:
+        set_config(updates)
 
     return {
         'demo':                demo,
-        'install_date':        install_str,
-        'dias_usados':         dias_usados,
-        'dias_restantes':      dias_restantes,
-        'dias_demo':           dias_demo,
-        'vencido':             vencido,
-        'aviso_proximo':       aviso_proximo,
-        'ventas_bloqueado':    vencido,
-        'productos_bloqueado': vencido,
-        'ventas_pct':          min(100, int(dias_usados / dias_demo * 100)),
+        'install_date':        lifecycle['install_date'],
+        'expires_at':          lifecycle['expires_at'],
+        'dias_usados':         lifecycle['dias_usados'],
+        'dias_restantes':      lifecycle['dias_restantes'],
+        'dias_demo':           lifecycle['dias_demo'],
+        'vencido':             lifecycle['vencido'],
+        'aviso_proximo':       lifecycle['aviso_proximo'],
+        'ventas_bloqueado':    lifecycle['ventas_bloqueado'],
+        'productos_bloqueado': lifecycle['productos_bloqueado'],
+        'ventas_pct':          lifecycle['ventas_pct'],
     }
 
 
