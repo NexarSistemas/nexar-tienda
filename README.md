@@ -44,6 +44,9 @@ nexar-tienda/
 
 - Python 3.11 o superior
 - Dependencias: `flask`, `pywebview`, `openpyxl`, `reportlab`, `markdown`, `python-dotenv`
+- Para desarrollo local y tests se usa `requirements.txt`, sin dependencias privadas.
+- Para builds empaquetados se usa `requirements-build.txt`, que incluye `requirements.txt`
+  y agrega `nexar_licencias` fijado a `v1.2.0` por Git SSH.
 
 ### Inicio rapido
 
@@ -253,8 +256,9 @@ Secrets y variables esperados en CI:
 - `PUBLIC_KEY`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
-- `NEXAR_SDK_TOKEN` si `nexar_licencias` es privado
-- `NEXAR_LICENCIAS_REPOSITORY` opcional
+- `NEXAR_LICENCIAS_DEPLOY_KEY`: clave privada de una Deploy Key de solo lectura
+  configurada en `rolojnb/nexar_licencias`, usada para instalar el SDK privado
+  desde `requirements-build.txt`
 
 No se debe incluir `SUPABASE_SERVICE_ROLE_KEY` en instaladores, specs ni binarios
 de cliente.

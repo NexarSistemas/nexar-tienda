@@ -51,38 +51,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validar token del SDK de licencias
+      - name: Verificar secret SSH del SDK de licencias
         env:
-          NEXAR_SDK_TOKEN: ${{ secrets.NEXAR_SDK_TOKEN }}
-          NEXAR_LICENCIAS_REPOSITORY: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || 'rolojnb/nexar_licencias' }}
+          SDK_DEPLOY_KEY: ${{ secrets.NEXAR_LICENCIAS_DEPLOY_KEY }}
         run: |
-          if [ -z "$NEXAR_SDK_TOKEN" ]; then
-            echo "❌ ERROR: El secret NEXAR_SDK_TOKEN no está configurado."
-            echo "   Este workflow necesita leer el repositorio privado: $NEXAR_LICENCIAS_REPOSITORY"
-            echo "   Crear un PAT con permiso de lectura sobre ese repo y guardarlo en:"
+          if [ -z "$SDK_DEPLOY_KEY" ]; then
+            echo "❌ ERROR: El secret NEXAR_LICENCIAS_DEPLOY_KEY no está configurado."
+            echo "   Este workflow necesita leer el repositorio privado rolojnb/nexar_licencias por SSH."
+            echo "   Crear una Deploy Key de solo lectura en ese repo y guardar la clave privada en:"
             echo "   Settings → Secrets and variables → Actions → New repository secret"
-            echo "   Nombre: NEXAR_SDK_TOKEN"
-            exit 1
-          fi
-          API_STATUS=$(curl -sS -o /tmp/nexar_licencias_repo.json -w "%{http_code}" \
-            -H "Authorization: Bearer ${NEXAR_SDK_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${NEXAR_LICENCIAS_REPOSITORY}")
-          if [ "$API_STATUS" != "200" ]; then
-            echo "❌ ERROR: GitHub API no permite ver $NEXAR_LICENCIAS_REPOSITORY con NEXAR_SDK_TOKEN. HTTP $API_STATUS"
-            echo "   401: token inválido o mal copiado."
-            echo "   403: token sin permisos suficientes."
-            echo "   404: repo privado invisible para ese token, repo mal escrito o no seleccionado en el PAT."
+            echo "   Nombre: NEXAR_LICENCIAS_DEPLOY_KEY"
             exit 1
           fi
 
-      - name: Checkout SDK de licencias
-        uses: actions/checkout@v4
+      - name: Configurar acceso SSH a nexar_licencias
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || 'rolojnb/nexar_licencias' }}
-          path: nexar_licencias_src
-          ref: ${{ vars.NEXAR_LICENCIAS_REF || 'main' }}
-          token: ${{ secrets.NEXAR_SDK_TOKEN }}
+          ssh-private-key: ${{ secrets.NEXAR_LICENCIAS_DEPLOY_KEY }}
+
+      - name: Confiar en github.com para dependencias SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Instalar dependencias del sistema
         run: |
@@ -108,8 +100,7 @@ jobs:
       - name: Instalar dependencias Python
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install ./nexar_licencias_src
+          pip install -r requirements-build.txt
 
       - name: Generar configuración pública de licencias
         env:
@@ -195,42 +186,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validar token del SDK de licencias
+      - name: Verificar secret SSH del SDK de licencias
         shell: pwsh
         env:
-          NEXAR_SDK_TOKEN: ${{ secrets.NEXAR_SDK_TOKEN }}
-          NEXAR_LICENCIAS_REPOSITORY: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || 'rolojnb/nexar_licencias' }}
+          SDK_DEPLOY_KEY: ${{ secrets.NEXAR_LICENCIAS_DEPLOY_KEY }}
         run: |
-          if (-not $env:NEXAR_SDK_TOKEN) {
-            Write-Error "❌ ERROR: El secret NEXAR_SDK_TOKEN no está configurado."
-            Write-Host "   Este workflow necesita leer el repositorio privado: $env:NEXAR_LICENCIAS_REPOSITORY"
-            Write-Host "   Crear un PAT con permiso de lectura sobre ese repo y guardarlo en:"
+          if (-not $env:SDK_DEPLOY_KEY) {
+            Write-Error "❌ ERROR: El secret NEXAR_LICENCIAS_DEPLOY_KEY no está configurado."
+            Write-Host "   Este workflow necesita leer el repositorio privado rolojnb/nexar_licencias por SSH."
+            Write-Host "   Crear una Deploy Key de solo lectura en ese repo y guardar la clave privada en:"
             Write-Host "   Settings → Secrets and variables → Actions → New repository secret"
-            Write-Host "   Nombre: NEXAR_SDK_TOKEN"
-            exit 1
-          }
-          $headers = @{
-            Authorization = "Bearer $env:NEXAR_SDK_TOKEN"
-            Accept = "application/vnd.github+json"
-          }
-          try {
-            Invoke-RestMethod -Uri "https://api.github.com/repos/$env:NEXAR_LICENCIAS_REPOSITORY" -Headers $headers | Out-Null
-          } catch {
-            $statusCode = $_.Exception.Response.StatusCode.value__
-            Write-Error "❌ ERROR: GitHub API no permite ver $env:NEXAR_LICENCIAS_REPOSITORY con NEXAR_SDK_TOKEN. HTTP $statusCode"
-            Write-Host "   401: token inválido o mal copiado."
-            Write-Host "   403: token sin permisos suficientes."
-            Write-Host "   404: repo privado invisible para ese token, repo mal escrito o no seleccionado en el PAT."
+            Write-Host "   Nombre: NEXAR_LICENCIAS_DEPLOY_KEY"
             exit 1
           }
 
-      - name: Checkout SDK de licencias
-        uses: actions/checkout@v4
+      - name: Configurar acceso SSH a nexar_licencias
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          repository: ${{ vars.NEXAR_LICENCIAS_REPOSITORY || 'rolojnb/nexar_licencias' }}
-          path: nexar_licencias_src
-          ref: ${{ vars.NEXAR_LICENCIAS_REF || 'main' }}
-          token: ${{ secrets.NEXAR_SDK_TOKEN }}
+          ssh-private-key: ${{ secrets.NEXAR_LICENCIAS_DEPLOY_KEY }}
+
+      - name: Confiar en github.com para dependencias SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - uses: actions/setup-python@v5
         with:
@@ -239,8 +220,7 @@ jobs:
       - name: Instalar dependencias Python
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install ./nexar_licencias_src
+          pip install -r requirements-build.txt
 
       - name: Generar configuración pública de licencias
         shell: pwsh

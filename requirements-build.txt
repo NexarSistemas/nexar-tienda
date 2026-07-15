@@ -1,0 +1,3 @@
+-r requirements.txt
+
+nexar-licencias @ git+ssh://git@github.com/rolojnb/nexar_licencias.git@v1.2.0

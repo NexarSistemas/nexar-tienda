@@ -2,6 +2,45 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-14 - Codex - chore/sdk-build-dependency
+
+### Tarea
+Implementar el Issue #116 para que los builds empaquetados instalen `nexar_licencias v1.2.0` desde `requirements-build.txt`, siguiendo el patron validado en Nexar Finanzas.
+
+### Archivos modificados
+- `.github/workflows/build.yml`
+- `requirements-build.txt`
+- `README.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Mecanismo anterior
+- El workflow de Windows y Linux validaba un PAT `NEXAR_SDK_TOKEN` contra GitHub API.
+- Luego hacia checkout separado de `rolojnb/nexar_licencias` en `nexar_licencias_src`.
+- Finalmente instalaba `requirements.txt` y despues `pip install ./nexar_licencias_src`, dejando dos mecanismos paralelos para dependencias de build.
+
+### Mecanismo nuevo
+- `requirements.txt` queda reservado para desarrollo local, ejecucion desde codigo fuente y tests.
+- `requirements-build.txt` incluye `requirements.txt` y fija `nexar-licencias` a `git+ssh://git@github.com/rolojnb/nexar_licencias.git@v1.2.0`.
+- Los jobs Windows y Linux configuran acceso SSH con `webfactory/ssh-agent@v0.9.0`, agregan `github.com` a `known_hosts` con `ssh-keyscan` y ejecutan `pip install -r requirements-build.txt`.
+- Se elimina el checkout separado del SDK y la instalacion manual `pip install ./nexar_licencias_src`.
+
+### Secret SSH requerido
+- `NEXAR_LICENCIAS_DEPLOY_KEY`: clave privada de una Deploy Key de solo lectura configurada en `rolojnb/nexar_licencias`.
+
+### Validaciones
+- `python -m pip install -r requirements.txt`
+- `python -m pytest tests/test_license_integration.py tests/test_license_tiers.py tests/test_license_upgrade_request_fallback.py` -> 121 passed.
+- `python -m pip install -r requirements-build.txt` -> instala `nexar-licencias-1.2.0` desde `v1.2.0` por Git SSH. El primer intento en sandbox fallo por DNS local; el reintento con red habilitada paso.
+- `python -c "import nexar_licencias, importlib.metadata as m; print(nexar_licencias.__file__); print(m.version('nexar-licencias'))"` -> SDK instalado desde `.venv/site-packages`, version `1.2.0`.
+- Import explicito de `nexar_licencias`, `cache`, `config`, `device`, `plans`, `validator`, `verifier_local` y `verifier_online`.
+- `python -m pytest` -> 239 passed.
+- `PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache pyinstaller build/nexar_tienda_linux.spec --distpath dist --workpath build/work --noconfirm` -> build Linux OK, `dist/NexarTienda` generado. El primer intento sin `PYINSTALLER_CONFIG_DIR` fallo porque el entorno local no podia escribir en `/home/.../.cache/pyinstaller`.
+- Windows no se compilo localmente por estar en runner Linux; queda cubierto por el workflow Windows con el mismo `requirements-build.txt`, `webfactory/ssh-agent` y secret `NEXAR_LICENCIAS_DEPLOY_KEY`.
+
+### Riesgos o limitaciones
+- La instalacion local de `requirements-build.txt` requiere acceso SSH al repositorio privado.
+- Los specs de PyInstaller ya incluyen los hidden imports requeridos de `nexar_licencias`; no se modifican reglas funcionales de DEMO, BASICA, PRO ni FULL.
+
 ## 2026-07-14 - Codex - fix/demo-lifecycle-14-days
 
 ### Tarea
