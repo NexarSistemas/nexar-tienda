@@ -336,6 +336,118 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertIsNone(status["dias_para_vencer"])
         self.assertFalse(status["mostrar_aviso_vencimiento"])
 
+    def test_basica_legacy_con_fecha_pasada_permanece_activa(self):
+        self.database.set_config({
+            "demo_mode": "0",
+            "license_key": "NXR-BASICA-LEGACY",
+            "license_plan": "BASICA",
+            "license_plan_original": "BASICA",
+            "license_tier": "BASICA",
+            "license_effective_plan": "BASICA",
+            "license_status": "activa",
+            "license_plan_base_permanente": "1",
+            "basica_activada": "1",
+            "license_expires_at": "2020-01-01",
+            "license_modules": '["core", "clientes", "proveedores", "pos", "stock", "caja"]',
+        })
+
+        info = self.database.get_license_info()
+        status = get_license_status_context(info)
+        modules = self.permisos.get_modulos_activos()
+
+        self.assertEqual(info["tier"], "BASICA")
+        self.assertFalse(info["expirada"])
+        self.assertEqual(info["expires_at"], "")
+        self.assertEqual(status["estado_comercial"], "basica_permanente")
+        self.assertIsNone(status["dias_para_vencer"])
+        self.assertFalse(status["mostrar_aviso_preventivo"])
+        self.assertFalse(status["mostrar_aviso_vencimiento"])
+        self.assertEqual(modules, get_modulos_plan("BASICA"))
+
+    def test_basica_legacy_con_fecha_futura_no_genera_cuenta_regresiva(self):
+        info = self._sync_license(
+            plan_original="BASICA",
+            plan_efectivo="BASICA",
+            plan="BASICA",
+            tier="BASICA",
+            plan_base_permanente=True,
+            expira="2099-12-31",
+        )
+        status = get_license_status_context({**info, "expires_at": "2099-12-31"})
+        actions = get_plan_actions("BASICA", plan_original="BASICA", dias_para_vencer=9999)
+
+        self.assertEqual(info["tier"], "BASICA")
+        self.assertEqual(info["expires_at"], "")
+        self.assertFalse(info["expirada"])
+        self.assertEqual(status["expires_at"], "")
+        self.assertIsNone(status["dias_para_vencer"])
+        self.assertFalse(actions["puede_renovar"])
+        self.assertNotIn("Renovar", " ".join(str(value) for value in actions.values()))
+
+    def test_basica_no_caduca_ante_cambio_grande_de_fecha_evaluada(self):
+        cfg = {
+            "license_plan": "BASICA",
+            "license_plan_original": "BASICA",
+            "license_tier": "BASICA",
+            "license_effective_plan": "BASICA",
+            "license_status": "activa",
+            "license_plan_base_permanente": "1",
+            "basica_activada": "1",
+            "license_expires_at": "1900-01-01",
+        }
+
+        snapshot = self.database._resolve_license_snapshot(cfg)
+
+        self.assertEqual(snapshot["plan_original"], "BASICA")
+        self.assertEqual(snapshot["plan_efectivo"], "BASICA")
+        self.assertFalse(snapshot["expirada"])
+        self.assertIsNone(snapshot["remaining_days"])
+        self.assertEqual(snapshot["expires_at"], "")
+
+    def test_basica_conserva_permisos_sin_obtener_pro_o_full(self):
+        self._sync_license(expira="2020-01-01")
+
+        modules = self.permisos.get_modulos_activos()
+
+        self.assertEqual(modules, get_modulos_plan("BASICA"))
+        self.assertNotIn("compras", modules)
+        self.assertNotIn("multiusuario", modules)
+        self.assertNotIn("temporadas", modules)
+        self.assertNotIn("multinegocio", modules)
+
+    def test_basica_suspendida_no_se_trata_como_activa(self):
+        info = self._sync_license(
+            estado="suspendida",
+            plan_base_permanente=True,
+            expira="2020-01-01",
+        )
+        status = get_license_status_context(info)
+        actions = self.routes_main._get_plan_actions_context(info, license_status=status)
+
+        self.assertEqual(info["plan_original"], "BASICA")
+        self.assertEqual(info["tier"], "SIN_PLAN")
+        self.assertFalse(info["fallback_aplicado"])
+        self.assertEqual(info["modules"], [])
+        self.assertEqual(status["estado_comercial"], "licencia_bloqueada")
+        self.assertNotEqual(status["estado_comercial"], "basica_permanente")
+        self.assertFalse(actions["puede_renovar"])
+        self.assertEqual(actions["planes_comprables"], [])
+
+    def test_basica_revocada_desde_sdk_no_queda_activa_por_permanencia(self):
+        payload = self.license_sdk._resolve_effective_license_data({
+            "license_key": "NXR-BASICA-REV",
+            "plan": "BASICA",
+            "tier": "BASICA",
+            "estado": "revocada",
+            "plan_base_permanente": True,
+            "expires_at": "2020-01-01",
+        })
+
+        self.assertEqual(payload["plan_efectivo"], "SIN_PLAN")
+        self.assertEqual(payload["effective_plan"], "SIN_PLAN")
+        self.assertEqual(payload["tier"], "SIN_PLAN")
+        self.assertFalse(payload["fallback_aplicado"])
+
     def test_demo_vencido_no_se_convierte_en_basica_gratis(self):
         status = get_license_status_context(
             {

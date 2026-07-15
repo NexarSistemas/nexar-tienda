@@ -133,6 +133,18 @@ instalacion existente tiene fechas validas o una duracion previa de 30 dias, la
 migracion local respeta esos datos, completa solo campos faltantes de forma
 deterministica y no reactiva DEMO vencidas.
 
+### Licencia BASICA permanente
+
+La licencia BASICA es de pago unico y permanente. Una BASICA valida no tiene
+vencimiento temporal, no calcula dias restantes, no muestra cuenta regresiva y
+no solicita renovacion. Si existen datos legacy con `license_expires_at`,
+`expires_at` o campos equivalentes, la app los conserva como metadatos
+historicos y no los usa para vencer el plan BASICA.
+
+La permanencia aplica solo a licencias validas. Estados administrativos
+explicitos como `revocada`, `suspendida`, `bloqueada` o `anulada` siguen
+bloqueando el acceso aunque el plan original sea BASICA.
+
 ### Flujo manual de solicitudes de licencia
 
 La pantalla de licencia permite que el cliente envie una solicitud con nombre,

@@ -194,9 +194,12 @@ def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
         or _as_bool(cfg.get("license_plan_base_permanente"))
         or cfg.get("basica_activada", "0") == "1"
     )
+    status = cfg.get("license_status", "").strip()
     expired = False
     remaining_days = None
-    if _is_subscription_plan(original_plan) and expires_at:
+    if original_plan == "BASICA":
+        expires_at = ""
+    elif _is_subscription_plan(original_plan) and expires_at:
         try:
             expires_date = date.fromisoformat(expires_at)
             remaining_days = (expires_date - date.today()).days
@@ -205,14 +208,13 @@ def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
             remaining_days = None
             expired = False
 
-    status = cfg.get("license_status", "").strip()
     fallback_aplicado = _as_bool(cfg.get("license_fallback_aplicado"))
     effective_plan = _normalize_effective_plan(
         cfg.get("license_effective_plan") or cfg.get("license_tier") or original_plan
     )
 
     if _is_blocked_license_status(status):
-        effective_plan = "BASICA" if plan_base_permanente else "DEMO"
+        effective_plan = "SIN_PLAN" if plan_base_permanente else "DEMO"
         fallback_aplicado = False
     elif expired:
         if plan_base_permanente:
@@ -1884,7 +1886,7 @@ def activar_licencia(token_b64: str) -> tuple:
 
     tier = normalize_license_plan(data.get("tier", "BASICA"))
 
-    expires_at = data.get("expires_at") or ""
+    expires_at = "" if tier == "BASICA" else (data.get("expires_at") or "")
     updates = {
         'demo_mode':              '0',
         'license_type':           data.get('type', 'TDA_BASICA'),
