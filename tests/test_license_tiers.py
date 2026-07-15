@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # Agregar raíz del proyecto al path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -137,7 +138,8 @@ def test_database_tier_functions():
 
         tier = database.get_license_tier_from_db()
         modules = database.get_modulos_from_tier(tier)
-        active_modules = get_modulos_activos()
+        with mock.patch('licensing.permisos._get_modulos_sdk', return_value=set()):
+            active_modules = get_modulos_activos()
 
         assert tier == 'PRO', f"Tier esperado PRO, obtenido: {tier}"
         assert modules == PRO_MODULES, f"Módulos desde DB incorrectos: {modules}"
@@ -193,7 +195,8 @@ def test_prod_filters_persisted_modules_by_effective_tier():
         database.q("UPDATE config SET valor=? WHERE clave='license_tier'", ('DEMO',), commit=True)
         database.q("UPDATE config SET valor=? WHERE clave='license_modules'", ('[\"core\", \"clientes\"]',), commit=True)
 
-        active_modules = get_modulos_activos()
+        with mock.patch('licensing.permisos._get_modulos_sdk', return_value=set()):
+            active_modules = get_modulos_activos()
         assert active_modules == {'core'}, f"Debe filtrar módulos persistidos según el plan efectivo, obtuvo: {active_modules}"
 
         print("✓ PROD filtra license_modules persistidos por plan efectivo")

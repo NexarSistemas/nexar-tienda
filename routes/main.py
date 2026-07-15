@@ -537,6 +537,7 @@ def _get_plan_actions_context(
         license_info.get("tier", "DEMO"),
         basica_activada=basica_activada,
         licencia_vencida=bool(license_info.get("expirada")),
+        licencia_bloqueada=status.get("estado_comercial") == "licencia_bloqueada",
         tiene_checkout=_has_checkout_license(license_info) if tiene_checkout is None else tiene_checkout,
         plan_original=status.get("plan_original"),
         dias_para_vencer=status.get("dias_para_vencer"),

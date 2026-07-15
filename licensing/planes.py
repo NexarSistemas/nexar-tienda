@@ -155,6 +155,7 @@ def get_plan_actions(
     *,
     basica_activada: bool = False,
     licencia_vencida: bool = False,
+    licencia_bloqueada: bool = False,
     tiene_checkout: bool = True,
     plan_original: str | None = None,
     dias_para_vencer: int | None = None,
@@ -164,10 +165,17 @@ def get_plan_actions(
     normalized_original = _normalize_status_plan(plan_original, default=normalized_plan)
 
     effective_plan = normalized_plan
-    if licencia_vencida:
+    if licencia_bloqueada:
+        effective_plan = SIN_PLAN
+    elif licencia_vencida:
         effective_plan = "BASICA" if basica_activada else SIN_PLAN
 
-    if effective_plan == "BASICA":
+    if licencia_bloqueada:
+        purchasable_plans = []
+        title = "Licencia bloqueada"
+        message = "Esta licencia no esta activa. Contacta soporte para revisar el estado."
+        alert_class = "danger"
+    elif effective_plan == "BASICA":
         purchasable_plans = ["PRO", TECHNICAL_FULL_PLAN]
         title = "Plan BASICA activo"
         message = (
@@ -235,7 +243,7 @@ def get_plan_actions(
             "Si todavía no ves checkout directo para esta instalación, podés continuar desde Licencia."
         )
 
-    renewal_plan = normalized_original if normalized_original in {"PRO", TECHNICAL_FULL_PLAN} else ""
+    renewal_plan = normalized_original if not licencia_bloqueada and normalized_original in {"PRO", TECHNICAL_FULL_PLAN} else ""
     renewal_display = get_plan_display_name(renewal_plan) if renewal_plan else ""
     renewal_available = bool(renewal_plan)
     renewal_highlighted = False
@@ -297,6 +305,10 @@ def _get_remaining_days(expires_at: str | None) -> int | None:
         return None
 
 
+def _is_admin_blocked_status(status: str | None) -> bool:
+    return str(status or "").strip().lower() in {"revocada", "suspendida", "bloqueada", "anulada"}
+
+
 def get_license_status_context(
     license_info: dict[str, object] | None,
     *,
@@ -313,7 +325,9 @@ def get_license_status_context(
     )
     licencia_vencida = bool(info.get("expirada"))
     basica_activada = bool(info.get("plan_base_permanente"))
-    expires_at = str(info.get("expires_at") or "").strip()
+    estado_admin = str(info.get("estado") or "").strip()
+    admin_blocked = _is_admin_blocked_status(estado_admin)
+    expires_at = "" if plan_original == "BASICA" else str(info.get("expires_at") or "").strip()
     dias_para_vencer = _get_remaining_days(expires_at) if plan_original in {"PRO", "FULL"} else None
     plan_original_display = "SIN PLAN" if plan_original == SIN_PLAN else get_plan_display_name(plan_original)
     plan_efectivo_display = "SIN PLAN" if plan_efectivo == SIN_PLAN else get_plan_display_name(plan_efectivo)
@@ -326,7 +340,14 @@ def get_license_status_context(
     mostrar_aviso_vencimiento = False
     recomendar_basica = False
 
-    if plan_original == "BASICA":
+    if admin_blocked:
+        estado_comercial = "licencia_bloqueada"
+        titulo_estado = "Licencia bloqueada"
+        mensaje_estado = "Esta licencia no esta activa. Contacta soporte para revisar el estado."
+        alert_class = "danger"
+        mostrar_aviso_vencimiento = True
+        dias_para_vencer = None
+    elif plan_original == "BASICA":
         estado_comercial = "basica_permanente"
         titulo_estado = "Licencia BASICA permanente"
         mensaje_estado = "Tu licencia BASICA es permanente y no vence."

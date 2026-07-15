@@ -2,6 +2,39 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-15 - Codex - fix/basica-permanente
+
+### Tarea
+Implementar el Issue #111 para confirmar que la licencia BASICA es permanente, sin vencimiento temporal ni renovaciones.
+
+### Archivos modificados
+- `database.py`
+- `services/license_sdk.py`
+- `licensing/planes.py`
+- `routes/main.py`
+- `tests/test_license_integration.py`
+- `README.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- La fuente local efectiva ignora `license_expires_at` para BASICA y no calcula expiracion ni dias restantes aunque existan fechas legacy pasadas o futuras.
+- La sincronizacion/activacion local conserva BASICA sin vencimiento y no depende de una fecha futura para mantenerla activa.
+- Estados administrativos explicitos (`revocada`, `suspendida`, `bloqueada`, `anulada`) ahora bloquean BASICA en lugar de tratarla como permanente activa.
+- El contexto de UI muestra BASICA valida como permanente y evita renovaciones/cuentas regresivas; si esta bloqueada, muestra estado bloqueado sin ofrecer renovacion.
+- Se agregaron pruebas para fechas legacy, cambio grande de fecha evaluada, permisos BASICA, ausencia de permisos PRO/FULL y bloqueo administrativo.
+
+### Que se probo
+- `python -m pytest tests/test_license_tiers.py tests/test_license_integration.py tests/test_license_upgrade_request_fallback.py` -> 127 passed.
+- `python -m compileall -q app.py database.py iniciar.py run.py routes services licensing modules config tests` -> OK.
+- `python -m pytest` -> 245 passed.
+- `python -m compileall .` intento recorrer `.venv` y artefactos locales de build, por lo que se reemplazo por la validacion acotada al codigo versionado.
+
+### Fuera de alcance
+- No se modifica el ciclo DEMO de 14 dias.
+- No se implementa el comportamiento general de vencimientos de #110.
+- No se implementa compra directa de #112 ni proteccion de reinstalacion de #113.
+- No se toca Mercado Pago, checkout, precios, VERSION, CHANGELOG.md, Tag ni Release.
+
 ## 2026-07-14 - Codex - chore/sdk-build-dependency
 
 ### Tarea

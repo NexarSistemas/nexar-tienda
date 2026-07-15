@@ -70,7 +70,7 @@ def _resolve_effective_license_data(license_data: dict | None) -> dict:
 
     remote_status = original_remote_status or _normalize_remote_status(payload)
     if remote_status in {"suspendida", "bloqueada", "anulada", "revocada"}:
-        effective_plan = "BASICA" if bool(payload.get("plan_base_permanente")) else "DEMO"
+        effective_plan = "SIN_PLAN" if bool(payload.get("plan_base_permanente")) else "DEMO"
         payload.update({
             "estado": remote_status,
             "plan_efectivo": effective_plan,
