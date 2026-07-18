@@ -2,6 +2,57 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-18 - Codex - fix/expired-license-behavior
+
+### Tarea
+Implementar el Issue #110 para definir y aplicar el comportamiento de licencias vencidas DEMO, PRO y FULL.
+
+### Diagnostico
+- El vencimiento local se calculaba en `database._resolve_license_snapshot()` y `get_demo_status()`.
+- El estado efectivo se consumia desde `database.get_license_info()`, pero PRO/FULL vencidas podian degradar a DEMO o BASICA segun flags legacy.
+- La UI de `Mi plan` y `Licencia` mezclaba estado raw, plan original y plan efectivo, pudiendo mostrar fallback o estados tecnicos.
+- Las rutas de negocio dependian de modulos efectivos, pero una DEMO vencida seguia resolviendo modulos DEMO si no se bloqueaba antes.
+
+### Archivos modificados
+- `app.py`
+- `database.py`
+- `licensing/planes.py`
+- `licensing/permisos.py`
+- `services/license_sdk.py`
+- `routes/main.py`
+- `templates/base.html`
+- `templates/mi_plan.html`
+- `templates/licencia.html`
+- `tests/test_license_integration.py`
+- `README.md`
+- `docs/MODULOS_Y_PLANES.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se cambio
+- Estados administrativos explicitos y aliases (`revocada`, `suspendida`, `bloqueada`, `anulada`, cancelada y variantes masculinas) resuelven `SIN_PLAN` antes que cualquier fecha.
+- DEMO vencida queda sin modulos efectivos, no reinicia ni extiende el periodo y solo permite recuperar/comprar licencia o salir.
+- PRO y FULL vencidas conservan `plan_original`, pero el plan efectivo pasa a `SIN_PLAN`; no degradan a BASICA ni DEMO y no conceden permisos PRO/FULL.
+- BÁSICA valida sigue permanente y sin vencimiento por fechas legacy; si esta bloqueada administrativamente, tambien queda `SIN_PLAN`.
+- El middleware bloquea rutas de negocio con licencia no utilizable y mantiene accesibles `Mi plan`, `Licencia`, `/api/licencia/estado`, revalidacion/checkout y salida.
+- `Mi plan` y `Licencia` muestran estado normalizado, plan original, plan efectivo y mensajes especificos para DEMO/PRO/FULL vencidas.
+- La activacion inicial ya no permite iniciar otra DEMO desde el flujo normal cuando la DEMO local esta vencida.
+
+### Consulta, exportacion y backup
+- No se habilito modo completo de solo lectura, exportacion ni backup con licencia vencida.
+- Motivo: las rutas actuales mezclan vistas de consulta con acciones de escritura; habilitarlas parcialmente podria mantener uso normal de la app o introducir regresiones.
+- Politica aplicada en este issue: bloqueo minimo consistente y acceso solo a recuperacion comercial/estado/salida.
+
+### Que se probo
+- `python -m pytest tests/test_license_integration.py tests/test_license_tiers.py` no se pudo ejecutar porque `python` no existe en el entorno.
+- `.venv/bin/python -m pytest tests/test_license_integration.py tests/test_license_tiers.py` -> 131 passed.
+- `.venv/bin/python -m pytest` -> 251 passed.
+- `.venv/bin/python -m compileall -q app.py database.py iniciar.py run.py routes services licensing modules config tests` -> OK.
+
+### Fuera de alcance
+- No se implementa proteccion avanzada contra reinstalaciones del Issue #113.
+- No se implementa compra directa nueva del Issue #112 mas alla de conservar los flujos existentes.
+- No se toca Mercado Pago, Supabase, Nexar Pagos, Nexar Licencias, Nexar Admin, builds, instaladores, tags ni Releases.
+
 ## 2026-07-15 - Codex - fix/basica-permanente
 
 ### Tarea

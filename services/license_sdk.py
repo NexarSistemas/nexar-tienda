@@ -70,7 +70,7 @@ def _resolve_effective_license_data(license_data: dict | None) -> dict:
 
     remote_status = original_remote_status or _normalize_remote_status(payload)
     if remote_status in {"suspendida", "bloqueada", "anulada", "revocada"}:
-        effective_plan = "SIN_PLAN" if bool(payload.get("plan_base_permanente")) else "DEMO"
+        effective_plan = "SIN_PLAN"
         payload.update({
             "estado": remote_status,
             "plan_efectivo": effective_plan,
@@ -215,6 +215,14 @@ def _save_sdk_cache(license_data: dict) -> None:
 def _normalize_remote_status(license_data: dict | None) -> str:
     payload = license_data or {}
     status = str(payload.get("estado") or "").strip().lower()
+    status = {
+        "revocado": "revocada",
+        "suspendido": "suspendida",
+        "bloqueado": "bloqueada",
+        "anulado": "anulada",
+        "cancelada": "anulada",
+        "cancelado": "anulada",
+    }.get(status, status)
     if status in {"revocada", "suspendida", "bloqueada", "anulada"}:
         return status
     for flag_name, normalized in (
@@ -246,12 +254,13 @@ def _persist_local_license_state(
     target_plan: str,
     status: str,
 ) -> dict[str, object]:
-    normalized_plan = target_plan if target_plan in {"BASICA", "DEMO"} else "DEMO"
+    normalized_plan = target_plan if target_plan in {"BASICA", "DEMO", "SIN_PLAN"} else "DEMO"
+    commercial_plan = previous_info.get("plan_original") or previous_info.get("plan") or normalized_plan
     payload = {
         "license_key": previous_info.get("key", ""),
-        "plan_original": normalized_plan,
+        "plan_original": commercial_plan,
         "plan_efectivo": normalized_plan,
-        "plan": normalized_plan,
+        "plan": commercial_plan,
         "tier": normalized_plan,
         "estado": status,
         "fallback_aplicado": normalized_plan == "BASICA",
@@ -551,11 +560,10 @@ def refresh_saved_license_online(debug: bool = False) -> tuple[bool, str, dict[s
     supabase_status = str(get_supabase_debug_state().get("status", "") or "").strip().lower()
 
     if (ok and remote_license and remote_status in {"suspendida", "bloqueada", "anulada", "revocada"}) or supabase_status == "inactive":
-        fallback_plan = "BASICA" if bool(previous_info.get("plan_base_permanente")) else "DEMO"
         current_info = _persist_local_license_state(
             db,
             previous_info,
-            target_plan=fallback_plan,
+            target_plan="SIN_PLAN",
             status=remote_status or "suspendida",
         )
         return False, "La licencia fue suspendida. Contacta soporte.", current_info
@@ -568,11 +576,10 @@ def refresh_saved_license_online(debug: bool = False) -> tuple[bool, str, dict[s
                     "No pudimos validar la licencia en el servidor. Tu plan seguira activo hasta la fecha registrada localmente. Contacta soporte si el problema continua.",
                     previous_info,
                 )
-            fallback_plan = "BASICA" if bool(previous_info.get("plan_base_permanente")) else "DEMO"
             current_info = _persist_local_license_state(
                 db,
                 previous_info,
-                target_plan=fallback_plan,
+                target_plan="SIN_PLAN",
                 status="sin_licencia_remota",
             )
             return False, "No encontramos una licencia activa para esta instalacion.", current_info

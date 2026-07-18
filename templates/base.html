@@ -241,7 +241,7 @@
             {% elif lic_alert and lic_alert.tier == 'FULL' and lic_alert.full_expires_tomorrow %}
                 <div class="alert alert-danger shadow-sm" role="alert">
                     <strong>Tu licencia FULL vence mañana.</strong>
-                    Al vencer, el sistema vuelve automáticamente a Básica si ya tenés esa licencia activada.
+                    Renovala para conservar las funciones avanzadas sin interrupciones.
                 </div>
             {% endif %}
             {% with messages = get_flashed_messages(with_categories=true) %}

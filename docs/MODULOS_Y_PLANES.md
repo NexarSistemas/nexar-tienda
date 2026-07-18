@@ -8,7 +8,7 @@ El sistema de licencias tiene dos modos:
 
 ### DEV mode (`NEXAR_LICENSE_MODE=dev`)
 Leer módulos desde variables de entorno. Ideal para desarrollo local.
-- `NEXAR_PLAN`: Plan a probar (DEMO, BASICA, MENSUAL_FULL)
+- `NEXAR_PLAN`: Plan a probar (DEMO, BASICA, PRO, FULL)
 - `NEXAR_MODULES`: Módulos adicionales separados por coma
 
 ### PROD mode (`NEXAR_LICENSE_MODE=prod`)
@@ -23,16 +23,17 @@ Nexar Tienda soporta los siguientes tiers (con soporte para aliases):
 
 | Tier Canónico | Aliases | Módulos |
 |---|---|---|
-| `DEMO` | - | `core` |
-| `BASICA` | `BASIC`, `BASICO`, `TDA_BASICA` | `core`, `clientes`, `proveedores`, `pos`, `stock`, `caja`, `gastos` |
+| `DEMO` | - | `core`, `reportes` |
+| `BASICA` | `BASIC`, `BASICO`, `TDA_BASICA` | `core`, `clientes`, `proveedores`, `pos`, `stock`, `caja` |
 | `PRO` | `PRO` | `core`, `clientes`, `proveedores`, `pos`, `stock`, `caja`, `gastos`, `compras`, `historial`, `reportes`, `export`, `multiusuario` |
-| `MENSUAL_FULL` | `FULL`, `MENSUAL`, `TDA_PRO` | `core`, `clientes`, `proveedores`, `pos`, `stock`, `caja`, `gastos`, `compras`, `historial`, `reportes`, `export`, `temporadas`, `ia`, `multinegocio`, `multiusuario` |
+| `FULL` | `MENSUAL_FULL`, `MENSUAL`, `TDA_PRO` | `core`, `clientes`, `proveedores`, `pos`, `stock`, `caja`, `gastos`, `compras`, `historial`, `reportes`, `export`, `multiusuario`, `temporadas`, `multinegocio` |
 
 **Notas:**
 - La base de datos almacena el tier en `config.license_tier`
 - La tabla `license_module_map` mapea tiers a sets de módulos en JSON
-- Todos los tiers incluyen el módulo `core` como mínimo
-- Los aliases se normalizan automáticamente (ej: PRO → MENSUAL_FULL)
+- Los planes activos incluyen `core`; una licencia vencida o bloqueada resuelve
+  `SIN_PLAN` y no recibe módulos efectivos.
+- Los aliases se normalizan automáticamente (ej: `MENSUAL_FULL` → `FULL`).
 
 ## Ejemplo de .env
 
@@ -53,7 +54,7 @@ NEXAR_PLAN=BASICA
 NEXAR_MODULES=reportes,export
 ```
 
-Plan DEMO (solo core):
+Plan DEMO (core y reportes):
 
 ```env
 NEXAR_LICENSE_MODE=dev
@@ -64,7 +65,7 @@ Plan FULL (todos los módulos):
 
 ```env
 NEXAR_LICENSE_MODE=dev
-NEXAR_PLAN=MENSUAL_FULL
+NEXAR_PLAN=FULL
 ```
 
 ### Modo PROD (Producción)
@@ -104,10 +105,10 @@ Los tiers se normalizan automáticamente:
 - `BASIC` → `BASICA`
 - `BASICO` → `BASICA`
 - `TDA_BASICA` → `BASICA`
-- `FULL` → `MENSUAL_FULL`
-- `PRO` → `MENSUAL_FULL`
-- `MENSUAL` → `MENSUAL_FULL`
-- `TDA_PRO` → `MENSUAL_FULL`
+- `FULL` → `FULL`
+- `MENSUAL_FULL` → `FULL`
+- `MENSUAL` → `FULL`
+- `TDA_PRO` → `FULL`
 
 ### 3. Mapeo Tier → Módulos
 
@@ -116,7 +117,7 @@ La tabla `license_module_map` almacena el mapeo:
 ```sql
 CREATE TABLE license_module_map (
     id INTEGER PRIMARY KEY,
-    license_tier TEXT UNIQUE,          -- DEMO, BASICA, MENSUAL_FULL
+    license_tier TEXT UNIQUE,          -- DEMO, BASICA, PRO, FULL
     modules TEXT,                      -- JSON: ["core", "clientes", ...]
     created_at TEXT,
     updated_at TEXT
@@ -127,11 +128,36 @@ Ejemplo de registros:
 
 ```sql
 INSERT INTO license_module_map (license_tier, modules) VALUES
-    ('DEMO', '["core"]'),
-    ('BASICA', '["core", "clientes", "proveedores", "pos", "stock", "caja", "gastos"]'),
+    ('DEMO', '["core", "reportes"]'),
+    ('BASICA', '["core", "clientes", "proveedores", "pos", "stock", "caja"]'),
     ('PRO', '["core", "clientes", "proveedores", "pos", "stock", "caja", "gastos", "compras", "historial", "reportes", "export", "multiusuario"]'),
-    ('MENSUAL_FULL', '["core", "clientes", "proveedores", "pos", "stock", "caja", "gastos", "compras", "historial", "reportes", "export", "temporadas", "ia", "multinegocio", "multiusuario"]');
+    ('FULL', '["core", "clientes", "proveedores", "pos", "stock", "caja", "gastos", "compras", "historial", "reportes", "export", "multiusuario", "temporadas", "multinegocio"]');
 ```
+
+## Vencimiento de licencias
+
+La decision de estado efectivo vive en la capa central de licencias y no debe
+duplicarse en rutas o templates. La precedencia es:
+
+1. Estados administrativos explicitos: revocada, suspendida, bloqueada,
+   anulada y aliases equivalentes.
+2. Vencimiento por fecha para DEMO, PRO y FULL.
+3. Estado activo valido.
+
+Cuando DEMO, PRO o FULL vencen, el plan efectivo pasa a `SIN_PLAN`. El plan
+comercial historico se conserva como `plan_original`, pero no se conceden
+permisos de BASICA, PRO ni FULL. Las rutas de negocio quedan bloqueadas y solo
+permanecen accesibles `Mi plan`, `Licencia`, la API de estado de licencia,
+acciones de compra/renovacion/revalidacion y salida de la aplicacion.
+
+BASICA valida es permanente: las fechas legacy no la vencen y no muestra dias
+restantes ni renovacion. Sus estados administrativos siguen prevaleciendo y, si
+esta bloqueada, tambien resuelve `SIN_PLAN`.
+
+No se habilita automaticamente consulta completa, exportacion ni backup con
+licencia vencida. Las rutas actuales combinan consulta y acciones de escritura,
+por lo que la politica segura de este alcance es bloqueo consistente y acceso
+solo a recuperacion comercial.
 
 ### 4. Funciones Disponibles
 
@@ -182,7 +208,7 @@ Si un módulo no está activo:
 
 ### Test Local (DEV Mode)
 
-1. Configurar para DEMO (sin clientes ni reportes):
+1. Configurar para DEMO (sin clientes; reportes habilitados):
 
 ```env
 NEXAR_LICENSE_MODE=dev

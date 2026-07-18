@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 import database as db
-from licensing.planes import get_plan_display_name, get_update_access_context
+from licensing.planes import get_license_status_context, get_plan_display_name, get_update_access_context
 from routes.licencia import licencia_bp
 from routes.main import ensure_license_auto_refresh_thread, main_bp
 from licensing.permisos import modulo_activo
@@ -74,18 +74,21 @@ def create_app() -> Flask:
             info = db.get_license_info()
             demo = db.get_demo_status()
             has_license = bool(cargar_licencia()) and info.get("tier") != "DEMO"
-            license_expired = info.get("tier") in {"DEMO", "SIN_PLAN"} or bool(info.get("expirada"))
+            status = get_license_status_context(info, demo_status=demo)
+            license_expired = not bool(status.get("licencia_utilizable"))
             return {
                 "es_demo": not has_license,
                 "vencido": demo.get("vencido", False) if not has_license else license_expired,
                 "tier": info.get("tier", "DEMO") if has_license else "DEMO",
-                "tier_label": get_plan_display_name(info.get("tier", "DEMO")) if has_license else "PRUEBA",
+                "tier_label": status.get("plan_efectivo_display", get_plan_display_name(info.get("tier", "DEMO"))) if has_license else "PRUEBA",
                 "dias_restantes": 0 if has_license else demo.get("dias_restantes", 0),
                 "support": info.get("support", False),
                 "updates": info.get("updates", False),
                 "full_days": info.get("full_days"),
                 "full_expires_soon": bool(info.get("pro_expires_soon")),
                 "full_expires_tomorrow": bool(info.get("pro_expires_tomorrow")),
+                "estado_comercial": status.get("estado_comercial"),
+                "mensaje_estado": status.get("mensaje_estado"),
             }
 
         lic_status = get_licencia_status() if "user" in session else None
@@ -174,6 +177,7 @@ def create_app() -> Flask:
             "/logout",
             "/static",
             "/licencia",
+            "/api/licencia/estado",
             "/mi-plan",
             "/api/desktop/close-warning",
             "/apagar-rapido",
@@ -192,6 +196,7 @@ def create_app() -> Flask:
             "/logout",
             "/static",
             "/licencia",
+            "/api/licencia/estado",
             "/mi-plan",
             "/api/desktop/close-warning",
             "/apagar-rapido",
@@ -214,6 +219,7 @@ def create_app() -> Flask:
             "/activacion-inicial",
             "/mi-plan",
             "/licencia",
+            "/api/licencia/estado",
             "/configurar-recuperacion",
             "/configuracion/rubro-inicial",
             "/logout",
@@ -246,6 +252,7 @@ def create_app() -> Flask:
         license_allowed_paths = (
             "/activar",
             "/licencia",
+            "/api/licencia/estado",
             "/configurar-recuperacion",
             "/mi-plan",
             "/api/desktop/close-warning",
@@ -263,6 +270,17 @@ def create_app() -> Flask:
             return None
 
         demo_status = db.get_demo_status()
+        if (
+            license_info.get("tier") in {"DEMO", "SIN_PLAN"}
+            and demo_status.get("demo")
+            and not demo_status.get("vencido")
+        ):
+            return None
+
+        license_status = get_license_status_context(license_info, demo_status=demo_status)
+        if not bool(license_status.get("licencia_utilizable")):
+            return redirect("/mi-plan")
+
         licencia = cargar_licencia()
         if not licencia:
             if not demo_status.get("vencido"):

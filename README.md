@@ -145,6 +145,48 @@ La permanencia aplica solo a licencias validas. Estados administrativos
 explicitos como `revocada`, `suspendida`, `bloqueada` o `anulada` siguen
 bloqueando el acceso aunque el plan original sea BASICA.
 
+### Licencias vencidas y reactivacion
+
+La app resuelve un unico estado efectivo antes de habilitar modulos o rutas. La
+precedencia es:
+
+1. Estados administrativos explicitos como revocada, suspendida, bloqueada,
+   anulada o aliases equivalentes.
+2. Vencimiento por fecha para DEMO, PRO y FULL.
+3. Licencia activa valida.
+
+Una fecha futura no reactiva una licencia administrativamente bloqueada. Una
+licencia PRO o FULL vencida conserva su plan comercial historico, pero su plan
+efectivo pasa a `SIN_PLAN` y no concede permisos PRO, FULL ni BASICA. Al renovar
+o reactivar desde la fuente valida, basta con refrescar o sincronizar la
+licencia desde `Mi plan` para recuperar permisos, sin reinstalar ni tocar datos
+locales manualmente.
+
+Comportamiento por plan vencido:
+
+- DEMO vencida: no se reinicia ni se extiende automaticamente, no otorga
+  permisos pagos y solo permite acceder a `Mi plan`, `Licencia`, validacion de
+  estado, compra/solicitud de plan y salida de la app.
+- PRO vencida: mantiene PRO como referencia historica, bloquea funciones PRO y
+  muestra renovacion para recuperar el plan.
+- FULL vencida: mantiene FULL como referencia historica, bloquea funciones FULL
+  y muestra renovacion para recuperar funciones avanzadas.
+- BASICA valida: sigue siendo permanente; las fechas legacy son metadatos y no
+  la vencen. Si BASICA esta revocada, suspendida, bloqueada o anulada, queda
+  bloqueada.
+
+Con una licencia vencida se bloquean operaciones de negocio que crean o
+modifican datos: ventas, compras, stock, productos, clientes, proveedores, caja
+y acciones administrativas de negocio. El acceso queda limitado a recuperar o
+renovar la licencia, consultar el estado del plan y salir correctamente.
+
+Consulta, exportacion y backup: este PR no habilita un modo completo de solo
+lectura, exportacion ni backup para licencias vencidas. Las rutas actuales
+mezclan pantallas de consulta con acciones de escritura, por lo que habilitarlas
+parcialmente podria permitir uso normal de la app o introducir regresiones. La
+decision segura para este alcance es bloqueo minimo consistente y recuperacion
+comercial.
+
 ### Flujo manual de solicitudes de licencia
 
 La pantalla de licencia permite que el cliente envie una solicitud con nombre,

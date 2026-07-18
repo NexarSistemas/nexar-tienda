@@ -138,6 +138,23 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertTrue(status["mostrar_aviso_preventivo"])
         self.assertFalse(status["mostrar_aviso_vencimiento"])
 
+    def test_pro_bloqueada_con_fecha_futura_no_concede_permisos(self):
+        info = self._sync_license(
+            plan_original="PRO",
+            plan_efectivo="PRO",
+            plan="PRO",
+            tier="PRO",
+            estado="bloqueada",
+            plan_base_permanente=False,
+            expira=(date.today() + timedelta(days=30)).isoformat(),
+        )
+        status = get_license_status_context(info)
+
+        self.assertEqual(info["tier"], "SIN_PLAN")
+        self.assertFalse(info["expirada"])
+        self.assertEqual(self.permisos.get_modulos_activos(), set())
+        self.assertEqual(status["estado_comercial"], "licencia_bloqueada")
+
     def test_mensual_full_activa_devuelve_permisos_full(self):
         info = self._sync_license(
             plan_original="MENSUAL_FULL",
@@ -150,7 +167,24 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(info["tier"], "FULL")
         self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("FULL"))
 
-    def test_pro_vencida_con_base_permanente_devuelve_basica(self):
+    def test_full_suspendida_con_fecha_futura_no_concede_permisos(self):
+        info = self._sync_license(
+            plan_original="FULL",
+            plan_efectivo="FULL",
+            plan="FULL",
+            tier="FULL",
+            estado="suspendida",
+            plan_base_permanente=False,
+            expira=(date.today() + timedelta(days=30)).isoformat(),
+        )
+        status = get_license_status_context(info)
+
+        self.assertEqual(info["tier"], "SIN_PLAN")
+        self.assertFalse(info["expirada"])
+        self.assertEqual(self.permisos.get_modulos_activos(), set())
+        self.assertEqual(status["estado_comercial"], "licencia_bloqueada")
+
+    def test_pro_vencida_con_base_permanente_no_degrada_a_basica(self):
         info = self._sync_license(
             plan_original="PRO",
             plan_efectivo="PRO",
@@ -160,11 +194,11 @@ class LicenseIntegrationTests(unittest.TestCase):
             expira=(date.today() - timedelta(days=2)).isoformat(),
         )
         self.assertEqual(info["plan_original"], "PRO")
-        self.assertEqual(info["tier"], "BASICA")
-        self.assertTrue(info["fallback_aplicado"])
-        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("BASICA"))
+        self.assertEqual(info["tier"], "SIN_PLAN")
+        self.assertFalse(info["fallback_aplicado"])
+        self.assertEqual(self.permisos.get_modulos_activos(), set())
         status = get_license_status_context(info)
-        self.assertEqual(status["estado_comercial"], "mensual_vencido_con_basica")
+        self.assertEqual(status["estado_comercial"], "pro_vencido")
         self.assertTrue(status["mostrar_revalidar"])
 
     def test_pro_vencida_sin_base_permanente_no_regala_basica(self):
@@ -177,14 +211,14 @@ class LicenseIntegrationTests(unittest.TestCase):
             expira=(date.today() - timedelta(days=2)).isoformat(),
         )
         self.assertEqual(info["plan_original"], "PRO")
-        self.assertEqual(info["tier"], "DEMO")
+        self.assertEqual(info["tier"], "SIN_PLAN")
         self.assertFalse(info["fallback_aplicado"])
-        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("DEMO"))
+        self.assertEqual(self.permisos.get_modulos_activos(), set())
         status = get_license_status_context(info)
-        self.assertEqual(status["estado_comercial"], "mensual_vencido_sin_plan")
+        self.assertEqual(status["estado_comercial"], "pro_vencido")
         self.assertTrue(status["recomendar_basica"])
 
-    def test_full_vencida_con_base_permanente_devuelve_basica(self):
+    def test_full_vencida_con_base_permanente_no_degrada_a_basica(self):
         info = self._sync_license(
             plan_original="MENSUAL_FULL",
             plan_efectivo="MENSUAL_FULL",
@@ -194,11 +228,11 @@ class LicenseIntegrationTests(unittest.TestCase):
             expira=(date.today() - timedelta(days=2)).isoformat(),
         )
         self.assertEqual(info["plan_original"], "FULL")
-        self.assertEqual(info["tier"], "BASICA")
-        self.assertTrue(info["fallback_aplicado"])
-        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("BASICA"))
+        self.assertEqual(info["tier"], "SIN_PLAN")
+        self.assertFalse(info["fallback_aplicado"])
+        self.assertEqual(self.permisos.get_modulos_activos(), set())
         status = get_license_status_context(info)
-        self.assertEqual(status["estado_comercial"], "mensual_vencido_con_basica")
+        self.assertEqual(status["estado_comercial"], "full_vencido")
 
     def test_full_vencida_sin_base_permanente_no_regala_basica(self):
         info = self._sync_license(
@@ -210,11 +244,63 @@ class LicenseIntegrationTests(unittest.TestCase):
             expira=(date.today() - timedelta(days=2)).isoformat(),
         )
         self.assertEqual(info["plan_original"], "FULL")
-        self.assertEqual(info["tier"], "DEMO")
+        self.assertEqual(info["tier"], "SIN_PLAN")
         self.assertFalse(info["fallback_aplicado"])
-        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("DEMO"))
+        self.assertEqual(self.permisos.get_modulos_activos(), set())
         status = get_license_status_context(info)
-        self.assertEqual(status["estado_comercial"], "mensual_vencido_sin_plan")
+        self.assertEqual(status["estado_comercial"], "full_vencido")
+
+    def test_pro_renovada_recupera_permisos_al_revalidar(self):
+        expired = self._sync_license(
+            plan_original="PRO",
+            plan_efectivo="PRO",
+            plan="PRO",
+            tier="PRO",
+            plan_base_permanente=False,
+            expira=(date.today() - timedelta(days=2)).isoformat(),
+        )
+        self.assertEqual(expired["tier"], "SIN_PLAN")
+        self.assertEqual(self.permisos.get_modulos_activos(), set())
+
+        renewed = self._sync_license(
+            plan_original="PRO",
+            plan_efectivo="PRO",
+            plan="PRO",
+            tier="PRO",
+            estado="activa",
+            plan_base_permanente=False,
+            expira=(date.today() + timedelta(days=30)).isoformat(),
+        )
+
+        self.assertEqual(renewed["tier"], "PRO")
+        self.assertFalse(renewed["expirada"])
+        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("PRO"))
+
+    def test_full_renovada_recupera_permisos_al_revalidar(self):
+        expired = self._sync_license(
+            plan_original="FULL",
+            plan_efectivo="FULL",
+            plan="FULL",
+            tier="FULL",
+            plan_base_permanente=False,
+            expira=(date.today() - timedelta(days=2)).isoformat(),
+        )
+        self.assertEqual(expired["tier"], "SIN_PLAN")
+        self.assertEqual(self.permisos.get_modulos_activos(), set())
+
+        renewed = self._sync_license(
+            plan_original="FULL",
+            plan_efectivo="FULL",
+            plan="FULL",
+            tier="FULL",
+            estado="activa",
+            plan_base_permanente=False,
+            expira=(date.today() + timedelta(days=30)).isoformat(),
+        )
+
+        self.assertEqual(renewed["tier"], "FULL")
+        self.assertFalse(renewed["expirada"])
+        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("FULL"))
 
     def test_refresh_licencia_no_encontrada_mantiene_full_local_vigente(self):
         self._sync_license(
@@ -265,10 +351,10 @@ class LicenseIntegrationTests(unittest.TestCase):
 
         self.assertFalse(ok)
         self.assertEqual(message, "La licencia fue suspendida. Contacta soporte.")
-        self.assertEqual(refreshed_info["tier"], "DEMO")
+        self.assertEqual(refreshed_info["tier"], "SIN_PLAN")
         self.assertNotEqual(self.database.get_license_info()["tier"], "FULL")
 
-    def test_refresh_licencia_vencida_degrada_a_demo_si_no_hay_basica(self):
+    def test_refresh_licencia_vencida_resuelve_sin_plan(self):
         self._sync_license(
             plan_original="FULL",
             plan_efectivo="FULL",
@@ -295,7 +381,7 @@ class LicenseIntegrationTests(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertEqual(message, "Licencia actualizada desde Supabase.")
-        self.assertEqual(refreshed_info["tier"], "DEMO")
+        self.assertEqual(refreshed_info["tier"], "SIN_PLAN")
         self.assertTrue(refreshed_info["expirada"])
 
     def test_refresh_licencia_error_conexion_mantiene_cache_local_vigente(self):
@@ -462,11 +548,11 @@ class LicenseIntegrationTests(unittest.TestCase):
             demo_status={"demo": True, "vencido": True, "dias_restantes": 0},
         )
         self.assertEqual(status["estado_comercial"], "demo_vencido")
-        self.assertEqual(status["plan_efectivo"], "DEMO")
+        self.assertEqual(status["plan_efectivo"], "SIN_PLAN")
         self.assertFalse(status["basica_activada"])
         self.assertTrue(status["mostrar_aviso_vencimiento"])
         self.assertEqual(status["titulo_estado"], "Tu demo de 14 dias vencio")
-        self.assertIn("BASICA, PRO o FULL", status["mensaje_estado"])
+        self.assertIn("periodo de prueba finalizo", status["mensaje_estado"])
 
     def test_demo_nuevo_arranca_con_14_dias(self):
         self.assertEqual(self.database.get_demo_status()["dias_demo"], 14)
@@ -645,7 +731,7 @@ class LicenseIntegrationTests(unittest.TestCase):
 
         self.assertTrue(status["vencido"])
         self.assertEqual(self.database.get_license_info()["tier"], "DEMO")
-        self.assertEqual(modules, get_modulos_plan("DEMO"))
+        self.assertEqual(modules, set())
         self.assertNotIn("compras", modules)
         self.assertNotIn("multiusuario", modules)
 
@@ -1309,8 +1395,8 @@ class LicenseIntegrationTests(unittest.TestCase):
         })
 
         self.assertEqual(resolved["estado"], "suspendida")
-        self.assertEqual(resolved["tier"], "DEMO")
-        self.assertEqual(resolved["plan_efectivo"], "DEMO")
+        self.assertEqual(resolved["tier"], "SIN_PLAN")
+        self.assertEqual(resolved["plan_efectivo"], "SIN_PLAN")
 
     def test_supabase_license_api_prefiere_variables_nexar_licenses_y_timeouts(self):
         import services.supabase_license_api as supabase_api
@@ -1361,16 +1447,16 @@ class LicenseIntegrationTests(unittest.TestCase):
         app = self.app_module.create_app()
         fake_license = {
             "key": "NXR-TDA-TEST-001",
-            "tier": "BASICA",
+            "tier": "SIN_PLAN",
             "plan": "PRO",
             "plan_original": "PRO",
-            "plan_efectivo": "BASICA",
-            "effective_plan": "BASICA",
-            "estado": "vencida_con_fallback_basica",
-            "fallback_aplicado": True,
+            "plan_efectivo": "SIN_PLAN",
+            "effective_plan": "SIN_PLAN",
+            "estado": "pro_vencida",
+            "fallback_aplicado": False,
             "plan_base_permanente": True,
             "expirada": True,
-            "modules": ["core"],
+            "modules": [],
         }
 
         with app.test_client() as client:
@@ -1381,7 +1467,7 @@ class LicenseIntegrationTests(unittest.TestCase):
             fake_user = {"security_question": "q", "security_answer_hash": "hash"}
             with mock.patch.object(self.routes_main.db, "count_usuarios", return_value=1), \
                  mock.patch.object(self.routes_main.db, "get_license_info", return_value=fake_license), \
-                 mock.patch.object(self.routes_main.db, "get_config", return_value={"license_modules": '["core"]'}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"license_modules": "[]"}), \
                  mock.patch.object(self.routes_main, "get_license_debug_state", return_value={"validation_mode": "cache", "modules": ["core"], "last_error": "", "masked_license_key": "NXR...001"}), \
                  mock.patch.object(self.routes_main, "get_modulos_debug_info", return_value={"final_modules": ["core"], "tier_modules": ["core"], "final_source": "db_tier"}), \
                  mock.patch.object(self.routes_main, "get_supabase_debug_state", return_value={"configured": False}), \
@@ -1391,14 +1477,15 @@ class LicenseIntegrationTests(unittest.TestCase):
                  mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
                  mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: default), \
                  mock.patch.object(self.app_module.db, "q", return_value=fake_user):
-                response = client.get("/debug/licencia")
+                response = client.get("/api/licencia/estado")
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["plan_original"], "PRO")
-        self.assertEqual(payload["plan_efectivo"], "BASICA")
-        self.assertEqual(payload["estado"], "vencida_con_fallback_basica")
-        self.assertTrue(payload["fallback_aplicado"])
+        self.assertEqual(payload["plan_efectivo"], "SIN_PLAN")
+        self.assertEqual(payload["estado"], "pro_vencida")
+        self.assertFalse(payload["fallback_aplicado"])
+        self.assertEqual(payload["license_status"]["estado_comercial"], "pro_vencido")
 
     def test_pro_tiene_acceso_a_actualizaciones_normales(self):
         access = get_update_access_context({"tier": "PRO", "updates": True})
@@ -1495,7 +1582,7 @@ class LicenseIntegrationTests(unittest.TestCase):
 
             with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
                  mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
-                 mock.patch.object(self.app_module.db, "get_demo_status", return_value={"vencido": False}), \
+                 mock.patch.object(self.app_module.db, "get_demo_status", return_value={"demo": True, "vencido": False}), \
                  mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "SIN_PLAN", "key": ""}), \
                  mock.patch.object(self.app_module.db, "get_config", return_value={}), \
                  mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
@@ -1512,6 +1599,80 @@ class LicenseIntegrationTests(unittest.TestCase):
                 response = client.get("/", follow_redirects=False)
 
         self.assertEqual(response.status_code, 200)
+
+    def test_pro_vencida_bloquea_operaciones_y_mantiene_recuperacion_accesible(self):
+        app = self.app_module.create_app()
+        expired_license = {
+            "key": "NXR-PRO-001",
+            "tier": "SIN_PLAN",
+            "plan": "PRO",
+            "plan_original": "PRO",
+            "plan_efectivo": "SIN_PLAN",
+            "estado": "pro_vencida",
+            "expirada": True,
+            "modules": [],
+        }
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "admin", "id": 1}
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "get_demo_status", return_value={"vencido": True, "demo": False}), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value=expired_license), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: default), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "NXR-PRO-001"}), \
+                 mock.patch.object(self.routes_main, "refresh_saved_license_online", return_value=(False, "offline", expired_license)), \
+                 mock.patch.object(self.routes_main, "render_template", return_value="ok"):
+                blocked = client.get("/productos/nuevo", follow_redirects=False)
+                mi_plan = client.get("/mi-plan", follow_redirects=False)
+                licencia = client.get("/licencia", follow_redirects=False)
+                api_estado = client.get("/api/licencia/estado", follow_redirects=False)
+
+        self.assertEqual(blocked.status_code, 302)
+        self.assertTrue(blocked.headers["Location"].endswith("/mi-plan"))
+        self.assertEqual(mi_plan.status_code, 200)
+        self.assertEqual(licencia.status_code, 200)
+        self.assertEqual(api_estado.status_code, 200)
+
+    def test_demo_vencida_bloquea_dashboard_y_permite_comprar_plan(self):
+        app = self.app_module.create_app()
+        demo_info = {"key": "", "tier": "DEMO", "plan": "DEMO", "plan_original": "DEMO"}
+        demo_status = {"demo": True, "vencido": True, "dias_restantes": 0, "dias_demo": 14}
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "admin", "id": 1}
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "get_demo_status", return_value=demo_status), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value=demo_info), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: default), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module, "cargar_licencia", return_value=None), \
+                 mock.patch.object(self.routes_main, "refresh_saved_license_online", return_value=(False, "sin licencia", demo_info)), \
+                 mock.patch.object(self.routes_main, "render_template", return_value="ok"):
+                blocked = client.get("/", follow_redirects=False)
+                mi_plan = client.get("/mi-plan", follow_redirects=False)
+
+        actions = self.routes_main._get_plan_actions_context(demo_info, license_status=get_license_status_context(demo_info, demo_status=demo_status))
+        self.assertEqual(blocked.status_code, 302)
+        self.assertTrue(blocked.headers["Location"].endswith("/mi-plan"))
+        self.assertEqual(mi_plan.status_code, 200)
+        self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "FULL"])
 
     def test_login_demo_con_next_mi_plan_vuelve_al_dashboard(self):
         app = self.app_module.create_app()

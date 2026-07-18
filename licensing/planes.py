@@ -168,7 +168,7 @@ def get_plan_actions(
     if licencia_bloqueada:
         effective_plan = SIN_PLAN
     elif licencia_vencida:
-        effective_plan = "BASICA" if basica_activada else SIN_PLAN
+        effective_plan = SIN_PLAN
 
     if licencia_bloqueada:
         purchasable_plans = []
@@ -197,7 +197,14 @@ def get_plan_actions(
     elif effective_plan == SIN_PLAN:
         purchasable_plans = list(COMMERCIAL_PLAN_ORDER)
         title = "App limitada por licencia vencida"
-        message = "La suscripción venció y no hay BASICA permanente para aplicar fallback."
+        if normalized_original == "DEMO":
+            message = "Tu periodo de prueba finalizo. Elegi un plan para continuar usando Nexar Comercio."
+        elif normalized_original == "PRO":
+            message = "Tu plan PRO vencio. Renovalo para recuperar las funciones del plan."
+        elif normalized_original == TECHNICAL_FULL_PLAN:
+            message = "Tu plan FULL vencio. Renovalo para recuperar todas las funciones avanzadas."
+        else:
+            message = "La instalacion no tiene una licencia utilizable en este momento."
         alert_class = "danger"
     else:
         purchasable_plans = list(COMMERCIAL_PLAN_ORDER)
@@ -306,7 +313,39 @@ def _get_remaining_days(expires_at: str | None) -> int | None:
 
 
 def _is_admin_blocked_status(status: str | None) -> bool:
-    return str(status or "").strip().lower() in {"revocada", "suspendida", "bloqueada", "anulada"}
+    return str(status or "").strip().lower() in {
+        "revocada",
+        "revocado",
+        "suspendida",
+        "suspendido",
+        "bloqueada",
+        "bloqueado",
+        "anulada",
+        "anulado",
+        "cancelada",
+        "cancelado",
+    }
+
+
+def _normalize_status_display(status: str | None) -> str:
+    normalized = str(status or "").strip().lower()
+    aliases = {
+        "revocado": "revocada",
+        "suspendido": "suspendida",
+        "bloqueado": "bloqueada",
+        "anulado": "anulada",
+        "cancelada": "anulada",
+        "cancelado": "anulada",
+        "pro_vencida": "vencida",
+        "full_vencida": "vencida",
+        "demo_vencida": "vencida",
+        "vencida_demo": "vencida",
+        "expirada": "vencida",
+        "expired": "vencida",
+        "active": "activa",
+    }
+    normalized = aliases.get(normalized, normalized)
+    return normalized or "activa"
 
 
 def get_license_status_context(
@@ -326,6 +365,7 @@ def get_license_status_context(
     licencia_vencida = bool(info.get("expirada"))
     basica_activada = bool(info.get("plan_base_permanente"))
     estado_admin = str(info.get("estado") or "").strip()
+    estado_display = _normalize_status_display(estado_admin)
     admin_blocked = _is_admin_blocked_status(estado_admin)
     expires_at = "" if plan_original == "BASICA" else str(info.get("expires_at") or "").strip()
     dias_para_vencer = _get_remaining_days(expires_at) if plan_original in {"PRO", "FULL"} else None
@@ -347,27 +387,26 @@ def get_license_status_context(
         alert_class = "danger"
         mostrar_aviso_vencimiento = True
         dias_para_vencer = None
+        plan_efectivo = SIN_PLAN
+        plan_efectivo_display = "SIN PLAN"
     elif plan_original == "BASICA":
         estado_comercial = "basica_permanente"
         titulo_estado = "Licencia BASICA permanente"
         mensaje_estado = "Tu licencia BASICA es permanente y no vence."
         alert_class = "info"
         dias_para_vencer = None
-    elif plan_original in {"PRO", "FULL"} and licencia_vencida and basica_activada:
-        estado_comercial = "mensual_vencido_con_basica"
-        titulo_estado = f"Plan {plan_original_display} vencido"
-        mensaje_estado = "Tu plan mensual vencio. Seguis usando BASICA porque tenes licencia permanente."
-        alert_class = "warning"
-        mostrar_aviso_vencimiento = True
     elif plan_original in {"PRO", "FULL"} and licencia_vencida:
-        estado_comercial = "mensual_vencido_sin_plan"
+        estado_comercial = f"{plan_original.lower()}_vencido"
         titulo_estado = f"Plan {plan_original_display} vencido"
-        mensaje_estado = (
-            "Tu plan mensual vencio y la app quedo limitada. "
-            "Te recomendamos BASICA para no quedar bloqueado."
-        )
+        if plan_original == "PRO":
+            mensaje_estado = "Tu plan PRO vencio. Renovalo para recuperar las funciones del plan."
+        else:
+            mensaje_estado = "Tu plan FULL vencio. Renovalo para recuperar todas las funciones avanzadas."
         alert_class = "danger"
         mostrar_aviso_vencimiento = True
+        plan_efectivo = SIN_PLAN
+        plan_efectivo_display = "SIN PLAN"
+        dias_para_vencer = None
         recomendar_basica = True
     elif plan_original in {"PRO", "FULL"} and dias_para_vencer is not None and dias_para_vencer <= 7:
         estado_comercial = "mensual_por_vencer"
@@ -399,13 +438,11 @@ def get_license_status_context(
         if bool(demo.get("vencido")):
             estado_comercial = "demo_vencido"
             titulo_estado = "Tu demo vencio" if demo_days != 14 else "Tu demo de 14 dias vencio"
-            mensaje_estado = (
-                "Tu demo vencio. Podes adquirir BASICA, PRO o FULL desde esta pantalla."
-                if demo_days != 14
-                else "Tu demo de 14 dias vencio. Podes adquirir BASICA, PRO o FULL desde esta pantalla."
-            )
+            mensaje_estado = "Tu periodo de prueba finalizo. Elegi un plan para continuar usando Nexar Comercio."
             alert_class = "warning"
             mostrar_aviso_vencimiento = True
+            plan_efectivo = SIN_PLAN
+            plan_efectivo_display = "SIN PLAN"
         else:
             estado_comercial = "demo_activo"
             titulo_estado = "Periodo demo activo"
@@ -427,8 +464,11 @@ def get_license_status_context(
         "plan_efectivo": plan_efectivo,
         "plan_efectivo_display": plan_efectivo_display,
         "licencia_vencida": licencia_vencida,
+        "licencia_utilizable": not admin_blocked and estado_comercial not in {"demo_vencido", "pro_vencido", "full_vencido", "sin_plan"},
         "dias_para_vencer": dias_para_vencer,
         "basica_activada": basica_activada,
+        "estado_efectivo": estado_display,
+        "estado_display": estado_display.upper(),
         "estado_comercial": estado_comercial,
         "titulo_estado": titulo_estado,
         "mensaje_estado": mensaje_estado,

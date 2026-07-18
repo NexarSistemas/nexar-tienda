@@ -533,10 +533,11 @@ def _get_plan_actions_context(
     if not basica_activada:
         basica_activada = _as_bool(db.get_config().get("basica_activada", "0"))
     status = license_status or _get_license_status_context(license_info)
+    status_expired = status.get("estado_comercial") in {"demo_vencido", "pro_vencido", "full_vencido"}
     return get_plan_actions(
         license_info.get("tier", "DEMO"),
         basica_activada=basica_activada,
-        licencia_vencida=bool(license_info.get("expirada")),
+        licencia_vencida=bool(license_info.get("expirada")) or bool(status_expired),
         licencia_bloqueada=status.get("estado_comercial") == "licencia_bloqueada",
         tiene_checkout=_has_checkout_license(license_info) if tiene_checkout is None else tiene_checkout,
         plan_original=status.get("plan_original"),
@@ -4432,6 +4433,20 @@ def activacion_inicial():
             activation_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
             activation_id = get_current_hwid() or activation_id
             demo_status = db.get_demo_status()
+            if demo_status.get("vencido"):
+                flash(
+                    "Tu periodo de prueba finalizo. Elegi BASICA, PRO o FULL para continuar usando Nexar Comercio.",
+                    "warning",
+                )
+                return render_template(
+                    "activacion_inicial.html",
+                    customer_profile=profile,
+                    selected_plan="BASICA",
+                    available_plans=["DEMO", "BASICA", "PRO", "FULL"],
+                    license_info=license_info,
+                    plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+                    demo_status=demo_status,
+                )
             install_date = str(demo_status.get("install_date", "") or "").strip()
             expires_at = str(demo_status.get("expires_at", "") or "").strip()
             try:
