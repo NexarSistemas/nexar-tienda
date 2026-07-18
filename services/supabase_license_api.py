@@ -704,6 +704,66 @@ def activate_license(
     return True, "Licencia activada correctamente para esta maquina.", updated
 
 
+def find_active_license_for_machine(
+    *,
+    machine_id: str,
+    producto: str = PRODUCTO_DEFAULT,
+    expected_plan: str = "",
+    vendor_code: str = "",
+) -> tuple[bool, str, dict[str, Any] | None]:
+    operation = "find_active_license_for_machine"
+    if not is_configured():
+        _set_supabase_debug(operation=operation, status="not_configured", status_code=None, last_error="not_configured")
+        return False, _missing_supabase_config_message("validar licencias online"), None
+
+    machine_id = build_machine_id(machine_id)
+    plan = normalize_plan(expected_plan, default="")
+    vendor_code = _normalize_vendor_code(vendor_code)
+    if not machine_id:
+        _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_machine_id")
+        return False, "No se pudo resolver el ID de activacion de esta instalacion.", None
+
+    params = {
+        "producto": f"eq.{producto}",
+        "activa": "eq.true",
+        "select": "*",
+        "or": f'(hwid.eq.{machine_id},hwids.cs.["{machine_id}"])',
+        "limit": "10",
+    }
+    try:
+        resp = requests.get(_table_url(), headers=_headers(), params=params, timeout=_request_timeout())
+    except requests.RequestException as exc:
+        message, error = _request_error_message(operation, exc)
+        _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error")
+        return False, message, None
+    if resp.status_code >= 300:
+        message, error = _response_error_message(operation, resp)
+        _set_supabase_debug(operation=operation, status="http_error", status_code=resp.status_code, last_error=error)
+        return False, message, None
+
+    try:
+        rows = resp.json() if resp.text else []
+    except ValueError:
+        _set_supabase_debug(operation=operation, status="invalid_response", status_code=resp.status_code, last_error="invalid_json")
+        return False, "Supabase devolvio una respuesta invalida al validar la licencia.", None
+
+    for row in rows:
+        row_plan = normalize_plan(row.get("plan") or row.get("tier") or row.get("license_plan"), default="")
+        if plan and row_plan != plan:
+            continue
+        license_key = str(row.get("license_key") or "").strip()
+        if not license_key:
+            continue
+        if vendor_code and not str(row.get("codigo_vendedor") or "").strip():
+            row = dict(row)
+            row["codigo_vendedor"] = vendor_code
+        _set_supabase_debug(operation=operation, status="ok", status_code=resp.status_code, last_error="")
+        return True, "Licencia encontrada para esta instalacion.", row
+
+    _set_supabase_debug(operation=operation, status="not_found", status_code=resp.status_code, last_error="license_not_found")
+    return False, "Todavia no encontramos una licencia activa para este equipo.", None
+
+
 def update_license_vendor_code(
     license_key: str,
     vendor_code: str,

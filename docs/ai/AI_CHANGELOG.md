@@ -2,6 +2,75 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-18 - Codex - feature/direct-plan-activation
+
+### Tarea
+Implementar el Issue #112 para permitir compra y activacion directa inicial de
+BASICA, PRO y FULL sin DEMO ni planes intermedios obligatorios.
+
+### Diagnostico
+- Una instalacion nueva completa primero `/registro-inicial`, luego queda con
+  `activation_initial_completed=0` y el middleware la lleva a
+  `/activacion-inicial`.
+- La pantalla inicial ya listaba DEMO, BASICA, PRO y FULL, pero el seguimiento
+  post-pago dependia principalmente de una licencia local guardada; sin
+  `license_key`, `/api/licencia/estado` devolvia `sin_licencia` sin consultar
+  una licencia emitida por `activation_id`.
+- DEMO se activaba solo si el usuario elegia DEMO; no habia activacion automatica
+  para planes pagos, pero faltaba estado explicito de checkout pendiente.
+- El checkout existente se arma con producto, plan destino, precio centralizado,
+  `external_reference`, email y `activation_id`; para alta usa
+  `ALTA|activation_id|producto|plan`.
+- El flujo "Ya pague" refrescaba licencias guardadas y hacia polling desde
+  `Mi plan`, pero no podia completar una compra inicial sin clave local aunque
+  Licencias ya hubiera emitido una licencia asociada al equipo.
+- La fuente de verdad para permisos sigue siendo la licencia efectiva resuelta
+  por SDK/Supabase y sincronizada localmente; existe riesgo si se concedieran
+  modulos solo por seleccion, checkout o declaracion manual, por eso no se hizo.
+- Dependencia externa detectada: Nexar Pagos, Licencias o Admin deben emitir la
+  licencia oficial vinculada al mismo `activation_id`/HWID enviado en checkout.
+  Si no existe esa licencia, la app mantiene estado pendiente.
+
+### Que se cambio
+- Se agrego estado local de seguimiento de checkout inicial:
+  `activation_checkout_status`, `activation_checkout_plan`,
+  `activation_checkout_activation_id`, `activation_checkout_started_at` y
+  `activation_checkout_checked_at`.
+- BASICA, PRO y FULL desde instalacion inicial quedan como `alta_licencia`,
+  conservan el mismo `activation_id` estable y no completan la activacion
+  inicial hasta confirmar licencia oficial.
+- "Ya pague" ahora, cuando no hay clave local pero existe checkout pendiente,
+  consulta Supabase por producto, plan esperado y `activation_id`/HWID mediante
+  la integracion existente; solo sincroniza si encuentra licencia activa con
+  `license_key`.
+- `/api/licencia/estado` y el refresh de `Mi plan` devuelven mensajes claros de
+  pendiente, confirmado o error temporal, sin activar permisos ante errores de
+  red.
+- La pantalla inicial comunica que DEMO, BASICA, PRO y FULL son caminos
+  independientes y muestra acciones especificas por plan.
+- `Mi plan` muestra el panel post-pago cuando hay una compra inicial pendiente.
+
+### Archivos modificados
+- `database.py`
+- `routes/main.py`
+- `services/supabase_license_api.py`
+- `templates/activacion_inicial.html`
+- `templates/mi_plan.html`
+- `tests/test_license_integration.py`
+- `README.md`
+- `docs/MODULOS_Y_PLANES.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se probo
+- `.venv/bin/python -m pytest tests/test_license_integration.py tests/test_license_tiers.py` -> 139 passed.
+- `.venv/bin/python -m pytest` -> 259 passed.
+- `.venv/bin/python -m compileall -q app.py database.py iniciar.py run.py routes services licensing modules config tests` -> OK.
+
+### Fuera de alcance
+- No se implementa la proteccion avanzada contra reinstalaciones del Issue #113.
+- No se modifican precios, Mercado Pago interno, Nexar Pagos, GitHub Actions,
+  builds, instaladores, tags ni Releases.
+
 ## 2026-07-18 - Codex - fix/expired-license-behavior
 
 ### Tarea

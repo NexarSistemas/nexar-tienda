@@ -10,7 +10,22 @@
                 <h5 class="mb-0">Completa la activacion inicial</h5>
             </div>
             <div class="card-body">
-                <p class="text-muted mb-4">Antes de usar el sistema tenés que elegir DEMO, BASICA, PRO o FULL. Reutilizamos los datos del negocio para no pedirlos de nuevo más adelante.</p>
+                <p class="text-muted mb-4">Elegí cómo querés empezar. DEMO, BASICA, PRO y FULL son caminos independientes; los planes pagos se activan solo cuando Licencias confirma el pago y emite una licencia válida para este equipo.</p>
+
+                {% if checkout_pending and checkout_pending.pending %}
+                <div class="alert alert-warning" id="activation-payment-panel">
+                    <div class="fw-semibold">Pago pendiente de verificación</div>
+                    <div class="small mb-3">
+                        Plan seleccionado: <strong>{{ checkout_pending.plan_display }}</strong>. Si ya completaste el pago, verificá la licencia.
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm" type="button" id="activation-payment-refresh">
+                        Ya pagué, verificar licencia
+                    </button>
+                    <div class="small mt-2" id="activation-payment-message">
+                        Todavía no encontramos una licencia activa para este equipo. Si acabás de pagar, esperá unos instantes y volvé a verificar.
+                    </div>
+                </div>
+                {% endif %}
 
                 <form method="POST" action="{{ url_for('main.activacion_inicial') }}" class="row g-3">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -55,6 +70,15 @@
                                             <span class="form-check-label fw-semibold ms-1">
                                                 {% if plan == 'DEMO' %}DEMO 14 días{% else %}{{ plan }}{% endif %}
                                             </span>
+                                            <div class="small text-muted mt-2">
+                                                {% if plan == 'DEMO' %}
+                                                Iniciar prueba gratuita.
+                                                {% elif plan == 'BASICA' %}
+                                                Pago único permanente.
+                                                {% else %}
+                                                Plan con vencimiento según licencia emitida.
+                                                {% endif %}
+                                            </div>
                                         </div>
                                     </div>
                                 </label>
@@ -79,8 +103,8 @@
                     </div>
 
                     <div class="col-12">
-                        <button class="btn btn-primary w-100" type="submit">
-                            Continuar con la activación
+                        <button class="btn btn-primary w-100" type="submit" id="activation-submit">
+                            Continuar
                         </button>
                     </div>
                 </form>
@@ -122,4 +146,66 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const submitButton = document.getElementById('activation-submit');
+    const planInputs = Array.from(document.querySelectorAll('input[name="plan_destino"]'));
+    const refreshButton = document.getElementById('activation-payment-refresh');
+    const paymentMessage = document.getElementById('activation-payment-message');
+    const refreshUrl = '{{ url_for("main.licencia_refrescar") }}';
+
+    function labelForPlan(plan) {
+        if (plan === 'DEMO') return 'Iniciar prueba DEMO';
+        if (plan === 'BASICA') return 'Adquirir BASICA';
+        if (plan === 'PRO') return 'Adquirir PRO';
+        if (plan === 'FULL') return 'Adquirir FULL';
+        return 'Continuar';
+    }
+
+    function updateSubmitLabel() {
+        const selected = planInputs.find(function (input) { return input.checked; });
+        if (submitButton && selected) {
+            submitButton.textContent = labelForPlan(selected.value);
+        }
+    }
+
+    planInputs.forEach(function (input) {
+        input.addEventListener('change', updateSubmitLabel);
+    });
+    updateSubmitLabel();
+
+    if (refreshButton && paymentMessage) {
+        refreshButton.addEventListener('click', async function () {
+            refreshButton.disabled = true;
+            paymentMessage.className = 'small mt-2 text-muted';
+            paymentMessage.textContent = 'Verificando licencia...';
+            try {
+                const response = await fetch(refreshUrl, {
+                    method: 'GET',
+                    headers: {'X-Requested-With': 'fetch'}
+                });
+                const data = await response.json().catch(function () { return {}; });
+                if (response.ok && data.ok) {
+                    paymentMessage.className = 'small mt-2 text-success';
+                    paymentMessage.textContent = data.message || 'Tu plan fue activado correctamente.';
+                    window.setTimeout(function () {
+                        window.location.href = '{{ url_for("dashboard") }}';
+                    }, 900);
+                    return;
+                }
+                paymentMessage.className = 'small mt-2 text-warning';
+                paymentMessage.textContent = data.message || 'Todavía no encontramos una licencia activa para este equipo. Si acabás de pagar, esperá unos instantes y volvé a verificar.';
+            } catch (error) {
+                paymentMessage.className = 'small mt-2 text-danger';
+                paymentMessage.textContent = 'No pudimos verificar la licencia en este momento. Revisá tu conexión e intentá nuevamente.';
+            } finally {
+                refreshButton.disabled = false;
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

@@ -1105,6 +1105,11 @@ def init_db():
         ('license_modules', '[]'),          # Modulos remotos sincronizados desde SDK
         ('activation_initial_completed', '1'),
         ('activation_initial_plan', ''),
+        ('activation_checkout_status', ''),
+        ('activation_checkout_plan', ''),
+        ('activation_checkout_activation_id', ''),
+        ('activation_checkout_started_at', ''),
+        ('activation_checkout_checked_at', ''),
     ]
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO config VALUES (?,?)", (k, v))

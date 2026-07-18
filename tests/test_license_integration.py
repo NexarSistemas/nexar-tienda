@@ -937,6 +937,194 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(context["tipo_solicitud"], "alta_licencia")
         self.assertEqual(context["plan_destino"], "FULL")
 
+    def test_build_checkout_context_permite_alta_pro_sin_demo_previa(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/checkout", method="POST", json={"plan_destino": "PRO"}):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            with mock.patch.object(self.routes_main.db, "get_license_info", return_value={"tier": "SIN_PLAN", "key": "", "expirada": False}), \
+                 mock.patch.object(self.routes_main.db, "get_config", return_value={"license_owner_name": "Admin", "license_owner_email": "admin@test.com", "license_owner_phone": ""}), \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-SIN-DEMO", {"host": "new"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-SIN-DEMO"):
+                context, error_response = self.routes_main._build_checkout_context()
+
+        self.assertIsNone(error_response)
+        self.assertEqual(context["tipo_solicitud"], "alta_licencia")
+        self.assertEqual(context["activation_id"], "NXID-SIN-DEMO")
+        self.assertEqual(context["plan_destino"], "PRO")
+        self.assertEqual(context["license_key"], "")
+
+    def test_checkout_inicial_pago_no_concede_permisos_ni_completa_activacion(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/checkout", method="POST", json={"plan_destino": "FULL"}):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            self.database.set_config({
+                "activation_initial_completed": "0",
+                "license_owner_name": "Admin",
+                "license_owner_email": "admin@test.com",
+                "license_owner_phone": "123",
+            })
+            with mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-CHECKOUT-1", {"host": "new"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-CHECKOUT-1"), \
+                 mock.patch.object(self.routes_main, "create_checkout_preference", return_value="https://pagos.test/checkout") as checkout_mock:
+                init_point, context, error_response = self.routes_main._create_checkout_init_point()
+
+        self.assertIsNone(error_response)
+        self.assertEqual(init_point, "https://pagos.test/checkout")
+        self.assertEqual(context["tipo_solicitud"], "alta_licencia")
+        self.assertEqual(context["activation_id"], "NXID-CHECKOUT-1")
+        self.assertEqual(checkout_mock.call_args.kwargs["activation_id"], "NXID-CHECKOUT-1")
+        self.assertEqual(checkout_mock.call_args.kwargs["plan_destino"], "FULL")
+        cfg = self.database.get_config()
+        self.assertEqual(cfg["activation_initial_completed"], "0")
+        self.assertEqual(cfg["activation_checkout_status"], "iniciado")
+        self.assertEqual(cfg["activation_checkout_plan"], "FULL")
+        self.assertEqual(cfg["activation_checkout_activation_id"], "NXID-CHECKOUT-1")
+        self.assertEqual(self.database.get_license_info()["tier"], "DEMO")
+        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("DEMO"))
+
+    def test_revalidar_pago_pendiente_no_concede_permisos(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/refrescar", method="GET"):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            self.database.set_config({
+                "activation_initial_completed": "0",
+                "activation_checkout_status": "iniciado",
+                "activation_checkout_plan": "PRO",
+                "activation_checkout_activation_id": "NXID-PENDING-1",
+                "license_owner_email": "admin@test.com",
+            })
+            with mock.patch.object(self.routes_main, "find_active_license_for_machine", return_value=(False, "pendiente", None)), \
+                 mock.patch.object(self.routes_main, "get_supabase_debug_state", return_value={"status": "not_found"}):
+                payload, ok = self.routes_main._refresh_license_response(force=True)
+
+        self.assertFalse(ok)
+        self.assertIn("Todavia no encontramos", payload["message"])
+        self.assertEqual(self.database.get_config()["activation_initial_completed"], "0")
+        self.assertEqual(self.database.get_license_info()["tier"], "DEMO")
+        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("DEMO"))
+
+    def test_revalidar_pago_error_red_no_concede_permisos(self):
+        app = self.app_module.create_app()
+        with app.test_request_context("/mi-plan/refrescar", method="GET"):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            self.database.set_config({
+                "activation_initial_completed": "0",
+                "activation_checkout_status": "iniciado",
+                "activation_checkout_plan": "FULL",
+                "activation_checkout_activation_id": "NXID-NET-1",
+            })
+            with mock.patch.object(self.routes_main, "find_active_license_for_machine", return_value=(False, "sin conexion", None)), \
+                 mock.patch.object(self.routes_main, "get_supabase_debug_state", return_value={"status": "network_error"}):
+                payload, ok = self.routes_main._refresh_license_response(force=True)
+
+        self.assertFalse(ok)
+        self.assertIn("No pudimos verificar", payload["message"])
+        self.assertEqual(self.database.get_config()["activation_initial_completed"], "0")
+        self.assertEqual(self.database.get_license_info()["tier"], "DEMO")
+        self.assertNotEqual(self.database.get_license_info()["tier"], "FULL")
+
+    def test_revalidar_pago_confirmado_activa_basica_permanente(self):
+        app = self.app_module.create_app()
+        remote_license = {
+            "license_key": "NXR-BASICA-DIRECTA",
+            "plan": "BASICA",
+            "tier": "BASICA",
+            "estado": "activa",
+            "expires_at": "2099-01-01",
+            "modules": ["core", "clientes", "proveedores", "pos", "stock", "caja"],
+        }
+        with app.test_request_context("/mi-plan/refrescar", method="GET"):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            self.database.set_config({
+                "activation_initial_completed": "0",
+                "activation_checkout_status": "iniciado",
+                "activation_checkout_plan": "BASICA",
+                "activation_checkout_activation_id": "NXID-BASICA-1",
+            })
+            with mock.patch.object(self.routes_main, "find_active_license_for_machine", return_value=(True, "ok", remote_license)):
+                payload, ok = self.routes_main._refresh_license_response(force=True)
+
+        info = self.database.get_license_info()
+        self.assertTrue(ok)
+        self.assertEqual(payload["message"], "Tu plan fue activado correctamente.")
+        self.assertEqual(info["tier"], "BASICA")
+        self.assertEqual(info["expires_at"], "")
+        self.assertFalse(info["updates"])
+        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("BASICA"))
+        self.assertNotIn("reportes", self.permisos.get_modulos_activos())
+        self.assertEqual(self.database.get_config()["activation_initial_completed"], "1")
+        self.assertEqual(self.database.get_config()["activation_checkout_status"], "")
+
+    def test_revalidar_pago_confirmado_activa_pro_sin_full(self):
+        app = self.app_module.create_app()
+        expires_at = (date.today() + timedelta(days=30)).isoformat()
+        remote_license = {
+            "license_key": "NXR-PRO-DIRECTA",
+            "plan": "PRO",
+            "tier": "PRO",
+            "estado": "activa",
+            "expires_at": expires_at,
+        }
+        with app.test_request_context("/mi-plan/refrescar", method="GET"):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            self.database.set_config({
+                "activation_initial_completed": "0",
+                "activation_checkout_status": "iniciado",
+                "activation_checkout_plan": "PRO",
+                "activation_checkout_activation_id": "NXID-PRO-1",
+            })
+            with mock.patch.object(self.routes_main, "find_active_license_for_machine", return_value=(True, "ok", remote_license)):
+                _payload, ok = self.routes_main._refresh_license_response(force=True)
+
+        info = self.database.get_license_info()
+        self.assertTrue(ok)
+        self.assertEqual(info["tier"], "PRO")
+        self.assertEqual(info["expires_at"], expires_at)
+        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("PRO"))
+        self.assertNotIn("temporadas", self.permisos.get_modulos_activos())
+
+    def test_revalidar_pago_confirmado_activa_full(self):
+        app = self.app_module.create_app()
+        expires_at = (date.today() + timedelta(days=30)).isoformat()
+        remote_license = {
+            "license_key": "NXR-FULL-DIRECTA",
+            "plan": "FULL",
+            "tier": "FULL",
+            "estado": "activa",
+            "expires_at": expires_at,
+        }
+        with app.test_request_context("/mi-plan/refrescar", method="GET"):
+            from flask import session
+
+            session["user"] = {"rol": "admin", "id": 1, "username": "admin"}
+            self.database.set_config({
+                "activation_initial_completed": "0",
+                "activation_checkout_status": "iniciado",
+                "activation_checkout_plan": "FULL",
+                "activation_checkout_activation_id": "NXID-FULL-1",
+            })
+            with mock.patch.object(self.routes_main, "find_active_license_for_machine", return_value=(True, "ok", remote_license)):
+                _payload, ok = self.routes_main._refresh_license_response(force=True)
+
+        self.assertTrue(ok)
+        self.assertEqual(self.database.get_license_info()["tier"], "FULL")
+        self.assertEqual(self.database.get_license_info()["expires_at"], expires_at)
+        self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("FULL"))
+
     def test_checkout_con_license_json_stale_sigue_tratando_demo_como_alta(self):
         self.assertEqual(
             self.routes_main._resolve_checkout_request_type({"tier": "DEMO", "key": ""}),
@@ -2027,6 +2215,47 @@ class LicenseIntegrationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.headers["Location"].endswith("/activacion-inicial"))
+
+    def test_activacion_inicial_muestra_planes_independientes_y_pago_pendiente(self):
+        app = self.app_module.create_app()
+        self.database.set_config({
+            "activation_initial_completed": "0",
+            "activation_checkout_status": "iniciado",
+            "activation_checkout_plan": "PRO",
+            "activation_checkout_activation_id": "NXID-PENDING-UI",
+        })
+        config_snapshot = dict(self.database.get_config())
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "Administrador", "id": 1, "username": "admin"}
+                session["_csrf_token"] = "test"
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    if "nombre_completo, email, telefono" in query:
+                        return {"nombre_completo": "Admin Comercio", "email": "admin@comercio.com", "telefono": "264555000"}
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                if "FROM config" in query:
+                    if fetchone and params:
+                        return {"valor": config_snapshot.get(params[0])}
+                    return [{"clave": key, "valor": value} for key, value in config_snapshot.items()]
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "DEMO", "key": ""}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: "0" if key == "activation_initial_completed" else default):
+                response = client.get("/activacion-inicial")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("DEMO, BASICA, PRO y FULL son caminos independientes".encode("utf-8"), response.data)
+        self.assertIn(b'value="BASICA"', response.data)
+        self.assertIn(b'value="PRO"', response.data)
+        self.assertIn(b'value="FULL"', response.data)
+        self.assertIn("Pago pendiente de verificación".encode("utf-8"), response.data)
+        self.assertIn(b"Ya pag", response.data)
 
     def test_activacion_inicial_demo_guarda_datos_y_habilita_ingreso(self):
         app = self.app_module.create_app()

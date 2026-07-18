@@ -133,6 +133,38 @@ instalacion existente tiene fechas validas o una duracion previa de 30 dias, la
 migracion local respeta esos datos, completa solo campos faltantes de forma
 deterministica y no reactiva DEMO vencidas.
 
+### Activacion inicial y compra directa
+
+En una instalacion nueva, despues del registro inicial del administrador, la app
+muestra `/activacion-inicial`. Desde ahi se puede elegir de forma independiente:
+DEMO, BASICA, PRO o FULL. BASICA, PRO y FULL no dependen de haber iniciado una
+DEMO ni de pasar por un plan intermedio.
+
+La app separa estos estados:
+
+1. Plan seleccionado: se guarda como intencion comercial local.
+2. Pago iniciado: Nexar Comercio crea/abre checkout con Nexar Pagos y conserva
+   `activation_id`, plan, producto, email y codigo de vendedor si existe.
+3. Pago pendiente: la instalacion sigue sin permisos pagos hasta que Licencias
+   confirme una licencia valida.
+4. Licencia confirmada: la fuente oficial devuelve una licencia activa para el
+   `activation_id` estable de la instalacion.
+5. Plan activo: la app sincroniza con la capa central de licencias y solo ahi
+   habilita modulos BASICA, PRO o FULL.
+
+Elegir un plan, abrir Mercado Pago o declarar "Ya pague" no concede permisos.
+El boton de verificacion vuelve a consultar la fuente oficial ya integrada. Si
+el pago sigue pendiente, muestra un mensaje de espera y permite reintentar. Si
+hay error de red o falta configuracion online, conserva el estado local y no
+activa permisos. Si la licencia ya existe y es valida, guarda la licencia local,
+marca la activacion inicial como completada y permite entrar a la aplicacion sin
+reinstalar.
+
+Dependencia externa: para activacion inmediata sin clave manual, Nexar Pagos,
+Licencias o Admin deben emitir la licencia oficial vinculada al mismo
+`activation_id`/HWID enviado en el checkout. Si esa licencia aun no esta
+disponible, Nexar Comercio mantiene el pago como pendiente.
+
 ### Licencia BASICA permanente
 
 La licencia BASICA es de pago unico y permanente. Una BASICA valida no tiene
