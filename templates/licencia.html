@@ -111,7 +111,7 @@
         <div class="row g-3 text-center">
           <div class="col-6 col-md-3">
             <div class="small text-muted text-uppercase">Estado</div>
-            <div class="fw-semibold">{{ license_info.estado or 'activa' }}</div>
+            <div class="fw-semibold">{{ license_status.estado_display if license_status else 'ACTIVA' }}</div>
           </div>
           <div class="col-6 col-md-3">
             <div class="small text-muted text-uppercase">Plan original</div>
@@ -128,7 +128,7 @@
         </div>
         {% if license_info.tier == 'SIN_PLAN' %}
         <div class="alert alert-danger mt-3 mb-0">
-          La suscripción venció y esta instalación no tiene BASICA permanente para aplicar fallback.
+          Esta instalación no tiene una licencia utilizable en este momento. Podés renovar o activar un plan desde esta pantalla.
         </div>
         {% endif %}
       </div>

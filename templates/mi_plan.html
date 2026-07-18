@@ -18,7 +18,7 @@
 
                     {% if license_status %}
                     <div class="small text-muted mb-3" id="license-status-summary">
-                        Estado: <strong>{{ license_info.estado or 'activa' }}</strong> ·
+                        Estado: <strong>{{ license_status.estado_display }}</strong> ·
                         Plan original: <strong>{{ license_status.plan_original_display }}</strong> ·
                         Plan efectivo: <strong>{{ license_status.plan_efectivo_display }}</strong> ·
                         Fallback: <strong>{{ 'SI' if license_info.fallback_aplicado else 'NO' }}</strong>
@@ -316,7 +316,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function renderStatusSummary(data) {
         if (!statusSummary || !data) return;
-        const estado = data.estado || 'activa';
+        const estado = (data.license_status && data.license_status.estado_display) || data.estado || 'activa';
         const planOriginal = renderPlanLabel(data.plan_original || '');
         const planEfectivo = renderPlanLabel(data.plan_efectivo || data.tier || '');
         const fallback = data.fallback_aplicado ? 'SI' : 'NO';

@@ -108,7 +108,18 @@ def _is_subscription_plan(plan: str) -> bool:
 
 def _is_blocked_license_status(status: str | None) -> bool:
     normalized = str(status or "").strip().lower()
-    return normalized in {"revocada", "suspendida", "bloqueada", "anulada"}
+    return normalized in {
+        "revocada",
+        "revocado",
+        "suspendida",
+        "suspendido",
+        "bloqueada",
+        "bloqueado",
+        "anulada",
+        "anulado",
+        "cancelada",
+        "cancelado",
+    }
 
 
 def _parse_date(value, default: date | None = None) -> date | None:
@@ -214,17 +225,12 @@ def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
     )
 
     if _is_blocked_license_status(status):
-        effective_plan = "SIN_PLAN" if plan_base_permanente else "DEMO"
+        effective_plan = "SIN_PLAN"
         fallback_aplicado = False
     elif expired:
-        if plan_base_permanente:
-            effective_plan = "BASICA"
-            status = "vencida_con_fallback_basica"
-            fallback_aplicado = True
-        else:
-            effective_plan = "DEMO"
-            status = "vencida_demo"
-            fallback_aplicado = False
+        effective_plan = "SIN_PLAN"
+        status = f"{original_plan.lower()}_vencida"
+        fallback_aplicado = False
     elif not status:
         status = "activa"
 

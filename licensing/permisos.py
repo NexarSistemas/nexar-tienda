@@ -170,6 +170,14 @@ def get_modulos_activos() -> set[str]:
         effective_tier = _normalize_tier(license_info.get("tier", "DEMO"))
         if str(license_info.get("tier", "")).strip().upper() == "SIN_PLAN":
             return _apply_extra_modules(set(), "db_effective_none")
+        if effective_tier == "DEMO":
+            try:
+                from database import get_demo_status
+
+                if get_demo_status().get("vencido"):
+                    return _apply_extra_modules(set(), "db_demo_expired")
+            except Exception:
+                pass
     except Exception:
         effective_tier = _get_tier_from_db()
 
