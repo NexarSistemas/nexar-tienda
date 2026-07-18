@@ -874,6 +874,128 @@ class LicenseIntegrationTests(unittest.TestCase):
         mi_plan_template = (PROJECT_ROOT / "templates" / "mi_plan.html").read_text(encoding="utf-8")
         self.assertNotIn("Cancelar renovacion automatica", mi_plan_template)
 
+    def _build_mi_plan_view_for_test(self, license_info, demo_status=None, checkout_pending=None):
+        demo_status = demo_status or {"demo": False, "vencido": False, "dias_restantes": 0, "dias_demo": 14}
+        status = get_license_status_context(license_info, demo_status=demo_status)
+        actions = self.routes_main._get_plan_actions_context(license_info, license_status=status)
+        with mock.patch.object(self.routes_main.db, "get_demo_status", return_value=demo_status):
+            return self.routes_main._build_mi_plan_view(
+                license_info=license_info,
+                license_status=status,
+                plan_actions=actions,
+                license_holder={
+                    "nombre": license_info.get("owner_name", ""),
+                    "email": license_info.get("owner_email", ""),
+                    "telefono": license_info.get("owner_phone", ""),
+                    "codigo_vendedor": license_info.get("vendor_code", ""),
+                    "palabra_recuperacion": "",
+                },
+                checkout_pending=checkout_pending or {"pending": False},
+                modulos_activos=sorted(license_info.get("modules", []) or []),
+                modulos_bloqueados=[],
+            )
+
+    def test_mi_plan_view_demo_activa_muestra_dias_y_planes_pagos(self):
+        demo_status = {"demo": True, "vencido": False, "dias_restantes": 6, "dias_demo": 14, "expires_at": "2099-01-15"}
+        view = self._build_mi_plan_view_for_test(
+            {"tier": "DEMO", "plan": "DEMO", "plan_original": "DEMO", "owner_email": "admin@test.com"},
+            demo_status=demo_status,
+        )
+
+        self.assertEqual(view["estado_comercial"], "demo_activo")
+        self.assertIn({"label": "Dias restantes", "value": "6"}, view["summary_items"])
+        self.assertEqual([action["plan"] for action in view["checkout_actions"]], ["BASICA", "PRO", "FULL"])
+        self.assertFalse(view["renewal"]["show"])
+
+    def test_mi_plan_view_demo_vencida_no_ofrece_demo_nueva(self):
+        demo_status = {"demo": True, "vencido": True, "dias_restantes": 0, "dias_demo": 14, "expires_at": "2026-01-15"}
+        view = self._build_mi_plan_view_for_test(
+            {"tier": "DEMO", "plan": "DEMO", "plan_original": "DEMO"},
+            demo_status=demo_status,
+        )
+
+        self.assertEqual(view["estado_comercial"], "demo_vencido")
+        self.assertEqual([action["plan"] for action in view["checkout_actions"]], ["BASICA", "PRO", "FULL"])
+        self.assertNotIn("DEMO", [action["plan"] for action in view["checkout_actions"]])
+        self.assertIn("ya fue utilizada", view["mensaje_estado"])
+
+    def test_mi_plan_view_basica_activa_no_vence_ni_renueva(self):
+        view = self._build_mi_plan_view_for_test({
+            "tier": "BASICA",
+            "plan": "BASICA",
+            "plan_original": "BASICA",
+            "plan_efectivo": "BASICA",
+            "plan_base_permanente": True,
+            "limits": self.database.TIER_LIMITS["BASICA"],
+        })
+
+        self.assertEqual(view["estado_comercial"], "basica_permanente")
+        self.assertIn({"label": "Vencimiento", "value": "No vence"}, view["summary_items"])
+        self.assertFalse(view["renewal"]["show"])
+        self.assertEqual([action["plan"] for action in view["checkout_actions"]], ["PRO", "FULL"])
+
+    def test_mi_plan_view_pro_activo_muestra_vencimiento_renovacion_y_full(self):
+        expires_at = (date.today() + timedelta(days=20)).isoformat()
+        view = self._build_mi_plan_view_for_test({
+            "key": "NXR-PRO-001",
+            "tier": "PRO",
+            "plan": "PRO",
+            "plan_original": "PRO",
+            "plan_efectivo": "PRO",
+            "expires_at": expires_at,
+            "limits": self.database.TIER_LIMITS["PRO"],
+        })
+
+        self.assertEqual(view["estado_comercial"], "mensual_activo")
+        self.assertIn({"label": "Vencimiento", "value": self.routes_main._format_display_date(expires_at)}, view["summary_items"])
+        self.assertIn({"label": "Dias restantes", "value": "20"}, view["summary_items"])
+        self.assertTrue(view["renewal"]["show"])
+        self.assertEqual([action["plan"] for action in view["checkout_actions"]], ["FULL"])
+
+    def test_mi_plan_view_full_activo_muestra_renovacion_sin_upgrades(self):
+        expires_at = (date.today() + timedelta(days=15)).isoformat()
+        view = self._build_mi_plan_view_for_test({
+            "key": "NXR-FULL-001",
+            "tier": "FULL",
+            "plan": "FULL",
+            "plan_original": "FULL",
+            "plan_efectivo": "FULL",
+            "expires_at": expires_at,
+        })
+
+        self.assertEqual(view["plan_display"], "FULL")
+        self.assertTrue(view["renewal"]["show"])
+        self.assertEqual(view["checkout_actions"], [])
+
+    def test_mi_plan_view_licencia_bloqueada_no_se_presenta_activa(self):
+        for estado in ("suspendida", "bloqueada", "revocada"):
+            view = self._build_mi_plan_view_for_test({
+                "key": "NXR-BLOCK-001",
+                "tier": "SIN_PLAN",
+                "plan": "PRO",
+                "plan_original": "PRO",
+                "plan_efectivo": "SIN_PLAN",
+                "estado": estado,
+            })
+            self.assertEqual(view["estado_comercial"], "licencia_bloqueada")
+            self.assertEqual(view["plan_display"], "SIN PLAN")
+            self.assertFalse(view["checkout_actions"])
+
+    def test_mi_plan_view_oculta_email_y_vendedor_ausentes(self):
+        view = self._build_mi_plan_view_for_test({
+            "tier": "BASICA",
+            "plan": "BASICA",
+            "plan_original": "BASICA",
+            "plan_efectivo": "BASICA",
+            "plan_base_permanente": True,
+            "owner_email": "",
+            "vendor_code": "",
+        })
+
+        labels = [item["label"] for item in view["summary_items"]]
+        self.assertNotIn("Email asociado", labels)
+        self.assertNotIn("Codigo de vendedor", labels)
+
     def test_normalize_plan_legacy_y_canonico_full(self):
         self.assertEqual(normalize_plan("PRO"), "PRO")
         self.assertEqual(normalize_plan("FULL"), "FULL")

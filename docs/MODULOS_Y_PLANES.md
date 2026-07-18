@@ -194,6 +194,37 @@ Estados esperados:
 La activacion directa depende de que Nexar Pagos, Licencias o Admin emitan la
 licencia vinculada al mismo `activation_id` enviado en el checkout.
 
+## Mi Plan
+
+La vista `/mi-plan` consume un modelo de presentacion armado en `routes/main.py`
+con datos ya resueltos por `get_license_status_context()`,
+`get_plan_actions()`, `get_modulos_activos()` y la resolucion central de
+precios. El template no decide vencimientos, permisos ni acciones comerciales:
+solo renderiza resumen, avisos, limites, modulos y botones calculados.
+
+Informacion visible:
+
+- Plan efectivo y, cuando difiere, referencia comercial original.
+- Estado normalizado.
+- Fecha de activacion si existe.
+- Fecha de vencimiento y dias restantes para DEMO, PRO y FULL.
+- Texto explicito de permanencia para BASICA.
+- Email asociado solo si existe.
+- Codigo de vendedor solo si fue informado.
+- Beneficios/limites usando los helpers existentes del plan.
+
+Acciones esperadas:
+
+- DEMO activa o vencida: comprar BASICA, PRO o FULL; no iniciar otra DEMO.
+- BASICA activa: upgrades a PRO o FULL, sin renovacion.
+- PRO activa: renovacion de PRO y cambio permitido a FULL.
+- FULL activa: renovacion de FULL, sin upgrades.
+- Licencias suspendidas, bloqueadas, revocadas o anuladas: no se muestran como
+  activas; quedan solo acciones seguras ya soportadas como refrescar,
+  revalidar o activacion manual.
+- "Ya pague" aparece cuando existe checkout pendiente o una revalidacion
+  admitida por el estado de licencia.
+
 ## Elegibilidad DEMO anti-reinstalacion
 
 La decision para iniciar una DEMO nueva esta centralizada en

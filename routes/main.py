@@ -591,6 +591,170 @@ def _get_available_checkout_plans(license_info: dict[str, object] | None) -> lis
     return available
 
 
+def _format_display_date(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(raw[:19])
+    except Exception:
+        try:
+            parsed_date = date.fromisoformat(raw[:10])
+        except Exception:
+            return raw[:10]
+        return parsed_date.strftime("%d/%m/%Y")
+    return parsed.strftime("%d/%m/%Y")
+
+
+def _format_price_label(plan: str) -> str:
+    try:
+        price = get_price_for_plan(plan)
+    except MercadoPagoCheckoutError:
+        return ""
+    return f"$ {price:,.0f}".replace(",", ".")
+
+
+def _format_limit_label(label: str, value: object) -> str:
+    if value is None:
+        return f"{label}: sin limite"
+    return f"{label}: hasta {value}"
+
+
+def _get_plan_limits_summary(plan: str, limits: dict[str, object] | None = None) -> list[str]:
+    normalized = normalize_plan(plan, default="DEMO")
+    plan_limits = limits if limits is not None else db.TIER_LIMITS.get(normalized, {})
+    return [
+        _format_limit_label("Productos", plan_limits.get("productos")),
+        _format_limit_label("Clientes", plan_limits.get("clientes")),
+        _format_limit_label("Proveedores", plan_limits.get("proveedores")),
+    ]
+
+
+def _build_mi_plan_view(
+    *,
+    license_info: dict[str, object],
+    license_status: dict[str, object],
+    plan_actions: dict[str, object],
+    license_holder: dict[str, str],
+    checkout_pending: dict[str, object],
+    modulos_activos: list[str],
+    modulos_bloqueados: list[str],
+) -> dict[str, object]:
+    plan_original = str(license_status.get("plan_original", "DEMO") or "DEMO")
+    plan_efectivo = str(license_status.get("plan_efectivo", license_info.get("tier", "DEMO")) or "DEMO")
+    estado_comercial = str(license_status.get("estado_comercial", "") or "")
+    usable = bool(license_status.get("licencia_utilizable"))
+    is_basica = plan_original == "BASICA" and usable
+    is_timed_plan = plan_original in {"DEMO", "PRO", "FULL"}
+    expires_at = str(license_status.get("expires_at", "") or license_info.get("expires_at", "") or "").strip()
+    demo_status = db.get_demo_status() if plan_original == "DEMO" else {}
+    demo_remaining = demo_status.get("dias_restantes") if plan_original == "DEMO" and not demo_status.get("vencido") else None
+    remaining_days = license_status.get("dias_para_vencer")
+    if plan_original == "DEMO":
+        remaining_days = demo_remaining
+
+    if estado_comercial == "demo_activo":
+        visible_message = "La prueba gratuita esta activa. Podes comprar BASICA, PRO o FULL cuando quieras."
+    elif estado_comercial == "demo_vencido":
+        visible_message = "La prueba gratuita ya fue utilizada. Elegi un plan pago para continuar."
+    elif estado_comercial == "basica_permanente":
+        visible_message = "BASICA esta activa como licencia permanente. No tiene vencimiento ni renovacion."
+    elif estado_comercial == "mensual_activo":
+        visible_message = f"Tu plan {get_plan_display_name(plan_original)} esta activo hasta la fecha indicada."
+    elif estado_comercial in {"pro_vencido", "full_vencido"}:
+        visible_message = f"Tu plan {get_plan_display_name(plan_original)} vencio. Renovalo para recuperar permisos."
+    elif estado_comercial == "licencia_bloqueada":
+        visible_message = "La licencia no esta activa por estado administrativo. Contacta soporte o revalida si ya fue regularizada."
+    else:
+        visible_message = str(license_status.get("mensaje_estado", "") or plan_actions.get("mensaje_estado", ""))
+
+    summary_items = [
+        {"label": "Plan efectivo", "value": str(plan_actions.get("plan_display") or license_status.get("plan_efectivo_display") or "DEMO")},
+        {"label": "Estado", "value": str(license_status.get("estado_display") or "ACTIVA")},
+    ]
+    if plan_original != plan_efectivo:
+        summary_items.append({"label": "Referencia comercial", "value": str(license_status.get("plan_original_display") or plan_original)})
+    activated_display = _format_display_date(license_info.get("activated_at"))
+    if activated_display:
+        summary_items.append({"label": "Activacion", "value": activated_display})
+    if is_basica:
+        summary_items.append({"label": "Vencimiento", "value": "No vence"})
+    elif is_timed_plan and expires_at:
+        summary_items.append({"label": "Vencimiento", "value": _format_display_date(expires_at)})
+    if remaining_days is not None and is_timed_plan and not is_basica:
+        summary_items.append({"label": "Dias restantes", "value": str(max(int(remaining_days), 0))})
+    if license_holder.get("email"):
+        summary_items.append({"label": "Email asociado", "value": license_holder["email"]})
+    if license_holder.get("codigo_vendedor"):
+        summary_items.append({"label": "Codigo de vendedor", "value": license_holder["codigo_vendedor"]})
+
+    checkout_actions = []
+    for action in plan_actions.get("acciones", []):
+        action_copy = dict(action)
+        action_copy["price_label"] = _format_price_label(str(action_copy.get("plan", "")))
+        checkout_actions.append(action_copy)
+
+    renewal = {
+        "show": bool(plan_actions.get("puede_renovar")),
+        "plan": str(plan_actions.get("plan_renovable", "") or ""),
+        "plan_display": str(plan_actions.get("plan_renovable_display", "") or ""),
+        "title": f"Renovacion manual de {plan_actions.get('plan_renovable_display', '')}".strip(),
+        "text": str(plan_actions.get("texto_renovacion", "") or ""),
+        "secondary_text": str(plan_actions.get("texto_auto_renovacion", "") or ""),
+        "button_label": str(plan_actions.get("cta_renovacion", "") or "Renovar"),
+        "highlighted": bool(plan_actions.get("renovacion_destacada")),
+    }
+
+    commercial_plans = []
+    for option in get_commercial_plan_options():
+        plan = option["plan"]
+        commercial_plans.append({
+            "plan": plan,
+            "plan_display": option["plan_display"],
+            "modules_count": len(PLANES.get(plan, set())),
+            "price_label": _format_price_label(plan),
+            "available_action": next((item for item in checkout_actions if item.get("plan") == plan), None),
+        })
+
+    return {
+        "plan_display": str(plan_actions.get("plan_display") or license_status.get("plan_efectivo_display") or "DEMO"),
+        "plan_original": plan_original,
+        "plan_efectivo": plan_efectivo,
+        "estado_comercial": estado_comercial,
+        "estado_clase": str(plan_actions.get("estado_clase") or license_status.get("alert_class") or "info"),
+        "titulo_estado": str(license_status.get("titulo_estado") or plan_actions.get("titulo_estado") or "Estado del plan"),
+        "mensaje_estado": visible_message,
+        "summary_items": summary_items,
+        "show_expiry_alert": bool(license_status.get("mostrar_aviso_preventivo") or license_status.get("mostrar_aviso_vencimiento")),
+        "expiry_alert_class": str(license_status.get("alert_class") or "info"),
+        "expiry_title": str(license_status.get("titulo_estado") or ""),
+        "expiry_message": str(license_status.get("mensaje_estado") or ""),
+        "renewal": renewal,
+        "checkout_actions": checkout_actions,
+        "manual_actions": list(plan_actions.get("acciones_manuales", [])),
+        "show_manual_actions": bool(plan_actions.get("mostrar_solicitud_manual")),
+        "show_checkout": bool(plan_actions.get("mostrar_checkout")),
+        "checkout_message": str(plan_actions.get("mensaje_checkout") or ""),
+        "show_revalidate": bool(license_status.get("mostrar_revalidar") or checkout_pending.get("pending")),
+        "post_payment": {
+            "show": bool(checkout_pending.get("pending")),
+            "plan_display": str(checkout_pending.get("plan_display", "") or ""),
+        },
+        "holder": license_holder,
+        "has_email": bool(license_holder.get("email")),
+        "has_vendor_code": bool(license_holder.get("codigo_vendedor")),
+        "active_modules": modulos_activos,
+        "blocked_modules": modulos_bloqueados,
+        "limits": _get_plan_limits_summary(plan_efectivo, license_info.get("limits") if isinstance(license_info.get("limits"), dict) else None),
+        "commercial_plans": commercial_plans,
+        "no_commercial_actions_message": (
+            "No hay acciones comerciales disponibles para este plan."
+            if not checkout_actions and not renewal["show"]
+            else ""
+        ),
+    }
+
+
 def _resolve_requested_checkout_plan(license_info: dict[str, object] | None) -> str:
     available_plans = _get_available_checkout_plans(license_info)
     if not available_plans:
@@ -4366,10 +4530,22 @@ def mi_plan():
     plan_actions = _get_plan_actions_context(license_info, license_status=license_status)
     available_checkout_plans = _get_available_checkout_plans(license_info)
     next_upgrade_plan = _resolve_next_upgrade_plan(license_info)
+    checkout_pending = _get_checkout_pending_context()
+    license_holder = _get_license_holder_profile(license_info)
+    mi_plan_view = _build_mi_plan_view(
+        license_info=license_info,
+        license_status=license_status,
+        plan_actions=plan_actions,
+        license_holder=license_holder,
+        checkout_pending=checkout_pending,
+        modulos_activos=modulos_activos,
+        modulos_bloqueados=modulos_bloqueados,
+    )
     return render_template(
         "mi_plan.html",
         plan_activo=license_info.get("tier", "DEMO"),
-        plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+        plan_display=mi_plan_view["plan_display"],
+        mi_plan_view=mi_plan_view,
         plan_actions=plan_actions,
         license_status=license_status,
         license_info=license_info,
@@ -4381,9 +4557,9 @@ def mi_plan():
         supabase_ok=supabase_configured(),
         license_refresh_ok=refresh_ok,
         license_refresh_message=refresh_msg,
-        license_holder=_get_license_holder_profile(license_info),
+        license_holder=license_holder,
         checkout_enabled=bool(available_checkout_plans),
-        checkout_pending=_get_checkout_pending_context(),
+        checkout_pending=checkout_pending,
     )
 
 
