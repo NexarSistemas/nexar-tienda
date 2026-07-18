@@ -194,6 +194,30 @@ Licencias o Admin deben emitir la licencia oficial vinculada al mismo
 `activation_id`/HWID enviado en el checkout. Si esa licencia aun no esta
 disponible, Nexar Comercio mantiene el pago como pendiente.
 
+### Mi Plan
+
+La seccion `/mi-plan` muestra una vista comercial del estado de licencia ya
+resuelto por la capa central: plan efectivo, estado visible, fecha de
+activacion, vencimiento cuando corresponde, dias restantes para DEMO/PRO/FULL,
+limites del plan, modulos habilitados, email asociado y codigo de vendedor solo
+si fue informado.
+
+Las acciones se calculan fuera del template con helpers existentes de planes,
+permisos, precios y checkout:
+
+- DEMO activa o vencida: permite adquirir BASICA, PRO o FULL; no ofrece otra
+  DEMO.
+- BASICA activa: indica que no vence, no muestra renovacion y permite upgrades
+  validos.
+- PRO activa: muestra vencimiento, renovacion y upgrade a FULL.
+- FULL activa: muestra vencimiento y renovacion; no muestra upgrades.
+- Licencia suspendida, bloqueada, revocada o anulada: no se presenta como plan
+  activo y conserva acciones seguras de revalidacion/activacion ya soportadas.
+
+El boton "Ya pague" aparece solo cuando hay una revalidacion admitida o un
+checkout pendiente. La pantalla no expone HWID, hashes ni detalles internos del
+SDK.
+
 ### Licencia BASICA permanente
 
 La licencia BASICA es de pago unico y permanente. Una BASICA valida no tiene

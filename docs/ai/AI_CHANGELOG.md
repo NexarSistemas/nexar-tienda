@@ -2,6 +2,52 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-18 - Codex - feature/mi-plan-license-ux
+
+### Tarea
+Implementar el Issue #106 para mejorar `Mi Plan` tomando Nexar Finanzas solo
+como referencia funcional/UX y adaptandolo al flujo real de Nexar Comercio.
+
+### Diagnostico
+- `/mi-plan` ya refrescaba licencia, calculaba acciones, mostraba modulos,
+  datos del titular, codigo de vendedor, checkout y seguimiento post-pago.
+- El template mezclaba reglas de presentacion con decisiones de negocio:
+  estado original/efectivo, vencimiento, renovacion, upgrades, revalidacion y
+  post-pago.
+- La fuente real de estado ya estaba en `get_license_status_context()` y las
+  acciones en `get_plan_actions()`, ambos alineados con los Issues #109, #110,
+  #111, #112, #113 y #114.
+- Nexar Finanzas agrupa plan, estado, vencimiento, refresco y checkout en una
+  pantalla de licencia, pero Comercio requiere DEMO/BASICA/PRO/FULL, upgrades,
+  codigo de vendedor y activacion inicial directa; no se copio codigo.
+
+### Que se cambio
+- Se agrego un modelo centralizado `_build_mi_plan_view()` que prepara resumen
+  visible, avisos, limites, modulos, acciones de checkout/manuales, renovacion,
+  post-pago y datos comerciales.
+- `templates/mi_plan.html` ahora renderiza el modelo y deja de mostrar detalles
+  tecnicos como fallback SDK en el resumen principal.
+- La pantalla muestra BASICA como permanente, PRO/FULL con vencimiento y dias,
+  DEMO activa/vencida con acciones pagas, y bloqueos administrativos sin
+  presentarlos como planes activos.
+- Los precios de botones comerciales se resuelven con `get_price_for_plan()`; no
+  se hardcodearon precios ni se modificaron Nexar Pagos/Mercado Pago.
+
+### Archivos modificados
+- `routes/main.py`
+- `templates/mi_plan.html`
+- `tests/test_license_integration.py`
+- `README.md`
+- `docs/MODULOS_Y_PLANES.md`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se probo
+- `.venv/bin/python -m pytest tests/test_license_integration.py tests/test_license_tiers.py` -> 150 passed.
+
+### Fuera de alcance
+- No se cambio Supabase, Nexar Pagos, Mercado Pago, precios centrales, tags ni
+  Releases.
+
 ## 2026-07-18 - Codex - security/demo-anti-reinstall
 
 ### Tarea
