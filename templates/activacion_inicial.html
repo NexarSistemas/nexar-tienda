@@ -12,6 +12,12 @@
             <div class="card-body">
                 <p class="text-muted mb-4">Elegí cómo querés empezar. DEMO, BASICA, PRO y FULL son caminos independientes; los planes pagos se activan solo cuando Licencias confirma el pago y emite una licencia válida para este equipo.</p>
 
+                {% if demo_access and demo_access.message %}
+                <div class="alert {% if demo_access.can_retry %}alert-warning{% else %}alert-info{% endif %}">
+                    {{ demo_access.message }}
+                </div>
+                {% endif %}
+
                 {% if checkout_pending and checkout_pending.pending %}
                 <div class="alert alert-warning" id="activation-payment-panel">
                     <div class="fw-semibold">Pago pendiente de verificación</div>
@@ -62,17 +68,18 @@
                         <label class="form-label d-block">Plan inicial</label>
                         <div class="row g-2">
                             {% for plan in available_plans %}
+                            {% set demo_disabled = plan == 'DEMO' and demo_access and not demo_access.can_start_demo %}
                             <div class="col-sm-6 col-xl-3">
-                                <label class="card h-100 border-2 {% if selected_plan == plan %}border-primary{% else %}border-light{% endif %}">
+                                <label class="card h-100 border-2 {% if selected_plan == plan and not demo_disabled %}border-primary{% else %}border-light{% endif %} {% if demo_disabled %}opacity-75{% endif %}">
                                     <div class="card-body">
                                         <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="plan_destino" value="{{ plan }}" {% if selected_plan == plan %}checked{% endif %}>
+                                            <input class="form-check-input" type="radio" name="plan_destino" value="{{ plan }}" {% if selected_plan == plan and not demo_disabled %}checked{% endif %} {% if demo_disabled %}disabled{% endif %}>
                                             <span class="form-check-label fw-semibold ms-1">
                                                 {% if plan == 'DEMO' %}DEMO 14 días{% else %}{{ plan }}{% endif %}
                                             </span>
                                             <div class="small text-muted mt-2">
                                                 {% if plan == 'DEMO' %}
-                                                Iniciar prueba gratuita.
+                                                {% if demo_disabled %}Prueba no disponible para este equipo.{% else %}Iniciar prueba gratuita.{% endif %}
                                                 {% elif plan == 'BASICA' %}
                                                 Pago único permanente.
                                                 {% else %}
