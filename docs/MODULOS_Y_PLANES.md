@@ -192,8 +192,54 @@ Estados esperados:
   el plan efectivo resuelto.
 
 La activacion directa depende de que Nexar Pagos, Licencias o Admin emitan la
-licencia vinculada al mismo `activation_id` enviado en el checkout. Este flujo
-no implementa la proteccion avanzada contra reinstalaciones del Issue #113.
+licencia vinculada al mismo `activation_id` enviado en el checkout.
+
+## Elegibilidad DEMO anti-reinstalacion
+
+La decision para iniciar una DEMO nueva esta centralizada en
+`services/demo_eligibility.py`. La ruta `/activacion-inicial` no reconstruye la
+politica: resuelve identidad, consulta Supabase, interpreta el resultado y solo
+activa localmente si el estado final lo permite.
+
+Senales utilizadas:
+
+- `activation_id` estable de la instalacion.
+- HWID del SDK cuando esta disponible.
+- `machine_id` legacy de `generate_activation_id()` como respaldo.
+- Producto (`nexar-tienda`) para evitar cruces entre aplicaciones.
+- Email normalizado solo como dato secundario y comercial.
+- Hashes SHA-256 namespaced por producto para nuevos registros.
+
+Criterio de DEMO utilizada: una fila previa de `solicitudes_demo` del mismo
+producto con coincidencia fuerte por `activation_id`, HWID, `machine_id` legacy
+o hash de esos identificadores. Una coincidencia solo por email no bloquea por
+si misma.
+
+Estados resueltos:
+
+- `eligible`: se crea la solicitud remota y despues se habilita DEMO local.
+- `active`: se recupera la DEMO remota vigente con sus fechas originales.
+- `expired` o `already_used`: no se crea otra DEMO y se ofrecen planes pagos.
+- `blocked`: prevalece el bloqueo administrativo.
+- `offline_unverified` o `error`: no se concede una DEMO nueva; se permite
+  reintentar o elegir BASICA, PRO o FULL.
+
+Offline:
+
+- DEMO local confirmada y vigente: continua por cache local.
+- DEMO local vencida: permanece vencida.
+- Evidencia local de solicitud DEMO: no reinicia el periodo.
+- Instalacion sin evidencia y sin verificacion remota: no recibe DEMO nueva.
+- Licencia paga valida: no se bloquea ni se degrada.
+
+Idempotencia y concurrencia: el cliente consulta antes de crear y reconsulta si
+la creacion falla, por lo que los reintentos simples recuperan el estado
+existente. Para cerrar carreras simultaneas entre dos procesos o instalaciones,
+se incluye la migracion
+`supabase/migrations/2026-07-18_harden_solicitudes_demo_identity.sql`, que agrega
+columnas de identidad/hash e indice unico parcial por `(producto,
+identity_hash)`. Esa migracion debe aplicarse desde el flujo operativo de
+Supabase/Admin; Nexar Comercio no ejecuta cambios de produccion automaticamente.
 
 ### 4. Funciones Disponibles
 

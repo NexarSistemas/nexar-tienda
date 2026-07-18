@@ -133,6 +133,35 @@ instalacion existente tiene fechas validas o una duracion previa de 30 dias, la
 migracion local respeta esos datos, completa solo campos faltantes de forma
 deterministica y no reactiva DEMO vencidas.
 
+### Proteccion anti-reinstalacion DEMO
+
+Una DEMO nueva no se concede solo por estado local. Antes de activarla, la app
+resuelve una identidad compuesta con `activation_id` estable, HWID del SDK
+cuando existe, producto y senales legacy de la maquina. Supabase se consulta en
+`solicitudes_demo` y una coincidencia fuerte del mismo producto bloquea otra
+DEMO o recupera la DEMO vigente sin extender fechas.
+
+El email se guarda como dato comercial y senal secundaria, pero no alcanza por
+si solo para decidir que una DEMO fue usada. Los metadatos nuevos incluyen hashes
+SHA-256 por producto para soportar deduplicacion remota sin exponer mas datos de
+hardware que los ya existentes por compatibilidad legacy.
+
+Estados principales:
+
+- `eligible`: se puede registrar y activar una DEMO nueva.
+- `active`: existe una DEMO vigente para este equipo; se recuperan sus fechas.
+- `expired` / `already_used`: no se crea otra DEMO; quedan disponibles BASICA,
+  PRO y FULL.
+- `blocked`: un estado administrativo remoto prevalece.
+- `offline_unverified` / `error`: no se concede una DEMO nueva hasta poder
+  verificar; una DEMO local ya confirmada o una licencia paga valida no se
+  bloquean.
+
+Si una instalacion aparentemente nueva esta sin conexion, la pantalla inicial
+permite reintentar, elegir un plan pago o salir, pero no activa permisos DEMO.
+La proteccion no pretende resistir a un usuario con control total del equipo ni
+reemplaza soporte administrativo para migraciones legitimas de equipo.
+
 ### Activacion inicial y compra directa
 
 En una instalacion nueva, despues del registro inicial del administrador, la app

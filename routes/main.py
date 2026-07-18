@@ -63,6 +63,20 @@ from services.license_sdk import (
     refresh_saved_license_online,
     validate_license_key,
 )
+from services.demo_eligibility import (
+    DEMO_ACTIVE,
+    DEMO_ALREADY_USED,
+    DEMO_BLOCKED,
+    DEMO_ELIGIBLE,
+    DEMO_ERROR,
+    DEMO_EXPIRED,
+    DEMO_OFFLINE_UNVERIFIED,
+    DemoEligibilityResult,
+    build_demo_identity,
+    build_demo_metadata,
+    mask_identifier,
+    resolve_demo_eligibility_from_records,
+)
 from services.paths import (
     get_app_data_dir,
     get_backups_dir,
@@ -75,6 +89,7 @@ from services.supabase_license_api import (
     create_license_request,
     create_support_request,
     create_upgrade_request,
+    find_demo_requests_for_identity,
     find_active_license_for_machine,
     generate_activation_id,
     get_supabase_debug_state,
@@ -719,6 +734,120 @@ def _get_stable_activation_id() -> tuple[str, dict[str, str]]:
     return get_current_hwid() or machine_id, machine_details
 
 
+def _get_demo_identity_context(profile: dict[str, str]) -> dict[str, object]:
+    usuario = session.get("user", {})
+    fallback_activation_id, machine_details = generate_activation_id(usuario.get("username", ""))
+    hardware_id = get_current_hwid()
+    activation_id = hardware_id or fallback_activation_id
+    product_name = get_license_product()
+    identity = build_demo_identity(
+        product=product_name,
+        activation_id=activation_id,
+        hardware_id=hardware_id,
+        email=profile.get("email", ""),
+        machine_details=machine_details,
+    )
+    return {
+        "activation_id": activation_id,
+        "hardware_id": hardware_id,
+        "product_name": product_name,
+        "machine_details": machine_details,
+        "identity": identity,
+    }
+
+
+def _demo_dedupe_key(activation_id: str, email: str, product_name: str) -> str:
+    return "|".join([
+        str(activation_id or "").strip(),
+        str(email or "").strip().lower(),
+        str(product_name or "").strip().lower(),
+    ])
+
+
+def _get_initial_demo_access_context(config: dict[str, object] | None = None) -> dict[str, object]:
+    cfg = config or db.get_config()
+    state = str(cfg.get("activation_demo_eligibility_state", "") or "").strip()
+    messages = {
+        DEMO_ALREADY_USED: "Este equipo ya utilizó la prueba gratuita. Podés elegir un plan para continuar.",
+        DEMO_EXPIRED: "Este equipo ya utilizó la prueba gratuita. Podés elegir un plan para continuar.",
+        DEMO_BLOCKED: "No es posible iniciar la prueba gratuita para este equipo. Contactá a soporte.",
+        DEMO_OFFLINE_UNVERIFIED: "Necesitamos conexión a Internet para comprobar la disponibilidad de la prueba gratuita.",
+        DEMO_ERROR: "No pudimos verificar si este equipo puede iniciar la prueba gratuita. Intentá nuevamente.",
+    }
+    disabled_states = {DEMO_ALREADY_USED, DEMO_EXPIRED, DEMO_BLOCKED}
+    return {
+        "state": state or DEMO_ELIGIBLE,
+        "message": messages.get(state, ""),
+        "can_start_demo": state not in disabled_states,
+        "can_retry": state in {DEMO_OFFLINE_UNVERIFIED, DEMO_ERROR},
+    }
+
+
+def _get_initial_demo_status() -> dict[str, object]:
+    cfg = db.get_config()
+    completed = _as_bool(cfg.get("activation_initial_completed", "1"))
+    if not completed and not str(cfg.get("activation_demo_request_key", "") or "").strip():
+        return {
+            "demo": False,
+            "dias_restantes": 0,
+            "vencido": False,
+            "aviso_proximo": False,
+            "install_date": "",
+            "expires_at": "",
+            "dias_usados": 0,
+            "dias_demo": 0,
+            "ventas_bloqueado": False,
+            "productos_bloqueado": False,
+        }
+    return db.get_demo_status()
+
+
+def _persist_demo_eligibility_state(result: DemoEligibilityResult) -> None:
+    db.set_config({
+        "activation_demo_eligibility_state": result.state,
+        "activation_demo_eligibility_checked_at": datetime.now().isoformat(),
+    })
+
+
+def _persist_unverified_demo_without_permissions(result: DemoEligibilityResult) -> None:
+    db.set_config({
+        "demo_mode": "0",
+        "license_tier": "SIN_PLAN",
+        "license_plan": "DEMO",
+        "activation_demo_eligibility_state": result.state,
+        "activation_demo_eligibility_checked_at": datetime.now().isoformat(),
+    })
+
+
+def _recover_remote_demo(profile: dict[str, str], result: DemoEligibilityResult, activation_id: str, product_name: str) -> None:
+    started_at = str(result.started_at or "").strip()
+    expires_at = str(result.expires_at or "").strip()
+    try:
+        expires_on = date.fromisoformat(expires_at[:10])
+    except Exception:
+        expires_on = date.today() + timedelta(days=14)
+        expires_at = expires_on.isoformat()
+    try:
+        started_on = date.fromisoformat(started_at[:10])
+    except Exception:
+        started_on = expires_on - timedelta(days=14)
+        started_at = started_on.isoformat()
+
+    demo_days = max((expires_on - started_on).days, 1)
+    db.set_config({
+        "demo_mode": "1",
+        "demo_install_date": started_at[:10],
+        "demo_dias": str(demo_days),
+        "demo_expires_at": expires_at[:10],
+        "license_tier": "DEMO",
+        "license_plan": "DEMO",
+        "activation_demo_request_key": _demo_dedupe_key(activation_id, profile["email"], product_name),
+        "activation_demo_request_sent_at": datetime.now().isoformat(),
+        "activation_demo_eligibility_state": result.state,
+    })
+    _persist_activation_customer_profile(profile, completed=True, selected_plan="DEMO")
+
+
 def _is_initial_activation_completed(license_info: dict[str, object] | None = None) -> bool:
     info = license_info or db.get_license_info()
     if _is_valid_paid_license_tier(info.get("tier")):
@@ -903,8 +1032,11 @@ def _retry_pending_demo_request_if_needed() -> None:
     if not ok_profile:
         return
 
-    activation_id, machine_details = _get_stable_activation_id()
     product_name = get_license_product()
+    demo_context = _get_demo_identity_context(profile)
+    activation_id = str(demo_context["activation_id"])
+    machine_details = demo_context["machine_details"]
+    identity = demo_context["identity"]
     install_date = str(demo_status.get("install_date", "") or "").strip()
     try:
         started_on = date.fromisoformat(install_date) if install_date else date.today()
@@ -915,26 +1047,23 @@ def _retry_pending_demo_request_if_needed() -> None:
         expires_on = date.fromisoformat(expires_at) if expires_at else started_on + timedelta(days=max(int(demo_status.get("dias_demo", 14) or 14), 1))
     except Exception:
         expires_on = started_on + timedelta(days=max(int(demo_status.get("dias_demo", 14) or 14), 1))
-    remote_demo_dedupe_key = "|".join([
-        str(activation_id or "").strip(),
-        str(profile["email"] or "").strip().lower(),
-        str(product_name or "").strip().lower(),
-    ])
+    remote_demo_dedupe_key = _demo_dedupe_key(activation_id, profile["email"], product_name)
 
-    demo_metadata = {
-        "activation_id": activation_id,
-        "producto": product_name,
-        "plan": "DEMO",
-        "plan_interes": "DEMO_14_DIAS",
-        "rubro": profile["rubro"],
-        "codigo_vendedor": profile["codigo_vendedor"],
-        "terms_accepted": bool(profile["terms_accepted"]),
-        "marketing_opt_in": bool(profile["marketing_opt_in"]),
-        "demo_started_at": started_on.isoformat(),
-        "demo_expires_at": expires_on.isoformat(),
-        "demo_status": "demo_activa",
-        "machine_details": machine_details,
-    }
+    demo_metadata = build_demo_metadata(
+        identity=identity,
+        machine_details=machine_details,
+        base_metadata={
+            "plan": "DEMO",
+            "plan_interes": "DEMO_14_DIAS",
+            "rubro": profile["rubro"],
+            "codigo_vendedor": profile["codigo_vendedor"],
+            "terms_accepted": bool(profile["terms_accepted"]),
+            "marketing_opt_in": bool(profile["marketing_opt_in"]),
+            "demo_started_at": started_on.isoformat(),
+            "demo_expires_at": expires_on.isoformat(),
+            "demo_status": "demo_activa",
+        },
+    )
 
     db.set_config({"activation_demo_request_retry_at": datetime.now().isoformat()})
     ok_demo, msg_demo = create_demo_request(
@@ -952,19 +1081,18 @@ def _retry_pending_demo_request_if_needed() -> None:
         db.set_config({
             "activation_demo_request_key": remote_demo_dedupe_key,
             "activation_demo_request_sent_at": datetime.now().isoformat(),
+            "activation_demo_eligibility_state": DEMO_ACTIVE,
         })
         logger.info(
-            "Solicitud DEMO pendiente registrada correctamente activation_id=%s email=%s producto=%s",
-            str(activation_id)[:24],
-            profile["email"],
+            "Solicitud DEMO pendiente registrada correctamente activation_id=%s producto=%s",
+            mask_identifier(activation_id),
             product_name,
         )
         return
 
     logger.warning(
-        "No se pudo reintentar el registro DEMO en Supabase activation_id=%s email=%s producto=%s detalle=%s",
-        str(activation_id)[:24],
-        profile["email"],
+        "No se pudo reintentar el registro DEMO en Supabase activation_id=%s producto=%s detalle=%s",
+        mask_identifier(activation_id),
         product_name,
         msg_demo,
     )
@@ -4565,9 +4693,21 @@ def activacion_inicial():
         if not ok_profile:
             flash(msg_profile, "warning")
         elif selected_plan == "DEMO":
-            activation_id, machine_details = _get_stable_activation_id()
-            demo_status = db.get_demo_status()
-            if demo_status.get("vencido"):
+            demo_context = _get_demo_identity_context(profile)
+            activation_id = str(demo_context["activation_id"])
+            hardware_id = str(demo_context["hardware_id"])
+            machine_details = demo_context["machine_details"]
+            product_name = str(demo_context["product_name"])
+            identity = demo_context["identity"]
+            cfg = db.get_config()
+            demo_status = _get_initial_demo_status()
+            local_confirmed = bool(str(cfg.get("activation_demo_request_key", "") or "").strip())
+            if local_confirmed and demo_status.get("vencido"):
+                result = DemoEligibilityResult(
+                    state=DEMO_EXPIRED,
+                    message="Tu periodo de prueba finalizo. Elegi BASICA, PRO o FULL para continuar usando Nexar Comercio.",
+                )
+                _persist_demo_eligibility_state(result)
                 flash(
                     "Tu periodo de prueba finalizo. Elegi BASICA, PRO o FULL para continuar usando Nexar Comercio.",
                     "warning",
@@ -4581,31 +4721,75 @@ def activacion_inicial():
                     plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
                     demo_status=demo_status,
                     checkout_pending=_get_checkout_pending_context(),
+                    demo_access=_get_initial_demo_access_context(),
                 )
-            install_date = str(demo_status.get("install_date", "") or "").strip()
-            expires_at = str(demo_status.get("expires_at", "") or "").strip()
-            try:
-                started_on = date.fromisoformat(install_date) if install_date else date.today()
-            except Exception:
-                started_on = date.today()
-            try:
-                expires_on = date.fromisoformat(expires_at) if expires_at else started_on + timedelta(days=max(int(demo_status.get("dias_demo", 14) or 14), 1))
-            except Exception:
-                expires_on = started_on + timedelta(days=max(int(demo_status.get("dias_demo", 14) or 14), 1))
-            product_name = get_license_product()
-            remote_demo_dedupe_key = "|".join([
-                str(activation_id or "").strip(),
-                str(profile["email"] or "").strip().lower(),
-                str(product_name or "").strip().lower(),
-            ])
-            _persist_activation_customer_profile(profile, completed=True, selected_plan=selected_plan)
-            already_sent = str(db.get_config_valor("activation_demo_request_key", "") or "").strip() == remote_demo_dedupe_key
-            if already_sent:
-                ok_demo, msg_demo = True, "La solicitud DEMO ya habÃ­a sido registrada para esta instalaciÃ³n."
-            else:
-                demo_metadata = {
-                    "activation_id": activation_id,
-                    "producto": product_name,
+            if local_confirmed and demo_status.get("demo") and not demo_status.get("vencido"):
+                _persist_activation_customer_profile(profile, completed=True, selected_plan=selected_plan)
+                flash("DEMO activada correctamente por 14 días. Ya podés usar el sistema.", "success")
+                return redirect(url_for("dashboard"))
+
+            ok_lookup, msg_lookup, demo_records = find_demo_requests_for_identity(
+                producto=product_name,
+                activation_id=activation_id,
+                hardware_id=hardware_id,
+                machine_id=getattr(identity, "machine_id", ""),
+                email=profile["email"],
+            )
+            if not ok_lookup:
+                result = DemoEligibilityResult(
+                    state=DEMO_OFFLINE_UNVERIFIED,
+                    message="Necesitamos conexión a Internet para comprobar la disponibilidad de la prueba gratuita.",
+                )
+                _persist_activation_customer_profile(profile, completed=False, selected_plan=selected_plan)
+                _persist_unverified_demo_without_permissions(result)
+                logger.warning(
+                    "No se pudo verificar DEMO previa producto=%s activation_id=%s detalle=%s",
+                    product_name,
+                    mask_identifier(activation_id),
+                    msg_lookup,
+                )
+                flash(result.message, "warning")
+                return render_template(
+                    "activacion_inicial.html",
+                    customer_profile=profile,
+                    selected_plan="DEMO",
+                    available_plans=["DEMO", "BASICA", "PRO", "FULL"],
+                    license_info=license_info,
+                    plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+                    demo_status=_get_initial_demo_status(),
+                    checkout_pending=_get_checkout_pending_context(),
+                    demo_access=_get_initial_demo_access_context(),
+                )
+
+            result = resolve_demo_eligibility_from_records(identity=identity, records=demo_records)
+            _persist_demo_eligibility_state(result)
+            if result.state == DEMO_ACTIVE and result.can_recover_demo:
+                _recover_remote_demo(profile, result, activation_id, product_name)
+                flash("Encontramos una DEMO vigente para este equipo. Ya podés continuar.", "success")
+                return redirect(url_for("dashboard"))
+            if result.state != DEMO_ELIGIBLE:
+                _persist_activation_customer_profile(profile, completed=False, selected_plan=selected_plan)
+                _persist_unverified_demo_without_permissions(result)
+                flash(result.message, "warning")
+                return render_template(
+                    "activacion_inicial.html",
+                    customer_profile=profile,
+                    selected_plan="BASICA",
+                    available_plans=["DEMO", "BASICA", "PRO", "FULL"],
+                    license_info=license_info,
+                    plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+                    demo_status=_get_initial_demo_status(),
+                    checkout_pending=_get_checkout_pending_context(),
+                    demo_access=_get_initial_demo_access_context(),
+                )
+
+            started_on = date.today()
+            expires_on = started_on + timedelta(days=14)
+            remote_demo_dedupe_key = _demo_dedupe_key(activation_id, profile["email"], product_name)
+            demo_metadata = build_demo_metadata(
+                identity=identity,
+                machine_details=machine_details,
+                base_metadata={
                     "plan": "DEMO",
                     "plan_interes": "DEMO_14_DIAS",
                     "rubro": profile["rubro"],
@@ -4615,39 +4799,74 @@ def activacion_inicial():
                     "demo_started_at": started_on.isoformat(),
                     "demo_expires_at": expires_on.isoformat(),
                     "demo_status": "demo_activa",
-                    "machine_details": machine_details,
-                }
-                ok_demo, msg_demo = create_demo_request(
-                    nombre=profile["titular_nombre"],
-                    email=profile["email"],
-                    telefono=profile["telefono"],
-                    negocio=profile["negocio"],
-                    producto=product_name,
-                    plan_interes="DEMO_14_DIAS",
-                    mensaje=json.dumps(demo_metadata, ensure_ascii=False),
-                    origen="app_activacion_inicial",
-                    estado="pendiente",
-                )
-                if ok_demo:
-                    db.set_config({
-                        "activation_demo_request_key": remote_demo_dedupe_key,
-                        "activation_demo_request_sent_at": datetime.now().isoformat(),
-                    })
+                },
+            )
+            ok_demo, msg_demo = create_demo_request(
+                nombre=profile["titular_nombre"],
+                email=profile["email"],
+                telefono=profile["telefono"],
+                negocio=profile["negocio"],
+                producto=product_name,
+                plan_interes="DEMO_14_DIAS",
+                mensaje=json.dumps(demo_metadata, ensure_ascii=False),
+                origen="app_activacion_inicial",
+                estado="pendiente",
+            )
             if ok_demo:
+                db.set_config({
+                    "demo_mode": "1",
+                    "demo_install_date": started_on.isoformat(),
+                    "demo_dias": "14",
+                    "demo_expires_at": expires_on.isoformat(),
+                    "license_tier": "DEMO",
+                    "license_plan": "DEMO",
+                    "activation_demo_request_key": remote_demo_dedupe_key,
+                    "activation_demo_request_sent_at": datetime.now().isoformat(),
+                    "activation_demo_eligibility_state": DEMO_ACTIVE,
+                })
+                _persist_activation_customer_profile(profile, completed=True, selected_plan=selected_plan)
                 flash("DEMO activada correctamente por 14 días. Ya podés usar el sistema.", "success")
-            else:
-                logger.warning(
-                    "No se pudo registrar la DEMO inicial en Supabase activation_id=%s email=%s producto=%s detalle=%s",
-                    str(activation_id)[:24],
-                    profile["email"],
-                    product_name,
-                    msg_demo,
-                )
-                flash(
-                    f"DEMO local activada por 14 días. No pudimos registrar la solicitud online ahora: {msg_demo}",
-                    "warning",
-                )
-            return redirect(url_for("dashboard"))
+                return redirect(url_for("dashboard"))
+
+            retry_lookup_ok, _retry_msg, retry_records = find_demo_requests_for_identity(
+                producto=product_name,
+                activation_id=activation_id,
+                hardware_id=hardware_id,
+                machine_id=getattr(identity, "machine_id", ""),
+                email=profile["email"],
+            )
+            if retry_lookup_ok:
+                retry_result = resolve_demo_eligibility_from_records(identity=identity, records=retry_records)
+                _persist_demo_eligibility_state(retry_result)
+                if retry_result.state == DEMO_ACTIVE and retry_result.can_recover_demo:
+                    _recover_remote_demo(profile, retry_result, activation_id, product_name)
+                    flash("Tu prueba gratuita fue activada correctamente.", "success")
+                    return redirect(url_for("dashboard"))
+
+            result = DemoEligibilityResult(
+                state=DEMO_OFFLINE_UNVERIFIED,
+                message="No pudimos verificar si este equipo ya utilizó la prueba gratuita. Conectate a Internet para iniciar la DEMO o elegí un plan pago.",
+            )
+            _persist_activation_customer_profile(profile, completed=False, selected_plan=selected_plan)
+            _persist_unverified_demo_without_permissions(result)
+            logger.warning(
+                "No se pudo registrar DEMO inicial producto=%s activation_id=%s detalle=%s",
+                product_name,
+                mask_identifier(activation_id),
+                msg_demo,
+            )
+            flash(result.message, "warning")
+            return render_template(
+                "activacion_inicial.html",
+                customer_profile=profile,
+                selected_plan="DEMO",
+                available_plans=["DEMO", "BASICA", "PRO", "FULL"],
+                license_info=license_info,
+                plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+                demo_status=_get_initial_demo_status(),
+                checkout_pending=_get_checkout_pending_context(),
+                demo_access=_get_initial_demo_access_context(),
+            )
         else:
             _persist_activation_customer_profile(profile, completed=False, selected_plan=selected_plan)
             init_point, _checkout_context, error_response = _create_checkout_init_point()
@@ -4676,8 +4895,9 @@ def activacion_inicial():
         available_plans=["DEMO", "BASICA", "PRO", "FULL"],
         license_info=license_info,
         plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
-        demo_status=db.get_demo_status(),
+        demo_status=_get_initial_demo_status(),
         checkout_pending=_get_checkout_pending_context(),
+        demo_access=_get_initial_demo_access_context(),
     )
 
 

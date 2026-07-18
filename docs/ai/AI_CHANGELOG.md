@@ -2,6 +2,68 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-18 - Codex - security/demo-anti-reinstall
+
+### Tarea
+Implementar el Issue #113 para reforzar la proteccion contra multiples DEMO por
+reinstalacion, borrado local, cambio de carpeta, restauracion o manipulacion
+simple de flags.
+
+### Diagnostico
+- `activation_id` se genera en `services/supabase_license_api.generate_activation_id()`
+  con usuario, host, `/etc/machine-id`/DBus, UUID DMI y pista de disco; en el
+  flujo inicial se prefiere `get_current_hwid()` del SDK cuando esta disponible.
+- El identificador se persistia en solicitudes o checkout, pero la DEMO nueva se
+  activaba localmente aunque `create_demo_request()` fallara.
+- `demo_mode`, `demo_install_date` y flags de activacion viven en SQLite; borrar
+  o restaurar la base podia dejar una instalacion aparentemente nueva.
+- `solicitudes_demo` recibia producto, email y un JSON en `mensaje` con
+  `activation_id` y fechas DEMO, pero no habia consulta previa centralizada ni
+  restriccion unica versionada para concurrencia.
+- Sin conexion, una instalacion sin evidencia podia obtener DEMO local; eso
+  confiaba en datos locales editables.
+- El email era util para contacto, pero no suficientemente fuerte como unica
+  identidad del equipo.
+
+### Que se cambio
+- Se agrego `services/demo_eligibility.py` con identidad DEMO, normalizacion,
+  hashes SHA-256 por producto, matching legacy y estados `eligible`, `active`,
+  `expired`, `already_used`, `blocked`, `offline_unverified` y `error`.
+- `/activacion-inicial` consulta `solicitudes_demo` antes de crear una DEMO; solo
+  persiste permisos locales despues de una respuesta remota valida o recupera
+  una DEMO remota vigente sin extender fechas.
+- Si la verificacion o el registro remoto fallan en una instalacion sin DEMO
+  confirmada, se conserva la activacion inicial pendiente, se marca estado sin
+  permisos y se ofrecen reintento o planes pagos.
+- `create_demo_request()` envia columnas nuevas de identidad/hash cuando existen
+  y mantiene fallback a payload legacy para tablas aun no migradas.
+- La UI oculta/deshabilita la accion DEMO cuando ya fue usada o esta bloqueada,
+  sin exponer HWID, `activation_id` completo ni errores raw.
+- Se agrego migracion versionada no ejecutada para endurecer idempotencia remota
+  con indice unico parcial por producto e `identity_hash`.
+
+### Archivos modificados
+- `routes/main.py`
+- `services/demo_eligibility.py`
+- `services/supabase_license_api.py`
+- `templates/activacion_inicial.html`
+- `tests/test_license_integration.py`
+- `README.md`
+- `docs/MODULOS_Y_PLANES.md`
+- `docs/ai/AI_CHANGELOG.md`
+- `supabase/migrations/2026-07-18_harden_solicitudes_demo_identity.sql`
+
+### Que se probo
+- `.venv/bin/python -m pytest tests/test_license_integration.py tests/test_license_tiers.py` -> 143 passed.
+
+### Limitaciones
+- La defensa no intenta resistir a un usuario con control total del equipo.
+- La concurrencia fuerte entre altas simultaneas requiere aplicar la migracion
+  Supabase incluida o una RPC/constraint equivalente en el servicio remoto.
+- Si el SDK no entrega HWID y el sistema no expone senales estables compartidas
+  entre usuarios del SO, el segundo usuario queda limitado por los datos legacy
+  disponibles.
+
 ## 2026-07-18 - Codex - feature/direct-plan-activation
 
 ### Tarea

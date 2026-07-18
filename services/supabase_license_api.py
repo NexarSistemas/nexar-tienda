@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import getpass
 import hashlib
+import json
 import logging
 import os
 import platform
@@ -388,12 +389,28 @@ def create_demo_request(
         "origen": origen,
         "leida": False,
     }
+    try:
+        metadata = json.loads(mensaje) if mensaje else {}
+    except json.JSONDecodeError:
+        metadata = {}
+    if isinstance(metadata, dict):
+        identity_hashes = metadata.get("identity_hashes") if isinstance(metadata.get("identity_hashes"), dict) else {}
+        activation_id = str(metadata.get("activation_id") or "").strip()
+        if activation_id:
+            payload["activation_id"] = activation_id
+            payload["identity_hash"] = identity_hashes.get("activation_id") or ""
+        if identity_hashes.get("hardware_id"):
+            payload["hardware_id_hash"] = identity_hashes["hardware_id"]
+        if identity_hashes.get("machine_id"):
+            payload["machine_id_hash"] = identity_hashes["machine_id"]
     headers = {**_headers(), "Prefer": "return=minimal"}
     request_url = _demo_requests_table_url()
     logger.info(
-        "Enviando solicitud DEMO a Supabase url=%s payload=%s",
+        "Enviando solicitud DEMO a Supabase url=%s producto=%s plan_interes=%s activation_id=%s",
         request_url,
-        payload,
+        producto,
+        plan_interes,
+        build_machine_id(payload.get("activation_id", ""))[:12] if payload.get("activation_id") else "",
     )
     try:
         resp = requests.post(request_url, headers=headers, json=payload, timeout=_request_timeout())
@@ -421,11 +438,12 @@ def create_demo_request(
             "mensaje": mensaje,
         }
         logger.warning(
-            "Solicitud DEMO rechazada; reintentando payload compatible url=%s status=%s body=%s fallback_payload=%s",
+            "Solicitud DEMO rechazada; reintentando payload compatible url=%s status=%s body=%s producto=%s plan_interes=%s",
             request_url,
             resp.status_code,
             (resp.text or "").strip()[:500],
-            fallback_payload,
+            producto,
+            plan_interes,
         )
         try:
             resp = requests.post(request_url, headers=headers, json=fallback_payload, timeout=_request_timeout())
@@ -461,6 +479,92 @@ def create_demo_request(
         url=request_url,
     )
     return True, "Solicitud DEMO registrada correctamente."
+
+
+def find_demo_requests_for_identity(
+    *,
+    producto: str = PRODUCTO_DEFAULT,
+    activation_id: str = "",
+    hardware_id: str = "",
+    machine_id: str = "",
+    email: str = "",
+    limit: int = 25,
+) -> tuple[bool, str, list[dict[str, Any]]]:
+    operation = "find_demo_requests_for_identity"
+    if not is_configured():
+        _set_supabase_debug(operation=operation, status="not_configured", status_code=None, last_error="not_configured")
+        return False, _missing_supabase_config_message("verificar la demo"), []
+
+    producto = (producto or PRODUCTO_DEFAULT).strip()
+    identifiers = []
+    for value in (activation_id, hardware_id, machine_id):
+        normalized = (value or "").strip()
+        if normalized and normalized not in identifiers:
+            identifiers.append(normalized)
+
+    if not identifiers and not (email or "").strip():
+        _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_identity")
+        return False, "No se pudo resolver una identidad valida para verificar la demo.", []
+
+    request_url = _demo_requests_table_url()
+    params = {
+        "select": "*",
+        "producto": f"eq.{producto}",
+        "order": "created_at.desc",
+        "limit": str(max(1, min(int(limit or 25), 100))),
+    }
+    if identifiers:
+        params["or"] = "(" + ",".join(f"mensaje.ilike.*{identifier}*" for identifier in identifiers) + ")"
+    elif email:
+        params["email"] = f"eq.{email.strip().lower()}"
+
+    try:
+        resp = requests.get(request_url, headers=_headers(), params=params, timeout=_request_timeout())
+    except requests.RequestException as exc:
+        logger.warning("Error de conexion verificando DEMO previa: %s", exc)
+        message, error = _request_error_message(operation, exc)
+        _set_supabase_debug(
+            operation=operation,
+            status="network_error",
+            status_code=None,
+            last_error=error or "network_error",
+            url=request_url,
+        )
+        return False, message, []
+
+    if resp.status_code >= 300:
+        _log_supabase_http_error(operation, request_url, resp)
+        message, error = _response_error_message(operation, resp)
+        _set_supabase_debug(
+            operation=operation,
+            status="http_error",
+            status_code=resp.status_code,
+            last_error=(resp.text or "").strip()[:240] or error,
+            url=request_url,
+        )
+        return False, message, []
+
+    try:
+        payload = resp.json()
+    except json.JSONDecodeError:
+        _set_supabase_debug(
+            operation=operation,
+            status="invalid_response",
+            status_code=resp.status_code,
+            last_error="invalid_json",
+            url=request_url,
+        )
+        return False, "Supabase devolvio una respuesta invalida al verificar la demo.", []
+
+    rows = payload if isinstance(payload, list) else []
+    _set_supabase_debug(
+        operation=operation,
+        status="ok",
+        status_code=resp.status_code,
+        last_error="",
+        url=request_url,
+    )
+    return True, "Verificacion DEMO completada.", rows
 
 
 def create_upgrade_request(data: dict[str, Any]) -> dict[str, Any]:
