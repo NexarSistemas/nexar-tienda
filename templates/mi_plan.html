@@ -159,10 +159,14 @@
                         <div class="alert alert-warning mb-0">No se pudieron cargar las acciones del plan. Intenta refrescar la licencia.</div>
                         {% endif %}
 
-                        <div class="alert alert-light border mt-3 d-none" id="post-payment-refresh-panel">
+                        <div class="alert alert-light border mt-3 {% if not checkout_pending or not checkout_pending.pending %}d-none{% endif %}" id="post-payment-refresh-panel">
                             <div class="fw-semibold mb-2">Seguimiento post-pago</div>
                             <div class="small text-muted mb-3" id="post-payment-refresh-message">
+                                {% if checkout_pending and checkout_pending.pending %}
+                                Plan pendiente: {{ checkout_pending.plan_display }}. Todavia no encontramos una licencia activa para este equipo. Si acabas de pagar, espera unos instantes y volve a verificar.
+                                {% else %}
                                 Abrimos Mercado Pago en tu navegador. Cuando termines el pago, volve a Nexar y toca "Ya pague, actualizar licencia".
+                                {% endif %}
                             </div>
                             <button class="btn btn-outline-primary btn-sm" type="button" id="post-payment-refresh-button">
                                 Ya pague, actualizar licencia
@@ -481,8 +485,9 @@ document.addEventListener('DOMContentLoaded', function () {
             ((data.plan_efectivo || '') && data.plan_efectivo !== initialEffectivePlan) ||
             ((data.estado || '') && data.estado !== initialLicenseStatus) ||
             ((data.expires_at || '') && data.expires_at !== initialExpiresAt);
+        const paidPlanConfirmed = data.ok && ['BASICA', 'PRO', 'FULL'].indexOf(data.tier || data.plan_efectivo || '') !== -1;
 
-        if (stateChanged) {
+        if (stateChanged || paidPlanConfirmed) {
             applyUpdatedLicenseState(data, 'Licencia actualizada correctamente');
             clearPostPaymentStorage();
             stopPostPaymentPolling();
@@ -506,17 +511,17 @@ document.addEventListener('DOMContentLoaded', function () {
             const elapsed = Date.now() - postPaymentPollStartedAt;
             if (elapsed >= 120000) {
                 stopPostPaymentPolling();
-                updatePostPaymentPanel('pending', 'Todavia no vemos el cambio. Podes tocar "Ya pague, actualizar licencia".');
+                updatePostPaymentPanel('pending', 'Todavia no encontramos una licencia activa para este equipo. Si acabas de pagar, espera unos instantes y volve a verificar.');
                 return;
             }
 
             try {
                 const updated = await checkLicenseStatusForPostPayment();
                 if (!updated) {
-                    updatePostPaymentPanel('pending', 'Pago pendiente de acreditacion o licencia aun no actualizada');
+                    updatePostPaymentPanel('pending', 'Todavia no encontramos una licencia activa para este equipo. Si acabas de pagar, espera unos instantes y volve a verificar.');
                 }
             } catch (error) {
-                updatePostPaymentPanel('error', 'No pudimos verificar la licencia ahora. Proba nuevamente en unos segundos.');
+                updatePostPaymentPanel('error', 'No pudimos verificar la licencia en este momento. Revisa tu conexion e intenta nuevamente.');
             }
         }, 10000);
     }
@@ -537,11 +542,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const updated = await checkLicenseStatusForPostPayment();
             if (!updated) {
-                updatePostPaymentPanel('pending', 'Pago pendiente de acreditacion o licencia aun no actualizada');
+                updatePostPaymentPanel('pending', 'Todavia no encontramos una licencia activa para este equipo. Si acabas de pagar, espera unos instantes y volve a verificar.');
                 startPostPaymentPolling();
             }
         } catch (error) {
-            updatePostPaymentPanel('error', 'No pudimos actualizar la licencia ahora. Proba nuevamente en unos segundos.');
+            updatePostPaymentPanel('error', 'No pudimos verificar la licencia en este momento. Revisa tu conexion e intenta nuevamente.');
         } finally {
             postPaymentButton.disabled = false;
         }

@@ -75,6 +75,7 @@ from services.supabase_license_api import (
     create_license_request,
     create_support_request,
     create_upgrade_request,
+    find_active_license_for_machine,
     generate_activation_id,
     get_supabase_debug_state,
     is_configured as supabase_configured,
@@ -712,6 +713,12 @@ def _is_valid_paid_license_tier(value: object) -> bool:
     return normalize_plan(value, default="") in {"BASICA", "PRO", "FULL"}
 
 
+def _get_stable_activation_id() -> tuple[str, dict[str, str]]:
+    usuario = session.get("user", {})
+    machine_id, machine_details = generate_activation_id(usuario.get("username", ""))
+    return get_current_hwid() or machine_id, machine_details
+
+
 def _is_initial_activation_completed(license_info: dict[str, object] | None = None) -> bool:
     info = license_info or db.get_license_info()
     if _is_valid_paid_license_tier(info.get("tier")):
@@ -737,6 +744,121 @@ def _persist_activation_customer_profile(profile: dict[str, str], *, completed: 
     })
     if db.get_rubro_configurado() is None:
         db.set_rubro_configurado(profile["rubro"])
+
+
+def _persist_checkout_started(plan: str, activation_id: str) -> None:
+    db.set_config({
+        "activation_checkout_status": "iniciado",
+        "activation_checkout_plan": normalize_plan(plan, default=""),
+        "activation_checkout_activation_id": str(activation_id or "").strip(),
+        "activation_checkout_started_at": datetime.now().isoformat(),
+        "activation_checkout_checked_at": "",
+    })
+
+
+def _clear_checkout_pending() -> None:
+    db.set_config({
+        "activation_checkout_status": "",
+        "activation_checkout_plan": "",
+        "activation_checkout_activation_id": "",
+        "activation_checkout_started_at": "",
+        "activation_checkout_checked_at": "",
+    })
+
+
+def _get_checkout_pending_context() -> dict[str, object]:
+    cfg = db.get_config()
+    plan = normalize_plan(cfg.get("activation_checkout_plan", ""), default="")
+    status = str(cfg.get("activation_checkout_status", "") or "").strip()
+    activation_id = str(cfg.get("activation_checkout_activation_id", "") or "").strip()
+    return {
+        "status": status,
+        "plan": plan,
+        "plan_display": get_plan_display_name(plan) if plan else "",
+        "activation_id": activation_id,
+        "started_at": str(cfg.get("activation_checkout_started_at", "") or "").strip(),
+        "checked_at": str(cfg.get("activation_checkout_checked_at", "") or "").strip(),
+        "pending": bool(status and plan and activation_id),
+    }
+
+
+def _resolve_license_from_pending_checkout() -> tuple[dict[str, object], bool]:
+    pending = _get_checkout_pending_context()
+    previous_info = db.get_license_info()
+    if not pending["pending"]:
+        return {
+            "ok": False,
+            "changed": False,
+            "message": "No hay un pago pendiente para verificar.",
+            "license_status": _get_license_status_context(previous_info),
+            "modules": sorted(get_modulos_activos()),
+            "checkout_pending": pending,
+        }, False
+
+    db.set_config({"activation_checkout_checked_at": datetime.now().isoformat()})
+    previous_tier = normalize_plan(previous_info.get("tier", "DEMO"), default="DEMO")
+    ok, _message, remote_license = find_active_license_for_machine(
+        machine_id=str(pending["activation_id"]),
+        producto=get_license_product(),
+        expected_plan=str(pending["plan"]),
+        vendor_code=_get_license_holder_profile(previous_info).get("codigo_vendedor", ""),
+    )
+    if not ok or not remote_license:
+        supabase_status = str(get_supabase_debug_state().get("status", "") or "").strip().lower()
+        temporary_error = supabase_status in {"network_error", "http_error", "invalid_response", "not_configured"}
+        return {
+            "ok": False,
+            "changed": False,
+            "message": (
+                "No pudimos verificar la licencia en este momento. Revisa tu conexion e intenta nuevamente."
+                if temporary_error
+                else "Todavia no encontramos una licencia activa para este equipo. Si acabas de pagar, espera unos instantes y volve a verificar."
+            ),
+            "tier": previous_info.get("tier", previous_tier),
+            "plan": previous_info.get("plan", previous_tier),
+            "plan_original": previous_info.get("plan_original", previous_tier),
+            "plan_efectivo": previous_info.get("plan_efectivo", previous_tier),
+            "estado": previous_info.get("estado", ""),
+            "fallback_aplicado": bool(previous_info.get("fallback_aplicado")),
+            "expirada": bool(previous_info.get("expirada")),
+            "expires_at": previous_info.get("expires_at", ""),
+            "license_status": _get_license_status_context(previous_info),
+            "modules": sorted(get_modulos_activos()),
+            "checkout_pending": pending,
+        }, False
+
+    db.sync_license_from_remote(remote_license)
+    refreshed_info = db.get_license_info()
+    normalized_tier = normalize_plan(refreshed_info.get("tier", ""), default="")
+    if not _is_valid_paid_license_tier(normalized_tier):
+        return {
+            "ok": False,
+            "changed": False,
+            "message": "La licencia encontrada todavia no habilita un plan activo para este equipo.",
+            "license_status": _get_license_status_context(refreshed_info),
+            "modules": sorted(get_modulos_activos()),
+            "checkout_pending": pending,
+        }, False
+
+    guardar_licencia(str(remote_license.get("license_key") or ""), refreshed_info)
+    db.set_config({"activation_initial_completed": "1"})
+    _clear_checkout_pending()
+    return {
+        "ok": True,
+        "changed": normalized_tier != previous_tier,
+        "message": "Tu plan fue activado correctamente.",
+        "tier": refreshed_info.get("tier", normalized_tier),
+        "plan": refreshed_info.get("plan", normalized_tier),
+        "plan_original": refreshed_info.get("plan_original", normalized_tier),
+        "plan_efectivo": refreshed_info.get("plan_efectivo", normalized_tier),
+        "estado": refreshed_info.get("estado", ""),
+        "fallback_aplicado": bool(refreshed_info.get("fallback_aplicado")),
+        "expirada": bool(refreshed_info.get("expirada")),
+        "expires_at": refreshed_info.get("expires_at", ""),
+        "license_status": _get_license_status_context(refreshed_info),
+        "modules": sorted(get_modulos_activos()),
+        "checkout_pending": _get_checkout_pending_context(),
+    }, True
 
 
 def _validate_activation_customer_profile(profile: dict[str, str]) -> tuple[bool, str]:
@@ -781,8 +903,7 @@ def _retry_pending_demo_request_if_needed() -> None:
     if not ok_profile:
         return
 
-    activation_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
-    activation_id = get_current_hwid() or activation_id
+    activation_id, machine_details = _get_stable_activation_id()
     product_name = get_license_product()
     install_date = str(demo_status.get("install_date", "") or "").strip()
     try:
@@ -884,6 +1005,12 @@ def _refresh_license_response(force: bool = True) -> tuple[dict[str, object], bo
             cached = dict(_LICENSE_REFRESH_LAST_RESULT)
             return cached, bool(cached.get("ok"))
 
+        if _get_checkout_pending_context()["pending"] and not _get_checkout_license_key(db.get_license_info()):
+            payload, ok = _resolve_license_from_pending_checkout()
+            _LICENSE_REFRESH_LAST_RESULT = dict(payload)
+            _LICENSE_REFRESH_LAST_RUN = now
+            return payload, ok
+
         previous_info = db.get_license_info()
         previous_tier = normalize_plan(previous_info.get("tier", "DEMO"), default="DEMO")
         previous_effective_plan = str(previous_info.get("plan_efectivo", previous_info.get("tier", previous_tier)) or previous_tier)
@@ -916,6 +1043,7 @@ def _refresh_license_response(force: bool = True) -> tuple[dict[str, object], bo
             "expires_at": current_info.get("expires_at", ""),
             "license_status": license_status,
             "modules": sorted(get_modulos_activos()),
+            "checkout_pending": _get_checkout_pending_context(),
         }
         _LICENSE_REFRESH_LAST_RESULT = dict(payload)
         _LICENSE_REFRESH_LAST_RUN = now
@@ -1004,9 +1132,7 @@ def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response,
 
     producto = get_license_product()
     precio = get_price_for_plan(plan_destino)
-    usuario = session.get("user", {})
-    machine_id, machine_details = generate_activation_id(usuario.get("username", ""))
-    activation_id = get_current_hwid() or machine_id
+    activation_id, machine_details = _get_stable_activation_id()
     external_reference = build_external_reference(
         producto=producto,
         plan_destino=plan_destino,
@@ -1109,6 +1235,8 @@ def _create_checkout_init_point() -> tuple[str | None, dict[str, object] | None,
         checkout_context["license_info"].get("tier", "DEMO"),
         plan_destino,
     )
+    if tipo_solicitud == "alta_licencia":
+        _persist_checkout_started(plan_destino, activation_id)
     return init_point, checkout_context, None
 
 
@@ -4127,6 +4255,7 @@ def mi_plan():
         license_refresh_message=refresh_msg,
         license_holder=_get_license_holder_profile(license_info),
         checkout_enabled=bool(available_checkout_plans),
+        checkout_pending=_get_checkout_pending_context(),
     )
 
 
@@ -4159,6 +4288,12 @@ def api_licencia_estado():
         license_key = str(license_info.get("key", "") or stored_license.get("license_key", "") or "").strip()
 
         if not license_key:
+            if _get_checkout_pending_context()["pending"]:
+                response, ok = _refresh_license_response(force=True)
+                return jsonify({
+                    **response,
+                    "estado": "licencia_activada" if ok else "pago_pendiente",
+                })
             return jsonify({
                 "ok": False,
                 "estado": "sin_licencia",
@@ -4191,6 +4326,7 @@ def api_licencia_estado():
             "modules": sorted(license_info.get("modules", []) or []),
             "last_refresh": last_refresh,
             "needs_refresh": needs_refresh,
+            "checkout_pending": _get_checkout_pending_context(),
         })
     except Exception:
         logger.exception("No se pudo exponer el estado de licencia por API")
@@ -4346,8 +4482,7 @@ def mi_plan_solicitar_upgrade():
 
     cfg = db.get_config()
     usuario = session.get("user", {})
-    machine_id, machine_details = generate_activation_id(usuario.get("username", ""))
-    activation_id = get_current_hwid() or machine_id
+    activation_id, machine_details = _get_stable_activation_id()
     payload = {
         "producto": get_license_product(),
         "license_key": license_key,
@@ -4430,8 +4565,7 @@ def activacion_inicial():
         if not ok_profile:
             flash(msg_profile, "warning")
         elif selected_plan == "DEMO":
-            activation_id, machine_details = generate_activation_id(session.get("user", {}).get("username", ""))
-            activation_id = get_current_hwid() or activation_id
+            activation_id, machine_details = _get_stable_activation_id()
             demo_status = db.get_demo_status()
             if demo_status.get("vencido"):
                 flash(
@@ -4446,6 +4580,7 @@ def activacion_inicial():
                     license_info=license_info,
                     plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
                     demo_status=demo_status,
+                    checkout_pending=_get_checkout_pending_context(),
                 )
             install_date = str(demo_status.get("install_date", "") or "").strip()
             expires_at = str(demo_status.get("expires_at", "") or "").strip()
@@ -4542,6 +4677,7 @@ def activacion_inicial():
         license_info=license_info,
         plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
         demo_status=db.get_demo_status(),
+        checkout_pending=_get_checkout_pending_context(),
     )
 
 
@@ -4656,6 +4792,7 @@ def licencia():
         plan_request_options=get_commercial_plan_options(),
         license_holder=_get_license_holder_profile(license_info),
         requires_initial_license_acceptance=requires_initial_acceptance,
+        checkout_pending=_get_checkout_pending_context(),
     )
 
 

@@ -159,6 +159,42 @@ licencia vencida. Las rutas actuales combinan consulta y acciones de escritura,
 por lo que la politica segura de este alcance es bloqueo consistente y acceso
 solo a recuperacion comercial.
 
+## Activacion inicial directa
+
+La activacion inicial permite elegir DEMO, BASICA, PRO o FULL como opciones
+independientes. DEMO inicia la prueba local de 14 dias; BASICA, PRO y FULL
+inician checkout como `alta_licencia` usando el mismo `activation_id` estable de
+la instalacion. No se genera un identificador nuevo al cambiar de plan, volver
+del checkout o presionar "Ya pague".
+
+La eleccion de plan y la apertura del checkout no modifican `license_tier` ni
+habilitan modulos pagos. Mientras el pago no este confirmado, la app conserva
+solo el estado previo y registra contexto local de seguimiento en config:
+
+- `activation_checkout_status`
+- `activation_checkout_plan`
+- `activation_checkout_activation_id`
+- `activation_checkout_started_at`
+- `activation_checkout_checked_at`
+
+"Ya pague" reutiliza el refresh de licencia y, cuando no hay clave local,
+consulta la fuente oficial por producto, plan esperado y `activation_id`/HWID.
+Solo si esa fuente devuelve una licencia activa con `license_key`, la app
+sincroniza mediante la capa central de licencias, guarda la clave local y marca
+`activation_initial_completed=1`.
+
+Estados esperados:
+
+- Pendiente: sin licencia oficial; no concede permisos y permite reintentar.
+- Error temporal/offline: conserva el estado local, no pisa una licencia valida
+  existente y no concede permisos nuevos.
+- Confirmado: sincroniza la licencia oficial y activa BASICA, PRO o FULL segun
+  el plan efectivo resuelto.
+
+La activacion directa depende de que Nexar Pagos, Licencias o Admin emitan la
+licencia vinculada al mismo `activation_id` enviado en el checkout. Este flujo
+no implementa la proteccion avanzada contra reinstalaciones del Issue #113.
+
 ### 4. Funciones Disponibles
 
 En `licensing/permisos.py`:
