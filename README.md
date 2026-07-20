@@ -1,4 +1,4 @@
-# Nexar Comercio v1.36.6
+# Nexar Comercio v1.36.7
 
 Sistema integral de gestion comercial para tiendas y comercios minoristas.
 `Nexar Comercio` es la marca visible del producto. `nexar-tienda` se mantiene
@@ -8,16 +8,17 @@ y artefactos existentes.
 Estado actual:
 
 - Estado del repositorio: activo
-- Version actual: `1.36.6`
+- Version actual: `1.36.7`
 - Contexto central del ecosistema: repo externo `nexar-ai-context`, archivo `CONTEXTO_NEXAR.md`
 - Relacion con `nexar-comercio`: repo legacy/no activo dentro del ecosistema vigente; no usarlo como reemplazo operativo de `nexar-tienda`.
 - Relacion con `nexar-almacen`: si aparece como repo separado, tratarlo tambien como legacy/no activo.
 
-Release comercial estable `v1.36.6`:
+Release comercial estable `v1.36.7`:
 
-- Se corrige la solicitud manual de upgrade desde `Mi Plan` para no registrar filas con `email=""` en `solicitudes_upgrade`.
-- Si el email del titular falta, la app vuelve a `Mi Plan`, muestra un mensaje claro y no envia la solicitud manual a Supabase.
-- Se incluye la migracion SQL minima para agregar `codigo_vendedor` en `solicitudes_upgrade` y mantener ese dato cuando exista.
+- Se elimina el aviso duplicado de vencimiento proximo en `Mi Plan` y se conserva una unica alerta preventiva junto con la renovacion manual.
+- Una licencia FULL activa ya no muestra un falso error cuando solo corresponde ofrecer renovacion.
+- Cada render de `Mi Plan` reutiliza una unica resolucion remota de precios y mantiene el producto alineado con el checkout.
+- La cache runtime de precios conserva cobertura valida ante respuestas parciales de Supabase.
 - Versionado sincronizado entre app, documentacion e instaladores.
 
 Desarrollado por Nexar Sistemas - 2026

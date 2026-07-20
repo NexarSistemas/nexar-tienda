@@ -4,6 +4,20 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.36.7] - 2026-07-20
+
+### Fixed
+
+- Se elimina la alerta verde que duplicaba el aviso amarillo de vencimiento proximo en `Mi Plan`, conservando resumen, fechas, dias restantes, refresco y renovacion manual.
+- Una licencia FULL activa con renovacion disponible deja de mostrar el falso error de acciones comerciales.
+- La vista y el checkout usan de forma consistente el mismo producto al resolver precios.
+
+### Changed
+
+- `Mi Plan` realiza una sola resolucion remota de precios por render y reutiliza el resultado en todas sus acciones comerciales.
+- La cache runtime de precios preserva datos validos cuando Supabase devuelve una respuesta parcial.
+- Se sincroniza la metadata de version en `VERSION`, `README`, `CHANGELOG` e `Inno Setup` para el release estable `v1.36.7`.
+
 ## [1.36.6] - 2026-06-24
 
 ### Fixed
