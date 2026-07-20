@@ -1040,6 +1040,136 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(view["plan_display"], "FULL")
         self.assertTrue(view["renewal"]["show"])
         self.assertEqual(view["checkout_actions"], [])
+        self.assertEqual(view["commercial_actions_state"], "renewal_only")
+        self.assertEqual(view["no_commercial_actions_message"], "")
+
+    def test_mi_plan_view_full_activo_no_trata_renovacion_como_error(self):
+        expires_at = (date.today() + timedelta(days=15)).isoformat()
+        status = get_license_status_context({
+            "key": "NXR-FULL-001",
+            "tier": "FULL",
+            "plan": "FULL",
+            "plan_original": "FULL",
+            "plan_efectivo": "FULL",
+            "expires_at": expires_at,
+        })
+        actions = self.routes_main._get_plan_actions_context(
+            {
+                "key": "NXR-FULL-001",
+                "tier": "FULL",
+                "plan": "FULL",
+                "plan_original": "FULL",
+                "plan_efectivo": "FULL",
+                "expires_at": expires_at,
+            },
+            license_status=status,
+        )
+
+        with mock.patch.object(self.routes_main.db, "get_demo_status", return_value={"demo": False, "vencido": False, "dias_restantes": 0, "dias_demo": 14}):
+            view = self.routes_main._build_mi_plan_view(
+                license_info={
+                    "key": "NXR-FULL-001",
+                    "tier": "FULL",
+                    "plan": "FULL",
+                    "plan_original": "FULL",
+                    "plan_efectivo": "FULL",
+                    "expires_at": expires_at,
+                },
+                license_status=status,
+                plan_actions=actions,
+                license_holder={"nombre": "", "email": "", "telefono": "", "codigo_vendedor": "", "palabra_recuperacion": ""},
+                checkout_pending={"pending": False},
+                modulos_activos=[],
+                modulos_bloqueados=[],
+            )
+
+        self.assertEqual(view["commercial_actions_state"], "renewal_only")
+        self.assertEqual(view["commercial_actions_error_message"], "")
+
+    def test_mi_plan_view_estado_valido_sin_acciones_muestra_mensaje_neutro(self):
+        status = {
+            "plan_original": "FULL",
+            "plan_efectivo": "FULL",
+            "estado_comercial": "mensual_activo",
+            "licencia_utilizable": True,
+            "estado_display": "ACTIVA",
+            "plan_efectivo_display": "FULL",
+            "plan_original_display": "FULL",
+            "mensaje_estado": "Licencia activa.",
+        }
+        plan_actions = {
+            "plan_display": "FULL",
+            "acciones": [],
+            "acciones_manuales": [],
+            "mostrar_solicitud_manual": False,
+            "mostrar_checkout": False,
+            "mensaje_checkout": "",
+            "puede_renovar": False,
+            "plan_renovable": "",
+            "plan_renovable_display": "",
+            "texto_renovacion": "",
+            "texto_auto_renovacion": "",
+            "cta_renovacion": "",
+            "renovacion_destacada": False,
+        }
+
+        with mock.patch.object(self.routes_main.db, "get_demo_status", return_value={"demo": False, "vencido": False, "dias_restantes": 0, "dias_demo": 14}):
+            view = self.routes_main._build_mi_plan_view(
+                license_info={"tier": "FULL", "plan": "FULL", "plan_original": "FULL", "plan_efectivo": "FULL"},
+                license_status=status,
+                plan_actions=plan_actions,
+                license_holder={"nombre": "", "email": "", "telefono": "", "codigo_vendedor": "", "palabra_recuperacion": ""},
+                checkout_pending={"pending": False},
+                modulos_activos=[],
+                modulos_bloqueados=[],
+                price_labels={},
+            )
+
+        self.assertEqual(view["commercial_actions_state"], "none_applicable")
+        self.assertEqual(view["no_commercial_actions_message"], "No hay acciones comerciales disponibles para este plan.")
+
+    def test_mi_plan_view_error_real_de_acciones_mantiene_aviso(self):
+        status = {
+            "plan_original": "FULL",
+            "plan_efectivo": "FULL",
+            "estado_comercial": "mensual_activo",
+            "licencia_utilizable": True,
+            "estado_display": "ACTIVA",
+            "plan_efectivo_display": "FULL",
+            "plan_original_display": "FULL",
+            "mensaje_estado": "Licencia activa.",
+        }
+        plan_actions = {
+            "plan_display": "FULL",
+            "acciones": [],
+            "acciones_manuales": [],
+            "mostrar_solicitud_manual": False,
+            "mostrar_checkout": False,
+            "mensaje_checkout": "",
+            "puede_renovar": False,
+            "plan_renovable": "",
+            "plan_renovable_display": "",
+            "texto_renovacion": "",
+            "texto_auto_renovacion": "",
+            "cta_renovacion": "",
+            "renovacion_destacada": False,
+            "acciones_error": "No se pudieron cargar las acciones del plan. Intenta refrescar la licencia.",
+        }
+
+        with mock.patch.object(self.routes_main.db, "get_demo_status", return_value={"demo": False, "vencido": False, "dias_restantes": 0, "dias_demo": 14}):
+            view = self.routes_main._build_mi_plan_view(
+                license_info={"tier": "FULL", "plan": "FULL", "plan_original": "FULL", "plan_efectivo": "FULL"},
+                license_status=status,
+                plan_actions=plan_actions,
+                license_holder={"nombre": "", "email": "", "telefono": "", "codigo_vendedor": "", "palabra_recuperacion": ""},
+                checkout_pending={"pending": False},
+                modulos_activos=[],
+                modulos_bloqueados=[],
+                price_labels={},
+            )
+
+        self.assertEqual(view["commercial_actions_state"], "error")
+        self.assertIn("No se pudieron cargar las acciones del plan", view["commercial_actions_error_message"])
 
     def test_mi_plan_view_resuelve_precios_una_sola_vez_por_render_demo(self):
         price_map = {
@@ -1141,6 +1271,41 @@ class LicenseIntegrationTests(unittest.TestCase):
             [action["price_label"] for action in captured["mi_plan_view"]["checkout_actions"]],
             ["$ 49.900", "$ 9.900", "$ 19.900"],
         )
+
+    def test_mi_plan_route_full_activa_no_muestra_aviso_falso(self):
+        app = self.app_module.create_app()
+        license_info = {
+            "key": "NXR-FULL-001",
+            "tier": "FULL",
+            "plan": "FULL",
+            "plan_original": "FULL",
+            "plan_efectivo": "FULL",
+            "estado": "activa",
+            "expires_at": (date.today() + timedelta(days=15)).isoformat(),
+        }
+        resolved_prices = {
+            "BASICA": {"plan": "BASICA", "monto": 49900, "source": "runtime"},
+            "PRO": {"plan": "PRO", "monto": 9900, "source": "runtime"},
+            "FULL": {"plan": "FULL", "monto": 19900, "source": "runtime"},
+        }
+        with app.test_request_context("/mi-plan", method="GET"):
+            from flask import session
+
+            session["user"] = {"rol": "Administrador", "id": 1, "username": "admin"}
+            session["_csrf_token"] = "test"
+
+            with mock.patch.object(self.routes_main, "refresh_saved_license_online", return_value=(False, "", license_info)), \
+                 mock.patch.object(self.routes_main.db, "get_license_info", return_value=license_info), \
+                 mock.patch.object(self.routes_main.db, "get_demo_status", return_value={"demo": False, "vencido": False, "dias_restantes": 0, "dias_demo": 14}), \
+                 mock.patch.object(self.routes_main, "get_modulos_activos", return_value=[]), \
+                 mock.patch.object(self.routes_main, "supabase_configured", return_value=True), \
+                 mock.patch.object(self.routes_main, "_get_license_holder_profile", return_value={"nombre": "", "email": "", "telefono": "", "codigo_vendedor": "", "palabra_recuperacion": ""}), \
+                 mock.patch.object(self.routes_main, "_get_checkout_pending_context", return_value={"pending": False}), \
+                 mock.patch.object(self.routes_main.pricing_resolver, "resolve_plan_prices", return_value=resolved_prices):
+                text = self.routes_main.mi_plan()
+
+        self.assertIn("Renovar FULL", text)
+        self.assertNotIn("No se pudieron cargar las acciones del plan. Intenta refrescar la licencia.", text)
 
     def test_mi_plan_view_licencia_bloqueada_no_se_presenta_activa(self):
         for estado in ("suspendida", "bloqueada", "revocada", "anulada"):

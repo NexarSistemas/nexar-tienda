@@ -146,11 +146,11 @@
                             {% endif %}
                         </div>
                         {% endif %}
-                        {% elif mi_plan_view.no_commercial_actions_message %}
-                        <p class="text-success fw-semibold mb-0">{{ mi_plan_view.no_commercial_actions_message }}</p>
+                        {% elif mi_plan_view.commercial_actions_state == 'none_applicable' and mi_plan_view.no_commercial_actions_message %}
+                        <p class="text-muted fw-semibold mb-0">{{ mi_plan_view.no_commercial_actions_message }}</p>
                         <div class="small text-muted mt-2" id="checkout-upgrade-message"></div>
-                        {% else %}
-                        <div class="alert alert-warning mb-0">No se pudieron cargar las acciones del plan. Intenta refrescar la licencia.</div>
+                        {% elif mi_plan_view.commercial_actions_state == 'error' %}
+                        <div class="alert alert-warning mb-0">{{ mi_plan_view.commercial_actions_error_message }}</div>
                         {% endif %}
 
                         <div class="alert alert-light border mt-3 {% if not mi_plan_view.post_payment.show %}d-none{% endif %}" id="post-payment-refresh-panel">

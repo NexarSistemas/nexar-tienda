@@ -2,6 +2,47 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-20 - Codex - fix/mi-plan-false-actions-warning
+
+### Tarea
+Corregir el Issue #132 para que `Mi Plan` no muestre un aviso falso de error
+cuando una licencia FULL activa solo tiene renovacion disponible y no existen
+upgrades aplicables.
+
+### Diagnostico
+- `templates/mi_plan.html` mostraba el aviso naranja cuando no habia
+  `checkout_actions` ni `no_commercial_actions_message`.
+- En FULL activa, `_build_mi_plan_view()` dejaba `checkout_actions=[]` y
+  `renewal.show=True`, por lo que el template caia en el `else` de error aunque
+  la renovacion se hubiera construido correctamente.
+- El flujo no distinguia de forma explicita entre "sin acciones aplicables",
+  "solo renovacion" y "error real al construir acciones comerciales".
+
+### Que se cambio
+- `routes/main.py` ahora expone `commercial_actions_state` con estados
+  explicitos para `available`, `renewal_only`, `none_applicable` y `error`,
+  junto con un mensaje de error dedicado solo cuando el backend realmente lo
+  informa.
+- `templates/mi_plan.html` deja de usar el `else` implicito como error por
+  defecto: muestra acciones si existen, un mensaje neutro cuando no aplica
+  ninguna y el aviso naranja solo para estado `error`.
+- `tests/test_license_integration.py` agrega regresiones para FULL con solo
+  renovacion, estado valido sin acciones aplicables, error real de acciones y
+  el render completo de `/mi-plan` sin el aviso falso.
+
+### Archivos modificados
+- `routes/main.py`
+- `templates/mi_plan.html`
+- `tests/test_license_integration.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m pytest tests/test_license_integration.py`
+
+### Alcance
+- No se tocaron precios, resolucion de precios, Mercado Pago, reglas de
+  licencias ni Supabase.
+
 ## 2026-07-20 - Codex - fix/mi-plan-pricing-review-findings
 
 ### Tarea

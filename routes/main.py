@@ -794,6 +794,20 @@ def _build_mi_plan_view(
             "available_action": next((item for item in checkout_actions if item.get("plan") == plan), None),
         })
 
+    commercial_actions_error_message = str(
+        plan_actions.get("acciones_error")
+        or license_status.get("acciones_error")
+        or ""
+    ).strip()
+    if commercial_actions_error_message:
+        commercial_actions_state = "error"
+    elif checkout_actions:
+        commercial_actions_state = "available"
+    elif renewal["show"]:
+        commercial_actions_state = "renewal_only"
+    else:
+        commercial_actions_state = "none_applicable"
+
     return {
         "plan_display": str(plan_actions.get("plan_display") or license_status.get("plan_efectivo_display") or "DEMO"),
         "plan_original": plan_original,
@@ -825,9 +839,15 @@ def _build_mi_plan_view(
         "blocked_modules": modulos_bloqueados,
         "limits": _get_plan_limits_summary(plan_efectivo, license_info.get("limits") if isinstance(license_info.get("limits"), dict) else None),
         "commercial_plans": commercial_plans,
+        "commercial_actions_state": commercial_actions_state,
+        "commercial_actions_error_message": commercial_actions_error_message or (
+            "No se pudieron cargar las acciones del plan. Intenta refrescar la licencia."
+            if commercial_actions_state == "error"
+            else ""
+        ),
         "no_commercial_actions_message": (
             "No hay acciones comerciales disponibles para este plan."
-            if not checkout_actions and not renewal["show"]
+            if commercial_actions_state == "none_applicable"
             else ""
         ),
     }
