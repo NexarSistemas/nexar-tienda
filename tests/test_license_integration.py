@@ -1278,6 +1278,173 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(self.database.get_license_info()["expires_at"], expires_at)
         self.assertEqual(self.permisos.get_modulos_activos(), get_modulos_plan("FULL"))
 
+    def test_get_current_user_contact_profile_sin_request_context_devuelve_vacio(self):
+        app = self.app_module.create_app()
+
+        with app.app_context():
+            profile = self.routes_main._get_current_user_contact_profile()
+
+        self.assertEqual(profile, {})
+
+    def test_get_activation_customer_profile_sin_request_context_usa_datos_persistidos(self):
+        app = self.app_module.create_app()
+        self.database.set_config({
+            "license_owner_name": "Admin Persistido",
+            "license_owner_email": "persistido@test.com",
+            "license_owner_phone": "264555000",
+            "license_vendor_code": " vend123 ",
+            "license_recovery_word": "clave",
+            "nombre_negocio": "Comercio Persistido",
+            "responsable": "Responsable Persistido",
+            "license_terms_accepted_at": "2026-07-20T10:00:00",
+        })
+
+        with app.app_context():
+            profile = self.routes_main._get_activation_customer_profile(
+                license_info={"owner_email": "licencia@test.com", "vendor_code": "otra"}
+            )
+
+        self.assertEqual(profile["titular_nombre"], "Admin Persistido")
+        self.assertEqual(profile["negocio"], "Comercio Persistido")
+        self.assertEqual(profile["email"], "persistido@test.com")
+        self.assertEqual(profile["telefono"], "264555000")
+        self.assertEqual(profile["codigo_vendedor"], "VEND123")
+        self.assertEqual(profile["palabra_recuperacion"], "clave")
+        self.assertTrue(profile["terms_accepted"])
+
+    def test_get_license_holder_profile_sin_request_context_usa_datos_persistidos(self):
+        app = self.app_module.create_app()
+        self.database.set_config({
+            "license_owner_name": "Admin Holder",
+            "license_owner_email": "holder@test.com",
+            "license_owner_phone": "264111222",
+            "license_vendor_code": "vend999",
+            "license_recovery_word": "segura",
+        })
+
+        with app.app_context():
+            holder = self.routes_main._get_license_holder_profile()
+
+        self.assertEqual(holder["nombre"], "Admin Holder")
+        self.assertEqual(holder["email"], "holder@test.com")
+        self.assertEqual(holder["telefono"], "264111222")
+        self.assertEqual(holder["codigo_vendedor"], "VEND999")
+        self.assertEqual(holder["palabra_recuperacion"], "segura")
+
+    def test_get_activation_customer_profile_con_request_context_conserva_session_actual(self):
+        app = self.app_module.create_app()
+        self.database.set_config({
+            "license_owner_name": "",
+            "license_owner_email": "",
+            "license_owner_phone": "",
+            "responsable": "",
+            "nombre_negocio": "",
+            "negocio_email": "",
+            "telefono": "",
+        })
+
+        with app.test_request_context("/mi-plan", method="GET"):
+            from flask import session
+
+            session["user"] = {"rol": "Administrador", "id": 99, "username": "admin_session_ctx"}
+            original_q = self.routes_main.db.q
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "SELECT nombre_completo, email, telefono FROM usuarios WHERE id=?" in query:
+                    return {
+                        "nombre_completo": "Admin Session",
+                        "email": "session@test.com",
+                        "telefono": "264000999",
+                    }
+                return original_q(query, params=params, fetchone=fetchone, **kwargs)
+
+            with mock.patch.object(
+                self.routes_main.db,
+                "q",
+                side_effect=fake_q,
+            ):
+                profile = self.routes_main._get_activation_customer_profile()
+
+        self.assertEqual(profile["titular_nombre"], "Admin Session")
+        self.assertEqual(profile["email"], "session@test.com")
+        self.assertEqual(profile["telefono"], "264000999")
+
+    def test_refresh_license_response_con_solo_app_context_y_checkout_pendiente_confirma_licencia(self):
+        app = self.app_module.create_app()
+        remote_license = {
+            "license_key": "NXR-PRO-BG-001",
+            "plan": "PRO",
+            "tier": "PRO",
+            "estado": "activa",
+            "expires_at": (date.today() + timedelta(days=30)).isoformat(),
+            "codigo_vendedor": "VENDBG",
+        }
+        self.database.set_config({
+            "activation_initial_completed": "0",
+            "activation_checkout_status": "iniciado",
+            "activation_checkout_plan": "PRO",
+            "activation_checkout_activation_id": "NXID-BG-1",
+            "license_owner_email": "persistido@test.com",
+            "license_vendor_code": "vendbg",
+        })
+
+        with app.app_context(), \
+             mock.patch.object(self.routes_main, "find_active_license_for_machine", return_value=(True, "ok", remote_license)) as find_mock:
+            payload, ok = self.routes_main._refresh_license_response(force=True)
+
+        self.assertTrue(ok)
+        self.assertEqual(payload["message"], "Tu plan fue activado correctamente.")
+        self.assertEqual(self.database.get_license_info()["tier"], "PRO")
+        self.assertEqual(self.database.get_config()["activation_initial_completed"], "1")
+        self.assertEqual(self.database.get_config()["activation_checkout_status"], "")
+        self.assertEqual(find_mock.call_args.kwargs["machine_id"], "NXID-BG-1")
+        self.assertEqual(find_mock.call_args.kwargs["vendor_code"], "VENDBG")
+
+    def test_refresh_license_response_con_solo_app_context_y_checkout_pendiente_sin_remota_mantiene_estado(self):
+        app = self.app_module.create_app()
+        self.database.set_config({
+            "activation_initial_completed": "0",
+            "activation_checkout_status": "iniciado",
+            "activation_checkout_plan": "FULL",
+            "activation_checkout_activation_id": "NXID-BG-2",
+            "license_owner_email": "persistido@test.com",
+        })
+
+        with app.app_context(), \
+             mock.patch.object(self.routes_main, "find_active_license_for_machine", return_value=(False, "pendiente", None)), \
+             mock.patch.object(self.routes_main, "get_supabase_debug_state", return_value={"status": "not_found"}):
+            payload, ok = self.routes_main._refresh_license_response(force=True)
+
+        self.assertFalse(ok)
+        self.assertIn("Todavia no encontramos", payload["message"])
+        self.assertEqual(self.database.get_config()["activation_initial_completed"], "0")
+        self.assertEqual(self.database.get_config()["activation_checkout_status"], "iniciado")
+        self.assertEqual(self.database.get_license_info()["tier"], "DEMO")
+
+    def test_license_auto_refresh_loop_ejecuta_refresh_con_solo_app_context(self):
+        app = self.app_module.create_app()
+        calls = []
+
+        def fake_refresh(force=True):
+            from flask import has_app_context, has_request_context
+
+            calls.append((has_app_context(), has_request_context(), force))
+            return {"ok": False}, False
+
+        sleep_steps = iter([None, RuntimeError("stop-loop")])
+
+        def fake_sleep(_seconds):
+            outcome = next(sleep_steps)
+            if isinstance(outcome, Exception):
+                raise outcome
+
+        with mock.patch.object(self.routes_main, "_refresh_license_response", side_effect=fake_refresh), \
+             mock.patch.object(self.routes_main.time, "sleep", side_effect=fake_sleep):
+            with self.assertRaisesRegex(RuntimeError, "stop-loop"):
+                self.routes_main._license_auto_refresh_loop(app)
+
+        self.assertEqual(calls, [(True, False, True)])
+
     def test_checkout_con_license_json_stale_sigue_tratando_demo_como_alta(self):
         self.assertEqual(
             self.routes_main._resolve_checkout_request_type({"tier": "DEMO", "key": ""}),
