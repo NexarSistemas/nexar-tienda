@@ -123,6 +123,73 @@ class PricingResolverTests(unittest.TestCase):
         self.assertEqual(result["FULL"]["monto"], 19900)
         self.assertEqual({item["source"] for item in result.values()}, {"fallback_local"})
 
+    def test_respuesta_parcial_preserva_cache_valida(self):
+        pricing_resolver.set_runtime_price_cache("nexar-tienda", {"PRO": 9900, "FULL": 19900})
+        rows = [
+            {
+                "producto": "nexar-tienda",
+                "plan_comercial": "PRO",
+                "plan_tecnico": "PRO",
+                "monto": 11111,
+                "estado": "activo",
+                "vigencia_desde": "2026-01-01T00:00:00Z",
+                "vigencia_hasta": None,
+            }
+        ]
+        fake_response = mock.Mock()
+        fake_response.raise_for_status.return_value = None
+        fake_response.text = "ok"
+        fake_response.json.return_value = rows
+
+        with mock.patch("services.pricing_resolver.os.getenv", side_effect=lambda key, default="": {
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_ANON_KEY": "anon-key",
+        }.get(key, default)), mock.patch("services.pricing_resolver.requests.get", return_value=fake_response):
+            result = pricing_resolver.resolve_plan_prices(["PRO", "FULL"], producto="nexar-tienda")
+
+        self.assertEqual(result["PRO"]["monto"], 11111)
+        self.assertEqual(result["FULL"]["monto"], 19900)
+        self.assertEqual({item["source"] for item in result.values()}, {"runtime"})
+        self.assertEqual(
+            pricing_resolver.get_runtime_price_cache("nexar-tienda"),
+            {"PRO": 11111, "FULL": 19900},
+        )
+
+    def test_multi_producto_filtra_checkout_por_producto_correcto(self):
+        rows = [
+            {
+                "producto": "otro-producto",
+                "plan_comercial": "PRO",
+                "plan_tecnico": "PRO",
+                "monto": 55555,
+                "estado": "activo",
+                "vigencia_desde": "2026-01-01T00:00:00Z",
+                "vigencia_hasta": None,
+            },
+            {
+                "producto": "nexar-tienda",
+                "plan_comercial": "PRO",
+                "plan_tecnico": "PRO",
+                "monto": 9999,
+                "estado": "activo",
+                "vigencia_desde": "2026-01-01T00:00:00Z",
+                "vigencia_hasta": None,
+            },
+        ]
+        fake_response = mock.Mock()
+        fake_response.raise_for_status.return_value = None
+        fake_response.text = "ok"
+        fake_response.json.return_value = rows
+
+        with mock.patch("services.pricing_resolver.os.getenv", side_effect=lambda key, default="": {
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_ANON_KEY": "anon-key",
+        }.get(key, default)), mock.patch("services.pricing_resolver.requests.get", return_value=fake_response):
+            result = pricing_resolver.resolve_plan_price("PRO", producto="nexar-tienda")
+
+        self.assertEqual(result["monto"], 9999)
+        self.assertEqual(result["source"], "supabase")
+
     def test_normaliza_full_y_mensual_full(self):
         pricing_resolver.set_runtime_price_cache("nexar-tienda", {"FULL": 19900})
 

@@ -48,6 +48,12 @@ def set_runtime_price_cache(producto: str | None, prices_by_plan: dict[str, Any]
         RUNTIME_PRICE_CACHE[_cache_key(producto)] = normalized
 
 
+def merge_runtime_price_cache(producto: str | None, prices_by_plan: dict[str, Any]) -> None:
+    merged = get_runtime_price_cache(producto) or {}
+    merged.update(dict(prices_by_plan or {}))
+    set_runtime_price_cache(producto, merged)
+
+
 def get_runtime_price_cache(producto: str | None = None) -> dict[str, int] | None:
     cached = RUNTIME_PRICE_CACHE.get(_cache_key(producto))
     return dict(cached) if cached else None
@@ -149,6 +155,7 @@ def resolve_plan_prices(
     if not normalized_plans:
         return {}
 
+    runtime_prices = get_runtime_price_cache(producto) or {}
     selected_source = "fallback_local"
     selected_prices = fallback_prices
 
@@ -158,16 +165,19 @@ def resolve_plan_prices(
         supabase_prices = None
     else:
         if supabase_prices:
-            set_runtime_price_cache(producto, supabase_prices)
+            merged_prices = dict(runtime_prices)
+            merged_prices.update(supabase_prices)
+            merge_runtime_price_cache(producto, supabase_prices)
             if all(plan in supabase_prices for plan in normalized_plans):
                 selected_source = "supabase"
                 selected_prices = supabase_prices
+            elif all(plan in merged_prices for plan in normalized_plans):
+                selected_source = "runtime"
+                selected_prices = merged_prices
 
-    if selected_source == "fallback_local":
-        runtime_prices = get_runtime_price_cache(producto)
-        if runtime_prices and all(plan in runtime_prices for plan in normalized_plans):
-            selected_source = "runtime"
-            selected_prices = runtime_prices
+    if selected_source == "fallback_local" and runtime_prices and all(plan in runtime_prices for plan in normalized_plans):
+        selected_source = "runtime"
+        selected_prices = runtime_prices
 
     return {
         plan: {

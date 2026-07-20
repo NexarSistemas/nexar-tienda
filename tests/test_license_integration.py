@@ -811,6 +811,49 @@ class LicenseIntegrationTests(unittest.TestCase):
             ["BASICA", "PRO", "FULL"],
         )
 
+    def test_checkout_disponible_reutiliza_mapa_resuelto(self):
+        plan_actions = {
+            "planes_comprables": ["BASICA", "PRO", "FULL"],
+            "puede_renovar": False,
+            "plan_renovable": "",
+        }
+        resolved_prices = {
+            "BASICA": {"plan": "BASICA", "monto": 49900, "source": "runtime"},
+            "PRO": {"plan": "PRO", "monto": 9900, "source": "runtime"},
+            "FULL": {"plan": "FULL", "monto": 19900, "source": "runtime"},
+        }
+
+        with mock.patch.object(self.routes_main, "plan_supports_checkout", side_effect=AssertionError("no deberia consultar checkout individual")):
+            available = self.routes_main._get_available_checkout_plans(
+                {"tier": "DEMO", "key": ""},
+                plan_actions=plan_actions,
+                resolved_prices=resolved_prices,
+                producto="nexar-tienda",
+            )
+
+        self.assertEqual(available, ["BASICA", "PRO", "FULL"])
+
+    def test_next_upgrade_plan_reutiliza_mapa_resuelto(self):
+        plan_actions = {
+            "planes_comprables": ["PRO", "FULL"],
+            "puede_renovar": False,
+            "plan_renovable": "",
+        }
+        resolved_prices = {
+            "PRO": {"plan": "PRO", "monto": 9900, "source": "runtime"},
+            "FULL": {"plan": "FULL", "monto": 19900, "source": "runtime"},
+        }
+
+        with mock.patch.object(self.routes_main, "plan_supports_checkout", side_effect=AssertionError("no deberia consultar checkout individual")):
+            next_plan = self.routes_main._resolve_next_upgrade_plan(
+                {"tier": "BASICA", "key": "NXR-BASICA-001"},
+                plan_actions=plan_actions,
+                resolved_prices=resolved_prices,
+                producto="nexar-tienda",
+            )
+
+        self.assertEqual(next_plan, "PRO")
+
     def test_basica_muestra_pro_y_full(self):
         actions = get_plan_actions("BASICA")
         self.assertEqual(actions["planes_comprables"], ["PRO", "FULL"])
@@ -1057,6 +1100,48 @@ class LicenseIntegrationTests(unittest.TestCase):
             {"BASICA": "$ 49.900", "PRO": "$ 9.900", "FULL": "$ 19.900"},
         )
 
+    def test_mi_plan_route_resuelve_precios_una_sola_vez_para_toda_la_pantalla(self):
+        app = self.app_module.create_app()
+        license_info = {
+            "tier": "DEMO",
+            "plan": "DEMO",
+            "plan_original": "DEMO",
+            "owner_email": "admin@test.com",
+        }
+        resolved_prices = {
+            "BASICA": {"plan": "BASICA", "monto": 49900, "source": "runtime"},
+            "PRO": {"plan": "PRO", "monto": 9900, "source": "runtime"},
+            "FULL": {"plan": "FULL", "monto": 19900, "source": "runtime"},
+        }
+        captured = {}
+
+        def fake_render(_template, **context):
+            captured.update(context)
+            return "ok"
+
+        with app.test_request_context("/mi-plan", method="GET"):
+            from flask import session
+
+            session["user"] = {"rol": "Administrador", "id": 1, "username": "admin"}
+            with mock.patch.object(self.routes_main, "refresh_saved_license_online", return_value=(False, "", license_info)), \
+                 mock.patch.object(self.routes_main, "get_modulos_activos", return_value=[]), \
+                 mock.patch.object(self.routes_main.db, "get_license_info", return_value=license_info), \
+                 mock.patch.object(self.routes_main.db, "get_demo_status", return_value={"demo": True, "vencido": False, "dias_restantes": 6, "dias_demo": 14, "expires_at": "2099-01-15"}), \
+                 mock.patch.object(self.routes_main, "get_license_product", return_value="nexar-tienda"), \
+                 mock.patch.object(self.routes_main.pricing_resolver, "resolve_plan_prices", return_value=resolved_prices) as resolve_mock, \
+                 mock.patch.object(self.routes_main, "get_price_for_plan", side_effect=AssertionError("no deberia consultar precio individual")), \
+                 mock.patch.object(self.routes_main, "render_template", side_effect=fake_render):
+                response = self.routes_main.mi_plan()
+
+        self.assertEqual(response, "ok")
+        self.assertEqual(resolve_mock.call_count, 1)
+        self.assertEqual(captured["available_checkout_plans"], ["BASICA", "PRO", "FULL"])
+        self.assertEqual(captured["next_upgrade_plan"], "BASICA")
+        self.assertEqual(
+            [action["price_label"] for action in captured["mi_plan_view"]["checkout_actions"]],
+            ["$ 49.900", "$ 9.900", "$ 19.900"],
+        )
+
     def test_mi_plan_view_licencia_bloqueada_no_se_presenta_activa(self):
         for estado in ("suspendida", "bloqueada", "revocada", "anulada"):
             view = self._build_mi_plan_view_for_test({
@@ -1130,7 +1215,7 @@ class LicenseIntegrationTests(unittest.TestCase):
                 context, error_response = self.routes_main._build_checkout_context()
 
         self.assertIsNone(error_response)
-        price_mock.assert_called_once_with("PRO")
+        price_mock.assert_called_once_with("PRO", producto="nexar-tienda")
         self.assertEqual(context["precio"], 12345)
 
     def test_build_checkout_context_permite_alta_licencia_basica_desde_demo(self):

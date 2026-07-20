@@ -520,8 +520,19 @@ def _mask_license_key(value: str) -> str:
     return f"{normalized[:3]}***{normalized[-3:]}"
 
 
-def _resolve_next_upgrade_plan(license_info: dict[str, object] | None) -> str:
-    available = _get_available_checkout_plans(license_info)
+def _resolve_next_upgrade_plan(
+    license_info: dict[str, object] | None,
+    *,
+    plan_actions: dict[str, object] | None = None,
+    resolved_prices: dict[str, dict[str, object]] | None = None,
+    producto: str | None = None,
+) -> str:
+    available = _get_available_checkout_plans(
+        license_info,
+        plan_actions=plan_actions,
+        resolved_prices=resolved_prices,
+        producto=producto,
+    )
     return available[0] if available else ""
 
 
@@ -573,23 +584,54 @@ def _get_license_status_context(
     )
 
 
-def _get_available_checkout_plans(license_info: dict[str, object] | None) -> list[str]:
+def _plan_has_checkout_price(
+    plan: str,
+    *,
+    resolved_prices: dict[str, dict[str, object]] | None = None,
+    producto: str | None = None,
+) -> bool:
+    normalized_plan = normalize_plan(plan, default="")
+    if not normalized_plan:
+        return False
+    if resolved_prices is not None:
+        return int(resolved_prices.get(normalized_plan, {}).get("monto") or 0) > 0
+    return plan_supports_checkout(normalized_plan, producto=producto)
+
+
+def _get_available_checkout_plans(
+    license_info: dict[str, object] | None,
+    *,
+    plan_actions: dict[str, object] | None = None,
+    resolved_prices: dict[str, dict[str, object]] | None = None,
+    producto: str | None = None,
+) -> list[str]:
     if not _has_checkout_license(license_info):
         return []
-    actions = _get_plan_actions_context(license_info, tiene_checkout=True)
+    actions = plan_actions or _get_plan_actions_context(license_info, tiene_checkout=True)
     available: list[str] = [
         plan for plan in actions.get("planes_comprables", [])
-        if plan_supports_checkout(plan)
+        if _plan_has_checkout_price(plan, resolved_prices=resolved_prices, producto=producto)
     ]
     renewal_plan = str(actions.get("plan_renovable", "") or "").strip()
     if (
         actions.get("puede_renovar")
         and renewal_plan
         and renewal_plan not in available
-        and plan_supports_checkout(renewal_plan)
+        and _plan_has_checkout_price(renewal_plan, resolved_prices=resolved_prices, producto=producto)
     ):
         available.append(renewal_plan)
     return available
+
+
+def _get_mi_plan_visible_price_plans(plan_actions: dict[str, object]) -> list[str]:
+    visible_price_plans: list[str] = [
+        str(action.get("plan", "") or "")
+        for action in plan_actions.get("acciones", [])
+    ]
+    if plan_actions.get("puede_renovar"):
+        visible_price_plans.append(str(plan_actions.get("plan_renovable", "") or ""))
+    visible_price_plans.extend(option["plan"] for option in get_commercial_plan_options())
+    return visible_price_plans
 
 
 def _format_display_date(value: object) -> str:
@@ -623,11 +665,8 @@ def _resolve_mi_plan_price_labels(
     plans: list[str] | tuple[str, ...] | set[str],
     *,
     producto: str | None = None,
-) -> dict[str, str]:
-    try:
-        resolved_prices = pricing_resolver.resolve_plan_prices(plans, producto=producto)
-    except ValueError:
-        resolved_prices = {}
+) -> tuple[dict[str, dict[str, object]], dict[str, str]]:
+    resolved_prices = pricing_resolver.resolve_plan_prices(plans, producto=producto)
 
     labels: dict[str, str] = {}
     for plan in plans:
@@ -635,7 +674,7 @@ def _resolve_mi_plan_price_labels(
         if not normalized_plan or normalized_plan in labels:
             continue
         labels[normalized_plan] = _format_price_label(normalized_plan, resolved_prices)
-    return labels
+    return resolved_prices, labels
 
 
 def _format_limit_label(label: str, value: object) -> str:
@@ -663,6 +702,8 @@ def _build_mi_plan_view(
     checkout_pending: dict[str, object],
     modulos_activos: list[str],
     modulos_bloqueados: list[str],
+    price_labels: dict[str, str] | None = None,
+    producto: str | None = None,
 ) -> dict[str, object]:
     plan_original = str(license_status.get("plan_original", "DEMO") or "DEMO")
     plan_efectivo = str(license_status.get("plan_efectivo", license_info.get("tier", "DEMO")) or "DEMO")
@@ -712,17 +753,11 @@ def _build_mi_plan_view(
     if license_holder.get("codigo_vendedor"):
         summary_items.append({"label": "Codigo de vendedor", "value": license_holder["codigo_vendedor"]})
 
-    visible_price_plans: list[str] = [
-        str(action.get("plan", "") or "")
-        for action in plan_actions.get("acciones", [])
-    ]
-    if plan_actions.get("puede_renovar"):
-        visible_price_plans.append(str(plan_actions.get("plan_renovable", "") or ""))
-    visible_price_plans.extend(option["plan"] for option in get_commercial_plan_options())
-    price_labels = _resolve_mi_plan_price_labels(
-        visible_price_plans,
-        producto=get_license_product(),
-    )
+    if price_labels is None:
+        _resolved_prices, price_labels = _resolve_mi_plan_price_labels(
+            _get_mi_plan_visible_price_plans(plan_actions),
+            producto=producto or get_license_product(),
+        )
 
     checkout_actions = []
     for action in plan_actions.get("acciones", []):
@@ -798,8 +833,12 @@ def _build_mi_plan_view(
     }
 
 
-def _resolve_requested_checkout_plan(license_info: dict[str, object] | None) -> str:
-    available_plans = _get_available_checkout_plans(license_info)
+def _resolve_requested_checkout_plan(
+    license_info: dict[str, object] | None,
+    *,
+    producto: str | None = None,
+) -> str:
+    available_plans = _get_available_checkout_plans(license_info, producto=producto)
     if not available_plans:
         return ""
 
@@ -813,7 +852,7 @@ def _resolve_requested_checkout_plan(license_info: dict[str, object] | None) -> 
         ).strip()
 
     if not requested_plan:
-        return _resolve_next_upgrade_plan(license_info)
+        return _resolve_next_upgrade_plan(license_info, producto=producto)
 
     normalized_plan = normalize_plan(requested_plan, default="")
     if normalized_plan in available_plans:
@@ -1449,8 +1488,9 @@ def ensure_license_auto_refresh_thread(app) -> None:
 
 def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response, int] | None]:
     license_info = db.get_license_info()
-    available_plans = _get_available_checkout_plans(license_info)
-    plan_destino = _resolve_requested_checkout_plan(license_info)
+    producto = get_license_product()
+    available_plans = _get_available_checkout_plans(license_info, producto=producto)
+    plan_destino = _resolve_requested_checkout_plan(license_info, producto=producto)
     tipo_solicitud = _resolve_checkout_request_type(license_info)
     requested_plan = ""
     if request.is_json:
@@ -1500,8 +1540,7 @@ def _build_checkout_context() -> tuple[dict[str, object] | None, tuple[Response,
             400,
         )
 
-    producto = get_license_product()
-    precio = get_price_for_plan(plan_destino)
+    precio = get_price_for_plan(plan_destino, producto=producto)
     activation_id, machine_details = _get_stable_activation_id()
     external_reference = build_external_reference(
         producto=producto,
@@ -4606,8 +4645,23 @@ def mi_plan():
     license_info = refreshed_info or db.get_license_info()
     license_status = _get_license_status_context(license_info)
     plan_actions = _get_plan_actions_context(license_info, license_status=license_status)
-    available_checkout_plans = _get_available_checkout_plans(license_info)
-    next_upgrade_plan = _resolve_next_upgrade_plan(license_info)
+    producto = get_license_product()
+    resolved_prices, price_labels = _resolve_mi_plan_price_labels(
+        _get_mi_plan_visible_price_plans(plan_actions),
+        producto=producto,
+    )
+    available_checkout_plans = _get_available_checkout_plans(
+        license_info,
+        plan_actions=plan_actions,
+        resolved_prices=resolved_prices,
+        producto=producto,
+    )
+    next_upgrade_plan = _resolve_next_upgrade_plan(
+        license_info,
+        plan_actions=plan_actions,
+        resolved_prices=resolved_prices,
+        producto=producto,
+    )
     checkout_pending = _get_checkout_pending_context()
     license_holder = _get_license_holder_profile(license_info)
     mi_plan_view = _build_mi_plan_view(
@@ -4618,6 +4672,8 @@ def mi_plan():
         checkout_pending=checkout_pending,
         modulos_activos=modulos_activos,
         modulos_bloqueados=modulos_bloqueados,
+        price_labels=price_labels,
+        producto=producto,
     )
     return render_template(
         "mi_plan.html",

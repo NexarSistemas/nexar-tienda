@@ -34,10 +34,10 @@ def get_nexar_pagos_api_base() -> str:
     )
 
 
-def get_price_for_plan(plan_destino: str) -> int:
+def get_price_for_plan(plan_destino: str, *, producto: str | None = None) -> int:
     plan = normalize_plan(plan_destino, default="")
     try:
-        resolved = pricing_resolver.resolve_plan_price(plan)
+        resolved = pricing_resolver.resolve_plan_price(plan, producto=producto)
     except ValueError as exc:
         raise MercadoPagoCheckoutError("El plan solicitado no admite checkout online todavía.") from exc
     price = int(resolved.get("monto") or 0)
@@ -46,9 +46,9 @@ def get_price_for_plan(plan_destino: str) -> int:
     return price
 
 
-def plan_supports_checkout(plan_destino: str) -> bool:
+def plan_supports_checkout(plan_destino: str, *, producto: str | None = None) -> bool:
     try:
-        get_price_for_plan(plan_destino)
+        get_price_for_plan(plan_destino, producto=producto)
     except MercadoPagoCheckoutError:
         return False
     return True
@@ -72,7 +72,7 @@ def build_external_reference(
         raise MercadoPagoCheckoutError("No se encontró una licencia válida para iniciar el checkout.")
     if not product_value:
         raise MercadoPagoCheckoutError("No se pudo resolver el producto de la licencia.")
-    if not plan_supports_checkout(plan_value):
+    if not plan_supports_checkout(plan_value, producto=product_value):
         raise MercadoPagoCheckoutError("El plan solicitado no admite checkout online todavía.")
 
     if request_type not in {"alta_licencia", "cambio_plan"}:
@@ -101,7 +101,7 @@ def create_checkout_preference(
     api_base = get_nexar_pagos_api_base()
     request_type = str(tipo_solicitud or "").strip().lower() or "cambio_plan"
 
-    if not plan_supports_checkout(plan):
+    if not plan_supports_checkout(plan, producto=str(producto or "").strip()):
         raise MercadoPagoCheckoutError("El plan solicitado no admite checkout online todavía.")
     if not email:
         raise MercadoPagoCheckoutError("Necesitás cargar un email del titular antes de continuar.")
