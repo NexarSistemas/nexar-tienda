@@ -2,6 +2,29 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-20 - Codex - fix/mi-plan-duplicate-expiration-alert
+
+### Tarea
+Eliminar el aviso visual duplicado para licencias FULL proximas a vencer en
+`Mi Plan`, conservando el resumen, la alerta preventiva y la renovacion manual.
+
+### Diagnostico
+- El template renderizaba siempre la tarjeta general de estado y agregaba otra
+  alerta cuando `show_expiry_alert` estaba activo.
+- Para FULL por vencer ambas tarjetas recibian el mismo titulo y mensaje, aunque
+  una usaba el estado general verde y la otra la advertencia amarilla.
+
+### Que se cambio
+- `templates/mi_plan.html` omite la tarjeta general solo cuando ya existe la
+  alerta especifica de vencimiento, sin ocultar alertas con CSS ni cambiar las
+  reglas de licencias.
+- `tests/test_license_integration.py` verifica mediante renderizado que FULL por
+  vencer muestra un unico aviso equivalente y conserva dias restantes,
+  refresco, confirmacion de licencia actualizada y renovacion manual.
+
+### Alcance
+- No se tocaron precios, Mercado Pago, Supabase ni reglas de licencias.
+
 ## 2026-07-20 - Codex - fix/mi-plan-false-actions-warning
 
 ### Tarea

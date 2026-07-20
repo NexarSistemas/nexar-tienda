@@ -33,10 +33,12 @@
                     </div>
                     {% endif %}
 
-                    <div class="alert alert-{{ mi_plan_view.estado_clase }} mb-0">
+                    {% if not mi_plan_view.show_expiry_alert %}
+                    <div class="alert alert-{{ mi_plan_view.estado_clase }} mb-0" id="license-status-alert">
                         <div class="fw-semibold">{{ mi_plan_view.titulo_estado }}</div>
                         <div class="small">{{ mi_plan_view.mensaje_estado }}</div>
                     </div>
+                    {% endif %}
                     <hr>
                     {% if session['user']['rol'] in ['Administrador', 'admin'] %}
                         <div class="mb-3">
