@@ -2,6 +2,25 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-20 - Codex - chore/release-v1.36.7
+
+### Tarea
+Preparar el patch estable `v1.36.7` despues de integrar los ajustes recientes
+de UX, acciones comerciales y resolucion de precios de `Mi Plan`.
+
+### Que se documento
+- Eliminacion del aviso duplicado de vencimiento proximo.
+- Correccion del falso error de acciones para FULL activa.
+- Una sola resolucion remota de precios por render de `Mi Plan`.
+- Uso consistente del producto entre vista y checkout.
+- Proteccion de la cache runtime ante respuestas parciales de Supabase.
+
+### Versionado
+- Version anterior confirmada: `1.36.6`.
+- Nueva version patch: `1.36.7`.
+- Referencias sincronizadas en `VERSION`, `README.md`, `CHANGELOG.md` e
+  `build/nexar_tienda.iss`.
+
 ## 2026-07-20 - Codex - fix/mi-plan-duplicate-expiration-alert
 
 ### Tarea
