@@ -206,6 +206,7 @@ def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
         or cfg.get("basica_activada", "0") == "1"
     )
     status = cfg.get("license_status", "").strip()
+    blocked_status = _is_blocked_license_status(status)
     expired = False
     remaining_days = None
     if original_plan == "BASICA":
@@ -224,9 +225,10 @@ def _resolve_license_snapshot(cfg: dict | None = None) -> dict:
         cfg.get("license_effective_plan") or cfg.get("license_tier") or original_plan
     )
 
-    if _is_blocked_license_status(status):
+    if blocked_status:
         effective_plan = "SIN_PLAN"
         fallback_aplicado = False
+        plan_base_permanente = False
     elif expired:
         effective_plan = "SIN_PLAN"
         status = f"{original_plan.lower()}_vencida"
@@ -1744,7 +1746,13 @@ def sync_license_from_remote(license_data: dict):
     expira = license_data.get('expira') or license_data.get('expires_at') or ''
     if original_plan == 'BASICA':
         expira = ''
-    plan_base_permanente = original_plan == "BASICA" or _as_bool(license_data.get("plan_base_permanente"))
+    status = str(license_data.get("estado", "") or "").strip()
+    blocked_status = _is_blocked_license_status(status)
+    plan_base_permanente = (
+        not blocked_status
+        and effective_plan != "SIN_PLAN"
+        and (original_plan == "BASICA" or _as_bool(license_data.get("plan_base_permanente")))
+    )
     vendor_code = str(
         license_data.get("codigo_vendedor")
         or license_data.get("vendor_code")
@@ -1758,7 +1766,7 @@ def sync_license_from_remote(license_data: dict):
         'license_plan': original_plan,
         'license_plan_original': original_plan,
         'license_effective_plan': effective_plan,
-        'license_status': str(license_data.get("estado", "") or "").strip() or "activa",
+        'license_status': status or "activa",
         'license_fallback_aplicado': '1' if _as_bool(license_data.get("fallback_aplicado")) else '0',
         'license_plan_base_permanente': '1' if plan_base_permanente else '0',
         'license_key': license_data.get('license_key', ''),
@@ -1771,6 +1779,7 @@ def sync_license_from_remote(license_data: dict):
     }
     if vendor_code:
         updates['license_vendor_code'] = vendor_code
+    updates['basica_activada'] = '1' if plan_base_permanente else '0'
     if effective_plan == "SIN_PLAN":
         modules = []
     else:
@@ -1787,8 +1796,6 @@ def sync_license_from_remote(license_data: dict):
         if not modules:
             modules = sorted(TIER_MODULES_MAP.get(effective_plan, TIER_MODULES_MAP["DEMO"]).copy())
     updates['license_modules'] = json.dumps(modules)
-    if plan_base_permanente:
-        updates['basica_activada'] = '1'
     set_config(updates)
 
 

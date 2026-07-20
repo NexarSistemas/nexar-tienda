@@ -519,6 +519,36 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertFalse(actions["puede_renovar"])
         self.assertEqual(actions["planes_comprables"], [])
 
+    def test_basica_bloqueada_no_conserva_fallback_permanente(self):
+        info = self._sync_license(
+            estado="bloqueada",
+            plan_base_permanente=True,
+            expira="2030-01-01",
+        )
+        status = get_license_status_context(info)
+        cfg = self.database.get_config()
+
+        self.assertEqual(info["plan_original"], "BASICA")
+        self.assertEqual(info["tier"], "SIN_PLAN")
+        self.assertFalse(info["plan_base_permanente"])
+        self.assertFalse(status["licencia_utilizable"])
+        self.assertFalse(status["basica_activada"])
+        self.assertEqual(cfg["license_plan_base_permanente"], "0")
+        self.assertEqual(cfg["basica_activada"], "0")
+
+    def test_basica_anulada_no_se_trata_como_activa(self):
+        info = self._sync_license(
+            estado="anulada",
+            plan_base_permanente=True,
+            expira="2030-01-01",
+        )
+        status = get_license_status_context(info)
+
+        self.assertEqual(info["tier"], "SIN_PLAN")
+        self.assertFalse(info["plan_base_permanente"])
+        self.assertEqual(status["estado_comercial"], "licencia_bloqueada")
+        self.assertFalse(status["licencia_utilizable"])
+
     def test_basica_revocada_desde_sdk_no_queda_activa_por_permanencia(self):
         payload = self.license_sdk._resolve_effective_license_data({
             "license_key": "NXR-BASICA-REV",
@@ -968,7 +998,7 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(view["checkout_actions"], [])
 
     def test_mi_plan_view_licencia_bloqueada_no_se_presenta_activa(self):
-        for estado in ("suspendida", "bloqueada", "revocada"):
+        for estado in ("suspendida", "bloqueada", "revocada", "anulada"):
             view = self._build_mi_plan_view_for_test({
                 "key": "NXR-BLOCK-001",
                 "tier": "SIN_PLAN",
@@ -1797,6 +1827,38 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertFalse(payload["fallback_aplicado"])
         self.assertEqual(payload["license_status"]["estado_comercial"], "pro_vencido")
 
+    def test_pro_con_sin_plan_no_queda_como_mensual_activo(self):
+        status = get_license_status_context({
+            "key": "NXR-PRO-SINPLAN-001",
+            "tier": "SIN_PLAN",
+            "plan": "PRO",
+            "plan_original": "PRO",
+            "plan_efectivo": "SIN_PLAN",
+            "effective_plan": "SIN_PLAN",
+            "estado": "sin_licencia_remota",
+            "expirada": False,
+            "expires_at": (date.today() + timedelta(days=30)).isoformat(),
+        })
+
+        self.assertEqual(status["estado_comercial"], "sin_plan")
+        self.assertFalse(status["licencia_utilizable"])
+
+    def test_full_con_sin_plan_no_queda_como_mensual_activo(self):
+        status = get_license_status_context({
+            "key": "NXR-FULL-SINPLAN-001",
+            "tier": "SIN_PLAN",
+            "plan": "FULL",
+            "plan_original": "FULL",
+            "plan_efectivo": "SIN_PLAN",
+            "effective_plan": "SIN_PLAN",
+            "estado": "sin_licencia_remota",
+            "expirada": False,
+            "expires_at": (date.today() + timedelta(days=30)).isoformat(),
+        })
+
+        self.assertEqual(status["estado_comercial"], "sin_plan")
+        self.assertFalse(status["licencia_utilizable"])
+
     def test_pro_tiene_acceso_a_actualizaciones_normales(self):
         access = get_update_access_context({"tier": "PRO", "updates": True})
         self.assertTrue(access["puede_actualizar"])
@@ -1983,6 +2045,89 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertTrue(blocked.headers["Location"].endswith("/mi-plan"))
         self.assertEqual(mi_plan.status_code, 200)
         self.assertEqual(actions["planes_comprables"], ["BASICA", "PRO", "FULL"])
+
+    def test_basica_bloqueada_con_basica_activada_no_restaurada_redirige_a_mi_plan(self):
+        app = self.app_module.create_app()
+        blocked_license = {
+            "key": "NXR-BASICA-BLOCK-001",
+            "tier": "SIN_PLAN",
+            "plan": "BASICA",
+            "plan_original": "BASICA",
+            "plan_efectivo": "SIN_PLAN",
+            "effective_plan": "SIN_PLAN",
+            "estado": "bloqueada",
+            "plan_base_permanente": False,
+            "expirada": False,
+            "modules": [],
+        }
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "admin", "id": 1}
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "get_demo_status", return_value={"vencido": True, "demo": False}), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value=blocked_license), \
+                 mock.patch.object(self.app_module.db, "get_config", return_value={"basica_activada": "1"}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: default), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "NXR-BASICA-BLOCK-001"}), \
+                 mock.patch.object(self.app_module, "validate_saved_license", return_value=(False, "invalid")), \
+                 mock.patch.object(self.routes_main, "refresh_saved_license_online", return_value=(False, "blocked", blocked_license)), \
+                 mock.patch.object(self.routes_main, "render_template", return_value="ok"):
+                blocked = client.get("/productos/nuevo", follow_redirects=False)
+                mi_plan = client.get("/mi-plan", follow_redirects=False)
+
+        self.assertEqual(blocked.status_code, 302)
+        self.assertTrue(blocked.headers["Location"].endswith("/mi-plan"))
+        self.assertEqual(mi_plan.status_code, 200)
+
+    def test_full_sin_licencia_remota_bloquea_rutas_de_negocio_y_permite_mi_plan(self):
+        app = self.app_module.create_app()
+        no_remote_license = {
+            "key": "NXR-FULL-SINPLAN-001",
+            "tier": "SIN_PLAN",
+            "plan": "FULL",
+            "plan_original": "FULL",
+            "plan_efectivo": "SIN_PLAN",
+            "effective_plan": "SIN_PLAN",
+            "estado": "sin_licencia_remota",
+            "expirada": False,
+            "modules": [],
+        }
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "admin", "id": 1}
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "get_demo_status", return_value={"vencido": True, "demo": False}), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value=no_remote_license), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: default), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module, "cargar_licencia", return_value={"license_key": "NXR-FULL-SINPLAN-001"}), \
+                 mock.patch.object(self.routes_main, "refresh_saved_license_online", return_value=(False, "sin licencia remota", no_remote_license)), \
+                 mock.patch.object(self.routes_main, "render_template", return_value="ok"):
+                blocked = client.get("/productos/nuevo", follow_redirects=False)
+                mi_plan = client.get("/mi-plan", follow_redirects=False)
+                licencia = client.get("/licencia", follow_redirects=False)
+
+        self.assertEqual(blocked.status_code, 302)
+        self.assertTrue(blocked.headers["Location"].endswith("/mi-plan"))
+        self.assertEqual(mi_plan.status_code, 200)
+        self.assertEqual(licencia.status_code, 200)
 
     def test_login_demo_con_next_mi_plan_vuelve_al_dashboard(self):
         app = self.app_module.create_app()
