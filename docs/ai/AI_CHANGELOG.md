@@ -2,6 +2,58 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-20 - Codex - fix/mi-plan-pricing-review-findings
+
+### Tarea
+Implementar un PR correctivo para cerrar los tres hallazgos pendientes de la
+revision del PR #133 y completar correctamente el Issue #127.
+
+### Diagnostico
+- El render de `/mi-plan` ya tenia un batch visual, pero llegaba tarde:
+  `available_checkout_plans` y `next_upgrade_plan` seguian usando
+  `plan_supports_checkout()` y disparaban lookups individuales antes del batch.
+- El checkout real resolvia `precio` con `get_price_for_plan(plan)` sin pasar
+  `producto`, lo que podia mezclar precios de otro producto si Supabase tenia
+  multiples tablas o filas activas.
+- `resolve_plan_prices()` reemplazaba la runtime cache antes de verificar si la
+  respuesta remota cubria todos los planes solicitados, por lo que una respuesta
+  parcial podia destruir cobertura centralizada valida y forzar fallback local.
+
+### Que se cambio
+- `routes/main.py` ahora resuelve el lote de precios al inicio de `mi_plan()` y
+  reutiliza ese mismo resultado para `available_checkout_plans`,
+  `next_upgrade_plan`, `checkout_actions`, `renewal` y `commercial_plans`.
+- Se agregaron parametros opcionales para reutilizar el batch ya resuelto sin
+  consultas ocultas dentro de loops ni recomputos posteriores.
+- `services/mercadopago_checkout.py` ahora propaga `producto` en
+  `get_price_for_plan()` y `plan_supports_checkout()`, y el checkout real usa el
+  mismo `get_license_product()` que la vista.
+- `services/pricing_resolver.py` ahora fusiona respuestas parciales con la
+  runtime cache existente y solo cae a fallback local cuando realmente no existe
+  cobertura suficiente para todo el lote solicitado.
+- `tests/test_license_integration.py`, `tests/test_pricing_resolver.py` y
+  `tests/test_mercadopago_checkout.py` agregan regresiones de una sola
+  resolucion por render, reutilizacion temprana, multi-producto y preservacion
+  de cache valida ante respuestas parciales.
+
+### Archivos modificados
+- `routes/main.py`
+- `services/pricing_resolver.py`
+- `services/mercadopago_checkout.py`
+- `tests/test_license_integration.py`
+- `tests/test_pricing_resolver.py`
+- `tests/test_mercadopago_checkout.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m pytest tests/test_license_integration.py tests/test_pricing_resolver.py tests/test_mercadopago_checkout.py` -> 189 passed.
+
+### Alcance
+- No se cambiaron importes comerciales, Mercado Pago, Supabase remoto, Nexar
+  Pagos ni `nexar_licencias`.
+- El cambio correctivo se limita a reutilizacion temprana del batch, alcance por
+  producto y preservacion correcta de cache centralizada.
+
 ## 2026-07-20 - Codex - fix/mi-plan-price-lookups
 
 ### Tarea
