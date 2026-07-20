@@ -156,6 +156,49 @@ def parse_demo_message(value: object) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _normalize_admin_state(value: object) -> str:
+    return normalize_identifier(value)
+
+
+def _get_row_admin_state(row: dict[str, Any]) -> str:
+    metadata = parse_demo_message(row.get("mensaje"))
+    for candidate in (
+        row.get("estado"),
+        metadata.get("estado"),
+        metadata.get("license_status"),
+        metadata.get("demo_admin_status"),
+    ):
+        normalized = _normalize_admin_state(candidate)
+        if normalized:
+            return normalized
+    return ""
+
+
+def _extract_demo_dates(row: dict[str, Any]) -> tuple[str, str, date | None]:
+    metadata = parse_demo_message(row.get("mensaje"))
+    started_at = str(metadata.get("demo_started_at") or metadata.get("started_at") or "").strip()[:10]
+    expires_at = str(metadata.get("demo_expires_at") or metadata.get("expires_at") or "").strip()[:10]
+    expires_on = None
+    if expires_at:
+        try:
+            expires_on = date.fromisoformat(expires_at)
+        except Exception:
+            expires_on = None
+    return started_at, expires_at, expires_on
+
+
+def _candidate_sort_key(row: dict[str, Any]) -> tuple[str, str, str, int]:
+    started_at, expires_at, _ = _extract_demo_dates(row)
+    created_at = str(row.get("created_at") or "").strip()[:32]
+    identifier = int(row.get("id") or 0) if str(row.get("id") or "").isdigit() else 0
+    return (
+        expires_at or "9999-12-31",
+        started_at or "9999-12-31",
+        created_at or "9999-12-31T23:59:59",
+        identifier,
+    )
+
+
 def row_matches_identity(row: dict[str, Any], identity: DemoIdentity) -> bool:
     if not row or normalize_product(row.get("producto") or identity.product) != identity.product:
         return False
@@ -208,45 +251,65 @@ def resolve_demo_eligibility_from_records(
             can_start_demo=True,
         )
 
-    row = matches[0]
-    metadata = parse_demo_message(row.get("mensaje"))
-    state = normalize_identifier(row.get("estado"))
-    if state in ADMIN_BLOCKED_STATES:
+    blocked_matches = [
+        row for row in matches
+        if _get_row_admin_state(row) in ADMIN_BLOCKED_STATES
+    ]
+    if blocked_matches:
+        blocked_row = sorted(blocked_matches, key=_candidate_sort_key)[0]
         return DemoEligibilityResult(
             state=DEMO_BLOCKED,
             message="No es posible iniciar la prueba gratuita para este equipo. Contacta a soporte.",
-            matched_record=row,
+            matched_record=blocked_row,
         )
 
-    started_at = str(metadata.get("demo_started_at") or metadata.get("started_at") or "").strip()
-    expires_at = str(metadata.get("demo_expires_at") or metadata.get("expires_at") or "").strip()
-    if expires_at:
-        try:
-            expires_on = date.fromisoformat(expires_at[:10])
-        except Exception:
-            expires_on = None
-        if expires_on:
-            if current_date < expires_on:
-                return DemoEligibilityResult(
-                    state=DEMO_ACTIVE,
-                    message="Encontramos una prueba gratuita vigente para este equipo.",
-                    matched_record=row,
-                    started_at=started_at,
-                    expires_at=expires_at[:10],
-                    can_recover_demo=True,
-                )
-            return DemoEligibilityResult(
-                state=DEMO_EXPIRED,
-                message="Este equipo ya utilizo la prueba gratuita. Podes elegir un plan para continuar.",
-                matched_record=row,
-                started_at=started_at,
-                expires_at=expires_at[:10],
-            )
+    active_candidates: list[tuple[tuple[str, str, str, int], dict[str, Any], str, str]] = []
+    expired_candidates: list[tuple[tuple[str, str, str, int], dict[str, Any], str, str]] = []
+    ambiguous_matches: list[dict[str, Any]] = []
+    for row in matches:
+        started_at, expires_at, expires_on = _extract_demo_dates(row)
+        if expires_on is None:
+            ambiguous_matches.append(row)
+            continue
+        candidate = (_candidate_sort_key(row), row, started_at, expires_at)
+        if current_date < expires_on:
+            active_candidates.append(candidate)
+        else:
+            expired_candidates.append(candidate)
+
+    if active_candidates:
+        _, row, started_at, expires_at = sorted(active_candidates, key=lambda item: item[0])[0]
+        return DemoEligibilityResult(
+            state=DEMO_ACTIVE,
+            message="Encontramos una prueba gratuita vigente para este equipo.",
+            matched_record=row,
+            started_at=started_at,
+            expires_at=expires_at,
+            can_recover_demo=True,
+        )
+
+    if expired_candidates:
+        _, row, started_at, expires_at = sorted(expired_candidates, key=lambda item: item[0])[0]
+        return DemoEligibilityResult(
+            state=DEMO_EXPIRED,
+            message="Este equipo ya utilizo la prueba gratuita. Podes elegir un plan para continuar.",
+            matched_record=row,
+            started_at=started_at,
+            expires_at=expires_at,
+        )
+
+    if ambiguous_matches:
+        row = sorted(ambiguous_matches, key=_candidate_sort_key)[0]
+        return DemoEligibilityResult(
+            state=DEMO_ALREADY_USED,
+            message="Este equipo ya utilizo la prueba gratuita. Podes elegir un plan para continuar.",
+            matched_record=row,
+        )
 
     return DemoEligibilityResult(
         state=DEMO_ALREADY_USED,
         message="Este equipo ya utilizo la prueba gratuita. Podes elegir un plan para continuar.",
-        matched_record=row,
+        matched_record=sorted(matches, key=_candidate_sort_key)[0],
     )
 
 
