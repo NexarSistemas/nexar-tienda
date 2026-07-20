@@ -5018,6 +5018,21 @@ def activacion_inicial():
                     _recover_remote_demo(profile, retry_result, activation_id, product_name)
                     flash("Tu prueba gratuita fue activada correctamente.", "success")
                     return redirect(url_for("dashboard"))
+                if retry_result.state != DEMO_ELIGIBLE:
+                    _persist_activation_customer_profile(profile, completed=False, selected_plan=selected_plan)
+                    _persist_unverified_demo_without_permissions(retry_result)
+                    flash(retry_result.message, "warning")
+                    return render_template(
+                        "activacion_inicial.html",
+                        customer_profile=profile,
+                        selected_plan="BASICA",
+                        available_plans=["DEMO", "BASICA", "PRO", "FULL"],
+                        license_info=license_info,
+                        plan_display=get_plan_display_name(license_info.get("tier", "DEMO")),
+                        demo_status=_get_initial_demo_status(),
+                        checkout_pending=_get_checkout_pending_context(),
+                        demo_access=_get_initial_demo_access_context(),
+                    )
 
             result = DemoEligibilityResult(
                 state=DEMO_OFFLINE_UNVERIFIED,

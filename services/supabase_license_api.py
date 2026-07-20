@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import platform
+import re
 from typing import Any
 
 import requests
@@ -159,6 +160,54 @@ def _log_supabase_http_error(operation: str, url: str, response: requests.Respon
         url,
         (response.text or "").strip()[:500],
     )
+
+
+_SCHEMA_FALLBACK_FIELDS = {
+    "activation_id",
+    "identity_hash",
+    "hardware_id_hash",
+    "machine_id_hash",
+    "estado",
+    "origen",
+    "leida",
+}
+_SCHEMA_CACHE_PATTERNS = (
+    re.compile(r"column\s+\"?([a-zA-Z0-9_]+)\"?\s+does not exist", re.IGNORECASE),
+    re.compile(r"could not find the ['\"]([a-zA-Z0-9_]+)['\"] column", re.IGNORECASE),
+)
+
+
+def _parse_json_body(response: requests.Response) -> dict[str, Any]:
+    try:
+        payload = response.json()
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _extract_schema_incompatible_fields(response: requests.Response) -> list[str]:
+    if response.status_code < 400 or response.status_code >= 500:
+        return []
+    body_text = (response.text or "").strip()
+    json_payload = _parse_json_body(response)
+    lowered_parts = [
+        body_text.lower(),
+        str(json_payload.get("message") or "").lower(),
+        str(json_payload.get("details") or "").lower(),
+        str(json_payload.get("hint") or "").lower(),
+        str(json_payload.get("code") or "").lower(),
+    ]
+    searchable = " ".join(part for part in lowered_parts if part)
+    if "schema cache" not in searchable and "does not exist" not in searchable and "pgrst204" not in searchable:
+        return []
+
+    fields: list[str] = []
+    for pattern in _SCHEMA_CACHE_PATTERNS:
+        for match in pattern.findall(searchable):
+            field = str(match or "").strip().lower()
+            if field in _SCHEMA_FALLBACK_FIELDS and field not in fields:
+                fields.append(field)
+    return fields
 
 
 def build_machine_id(raw: str) -> str:
@@ -428,48 +477,54 @@ def create_demo_request(
 
     if resp.status_code >= 300:
         _log_supabase_http_error(operation, request_url, resp)
-        fallback_payload = {
-            "nombre": nombre,
-            "email": email,
-            "telefono": telefono,
-            "negocio": negocio,
-            "producto": producto,
-            "plan_interes": plan_interes,
-            "mensaje": mensaje,
-        }
-        logger.warning(
-            "Solicitud DEMO rechazada; reintentando payload compatible url=%s status=%s body=%s producto=%s plan_interes=%s",
-            request_url,
-            resp.status_code,
-            (resp.text or "").strip()[:500],
-            producto,
-            plan_interes,
-        )
-        try:
-            resp = requests.post(request_url, headers=headers, json=fallback_payload, timeout=_request_timeout())
-        except requests.RequestException as exc:
-            logger.warning("Error de conexion reintentando solicitud DEMO a url=%s: %s", request_url, exc)
-            message, error = _request_error_message(operation, exc)
-            _set_supabase_debug(
-                operation=operation,
-                status="network_error",
-                status_code=None,
-                last_error=error or "network_error",
-                url=request_url,
-            )
-            return False, message
+        retry_payload = dict(payload)
+        removed_fields: list[str] = []
+        while True:
+            incompatible_fields = [
+                field
+                for field in _extract_schema_incompatible_fields(resp)
+                if field in retry_payload
+            ]
+            if not incompatible_fields:
+                message, error = _response_error_message(operation, resp)
+                _set_supabase_debug(
+                    operation=operation,
+                    status="http_error",
+                    status_code=resp.status_code,
+                    last_error=(resp.text or "").strip()[:240] or error,
+                    url=request_url,
+                )
+                return False, message
 
-        if resp.status_code >= 300:
-            _log_supabase_http_error(operation, request_url, resp)
-            message, error = _response_error_message(operation, resp)
-            _set_supabase_debug(
-                operation=operation,
-                status="http_error",
-                status_code=resp.status_code,
-                last_error=(resp.text or "").strip()[:240] or error,
-                url=request_url,
+            for field in incompatible_fields:
+                retry_payload.pop(field, None)
+                if field not in removed_fields:
+                    removed_fields.append(field)
+            logger.warning(
+                "Solicitud DEMO rechazada por incompatibilidad de esquema; reintentando sin campos=%s url=%s status=%s producto=%s plan_interes=%s",
+                ",".join(removed_fields),
+                request_url,
+                resp.status_code,
+                producto,
+                plan_interes,
             )
-            return False, message
+            try:
+                resp = requests.post(request_url, headers=headers, json=retry_payload, timeout=_request_timeout())
+            except requests.RequestException as exc:
+                logger.warning("Error de conexion reintentando solicitud DEMO a url=%s: %s", request_url, exc)
+                message, error = _request_error_message(operation, exc)
+                _set_supabase_debug(
+                    operation=operation,
+                    status="network_error",
+                    status_code=None,
+                    last_error=error or "network_error",
+                    url=request_url,
+                )
+                return False, message
+
+            if resp.status_code < 300:
+                break
+            _log_supabase_http_error(operation, request_url, resp)
 
     _set_supabase_debug(
         operation=operation,

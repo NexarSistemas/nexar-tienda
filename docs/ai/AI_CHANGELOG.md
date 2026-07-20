@@ -2,6 +2,65 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-20 - Codex - fix/demo-eligibility-review-findings
+
+### Tarea
+Implementar el Issue #125 para cerrar vulnerabilidades de elegibilidad y
+concurrencia DEMO detectadas en el refuerzo anti-reinstalacion.
+
+### Diagnostico
+- `services/supabase_license_api.py` reintentaba cualquier rechazo HTTP de
+  `solicitudes_demo` con un payload legacy que podia omitir hashes de identidad
+  fuerte aun ante conflictos de unicidad o carreras concurrentes.
+- `services/demo_eligibility.py` tomaba `matches[0]` y podia ignorar bloqueos
+  administrativos presentes en otra coincidencia fuerte del mismo equipo.
+- `routes/main.py` reconsultaba tras una falla de alta DEMO, pero solo
+  recuperaba una DEMO activa; si la reconsulta devolvia `expired` o `blocked`,
+  terminaba mostrando un error generico de verificacion.
+
+### Que se cambio
+- `services/supabase_license_api.py` ahora clasifica el error remoto y solo
+  hace fallback compatible cuando la respuesta demuestra incompatibilidad de
+  esquema por columnas nuevas o schema cache desactualizada. Conflictos `409`,
+  `duplicate key`, errores de autenticacion/RLS, validacion o `5xx` ya no se
+  reintentan con un payload sin identidad fuerte.
+- El fallback DEMO quita unicamente las columnas incompatibles detectadas de
+  forma explicita, preservando el mayor nivel posible de identidad fuerte en
+  esquemas legacy.
+- `services/demo_eligibility.py` revisa todas las coincidencias fuertes antes de
+  decidir: cualquier estado administrativo bloqueado prevalece globalmente y la
+  seleccion no bloqueada pasa a ser determinista, priorizando DEMO activa con
+  vencimiento valido mas conservador, luego DEMO vencida/usada y por ultimo
+  registros ambiguos.
+- `routes/main.py` ahora aplica la politica central tambien despues de una
+  reconsulta tras falla de alta DEMO: si encuentra DEMO vigente la recupera sin
+  extender fechas; si encuentra `expired`, `already_used` o `blocked`, niega una
+  nueva DEMO con ese resultado y no muestra un error generico de red.
+- `tests/test_license_integration.py` agrega regresiones para conflictos `409`,
+  `duplicate key`, errores de autorizacion y `500`, fallback solo por esquema,
+  bloqueos administrativos en multiples coincidencias, seleccion determinista y
+  reconsulta posterior al alta fallida.
+
+### Archivos modificados
+- `services/supabase_license_api.py`
+- `services/demo_eligibility.py`
+- `routes/main.py`
+- `tests/test_license_integration.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m pytest tests/test_license_integration.py tests/test_license_tiers.py` -> 166 passed.
+- `.venv\\Scripts\\python.exe -m pytest` -> 286 passed.
+- `.venv\\Scripts\\python.exe -m compileall -q app.py database.py iniciar.py run.py routes services licensing modules config tests` -> OK.
+- `git diff --check` -> OK.
+
+### Dependencias / alcance
+- La proteccion fuerte ante carreras simultaneas sigue dependiendo de que la
+  migracion `supabase/migrations/2026-07-18_harden_solicitudes_demo_identity.sql`
+  este aplicada en Supabase/Admin o exista una restriccion equivalente.
+- No se tocaron precios, Mercado Pago, permisos de BASICA/PRO/FULL, Nexar
+  Admin, Nexar Pagos ni el SDK `nexar_licencias`.
+
 ## 2026-07-20 - Codex - fix/license-enforcement-review-findings
 
 ### Tarea

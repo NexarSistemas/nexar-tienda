@@ -2821,6 +2821,100 @@ class LicenseIntegrationTests(unittest.TestCase):
         matching = [{"producto": "nexar-tienda", "email": "otro@comercio.com", "mensaje": '{"activation_id":"nxid-abc"}'}]
         self.assertEqual(resolve_demo_eligibility_from_records(identity=identity, records=matching).state, "already_used")
 
+    def test_demo_eligibility_bloqueo_administrativo_prevalece_sobre_fila_activa(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-ABC",
+            hardware_id="HWID-ABC",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [
+            {
+                "id": 20,
+                "producto": "nexar-tienda",
+                "estado": "pendiente",
+                "mensaje": '{"activation_id":"NXID-ABC","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-15"}',
+                "created_at": "2099-01-01T10:00:00",
+            },
+            {
+                "id": 21,
+                "producto": "nexar-tienda",
+                "estado": "bloqueada",
+                "mensaje": '{"activation_id":"NXID-ABC"}',
+                "created_at": "2098-12-31T09:00:00",
+            },
+        ]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 2))
+        self.assertEqual(result.state, "blocked")
+        self.assertEqual(result.matched_record["id"], 21)
+
+    def test_demo_eligibility_bloqueo_suspendido_prevalece_sobre_vencida(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-ABC",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [
+            {
+                "id": 30,
+                "producto": "nexar-tienda",
+                "estado": "pendiente",
+                "mensaje": '{"activation_id":"NXID-ABC","demo_started_at":"2026-01-01","demo_expires_at":"2026-01-15"}',
+                "created_at": "2026-01-01T10:00:00",
+            },
+            {
+                "id": 31,
+                "producto": "nexar-tienda",
+                "estado": "suspendida",
+                "mensaje": '{"activation_id":"NXID-ABC"}',
+                "created_at": "2026-01-20T10:00:00",
+            },
+        ]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2026, 2, 1))
+        self.assertEqual(result.state, "blocked")
+        self.assertEqual(result.matched_record["id"], 31)
+
+    def test_demo_eligibility_selecciona_activa_de_forma_determinista_sin_extender(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-ABC",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [
+            {
+                "id": 41,
+                "producto": "nexar-tienda",
+                "estado": "pendiente",
+                "mensaje": '{"activation_id":"NXID-ABC","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-20"}',
+                "created_at": "2099-01-01T10:00:00",
+            },
+            {
+                "id": 40,
+                "producto": "nexar-tienda",
+                "estado": "pendiente",
+                "mensaje": '{"activation_id":"NXID-ABC","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-15"}',
+                "created_at": "2099-01-02T10:00:00",
+            },
+        ]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 5))
+        self.assertEqual(result.state, "active")
+        self.assertEqual(result.expires_at, "2099-01-15")
+        self.assertEqual(result.matched_record["id"], 40)
+
     def test_find_demo_requests_for_identity_consulta_solicitudes_demo_por_identidad(self):
         import services.supabase_license_api as supabase_api
 
@@ -2844,7 +2938,7 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertIn("mensaje.ilike.*NXID-DEMO-001*", params["or"])
         self.assertIn("mensaje.ilike.*HWID-001*", params["or"])
 
-    def test_create_demo_request_reintenta_con_payload_compatible(self):
+    def test_create_demo_request_reintenta_solo_por_incompatibilidad_de_esquema(self):
         import services.supabase_license_api as supabase_api
 
         os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
@@ -2852,9 +2946,10 @@ class LicenseIntegrationTests(unittest.TestCase):
         os.environ["SUPABASE_KEY"] = "service-key"
 
         bad_response = mock.Mock(status_code=400, text='{"message":"column origen does not exist"}')
+        bad_response_2 = mock.Mock(status_code=400, text='{"message":"Could not find the \'estado\' column of \'solicitudes_demo\' in the schema cache","code":"PGRST204"}')
         ok_response = mock.Mock(status_code=201, text='[{"id":1}]')
 
-        with mock.patch.object(supabase_api.requests, "post", side_effect=[bad_response, ok_response]) as post_mock:
+        with mock.patch.object(supabase_api.requests, "post", side_effect=[bad_response, bad_response_2, ok_response]) as post_mock:
             ok, message = supabase_api.create_demo_request(
                 nombre="Admin Comercio",
                 email="admin@comercio.com",
@@ -2862,14 +2957,14 @@ class LicenseIntegrationTests(unittest.TestCase):
                 negocio="Comercio Central",
                 producto="nexar-tienda",
                 plan_interes="DEMO_14_DIAS",
-                mensaje='{"activation_id":"NXID-DEMO-001"}',
+                mensaje='{"activation_id":"NXID-DEMO-001","identity_hashes":{"activation_id":"hash-1","hardware_id":"hash-2","machine_id":"hash-3"}}',
                 origen="app_activacion_inicial",
                 estado="pendiente",
             )
 
         self.assertTrue(ok)
         self.assertIn("registrada correctamente", message.lower())
-        self.assertEqual(post_mock.call_count, 2)
+        self.assertEqual(post_mock.call_count, 3)
         self.assertEqual(post_mock.call_args_list[0].args[0], "https://demo.supabase.co/rest/v1/solicitudes_demo")
         self.assertEqual(post_mock.call_args_list[0].kwargs["headers"]["apikey"], "service-key")
         self.assertEqual(post_mock.call_args_list[0].kwargs["headers"]["Authorization"], "Bearer service-key")
@@ -2877,9 +2972,257 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(post_mock.call_args_list[0].kwargs["json"]["estado"], "pendiente")
         self.assertEqual(post_mock.call_args_list[0].kwargs["json"]["origen"], "app_activacion_inicial")
         self.assertEqual(post_mock.call_args_list[0].kwargs["json"]["leida"], False)
-        self.assertNotIn("estado", post_mock.call_args_list[1].kwargs["json"])
         self.assertNotIn("origen", post_mock.call_args_list[1].kwargs["json"])
-        self.assertNotIn("leida", post_mock.call_args_list[1].kwargs["json"])
+        self.assertIn("identity_hash", post_mock.call_args_list[1].kwargs["json"])
+        self.assertNotIn("estado", post_mock.call_args_list[2].kwargs["json"])
+        self.assertIn("identity_hash", post_mock.call_args_list[2].kwargs["json"])
+
+    def test_create_demo_request_conflicto_409_no_reintenta_payload_legacy(self):
+        import services.supabase_license_api as supabase_api
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ["SUPABASE_KEY"] = "service-key"
+        conflict_response = mock.Mock(status_code=409, text='{"message":"duplicate key value violates unique constraint","code":"23505"}')
+
+        with mock.patch.object(supabase_api.requests, "post", return_value=conflict_response) as post_mock:
+            ok, message = supabase_api.create_demo_request(
+                nombre="Admin Comercio",
+                email="admin@comercio.com",
+                telefono="264555000",
+                negocio="Comercio Central",
+                producto="nexar-tienda",
+                plan_interes="DEMO_14_DIAS",
+                mensaje='{"activation_id":"NXID-DEMO-001","identity_hashes":{"activation_id":"hash-1"}}',
+            )
+
+        self.assertFalse(ok)
+        self.assertIn("error en supabase", message.lower())
+        self.assertEqual(post_mock.call_count, 1)
+
+    def test_create_demo_request_duplicate_key_no_reintenta_payload_legacy(self):
+        import services.supabase_license_api as supabase_api
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ["SUPABASE_KEY"] = "service-key"
+        duplicate_response = mock.Mock(status_code=400, text='{"message":"duplicate key value violates unique constraint idx_solicitudes_demo_producto_identity_hash_unique","code":"23505"}')
+
+        with mock.patch.object(supabase_api.requests, "post", return_value=duplicate_response) as post_mock:
+            ok, _message = supabase_api.create_demo_request(
+                nombre="Admin Comercio",
+                email="admin@comercio.com",
+                telefono="264555000",
+                negocio="Comercio Central",
+                producto="nexar-tienda",
+                plan_interes="DEMO_14_DIAS",
+                mensaje='{"activation_id":"NXID-DEMO-001","identity_hashes":{"activation_id":"hash-1"}}',
+            )
+
+        self.assertFalse(ok)
+        self.assertEqual(post_mock.call_count, 1)
+
+    def test_create_demo_request_error_autorizacion_no_habilita_fallback(self):
+        import services.supabase_license_api as supabase_api
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ["SUPABASE_KEY"] = "service-key"
+        auth_response = mock.Mock(status_code=403, text='{"message":"new row violates row-level security policy"}')
+
+        with mock.patch.object(supabase_api.requests, "post", return_value=auth_response) as post_mock:
+            ok, message = supabase_api.create_demo_request(
+                nombre="Admin Comercio",
+                email="admin@comercio.com",
+                telefono="264555000",
+                negocio="Comercio Central",
+                producto="nexar-tienda",
+                plan_interes="DEMO_14_DIAS",
+                mensaje='{"activation_id":"NXID-DEMO-001","identity_hashes":{"activation_id":"hash-1"}}',
+            )
+
+        self.assertFalse(ok)
+        self.assertIn("permisos o autenticaci", message.lower())
+        self.assertEqual(post_mock.call_count, 1)
+
+    def test_create_demo_request_error_500_no_habilita_fallback(self):
+        import services.supabase_license_api as supabase_api
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ["SUPABASE_KEY"] = "service-key"
+        server_response = mock.Mock(status_code=500, text='{"message":"internal server error"}')
+
+        with mock.patch.object(supabase_api.requests, "post", return_value=server_response) as post_mock:
+            ok, _message = supabase_api.create_demo_request(
+                nombre="Admin Comercio",
+                email="admin@comercio.com",
+                telefono="264555000",
+                negocio="Comercio Central",
+                producto="nexar-tienda",
+                plan_interes="DEMO_14_DIAS",
+                mensaje='{"activation_id":"NXID-DEMO-001","identity_hashes":{"activation_id":"hash-1"}}',
+            )
+
+        self.assertFalse(ok)
+        self.assertEqual(post_mock.call_count, 1)
+
+    def test_activacion_inicial_demo_conflicto_reconsulta_y_recupera_activa(self):
+        app = self.app_module.create_app()
+        self.database.add_usuario("admin", "Abc123$", "Administrador", "Admin Comercio")
+        self.database.set_config({"activation_initial_completed": "0"})
+        active_record = {
+            "producto": "nexar-tienda",
+            "email": "admin@comercio.com",
+            "mensaje": (
+                '{"activation_id":"NXID-DEMO-001","demo_started_at":"2099-01-01",'
+                '"demo_expires_at":"2099-01-15","demo_status":"demo_activa"}'
+            ),
+        }
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "Administrador", "id": 1, "username": "admin"}
+                session["_csrf_token"] = "test"
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    if "nombre_completo, email, telefono" in query:
+                        return {"nombre_completo": "Admin Comercio", "email": "admin@comercio.com", "telefono": "264555000"}
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "DEMO", "key": ""}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: "0" if key == "activation_initial_completed" else default), \
+                 mock.patch.object(self.routes_main, "find_demo_requests_for_identity", side_effect=[(True, "ok", []), (True, "ok", [active_record])]), \
+                 mock.patch.object(self.routes_main, "create_demo_request", return_value=(False, "Error en Supabase (409).")) as create_demo_request_mock, \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-001", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-001"):
+                response = client.post(
+                    "/activacion-inicial",
+                    data={
+                        "csrf_token": "test",
+                        "titular_nombre": "Admin Comercio",
+                        "negocio": "Comercio Central",
+                        "email": "admin@comercio.com",
+                        "telefono": "264555000",
+                        "rubro": "almacen",
+                        "plan_destino": "DEMO",
+                        "accept_license_agreement": "1",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/"))
+        cfg = self.database.get_config()
+        self.assertEqual(cfg["activation_initial_completed"], "1")
+        self.assertEqual(cfg["demo_install_date"], "2099-01-01")
+        self.assertEqual(cfg["demo_expires_at"], "2099-01-15")
+        create_demo_request_mock.assert_called_once()
+
+    def test_activacion_inicial_demo_conflicto_reconsulta_y_bloquea_si_esta_vencida(self):
+        app = self.app_module.create_app()
+        self.database.add_usuario("admin", "Abc123$", "Administrador", "Admin Comercio")
+        self.database.set_config({"activation_initial_completed": "0"})
+        expired_record = {
+            "producto": "nexar-tienda",
+            "email": "admin@comercio.com",
+            "mensaje": (
+                '{"activation_id":"NXID-DEMO-001","demo_started_at":"2026-01-01",'
+                '"demo_expires_at":"2026-01-15","demo_status":"demo_vencida"}'
+            ),
+        }
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "Administrador", "id": 1, "username": "admin"}
+                session["_csrf_token"] = "test"
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    if "nombre_completo, email, telefono" in query:
+                        return {"nombre_completo": "Admin Comercio", "email": "admin@comercio.com", "telefono": "264555000"}
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "DEMO", "key": ""}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: "0" if key == "activation_initial_completed" else default), \
+                 mock.patch.object(self.routes_main, "find_demo_requests_for_identity", side_effect=[(True, "ok", []), (True, "ok", [expired_record])]), \
+                 mock.patch.object(self.routes_main, "create_demo_request", return_value=(False, "Error en Supabase (409).")), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-001", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-001"):
+                response = client.post(
+                    "/activacion-inicial",
+                    data={
+                        "csrf_token": "test",
+                        "titular_nombre": "Admin Comercio",
+                        "negocio": "Comercio Central",
+                        "email": "admin@comercio.com",
+                        "telefono": "264555000",
+                        "rubro": "almacen",
+                        "plan_destino": "DEMO",
+                        "accept_license_agreement": "1",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Este equipo ya utiliz".encode("utf-8"), response.data)
+        self.assertEqual(self.database.get_config()["activation_demo_eligibility_state"], "expired")
+
+    def test_activacion_inicial_demo_conflicto_reconsulta_y_bloquea_si_hay_estado_administrativo(self):
+        app = self.app_module.create_app()
+        self.database.add_usuario("admin", "Abc123$", "Administrador", "Admin Comercio")
+        self.database.set_config({"activation_initial_completed": "0"})
+        blocked_record = {
+            "producto": "nexar-tienda",
+            "estado": "bloqueada",
+            "email": "admin@comercio.com",
+            "mensaje": '{"activation_id":"NXID-DEMO-001"}',
+        }
+
+        with app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"rol": "Administrador", "id": 1, "username": "admin"}
+                session["_csrf_token"] = "test"
+
+            def fake_q(query, params=(), fetchone=False, **kwargs):
+                if "FROM usuarios" in query:
+                    if "nombre_completo, email, telefono" in query:
+                        return {"nombre_completo": "Admin Comercio", "email": "admin@comercio.com", "telefono": "264555000"}
+                    return {"security_question": "Color", "security_answer_hash": "hash"}
+                return {"valor": None} if fetchone else []
+
+            with mock.patch.object(self.app_module.db, "count_usuarios", return_value=1), \
+                 mock.patch.object(self.app_module.db, "necesita_configuracion_inicial_rubro", return_value=False), \
+                 mock.patch.object(self.app_module.db, "q", side_effect=fake_q), \
+                 mock.patch.object(self.app_module.db, "get_license_info", return_value={"tier": "DEMO", "key": ""}), \
+                 mock.patch.object(self.app_module.db, "get_config_valor", side_effect=lambda key, default=None: "0" if key == "activation_initial_completed" else default), \
+                 mock.patch.object(self.routes_main, "find_demo_requests_for_identity", side_effect=[(True, "ok", []), (True, "ok", [blocked_record])]), \
+                 mock.patch.object(self.routes_main, "create_demo_request", return_value=(False, "Error en Supabase (409).")), \
+                 mock.patch.object(self.routes_main, "generate_activation_id", return_value=("NXID-DEMO-001", {"host": "demo"})), \
+                 mock.patch.object(self.routes_main, "get_current_hwid", return_value="NXID-DEMO-001"):
+                response = client.post(
+                    "/activacion-inicial",
+                    data={
+                        "csrf_token": "test",
+                        "titular_nombre": "Admin Comercio",
+                        "negocio": "Comercio Central",
+                        "email": "admin@comercio.com",
+                        "telefono": "264555000",
+                        "rubro": "almacen",
+                        "plan_destino": "DEMO",
+                        "accept_license_agreement": "1",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Contacta a soporte".encode("utf-8"), response.data)
+        self.assertEqual(self.database.get_config()["activation_demo_eligibility_state"], "blocked")
 
     def test_rubro_inicial_queda_solo_lectura_si_ya_esta_configurado(self):
         self.database.set_rubro_configurado("tienda")
