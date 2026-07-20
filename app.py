@@ -294,9 +294,13 @@ def create_app() -> Flask:
         ok, _ = validate_saved_license(debug=False)
         if not ok:
             cfg = db.get_config()
+            current_info = db.get_license_info()
+            current_status = get_license_status_context(current_info, demo_status=demo_status)
             if (
                 cfg.get("basica_activada", "0") == "1"
-                and db.get_license_info().get("plan_base_permanente")
+                and current_info.get("plan_base_permanente")
+                and current_status.get("plan_efectivo") == "BASICA"
+                and bool(current_status.get("licencia_utilizable"))
             ):
                 db.set_config({
                     "demo_mode": "0",
@@ -307,7 +311,7 @@ def create_app() -> Flask:
                     "license_updates": "0",
                 })
                 return None
-            if db.get_license_info().get("tier") == "BASICA":
+            if current_info.get("tier") == "BASICA":
                 return None
             if not demo_status.get("vencido") and local_info.get("tier") in {"DEMO", "SIN_PLAN"}:
                 return None

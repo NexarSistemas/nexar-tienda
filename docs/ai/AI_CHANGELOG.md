@@ -2,6 +2,58 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-20 - Codex - fix/license-enforcement-review-findings
+
+### Tarea
+Implementar el Issue #124 para corregir enforcement de licencias bloqueadas y
+casos `SIN_PLAN` que todavia podian recuperar acceso por permanencia BASICA,
+flags legacy o clasificacion comercial inconsistente.
+
+### Diagnostico
+- `database._resolve_license_snapshot()` seguia exponiendo
+  `plan_base_permanente=True` para una BASICA con estado administrativo
+  bloqueado, suspendido, revocado o anulado si existian flags legacy.
+- `sync_license_from_remote()` podia persistir `basica_activada=1` y
+  `license_plan_base_permanente=1` aunque la licencia ya resolviera
+  `plan_efectivo=SIN_PLAN`.
+- El middleware de `app.py` restauraba BASICA por fallback local cuando fallaba
+  la validacion guardada, sin exigir que la licencia siguiera siendo utilizable.
+- `licensing/planes.py` evaluaba PRO/FULL por `plan_original` antes de cortar
+  por `plan_efectivo=SIN_PLAN`, dejando una ventana donde podia caer en
+  `mensual_activo`.
+
+### Que se cambio
+- `database.py` ahora invalida `plan_base_permanente` y desactiva
+  `basica_activada` cuando el estado administrativo bloquea la licencia o el
+  plan efectivo ya es `SIN_PLAN`.
+- `app.py` solo restaura BASICA desde fallback legacy si el estado resuelto
+  sigue siendo BASICA utilizable; una licencia bloqueada ya no recupera acceso.
+- `licensing/planes.py` trata `plan_efectivo=SIN_PLAN` como no utilizable antes
+  de clasificar PRO/FULL como activos y hace explicito que
+  `licencia_utilizable` exige un plan efectivo distinto de `SIN_PLAN`.
+- `tests/test_license_integration.py` suma regresiones para BASICA bloqueada,
+  anulada, fallback legacy bloqueado, PRO/FULL con `SIN_PLAN` y redireccion de
+  rutas de negocio a `/mi-plan`.
+
+### Archivos modificados
+- `database.py`
+- `app.py`
+- `licensing/planes.py`
+- `tests/test_license_integration.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m pytest tests/test_license_integration.py tests/test_license_tiers.py` -> 156 passed.
+- `.venv\\Scripts\\python.exe -m pytest` -> 276 passed.
+- `.venv\\Scripts\\python.exe -m compileall -q app.py database.py iniciar.py run.py routes services licensing modules config tests` -> OK.
+- `git diff --check` -> OK.
+
+### Fuera de alcance
+- No se tocaron Mercado Pago, Supabase, SDK externo, versiones, tags ni
+  releases.
+- No se modifico documentacion comercial adicional porque el comportamiento
+  publico ya estaba documentado; solo se actualizo el changelog tecnico.
+
 ## 2026-07-18 - Codex - feature/mi-plan-license-ux
 
 ### Tarea

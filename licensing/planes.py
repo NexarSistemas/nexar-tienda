@@ -363,7 +363,7 @@ def get_license_status_context(
         default=plan_original,
     )
     licencia_vencida = bool(info.get("expirada"))
-    basica_activada = bool(info.get("plan_base_permanente"))
+    basica_activada = bool(info.get("plan_base_permanente")) and plan_efectivo == "BASICA"
     estado_admin = str(info.get("estado") or "").strip()
     estado_display = _normalize_status_display(estado_admin)
     admin_blocked = _is_admin_blocked_status(estado_admin)
@@ -389,7 +389,7 @@ def get_license_status_context(
         dias_para_vencer = None
         plan_efectivo = SIN_PLAN
         plan_efectivo_display = "SIN PLAN"
-    elif plan_original == "BASICA":
+    elif plan_original == "BASICA" and plan_efectivo == "BASICA":
         estado_comercial = "basica_permanente"
         titulo_estado = "Licencia BASICA permanente"
         mensaje_estado = "Tu licencia BASICA es permanente y no vence."
@@ -408,6 +408,11 @@ def get_license_status_context(
         plan_efectivo_display = "SIN PLAN"
         dias_para_vencer = None
         recomendar_basica = True
+    elif plan_efectivo == SIN_PLAN:
+        estado_comercial = "sin_plan"
+        titulo_estado = "App limitada"
+        mensaje_estado = "Esta instalacion no tiene un plan activo en este momento."
+        alert_class = "danger"
     elif plan_original in {"PRO", "FULL"} and dias_para_vencer is not None and dias_para_vencer <= 7:
         estado_comercial = "mensual_por_vencer"
         titulo_estado = f"Plan {plan_original_display} por vencer"
@@ -452,11 +457,6 @@ def get_license_status_context(
                 mensaje_estado = f"Tu prueba de {demo_days} dias tiene {demo_remaining} dias restantes."
             alert_class = "warning"
             mostrar_aviso_preventivo = demo_remaining <= 7
-    elif plan_efectivo == SIN_PLAN:
-        estado_comercial = "sin_plan"
-        titulo_estado = "App limitada"
-        mensaje_estado = "Esta instalacion no tiene un plan activo en este momento."
-        alert_class = "danger"
 
     return {
         "plan_original": plan_original,
@@ -464,7 +464,11 @@ def get_license_status_context(
         "plan_efectivo": plan_efectivo,
         "plan_efectivo_display": plan_efectivo_display,
         "licencia_vencida": licencia_vencida,
-        "licencia_utilizable": not admin_blocked and estado_comercial not in {"demo_vencido", "pro_vencido", "full_vencido", "sin_plan"},
+        "licencia_utilizable": (
+            not admin_blocked
+            and plan_efectivo != SIN_PLAN
+            and estado_comercial not in {"demo_vencido", "pro_vencido", "full_vencido", "sin_plan"}
+        ),
         "dias_para_vencer": dias_para_vencer,
         "basica_activada": basica_activada,
         "estado_efectivo": estado_display,
