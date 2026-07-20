@@ -160,8 +160,9 @@ def _normalize_admin_state(value: object) -> str:
     return normalize_identifier(value)
 
 
-def _get_row_admin_state(row: dict[str, Any]) -> str:
+def _get_row_admin_state_candidates(row: dict[str, Any]) -> tuple[str, ...]:
     metadata = parse_demo_message(row.get("mensaje"))
+    normalized_states: list[str] = []
     for candidate in (
         row.get("estado"),
         metadata.get("estado"),
@@ -169,8 +170,20 @@ def _get_row_admin_state(row: dict[str, Any]) -> str:
         metadata.get("demo_admin_status"),
     ):
         normalized = _normalize_admin_state(candidate)
-        if normalized:
+        if normalized and normalized not in normalized_states:
+            normalized_states.append(normalized)
+    return tuple(normalized_states)
+
+
+def _get_row_admin_state(row: dict[str, Any]) -> str:
+    fallback_state = ""
+    for normalized in _get_row_admin_state_candidates(row):
+        if normalized in ADMIN_BLOCKED_STATES:
             return normalized
+        if not fallback_state:
+            fallback_state = normalized
+    if fallback_state:
+        return fallback_state
     return ""
 
 

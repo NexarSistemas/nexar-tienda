@@ -2,6 +2,51 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-20 - Codex - fix/demo-admin-state-scan
+
+### Tarea
+Corregir el hallazgo de revisión del PR #129 para que la detección de estados
+administrativos DEMO siga revisando todos los campos compatibles antes de
+descartar un bloqueo.
+
+### Diagnostico
+- `_get_row_admin_state()` devolvía el primer estado no vacío entre
+  `row.estado`, `mensaje.estado`, `mensaje.license_status` y
+  `mensaje.demo_admin_status`.
+- Si `row.estado` contenía un estado comercial o de seguimiento como
+  `pendiente` o `contactado`, el escaneo terminaba antes de llegar a un bloqueo
+  administrativo guardado en metadata.
+- Eso podía hacer que `blocked_matches` ignorara una DEMO bloqueada y que el
+  resolvedor la tratara como activa, vencida o usada.
+
+### Que se cambio
+- `services/demo_eligibility.py` ahora normaliza todos los candidatos de estado
+  una sola vez, recorre el conjunto completo y devuelve inmediatamente cualquier
+  alias incluido en `ADMIN_BLOCKED_STATES`.
+- Si no existe bloqueo administrativo, conserva como fallback el primer estado
+  informativo no vacío, sin cambiar la política determinista ya implementada en
+  PR #129 para DEMO activa, vencida o usada.
+- `tests/test_license_integration.py` agrega regresiones para bloqueos en
+  `demo_admin_status`, `license_status`, `mensaje.estado`, estado vacío,
+  aliases administrativos y prevalencia global del bloqueo frente a otra fila
+  activa o pendiente.
+
+### Archivos modificados
+- `services/demo_eligibility.py`
+- `tests/test_license_integration.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m pytest tests/test_license_integration.py tests/test_license_tiers.py` -> 176 passed.
+- `.venv\\Scripts\\python.exe -m pytest` -> 296 passed.
+- `.venv\\Scripts\\python.exe -m compileall -q app.py database.py iniciar.py run.py routes services licensing modules config tests` -> OK.
+- `git diff --check` -> OK.
+
+### Alcance
+- No se modificó la política de selección determinista de DEMO activa/vencida.
+- No se tocaron precios, Mercado Pago, permisos BASICA/PRO/FULL, Supabase
+  remoto, Nexar Admin ni `nexar_licencias`.
+
 ## 2026-07-20 - Codex - fix/demo-eligibility-review-findings
 
 ### Tarea

@@ -1,4 +1,5 @@
 import importlib
+import json
 import os
 import sys
 import tempfile
@@ -2852,6 +2853,137 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(result.state, "blocked")
         self.assertEqual(result.matched_record["id"], 21)
 
+    def test_demo_eligibility_detecta_bloqueo_en_demo_admin_status_aun_si_estado_es_pendiente(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-BLOCK-1",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [{
+            "id": 22,
+            "producto": "nexar-tienda",
+            "estado": "pendiente",
+            "mensaje": '{"activation_id":"NXID-BLOCK-1","demo_admin_status":"bloqueada","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-15"}',
+            "created_at": "2099-01-01T10:00:00",
+        }]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 2))
+        self.assertEqual(result.state, "blocked")
+        self.assertEqual(result.matched_record["id"], 22)
+
+    def test_demo_eligibility_detecta_bloqueo_en_license_status_aun_si_estado_es_contactado(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-BLOCK-2",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [{
+            "id": 23,
+            "producto": "nexar-tienda",
+            "estado": "contactado",
+            "mensaje": '{"activation_id":"NXID-BLOCK-2","license_status":"suspendida","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-15"}',
+            "created_at": "2099-01-01T10:00:00",
+        }]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 2))
+        self.assertEqual(result.state, "blocked")
+        self.assertEqual(result.matched_record["id"], 23)
+
+    def test_demo_eligibility_detecta_bloqueo_en_mensaje_estado(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-BLOCK-3",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [{
+            "id": 24,
+            "producto": "nexar-tienda",
+            "estado": "pendiente",
+            "mensaje": '{"activation_id":"NXID-BLOCK-3","estado":"revocada","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-15"}',
+            "created_at": "2099-01-01T10:00:00",
+        }]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 2))
+        self.assertEqual(result.state, "blocked")
+        self.assertEqual(result.matched_record["id"], 24)
+
+    def test_demo_eligibility_detecta_anulada_en_metadata(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-BLOCK-4",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [{
+            "id": 25,
+            "producto": "nexar-tienda",
+            "estado": "pendiente",
+            "mensaje": '{"activation_id":"NXID-BLOCK-4","demo_admin_status":"anulada","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-15"}',
+            "created_at": "2099-01-01T10:00:00",
+        }]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 2))
+        self.assertEqual(result.state, "blocked")
+        self.assertEqual(result.matched_record["id"], 25)
+
+    def test_demo_eligibility_estado_pendiente_sin_bloqueo_no_queda_blocked(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-NOBLOCK-1",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [{
+            "id": 26,
+            "producto": "nexar-tienda",
+            "estado": "pendiente",
+            "mensaje": '{"activation_id":"NXID-NOBLOCK-1","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-15"}',
+            "created_at": "2099-01-01T10:00:00",
+        }]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 2))
+        self.assertEqual(result.state, "active")
+
+    def test_demo_eligibility_detecta_bloqueo_con_estado_vacio(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-BLOCK-5",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [{
+            "id": 27,
+            "producto": "nexar-tienda",
+            "estado": "",
+            "mensaje": '{"activation_id":"NXID-BLOCK-5","demo_admin_status":"bloqueada","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-15"}',
+            "created_at": "2099-01-01T10:00:00",
+        }]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 2))
+        self.assertEqual(result.state, "blocked")
+        self.assertEqual(result.matched_record["id"], 27)
+
     def test_demo_eligibility_bloqueo_suspendido_prevalece_sobre_vencida(self):
         from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
 
@@ -2882,6 +3014,62 @@ class LicenseIntegrationTests(unittest.TestCase):
         result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2026, 2, 1))
         self.assertEqual(result.state, "blocked")
         self.assertEqual(result.matched_record["id"], 31)
+
+    def test_demo_eligibility_bloqueo_global_prevalece_si_otra_fila_lo_lleva_en_metadata(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-BLOCK-GLOBAL",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [
+            {
+                "id": 32,
+                "producto": "nexar-tienda",
+                "estado": "pendiente",
+                "mensaje": '{"activation_id":"NXID-BLOCK-GLOBAL","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-15"}',
+                "created_at": "2099-01-01T10:00:00",
+            },
+            {
+                "id": 33,
+                "producto": "nexar-tienda",
+                "estado": "pendiente",
+                "mensaje": '{"activation_id":"NXID-BLOCK-GLOBAL","demo_admin_status":"bloqueada"}',
+                "created_at": "2099-01-02T10:00:00",
+            },
+        ]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 2))
+        self.assertEqual(result.state, "blocked")
+        self.assertEqual(result.matched_record["id"], 33)
+
+    def test_demo_eligibility_aliases_administrativos_siguen_bloqueando(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        for alias in ("bloqueado", "suspendido", "revocado", "anulado", "cancelada", "cancelado"):
+            identity = build_demo_identity(
+                product="nexar-tienda",
+                activation_id=f"NXID-{alias}",
+                hardware_id="",
+                email="admin@comercio.com",
+                machine_details={},
+            )
+            records = [{
+                "id": 34,
+                "producto": "nexar-tienda",
+                "estado": "pendiente",
+                "mensaje": json.dumps({
+                    "activation_id": f"NXID-{alias}",
+                    "demo_admin_status": alias,
+                }),
+                "created_at": "2099-01-01T10:00:00",
+            }]
+
+            result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 2))
+            self.assertEqual(result.state, "blocked", alias)
 
     def test_demo_eligibility_selecciona_activa_de_forma_determinista_sin_extender(self):
         from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
@@ -2914,6 +3102,51 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(result.state, "active")
         self.assertEqual(result.expires_at, "2099-01-15")
         self.assertEqual(result.matched_record["id"], 40)
+
+    def test_demo_eligibility_demo_activa_normal_sin_bloqueo_sigue_recuperandose(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-ACTIVE-OK",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [{
+            "id": 42,
+            "producto": "nexar-tienda",
+            "estado": "pendiente",
+            "mensaje": '{"activation_id":"NXID-ACTIVE-OK","demo_started_at":"2099-01-01","demo_expires_at":"2099-01-15"}',
+            "created_at": "2099-01-01T10:00:00",
+        }]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2099, 1, 2))
+        self.assertEqual(result.state, "active")
+        self.assertTrue(result.can_recover_demo)
+        self.assertEqual(result.expires_at, "2099-01-15")
+
+    def test_demo_eligibility_demo_vencida_normal_sin_bloqueo_sigue_vencida(self):
+        from services.demo_eligibility import build_demo_identity, resolve_demo_eligibility_from_records
+
+        identity = build_demo_identity(
+            product="nexar-tienda",
+            activation_id="NXID-EXPIRED-OK",
+            hardware_id="",
+            email="admin@comercio.com",
+            machine_details={},
+        )
+        records = [{
+            "id": 43,
+            "producto": "nexar-tienda",
+            "estado": "pendiente",
+            "mensaje": '{"activation_id":"NXID-EXPIRED-OK","demo_started_at":"2026-01-01","demo_expires_at":"2026-01-15"}',
+            "created_at": "2026-01-01T10:00:00",
+        }]
+
+        result = resolve_demo_eligibility_from_records(identity=identity, records=records, today=date(2026, 2, 1))
+        self.assertEqual(result.state, "expired")
+        self.assertEqual(result.expires_at, "2026-01-15")
 
     def test_find_demo_requests_for_identity_consulta_solicitudes_demo_por_identidad(self):
         import services.supabase_license_api as supabase_api
