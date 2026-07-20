@@ -2,6 +2,53 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-20 - Codex - fix/license-background-refresh-context
+
+### Tarea
+Implementar el Issue #126 para hacer seguro el refresco automatico de
+licencias fuera de request y cerrar el hallazgo pendiente del PR #121.
+
+### Diagnostico
+- `_license_auto_refresh_loop()` ejecutaba `_refresh_license_response()` con
+  solo `app_context`.
+- Cuando existia un checkout pendiente, `_resolve_license_from_pending_checkout()`
+  terminaba llamando `_get_license_holder_profile()` y
+  `_get_current_user_contact_profile()`.
+- `_get_current_user_contact_profile()` leia `session` sin verificar si habia
+  request activa, por lo que el refresh de fondo podia fallar con
+  `RuntimeError: Working outside of request context` y dejar sin confirmar una
+  licencia ya emitida.
+
+### Que se cambio
+- `routes/main.py` ahora separa un perfil persistido reutilizable en
+  `_get_persisted_activation_customer_profile()`, construido desde configuracion
+  local y datos de licencia ya guardados.
+- `_get_current_user_contact_profile()` usa `has_request_context()` como
+  defensa y solo consulta `session` durante una peticion web real.
+- `_get_activation_customer_profile()` compone prioridades sin duplicar logica:
+  primero datos del formulario cuando existen, luego datos persistidos, y usa
+  datos del usuario autenticado solo como complemento dentro de request.
+- El refresh en background mantiene el flujo de checkout pendiente con solo
+  contexto de aplicacion y sin depender de `session`, `request` ni `flash`.
+- `tests/test_license_integration.py` suma regresiones para helpers sin request,
+  refresh con solo `app_context`, persistencia de email/codigo de vendedor y
+  el loop de auto-refresh sin sleeps reales.
+
+### Archivos modificados
+- `routes/main.py`
+- `tests/test_license_integration.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m pytest tests/test_license_integration.py tests/test_license_tiers.py` -> 183 passed.
+
+### Alcance
+- No se cambiaron reglas comerciales, Mercado Pago, Supabase remoto ni el SDK
+  `nexar_licencias`.
+- El fix solo separa correctamente las fuentes de datos entre request y
+  background para que la confirmacion automatica siga usando la licencia oficial
+  como unica autoridad.
+
 ## 2026-07-20 - Codex - fix/demo-admin-state-scan
 
 ### Tarea

@@ -19,7 +19,7 @@ from io import BytesIO, StringIO
 from pathlib import Path
 
 import database as db
-from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, Response, abort, current_app, flash, has_request_context, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.utils import secure_filename
 from licensing.planes import (
     PLANES,
@@ -794,7 +794,50 @@ def _get_license_holder_profile(license_info: dict[str, object] | None = None) -
     }
 
 
+def _get_persisted_activation_customer_profile(
+    config: dict[str, object] | None = None,
+    license_info: dict[str, object] | None = None,
+) -> dict[str, str]:
+    cfg = config or db.get_config()
+    info = license_info or {}
+    return {
+        "titular_nombre": _first_non_empty(
+            cfg.get("license_owner_name", ""),
+            info.get("owner_name", ""),
+            cfg.get("responsable", ""),
+            cfg.get("nombre_negocio", ""),
+        ),
+        "negocio": _first_non_empty(
+            cfg.get("nombre_negocio", ""),
+        ),
+        "email": _first_non_empty(
+            cfg.get("license_owner_email", ""),
+            info.get("owner_email", ""),
+            cfg.get("negocio_email", ""),
+            cfg.get("email_contacto", ""),
+        ).lower(),
+        "telefono": _first_non_empty(
+            cfg.get("license_owner_phone", ""),
+            info.get("owner_phone", ""),
+            cfg.get("telefono", ""),
+            cfg.get("telefono_contacto", ""),
+            cfg.get("whatsapp", ""),
+        ),
+        "codigo_vendedor": _normalize_vendor_code(
+            _first_non_empty(
+                cfg.get("license_vendor_code", ""),
+                cfg.get("codigo_vendedor", ""),
+                info.get("vendor_code", ""),
+                info.get("codigo_vendedor", ""),
+            )
+        ),
+        "palabra_recuperacion": str(cfg.get("license_recovery_word", "") or "").strip(),
+    }
+
+
 def _get_current_user_contact_profile() -> dict[str, str]:
+    if not has_request_context():
+        return {}
     user_id = session.get("user", {}).get("id")
     if not user_id:
         return {}
@@ -826,6 +869,7 @@ def _get_activation_customer_profile(
     cfg = db.get_config()
     license_info = license_info or {}
     data = form_data or {}
+    persisted_profile = _get_persisted_activation_customer_profile(cfg, license_info)
     user_profile = _get_current_user_contact_profile()
     rubro_actual = get_rubro_actual(cfg)
     rubro = normalizar_rubro(
@@ -841,43 +885,34 @@ def _get_activation_customer_profile(
         "titular_nombre": _first_non_empty(
             data.get("titular_nombre", ""),
             data.get("nombre", ""),
-            cfg.get("license_owner_name", ""),
-            license_info.get("owner_name", ""),
-            cfg.get("responsable", ""),
+            persisted_profile["titular_nombre"],
             user_profile.get("nombre_completo", ""),
-            cfg.get("nombre_negocio", ""),
         ),
         "negocio": _first_non_empty(
             data.get("negocio", ""),
             data.get("nombre_negocio", ""),
-            cfg.get("nombre_negocio", ""),
+            persisted_profile["negocio"],
         ),
         "email": _first_non_empty(
             data.get("email", ""),
             data.get("titular_email", ""),
-            cfg.get("license_owner_email", ""),
-            license_info.get("owner_email", ""),
+            persisted_profile["email"],
             user_profile.get("email", ""),
-            cfg.get("negocio_email", ""),
         ).lower(),
         "telefono": _first_non_empty(
             data.get("telefono", ""),
             data.get("titular_telefono", ""),
             data.get("whatsapp", ""),
-            cfg.get("license_owner_phone", ""),
-            license_info.get("owner_phone", ""),
-            cfg.get("telefono", ""),
+            persisted_profile["telefono"],
             user_profile.get("telefono", ""),
         ),
         "codigo_vendedor": _normalize_vendor_code(
             _first_non_empty(
                 data.get("codigo_vendedor", ""),
-                cfg.get("license_vendor_code", ""),
-                license_info.get("vendor_code", ""),
-                license_info.get("codigo_vendedor", ""),
+                persisted_profile["codigo_vendedor"],
             )
         ),
-        "palabra_recuperacion": str(cfg.get("license_recovery_word", "") or "").strip(),
+        "palabra_recuperacion": persisted_profile["palabra_recuperacion"],
         "rubro": rubro,
         "terms_accepted": str(cfg.get("license_terms_accepted_at", "") or "").strip() != "",
         "marketing_opt_in": _as_bool(data.get("marketing_opt_in", cfg.get("license_marketing_opt_in", "0"))),
