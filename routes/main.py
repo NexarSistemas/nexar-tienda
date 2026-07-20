@@ -56,6 +56,7 @@ from services.mercadopago_checkout import (
     get_price_for_plan,
     plan_supports_checkout,
 )
+from services import pricing_resolver
 from services.license_sdk import (
     get_current_hwid,
     get_license_debug_state,
@@ -606,12 +607,35 @@ def _format_display_date(value: object) -> str:
     return parsed.strftime("%d/%m/%Y")
 
 
-def _format_price_label(plan: str) -> str:
-    try:
-        price = get_price_for_plan(plan)
-    except MercadoPagoCheckoutError:
-        return ""
+def _format_price_label(plan: str, resolved_prices: dict[str, dict[str, object]] | None = None) -> str:
+    normalized_plan = normalize_plan(plan, default="")
+    if normalized_plan and resolved_prices and normalized_plan in resolved_prices:
+        price = int(resolved_prices[normalized_plan].get("monto") or 0)
+    else:
+        try:
+            price = get_price_for_plan(plan)
+        except MercadoPagoCheckoutError:
+            return ""
     return f"$ {price:,.0f}".replace(",", ".")
+
+
+def _resolve_mi_plan_price_labels(
+    plans: list[str] | tuple[str, ...] | set[str],
+    *,
+    producto: str | None = None,
+) -> dict[str, str]:
+    try:
+        resolved_prices = pricing_resolver.resolve_plan_prices(plans, producto=producto)
+    except ValueError:
+        resolved_prices = {}
+
+    labels: dict[str, str] = {}
+    for plan in plans:
+        normalized_plan = normalize_plan(plan, default="")
+        if not normalized_plan or normalized_plan in labels:
+            continue
+        labels[normalized_plan] = _format_price_label(normalized_plan, resolved_prices)
+    return labels
 
 
 def _format_limit_label(label: str, value: object) -> str:
@@ -688,10 +712,25 @@ def _build_mi_plan_view(
     if license_holder.get("codigo_vendedor"):
         summary_items.append({"label": "Codigo de vendedor", "value": license_holder["codigo_vendedor"]})
 
+    visible_price_plans: list[str] = [
+        str(action.get("plan", "") or "")
+        for action in plan_actions.get("acciones", [])
+    ]
+    if plan_actions.get("puede_renovar"):
+        visible_price_plans.append(str(plan_actions.get("plan_renovable", "") or ""))
+    visible_price_plans.extend(option["plan"] for option in get_commercial_plan_options())
+    price_labels = _resolve_mi_plan_price_labels(
+        visible_price_plans,
+        producto=get_license_product(),
+    )
+
     checkout_actions = []
     for action in plan_actions.get("acciones", []):
         action_copy = dict(action)
-        action_copy["price_label"] = _format_price_label(str(action_copy.get("plan", "")))
+        action_copy["price_label"] = price_labels.get(
+            normalize_plan(str(action_copy.get("plan", "") or ""), default=""),
+            "",
+        )
         checkout_actions.append(action_copy)
 
     renewal = {
@@ -703,6 +742,10 @@ def _build_mi_plan_view(
         "secondary_text": str(plan_actions.get("texto_auto_renovacion", "") or ""),
         "button_label": str(plan_actions.get("cta_renovacion", "") or "Renovar"),
         "highlighted": bool(plan_actions.get("renovacion_destacada")),
+        "price_label": price_labels.get(
+            normalize_plan(str(plan_actions.get("plan_renovable", "") or ""), default=""),
+            "",
+        ),
     }
 
     commercial_plans = []
@@ -712,7 +755,7 @@ def _build_mi_plan_view(
             "plan": plan,
             "plan_display": option["plan_display"],
             "modules_count": len(PLANES.get(plan, set())),
-            "price_label": _format_price_label(plan),
+            "price_label": price_labels.get(normalize_plan(plan, default=""), ""),
             "available_action": next((item for item in checkout_actions if item.get("plan") == plan), None),
         })
 
