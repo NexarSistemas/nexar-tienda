@@ -133,34 +133,55 @@ def fetch_supabase_prices(producto: str | None = None) -> dict[str, int] | None:
     return resolved or None
 
 
-def resolve_plan_price(plan: str, *, producto: str | None = None) -> dict[str, Any]:
-    normalized_plan = normalize_price_plan(plan)
+def resolve_plan_prices(
+    plans: list[str] | tuple[str, ...] | set[str],
+    *,
+    producto: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    normalized_plans: list[str] = []
     fallback_prices = get_default_price_map()
-    if normalized_plan not in fallback_prices:
-        raise ValueError("plan no soportado")
+    for plan in plans:
+        normalized_plan = normalize_price_plan(plan)
+        if not normalized_plan or normalized_plan not in fallback_prices or normalized_plan in normalized_plans:
+            continue
+        normalized_plans.append(normalized_plan)
+
+    if not normalized_plans:
+        return {}
+
+    selected_source = "fallback_local"
+    selected_prices = fallback_prices
 
     try:
         supabase_prices = fetch_supabase_prices(producto)
-        if supabase_prices and normalized_plan in supabase_prices:
-            set_runtime_price_cache(producto, supabase_prices)
-            return {
-                "plan": normalized_plan,
-                "monto": supabase_prices[normalized_plan],
-                "source": "supabase",
-            }
     except requests.RequestException:
-        pass
+        supabase_prices = None
+    else:
+        if supabase_prices:
+            set_runtime_price_cache(producto, supabase_prices)
+            if all(plan in supabase_prices for plan in normalized_plans):
+                selected_source = "supabase"
+                selected_prices = supabase_prices
 
-    runtime_prices = get_runtime_price_cache(producto)
-    if runtime_prices and normalized_plan in runtime_prices:
-        return {
-            "plan": normalized_plan,
-            "monto": runtime_prices[normalized_plan],
-            "source": "runtime",
-        }
+    if selected_source == "fallback_local":
+        runtime_prices = get_runtime_price_cache(producto)
+        if runtime_prices and all(plan in runtime_prices for plan in normalized_plans):
+            selected_source = "runtime"
+            selected_prices = runtime_prices
 
     return {
-        "plan": normalized_plan,
-        "monto": fallback_prices[normalized_plan],
-        "source": "fallback_local",
+        plan: {
+            "plan": plan,
+            "monto": int(selected_prices[plan]),
+            "source": selected_source,
+        }
+        for plan in normalized_plans
     }
+
+
+def resolve_plan_price(plan: str, *, producto: str | None = None) -> dict[str, Any]:
+    resolved_prices = resolve_plan_prices([plan], producto=producto)
+    normalized_plan = normalize_price_plan(plan)
+    if normalized_plan not in resolved_prices:
+        raise ValueError("plan no soportado")
+    return resolved_prices[normalized_plan]

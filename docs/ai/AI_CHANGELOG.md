@@ -2,6 +2,56 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-20 - Codex - fix/mi-plan-price-lookups
+
+### Tarea
+Implementar el Issue #127 para evitar consultas remotas repetidas al
+renderizar `Mi Plan` y cerrar el hallazgo pendiente del PR #123.
+
+### Diagnostico
+- `_build_mi_plan_view()` llamaba `_format_price_label()` dentro de loops para
+  acciones de checkout y otra vez para el listado de planes comerciales.
+- `_format_price_label()` usaba `get_price_for_plan()`, que podia entrar al
+  resolvedor central y consultar Supabase por cada plan antes de aplicar cache
+  o fallback.
+- Una sola carga de `/mi-plan` podia encadenar multiples timeouts seriales si
+  Supabase estaba lento o sin respuesta.
+
+### Que se cambio
+- `services/pricing_resolver.py` ahora expone `resolve_plan_prices(...)` para
+  resolver un conjunto de planes en una sola obtencion y devolver un mapa
+  reutilizable por plan.
+- La resolucion en lote mantiene precios centralizados, aliases actuales,
+  cache runtime y fallback local. Para evitar inconsistencias visuales, el
+  render usa una sola fuente por lote: Supabase si cubre todos los planes
+  pedidos, luego cache runtime si tambien los cubre, y finalmente fallback
+  local para todo el conjunto.
+- `routes/main.py` arma un mapa de etiquetas de precio una sola vez por render
+  de `/mi-plan` y lo reutiliza en `checkout_actions`, renovacion y
+  `commercial_plans`, sin consultas ocultas dentro de loops.
+- El checkout real sigue resolviendo el precio autorizado con
+  `get_price_for_plan()` al crear el contexto real de compra; la optimizacion
+  solo aplica a la visualizacion.
+- `tests/test_license_integration.py` y `tests/test_pricing_resolver.py`
+  agregan regresiones para una sola resolucion por render, consistencia visual,
+  fallback y separacion respecto del checkout real.
+
+### Archivos modificados
+- `services/pricing_resolver.py`
+- `routes/main.py`
+- `tests/test_license_integration.py`
+- `tests/test_pricing_resolver.py`
+- `docs/ai/AI_CHANGELOG.md`
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m pytest tests/test_license_integration.py tests/test_pricing_resolver.py tests/test_mercadopago_checkout.py` -> 182 passed.
+
+### Alcance
+- No se cambiaron importes comerciales, Supabase remoto, Mercado Pago, Nexar
+  Pagos ni `nexar_licencias`.
+- El cartel naranja de acciones del plan sigue fuera de alcance y no se corrige
+  en este cambio.
+
 ## 2026-07-20 - Codex - fix/license-background-refresh-context
 
 ### Tarea
