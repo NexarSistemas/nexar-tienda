@@ -1307,6 +1307,40 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertIn("Renovar FULL", text)
         self.assertNotIn("No se pudieron cargar las acciones del plan. Intenta refrescar la licencia.", text)
 
+    def test_mi_plan_full_por_vencer_renderiza_un_solo_aviso_equivalente(self):
+        app = self.app_module.create_app()
+        license_info = {
+            "plan": "FULL",
+            "plan_original": "FULL",
+            "plan_efectivo": "FULL",
+            "estado": "activa",
+            "expires_at": (date.today() + timedelta(days=3)).isoformat(),
+        }
+        with app.test_request_context("/mi-plan", method="GET"):
+            from flask import session
+
+            session["user"] = {"rol": "Administrador", "id": 1, "username": "admin"}
+            session["_csrf_token"] = "test"
+
+            with mock.patch.object(self.routes_main, "refresh_saved_license_online", return_value=(True, "Licencia actualizada.", license_info)), \
+                 mock.patch.object(self.routes_main.db, "get_license_info", return_value=license_info), \
+                 mock.patch.object(self.routes_main.db, "get_demo_status", return_value={"demo": False, "vencido": False, "dias_restantes": 0, "dias_demo": 14}), \
+                 mock.patch.object(self.routes_main, "get_modulos_activos", return_value=[]), \
+                 mock.patch.object(self.routes_main, "supabase_configured", return_value=True), \
+                 mock.patch.object(self.routes_main, "_get_license_holder_profile", return_value={"nombre": "", "email": "", "telefono": "", "codigo_vendedor": "", "palabra_recuperacion": ""}), \
+                 mock.patch.object(self.routes_main, "_get_checkout_pending_context", return_value={"pending": False}), \
+                 mock.patch.object(self.routes_main.pricing_resolver, "resolve_plan_prices", return_value={}):
+                text = self.routes_main.mi_plan()
+
+        self.assertEqual(text.count("Plan FULL por vencer"), 1)
+        self.assertEqual(text.count('id="license-expiry-alert"'), 1)
+        self.assertNotIn('id="license-status-alert"', text)
+        self.assertIn("Dias restantes", text)
+        self.assertIn("Refrescar licencia", text)
+        self.assertIn("Licencia actualizada.", text)
+        self.assertIn("Renovacion manual de FULL", text)
+        self.assertIn("Renovar ahora", text)
+
     def test_mi_plan_view_licencia_bloqueada_no_se_presenta_activa(self):
         for estado in ("suspendida", "bloqueada", "revocada", "anulada"):
             view = self._build_mi_plan_view_for_test({
