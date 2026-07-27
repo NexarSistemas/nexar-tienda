@@ -99,6 +99,21 @@ class ProductVariantsTests(unittest.TestCase):
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
+    def _crear_variante(self, producto_id, **overrides):
+        payload = {
+            "attributes": [{"attribute_name": "Color", "value_name": "Negro"}],
+            "sku": f"VAR-{producto_id}",
+            "codigo_barras": "",
+            "costo": 100,
+            "precio": 150,
+            "precio_promocional": None,
+            "stock_actual": 2,
+            "stock_minimo": 1,
+            "stock_maximo": 5,
+        }
+        payload.update(overrides)
+        return self.product_variants.create_variant(producto_id, **payload)
+
     def test_creacion_producto_comun_permanece_compatible(self):
         producto_id = self._crear_producto(descripcion="Producto comun", stock=8, costo=50, precio=90)
 
@@ -339,6 +354,424 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertEqual(stock_por_sku["BUZ-AZ"], 2.0)
         self.assertEqual(stock_por_sku["BUZ-GR"], 7.0)
         self.assertEqual(float(stock_base["stock_actual"] or 0), 15.0)
+
+    def test_update_variant_modifica_datos_y_asociaciones(self):
+        producto_id = self._crear_producto(descripcion="Producto editable")
+        variante_id = self._crear_variante(producto_id)
+
+        self.product_variants.update_variant(
+            producto_id,
+            variante_id,
+            attributes=[
+                {"attribute_name": "Material", "value_name": "Acero"},
+                {"attribute_name": "Terminacion", "value_name": "Mate"},
+            ],
+            sku="VAR-EDITADA",
+            codigo_barras="779000002001",
+            costo="120.50",
+            precio="210.75",
+            precio_promocional="199.90",
+            stock_actual="7",
+            stock_minimo="2",
+            stock_maximo="12",
+        )
+
+        variante = self.product_variants.list_product_variants(producto_id)[0]
+        self.assertEqual(variante["resumen_atributos"], "Material: Acero, Terminacion: Mate")
+        self.assertEqual(variante["sku"], "VAR-EDITADA")
+        self.assertEqual(variante["codigo_barras"], "779000002001")
+        self.assertEqual(variante["costo_propio"], 120.5)
+        self.assertEqual(variante["precio_propio"], 210.75)
+        self.assertEqual(variante["precio_promocional"], 199.9)
+        self.assertEqual(variante["stock_actual"], 7.0)
+        self.assertEqual(variante["stock_minimo"], 2.0)
+        self.assertEqual(variante["stock_maximo"], 12.0)
+
+    def test_set_variant_active_activa_y_desactiva(self):
+        producto_id = self._crear_producto(descripcion="Producto estado")
+        variante_id = self._crear_variante(producto_id)
+
+        self.product_variants.set_variant_active(producto_id, variante_id, False)
+        self.assertEqual(self.product_variants.list_product_variants(producto_id)[0]["activo"], 0)
+
+        self.product_variants.set_variant_active(producto_id, variante_id, True)
+        self.assertEqual(self.product_variants.list_product_variants(producto_id)[0]["activo"], 1)
+
+    def test_update_variant_rechaza_combinacion_duplicada(self):
+        producto_id = self._crear_producto(descripcion="Producto combinaciones")
+        primera_id = self._crear_variante(producto_id)
+        segunda_id = self._crear_variante(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="VAR-AZUL",
+        )
+
+        with self.assertRaisesRegex(ValueError, "combinacion de atributos ya existe"):
+            self.product_variants.update_variant(
+                producto_id,
+                segunda_id,
+                attributes=[{"attribute_name": "Color", "value_name": "Negro"}],
+                sku="VAR-AZUL",
+                stock_actual=2,
+                stock_minimo=1,
+                stock_maximo=5,
+            )
+
+        variantes = {item["id"]: item for item in self.product_variants.list_product_variants(producto_id)}
+        self.assertEqual(variantes[primera_id]["resumen_atributos"], "Color: Negro")
+        self.assertEqual(variantes[segunda_id]["resumen_atributos"], "Color: Azul")
+
+    def test_update_variant_rechaza_sku_duplicado(self):
+        producto_id = self._crear_producto(descripcion="Producto SKU")
+        self._crear_variante(producto_id, sku="SKU-UNO")
+        segunda_id = self._crear_variante(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="SKU-DOS",
+        )
+
+        with self.assertRaisesRegex(ValueError, "SKU de la variante ya existe"):
+            self.product_variants.update_variant(
+                producto_id,
+                segunda_id,
+                attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+                sku="SKU-UNO",
+                stock_actual=2,
+                stock_minimo=1,
+                stock_maximo=5,
+            )
+
+    def test_update_variant_rechaza_codigo_barras_duplicado(self):
+        producto_id = self._crear_producto(descripcion="Producto barras")
+        self._crear_variante(producto_id, sku="BAR-UNO", codigo_barras="779000002002")
+        segunda_id = self._crear_variante(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="BAR-DOS",
+            codigo_barras="779000002003",
+        )
+
+        with self.assertRaisesRegex(ValueError, "otra variante con ese codigo de barras"):
+            self.product_variants.update_variant(
+                producto_id,
+                segunda_id,
+                attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+                sku="BAR-DOS",
+                codigo_barras="779000002002",
+                stock_actual=2,
+                stock_minimo=1,
+                stock_maximo=5,
+            )
+
+    def test_update_variant_rechaza_atributos_dinero_y_stock_invalidos(self):
+        producto_id = self._crear_producto(descripcion="Producto validaciones")
+        variante_id = self._crear_variante(producto_id)
+        invalid_cases = (
+            (
+                {"attributes": [{"attribute_name": "Color", "value_name": ""}]},
+                "Cada variante debe completar atributo y valor",
+            ),
+            (
+                {
+                    "attributes": [
+                        {"attribute_name": "Color", "value_name": "Negro"},
+                        {"attribute_name": " color ", "value_name": "Azul"},
+                    ]
+                },
+                "No se puede repetir el mismo atributo",
+            ),
+            ({"costo": "-1"}, "costo no puede ser negativo"),
+            ({"precio": "NaN"}, "precio debe ser un numero finito"),
+            ({"precio_promocional": "invalido"}, "precio promocional debe ser numerico"),
+            ({"stock_actual": "-1"}, "stock actual no puede ser negativo"),
+        )
+        base = {
+            "attributes": [{"attribute_name": "Color", "value_name": "Negro"}],
+            "sku": "VAR-VALIDA",
+            "stock_actual": 2,
+            "stock_minimo": 1,
+            "stock_maximo": 5,
+        }
+
+        for overrides, message in invalid_cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    self.product_variants.update_variant(
+                        producto_id,
+                        variante_id,
+                        **{**base, **overrides},
+                    )
+
+        variante = self.product_variants.list_product_variants(producto_id)[0]
+        self.assertEqual(variante["sku"], f"VAR-{producto_id}")
+        self.assertEqual(variante["resumen_atributos"], "Color: Negro")
+
+    def test_operaciones_rechazan_variante_de_otro_producto(self):
+        producto_a = self._crear_producto(descripcion="Producto A")
+        producto_b = self._crear_producto(descripcion="Producto B")
+        variante_id = self._crear_variante(producto_a)
+
+        with self.assertRaisesRegex(ValueError, "no pertenece al producto"):
+            self.product_variants.update_variant(
+                producto_b,
+                variante_id,
+                sku="AJENA",
+                stock_actual=0,
+                stock_minimo=0,
+                stock_maximo=0,
+            )
+        with self.assertRaisesRegex(ValueError, "no pertenece al producto"):
+            self.product_variants.set_variant_active(producto_b, variante_id, False)
+        with self.assertRaisesRegex(ValueError, "no pertenece al producto"):
+            self.product_variants.delete_variant(producto_b, variante_id)
+
+        self.assertIsNotNone(
+            self.database.q("SELECT id FROM producto_variantes WHERE id=?", (variante_id,), fetchone=True)
+        )
+
+    def test_delete_variant_sin_referencias_elimina_dependencias_propias(self):
+        producto_id = self._crear_producto(descripcion="Producto eliminable")
+        variante_id = self._crear_variante(producto_id)
+
+        result = self.product_variants.delete_variant(producto_id, variante_id)
+
+        self.assertTrue(result["deleted"])
+        self.assertIsNone(
+            self.database.q("SELECT id FROM producto_variantes WHERE id=?", (variante_id,), fetchone=True)
+        )
+        self.assertIsNone(
+            self.database.q(
+                "SELECT id FROM producto_variante_valores WHERE variante_id=?",
+                (variante_id,),
+                fetchone=True,
+            )
+        )
+        self.assertIsNone(
+            self.database.q("SELECT id FROM stock_variantes WHERE variante_id=?", (variante_id,), fetchone=True)
+        )
+
+    def test_delete_variant_referenciada_la_desactiva_sin_borrarla(self):
+        producto_id = self._crear_producto(descripcion="Producto con historial")
+        variante_id = self._crear_variante(producto_id)
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+        conn.execute(
+            """
+            CREATE TABLE historial_variante_test (
+                id INTEGER PRIMARY KEY,
+                variante_id INTEGER NOT NULL REFERENCES producto_variantes(id) ON DELETE RESTRICT
+            )
+            """
+        )
+        conn.execute("INSERT INTO historial_variante_test (variante_id) VALUES (?)", (variante_id,))
+        conn.commit()
+
+        result = self.product_variants.delete_variant(producto_id, variante_id)
+
+        self.assertFalse(result["deleted"])
+        self.assertEqual(result["references"], ["historial_variante_test"])
+        variante = self.database.q(
+            "SELECT activo FROM producto_variantes WHERE id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+        historial = self.database.q(
+            "SELECT variante_id FROM historial_variante_test WHERE variante_id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+        self.assertEqual(int(variante["activo"]), 0)
+        self.assertEqual(int(historial["variante_id"]), variante_id)
+
+    def test_update_variant_hace_rollback_ante_fallo_intermedio(self):
+        producto_id = self._crear_producto(descripcion="Producto rollback")
+        variante_id = self._crear_variante(producto_id, sku="ROLLBACK-ORIGINAL")
+
+        with mock.patch.object(
+            self.product_variants,
+            "_insert_variant_attribute_values",
+            side_effect=RuntimeError("fallo-edicion-intermedia"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "fallo-edicion-intermedia"):
+                self.product_variants.update_variant(
+                    producto_id,
+                    variante_id,
+                    attributes=[{"attribute_name": "Material", "value_name": "Madera"}],
+                    sku="ROLLBACK-NUEVO",
+                    precio=999,
+                    stock_actual=99,
+                    stock_minimo=1,
+                    stock_maximo=100,
+                )
+
+        variante = self.product_variants.list_product_variants(producto_id)[0]
+        self.assertEqual(variante["sku"], "ROLLBACK-ORIGINAL")
+        self.assertEqual(variante["resumen_atributos"], "Color: Negro")
+        self.assertEqual(variante["precio"], 150.0)
+        self.assertEqual(variante["stock_actual"], 2.0)
+        self.assertFalse(
+            any(item["nombre"] == "Material" for item in self.product_variants.list_attributes_catalog())
+        )
+
+    def test_rutas_gestion_exigen_csrf(self):
+        producto_id = self._crear_producto(descripcion="Producto CSRF gestion")
+        variante_id = self._crear_variante(producto_id)
+        paths = (
+            (f"/productos/{producto_id}/variantes/{variante_id}/editar", {}),
+            (f"/productos/{producto_id}/variantes/{variante_id}/estado", {"activo": "0"}),
+            (f"/productos/{producto_id}/variantes/{variante_id}/eliminar", {}),
+        )
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            for path, data in paths:
+                with self.subTest(path=path):
+                    response = client.post(path, data=data, follow_redirects=False)
+                    self.assertEqual(response.status_code, 400)
+
+        self.assertIsNotNone(
+            self.database.q("SELECT id FROM producto_variantes WHERE id=?", (variante_id,), fetchone=True)
+        )
+
+    def test_gestion_renderiza_controles_accesibles(self):
+        producto_id = self._crear_producto(descripcion="Producto UI")
+        variante_id = self._crear_variante(producto_id, sku="UI-VAR")
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.get(f"/productos/{producto_id}/variantes")
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn(f'id="editarVariante{variante_id}"', html)
+        self.assertIn("Guardar cambios", html)
+        self.assertIn("Desactivar", html)
+        self.assertIn(f'aria-label="Eliminar variante Color: Negro"', html)
+
+    def test_ruta_edicion_invalida_conserva_datos_ingresados_sin_persistir(self):
+        producto_id = self._crear_producto(descripcion="Producto formulario")
+        variante_id = self._crear_variante(producto_id, sku="FORM-ORIGINAL")
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.post(
+                f"/productos/{producto_id}/variantes/{variante_id}/editar",
+                data={
+                    "csrf_token": "test-token",
+                    "attribute_name[]": ["Material"],
+                    "value_name[]": ["Intento"],
+                    "sku": "FORM-INTENTO",
+                    "precio": "no-numerico",
+                    "stock_actual": "2",
+                    "stock_minimo": "1",
+                    "stock_maximo": "5",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 400)
+        html = response.get_data(as_text=True)
+        self.assertIn('value="FORM-INTENTO"', html)
+        self.assertIn('value="Material"', html)
+        self.assertIn(f'id="editarVariante{variante_id}"', html)
+        self.assertIn("collapse show", html)
+        variante = self.product_variants.list_product_variants(producto_id)[0]
+        self.assertEqual(variante["sku"], "FORM-ORIGINAL")
+        self.assertEqual(variante["resumen_atributos"], "Color: Negro")
+
+    def test_rutas_gestion_bloquean_vendedor(self):
+        producto_id = self._crear_producto(descripcion="Producto permisos")
+        variante_id = self._crear_variante(producto_id)
+        self.database.add_usuario(
+            "vendedor",
+            "1234",
+            "vendedor",
+            "Vendedor Test",
+            security_question="color",
+            security_answer="azul",
+        )
+        vendedor = self.database.q(
+            "SELECT id, username, rol FROM usuarios WHERE username='vendedor'",
+            fetchone=True,
+        )
+        paths = (
+            (f"/productos/{producto_id}/variantes/{variante_id}/editar", {}),
+            (f"/productos/{producto_id}/variantes/{variante_id}/estado", {"activo": "0"}),
+            (f"/productos/{producto_id}/variantes/{variante_id}/eliminar", {}),
+        )
+        with self.app.test_client() as client:
+            with client.session_transaction() as session:
+                session["_csrf_token"] = "test-token"
+                session["user"] = {
+                    "id": int(vendedor["id"]),
+                    "username": vendedor["username"],
+                    "rol": vendedor["rol"],
+                }
+            for path, data in paths:
+                with self.subTest(path=path):
+                    response = client.post(
+                        path,
+                        data={**data, "csrf_token": "test-token"},
+                        follow_redirects=False,
+                    )
+                    self.assertEqual(response.status_code, 302)
+                    self.assertEqual(response.headers["Location"], "/")
+
+        variante = self.product_variants.list_product_variants(producto_id)[0]
+        self.assertEqual(variante["activo"], 1)
+        self.assertEqual(variante["sku"], f"VAR-{producto_id}")
+
+    def test_rutas_registran_edicion_estado_y_eliminacion(self):
+        producto_id = self._crear_producto(descripcion="Producto auditable")
+        variante_edicion = self._crear_variante(producto_id, sku="AUD-EDIT")
+        variante_eliminacion = self._crear_variante(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="AUD-DELETE",
+        )
+        edit_data = {
+            "csrf_token": "test-token",
+            "attribute_name[]": ["Color"],
+            "value_name[]": ["Verde"],
+            "sku": "AUD-EDITADA",
+            "stock_actual": "2",
+            "stock_minimo": "1",
+            "stock_maximo": "5",
+            "costo": "100",
+            "precio": "150",
+        }
+
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            edit_response = client.post(
+                f"/productos/{producto_id}/variantes/{variante_edicion}/editar",
+                data=edit_data,
+                follow_redirects=False,
+            )
+            state_response = client.post(
+                f"/productos/{producto_id}/variantes/{variante_edicion}/estado",
+                data={"csrf_token": "test-token", "activo": "0"},
+                follow_redirects=False,
+            )
+            delete_response = client.post(
+                f"/productos/{producto_id}/variantes/{variante_eliminacion}/eliminar",
+                data={"csrf_token": "test-token"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(edit_response.status_code, 302)
+        self.assertEqual(state_response.status_code, 302)
+        self.assertEqual(delete_response.status_code, 302)
+        acciones = {
+            row["accion"]
+            for row in self.database.q(
+                """
+                SELECT accion
+                FROM auditoria
+                WHERE entidad='producto_variante'
+                """
+            )
+        }
+        self.assertIn("EDICION_VARIANTE_PRODUCTO", acciones)
+        self.assertIn("DESACTIVACION_VARIANTE_PRODUCTO", acciones)
+        self.assertIn("ELIMINACION_VARIANTE_PRODUCTO", acciones)
 
     def test_migracion_sobre_base_existente_conserva_datos(self):
         legacy_db = Path(self.temp_dir.name) / "legacy_tienda.db"

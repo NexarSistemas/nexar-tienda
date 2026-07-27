@@ -45,9 +45,23 @@ El dominio usa nombres internos genéricos y agrega `external_id` opcional en
 las entidades nuevas, pero no acopla el modelo al formato JSON de ningún
 proveedor externo.
 
+## Gestión incorporada en el Issue #144
+
+- Edición atómica de atributos, valores, SKU, código de barras, costo, precios
+  y stock configurado de una variante.
+- Activación y desactivación explícitas desde la ficha del producto.
+- Eliminación física cuando solo existen las dependencias propias de la
+  variante.
+- Desactivación segura cuando una relación externa conserva referencias a la
+  variante.
+- Validaciones de servidor, permisos, CSRF y auditoría con las convenciones
+  existentes.
+
+Estas acciones no cambian la fuente de verdad legacy ni habilitan todavía
+variantes en POS, compras, movimientos o reportes.
+
 ## Pendientes para una fase siguiente
 
 - Resolver variante efectiva en POS, compras, stock, reportes e importación.
 - Definir sincronización controlada entre producto base legacy y variantes.
 - Implementar adaptadores externos hacia Tiendanube u otras plataformas.
-- Evaluar edición y desactivación de variantes ya creadas.

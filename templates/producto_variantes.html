@@ -56,7 +56,7 @@
                         </div>
 
                         <div class="d-grid mb-3">
-                            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnAddAttributeRow">
+                            <button type="button" class="btn btn-outline-secondary btn-sm js-add-attribute-row" data-target="attributeRows">
                                 <i class="fas fa-plus me-1"></i>Agregar atributo
                             </button>
                         </div>
@@ -156,11 +156,15 @@
                                     <th>Precio</th>
                                     <th>Stock</th>
                                     <th>Estado</th>
+                                    <th class="text-end">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for variante in variantes %}
-                                <tr>
+                                {% set failed_edit = editing_variant_id == variante.id %}
+                                {% set edit_values = edit_form_data if failed_edit else {} %}
+                                {% set edit_attributes = edit_values.get('attributes', variante.atributos) %}
+                                <tr id="variante-{{ variante.id }}">
                                     <td>
                                         <strong>{{ variante.nombre }}</strong>
                                         {% if variante.precio_promocional is not none %}
@@ -177,6 +181,124 @@
                                         {% else %}
                                         <span class="badge bg-secondary">Inactiva</span>
                                         {% endif %}
+                                    </td>
+                                    <td class="text-end text-nowrap">
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm btn-outline-primary"
+                                            data-bs-toggle="collapse"
+                                            data-bs-target="#editarVariante{{ variante.id }}"
+                                            aria-expanded="false"
+                                            aria-controls="editarVariante{{ variante.id }}"
+                                        >
+                                            <i class="fas fa-edit me-1"></i>Editar
+                                        </button>
+                                        <form method="POST" action="{{ url_for('producto_variante_estado', pid=producto['id'], variant_id=variante.id) }}" class="d-inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <input type="hidden" name="activo" value="{{ 0 if variante.activo else 1 }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                                {% if variante.activo %}
+                                                <i class="fas fa-pause me-1"></i>Desactivar
+                                                {% else %}
+                                                <i class="fas fa-play me-1"></i>Activar
+                                                {% endif %}
+                                            </button>
+                                        </form>
+                                        <form
+                                            method="POST"
+                                            action="{{ url_for('producto_variante_eliminar', pid=producto['id'], variant_id=variante.id) }}"
+                                            class="d-inline"
+                                            onsubmit="return confirm('¿Eliminar esta variante? Si tiene historial asociado, se desactivará.');"
+                                        >
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" aria-label="Eliminar variante {{ variante.nombre }}">
+                                                <i class="fas fa-trash me-1"></i>Eliminar
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                <tr class="collapse{% if failed_edit %} show{% endif %}" id="editarVariante{{ variante.id }}">
+                                    <td colspan="7" class="bg-light">
+                                        <form method="POST" action="{{ url_for('producto_variante_editar', pid=producto['id'], variant_id=variante.id) }}" class="p-3">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <h6 class="mb-3">Editar {{ variante.nombre }}</h6>
+                                            <div id="attributeRows{{ variante.id }}">
+                                                {% if edit_attributes %}
+                                                    {% for atributo in edit_attributes %}
+                                                    <div class="row g-2 mb-2 attribute-row">
+                                                        <div class="col-5">
+                                                            <label for="atributo_{{ variante.id }}_{{ loop.index }}" class="form-label">Atributo</label>
+                                                            <input type="text" id="atributo_{{ variante.id }}_{{ loop.index }}" name="attribute_name[]" class="form-control" value="{{ atributo.get('attribute_name', '') }}" required>
+                                                        </div>
+                                                        <div class="col-5">
+                                                            <label for="valor_{{ variante.id }}_{{ loop.index }}" class="form-label">Valor</label>
+                                                            <input type="text" id="valor_{{ variante.id }}_{{ loop.index }}" name="value_name[]" class="form-control" value="{{ atributo.get('value_name', '') }}" required>
+                                                        </div>
+                                                        <div class="col-2 d-flex align-items-end">
+                                                            <button type="button" class="btn btn-outline-danger js-remove-row" aria-label="Quitar atributo">
+                                                                <i class="fas fa-times"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    {% endfor %}
+                                                {% else %}
+                                                    <div class="row g-2 mb-2 attribute-row">
+                                                        <div class="col-5">
+                                                            <label for="atributo_{{ variante.id }}_1" class="form-label">Atributo</label>
+                                                            <input type="text" id="atributo_{{ variante.id }}_1" name="attribute_name[]" class="form-control">
+                                                        </div>
+                                                        <div class="col-5">
+                                                            <label for="valor_{{ variante.id }}_1" class="form-label">Valor</label>
+                                                            <input type="text" id="valor_{{ variante.id }}_1" name="value_name[]" class="form-control">
+                                                        </div>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm js-add-attribute-row mb-3" data-target="attributeRows{{ variante.id }}">
+                                                <i class="fas fa-plus me-1"></i>Agregar atributo
+                                            </button>
+
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <label for="sku_{{ variante.id }}" class="form-label">SKU / código interno</label>
+                                                    <input type="text" id="sku_{{ variante.id }}" name="sku" class="form-control" value="{{ edit_values.get('sku', variante.sku) }}">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label for="codigo_barras_{{ variante.id }}" class="form-label">Código de barras</label>
+                                                    <input type="text" id="codigo_barras_{{ variante.id }}" name="codigo_barras" class="form-control" value="{{ edit_values.get('codigo_barras', variante.codigo_barras) }}">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label for="costo_{{ variante.id }}" class="form-label">Costo</label>
+                                                    <input type="number" id="costo_{{ variante.id }}" name="costo" class="form-control" step="0.01" min="0" value="{{ edit_values.get('costo', '' if variante.costo_propio is none else variante.costo_propio) }}">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label for="precio_{{ variante.id }}" class="form-label">Precio</label>
+                                                    <input type="number" id="precio_{{ variante.id }}" name="precio" class="form-control" step="0.01" min="0" value="{{ edit_values.get('precio', '' if variante.precio_propio is none else variante.precio_propio) }}">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label for="precio_promocional_{{ variante.id }}" class="form-label">Precio promocional</label>
+                                                    <input type="number" id="precio_promocional_{{ variante.id }}" name="precio_promocional" class="form-control" step="0.01" min="0" value="{{ edit_values.get('precio_promocional', '' if variante.precio_promocional is none else variante.precio_promocional) }}">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label for="stock_actual_{{ variante.id }}" class="form-label">Stock actual</label>
+                                                    <input type="number" id="stock_actual_{{ variante.id }}" name="stock_actual" class="form-control" step="0.01" min="0" value="{{ edit_values.get('stock_actual', variante.stock_actual) }}">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label for="stock_minimo_{{ variante.id }}" class="form-label">Stock mínimo</label>
+                                                    <input type="number" id="stock_minimo_{{ variante.id }}" name="stock_minimo" class="form-control" step="0.01" min="0" value="{{ edit_values.get('stock_minimo', variante.stock_minimo) }}">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label for="stock_maximo_{{ variante.id }}" class="form-label">Stock máximo</label>
+                                                    <input type="number" id="stock_maximo_{{ variante.id }}" name="stock_maximo" class="form-control" step="0.01" min="0" value="{{ edit_values.get('stock_maximo', variante.stock_maximo) }}">
+                                                </div>
+                                            </div>
+                                            <div class="d-flex justify-content-end gap-2 mt-3">
+                                                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#editarVariante{{ variante.id }}">Cancelar</button>
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-save me-1"></i>Guardar cambios
+                                                </button>
+                                            </div>
+                                        </form>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -199,33 +321,32 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const addRowButton = document.getElementById('btnAddAttributeRow');
-    const rowsContainer = document.getElementById('attributeRows');
-
-    if (!addRowButton || !rowsContainer) {
-        return;
-    }
-
-    addRowButton.addEventListener('click', function () {
-        const row = document.createElement('div');
-        row.className = 'row g-2 mb-2 attribute-row';
-        row.innerHTML = `
-            <div class="col-5">
-                <input type="text" name="attribute_name[]" class="form-control" placeholder="Ej: Medida">
-            </div>
-            <div class="col-5">
-                <input type="text" name="value_name[]" class="form-control" placeholder="Ej: 10 mm">
-            </div>
-            <div class="col-2 d-grid">
-                <button type="button" class="btn btn-outline-danger btn-sm js-remove-row">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-        `;
-        rowsContainer.appendChild(row);
+    document.querySelectorAll('.js-add-attribute-row').forEach(function (addRowButton) {
+        addRowButton.addEventListener('click', function () {
+            const rowsContainer = document.getElementById(addRowButton.dataset.target);
+            if (!rowsContainer) {
+                return;
+            }
+            const row = document.createElement('div');
+            row.className = 'row g-2 mb-2 attribute-row';
+            row.innerHTML = `
+                <div class="col-5">
+                    <input type="text" name="attribute_name[]" class="form-control" placeholder="Ej: Medida">
+                </div>
+                <div class="col-5">
+                    <input type="text" name="value_name[]" class="form-control" placeholder="Ej: 10 mm">
+                </div>
+                <div class="col-2 d-grid">
+                    <button type="button" class="btn btn-outline-danger btn-sm js-remove-row">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+            rowsContainer.appendChild(row);
+        });
     });
 
-    rowsContainer.addEventListener('click', function (event) {
+    document.addEventListener('click', function (event) {
         const button = event.target.closest('.js-remove-row');
         if (!button) {
             return;
