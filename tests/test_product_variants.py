@@ -94,6 +94,11 @@ class ProductVariantsTests(unittest.TestCase):
             row = self.database.q(f"SELECT COUNT(*) AS total FROM {tabla}", fetchone=True)
             self.assertEqual(int(row["total"] or 0), 0, f"La tabla {tabla} quedo con filas parciales")
 
+    def _direct_conn(self):
+        conn = sqlite3.connect(self.database.DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+
     def test_creacion_producto_comun_permanece_compatible(self):
         producto_id = self._crear_producto(descripcion="Producto comun", stock=8, costo=50, precio=90)
 
@@ -451,6 +456,218 @@ class ProductVariantsTests(unittest.TestCase):
         variantes = self.product_variants.list_product_variants(producto_id)
         self.assertEqual(len(variantes), 2)
         self.assertEqual([item["codigo_barras"] for item in variantes], ["", ""])
+
+    def test_sqlite_rechaza_insercion_directa_de_variante_con_codigo_de_producto(self):
+        producto_id = self._crear_producto(descripcion="Legacy directo", codigo_barras="779000001000")
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "producto"):
+            conn.execute(
+                """
+                INSERT INTO producto_variantes
+                (producto_id, combination_key, nombre, sku, codigo_barras, activo)
+                VALUES (?,?,?,?,?,1)
+                """,
+                (producto_id, "direct-a", "Directa A", "DIR-A", "779000001000"),
+            )
+
+    def test_sqlite_rechaza_insercion_directa_de_producto_con_codigo_de_variante(self):
+        producto_id = self._crear_producto(descripcion="Base variante")
+        self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Rojo"}],
+            sku="BASE-ROJ",
+            codigo_barras="779000001001",
+        )
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "variante"):
+            conn.execute(
+                """
+                INSERT INTO productos
+                (codigo_interno, codigo_barras, descripcion, categoria, unidad, costo, precio_venta, iva, activo)
+                VALUES (?,?,?,?,?,?,?,?,1)
+                """,
+                ("PRD-DIR-001", "779000001001", "Producto directo", "General", "unidad", 10, 20, "21%"),
+            )
+
+    def test_sqlite_rechaza_update_de_producto_hacia_codigo_de_variante(self):
+        producto_a = self._crear_producto(descripcion="Producto A")
+        producto_b = self._crear_producto(descripcion="Producto B")
+        self.product_variants.create_variant(
+            producto_a,
+            attributes=[{"attribute_name": "Color", "value_name": "Negro"}],
+            sku="A-NEG",
+            codigo_barras="779000001002",
+        )
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "variante"):
+            conn.execute("UPDATE productos SET codigo_barras=? WHERE id=?", ("779000001002", producto_b))
+
+    def test_sqlite_rechaza_update_de_variante_hacia_codigo_de_producto(self):
+        self._crear_producto(descripcion="Producto C", codigo_barras="779000001003")
+        producto_b = self._crear_producto(descripcion="Producto D")
+        variante_id = self.product_variants.create_variant(
+            producto_b,
+            attributes=[{"attribute_name": "Color", "value_name": "Blanco"}],
+            sku="D-BLA",
+            codigo_barras="779000001004",
+        )
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "producto"):
+            conn.execute("UPDATE producto_variantes SET codigo_barras=? WHERE id=?", ("779000001003", variante_id))
+
+    def test_sqlite_rechaza_duplicado_directo_entre_productos(self):
+        producto_id = self._crear_producto(descripcion="Legacy 1", codigo_barras="779000001005")
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute(
+                """
+                INSERT INTO productos
+                (codigo_interno, codigo_barras, descripcion, categoria, unidad, costo, precio_venta, iva, activo)
+                VALUES (?,?,?,?,?,?,?,?,1)
+                """,
+                ("PRD-DIR-002", "779000001005", "Legacy 2", "General", "unidad", 10, 20, "21%"),
+            )
+        self.assertIsNotNone(self.database.get_producto(producto_id))
+
+    def test_sqlite_rechaza_duplicado_directo_entre_variantes(self):
+        producto_id = self._crear_producto(descripcion="Base duplicado")
+        self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="BD-AZ",
+            codigo_barras="779000001006",
+        )
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute(
+                """
+                INSERT INTO producto_variantes
+                (producto_id, combination_key, nombre, sku, codigo_barras, activo)
+                VALUES (?,?,?,?,?,1)
+                """,
+                (producto_id, "direct-b", "Directa B", "DIR-B", "779000001006"),
+            )
+
+    def test_sqlite_permita_null_y_vacio_segun_politica(self):
+        producto_id = self._crear_producto(descripcion="Base nulos")
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+
+        conn.execute(
+            """
+            INSERT INTO producto_variantes
+            (producto_id, combination_key, nombre, sku, codigo_barras, activo)
+            VALUES (?,?,?,?,?,1)
+            """,
+            (producto_id, "direct-null", "Directa Null", "DIR-NULL", None),
+        )
+        conn.execute(
+            """
+            INSERT INTO producto_variantes
+            (producto_id, combination_key, nombre, sku, codigo_barras, activo)
+            VALUES (?,?,?,?,?,1)
+            """,
+            (producto_id, "direct-empty", "Directa Empty", "DIR-EMPTY", "   "),
+        )
+        conn.execute(
+            """
+            INSERT INTO productos
+            (codigo_interno, codigo_barras, descripcion, categoria, unidad, costo, precio_venta, iva, activo)
+            VALUES (?,?,?,?,?,?,?,?,1)
+            """,
+            ("PRD-DIR-003", "", "Legacy vacio", "General", "unidad", 10, 20, "21%"),
+        )
+        conn.commit()
+
+    def test_sqlite_permite_update_conservando_codigo_propio(self):
+        legacy_id = self._crear_producto(descripcion="Legacy propio", codigo_barras="779000001007")
+        producto_id = self._crear_producto(descripcion="Base propia")
+        variante_id = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Verde"}],
+            sku="BP-VER",
+            codigo_barras="779000001008",
+        )
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+
+        conn.execute("UPDATE productos SET codigo_barras=? WHERE id=?", ("779000001007", legacy_id))
+        conn.execute("UPDATE producto_variantes SET codigo_barras=? WHERE id=?", ("779000001008", variante_id))
+        conn.commit()
+
+    def test_init_db_detecta_conflicto_previo_sin_borrar_datos(self):
+        legacy_db = Path(self.temp_dir.name) / "legacy_conflicto_tienda.db"
+        conn = sqlite3.connect(legacy_db)
+        conn.execute(
+            """
+            CREATE TABLE productos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo_interno TEXT UNIQUE NOT NULL,
+                codigo_barras TEXT DEFAULT '',
+                descripcion TEXT NOT NULL,
+                categoria TEXT DEFAULT '',
+                unidad TEXT DEFAULT 'unidad',
+                por_peso INTEGER DEFAULT 0,
+                costo REAL DEFAULT 0,
+                precio_venta REAL DEFAULT 0,
+                iva TEXT DEFAULT '21%',
+                activo INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE producto_variantes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                producto_id INTEGER NOT NULL,
+                combination_key TEXT NOT NULL,
+                nombre TEXT DEFAULT '',
+                sku TEXT DEFAULT NULL,
+                codigo_barras TEXT DEFAULT '',
+                costo REAL DEFAULT NULL,
+                precio REAL DEFAULT NULL,
+                precio_promocional REAL DEFAULT NULL,
+                activo INTEGER DEFAULT 1,
+                external_id TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO productos (codigo_interno, codigo_barras, descripcion, categoria, costo, precio_venta) VALUES ('PRD-CONFLICTO', '779000001009', 'Legacy conflicto', 'General', 10, 20)"
+        )
+        conn.execute(
+            "INSERT INTO producto_variantes (producto_id, combination_key, nombre, sku, codigo_barras, activo) VALUES (1, 'conflict', 'Variante conflicto', 'VAR-CONFLICTO', '779000001009', 1)"
+        )
+        conn.commit()
+        conn.close()
+
+        self.database.DB_PATH = str(legacy_db)
+        self.database._db_initialized = False
+
+        with self.assertRaisesRegex(RuntimeError, "compartidos entre productos y variantes"):
+            self.database.init_db()
+
+        verify_conn = sqlite3.connect(legacy_db)
+        total_productos = verify_conn.execute("SELECT COUNT(*) FROM productos").fetchone()[0]
+        total_variantes = verify_conn.execute("SELECT COUNT(*) FROM producto_variantes").fetchone()[0]
+        verify_conn.close()
+        self.assertEqual(total_productos, 1)
+        self.assertEqual(total_variantes, 1)
 
 
 if __name__ == "__main__":
