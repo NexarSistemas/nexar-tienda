@@ -33,6 +33,7 @@
                 </div>
                 <div class="card-body">
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div id="attributeRows">
                             <div class="row g-2 mb-2 attribute-row">
                                 <div class="col-6">

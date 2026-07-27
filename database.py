@@ -1029,7 +1029,52 @@ def init_db():
     c.execute("CREATE INDEX IF NOT EXISTS idx_facturas_proveedores_compra_id ON facturas_proveedores(compra_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_producto_atributo_valores_atributo ON producto_atributo_valores(atributo_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_producto_variantes_producto ON producto_variantes(producto_id)")
+    duplicate_variant_barcodes = c.execute(
+        """
+        SELECT TRIM(COALESCE(codigo_barras, '')) AS codigo, COUNT(*) AS total
+        FROM producto_variantes
+        WHERE TRIM(COALESCE(codigo_barras, '')) <> ''
+        GROUP BY TRIM(COALESCE(codigo_barras, ''))
+        HAVING COUNT(*) > 1
+        ORDER BY codigo
+        LIMIT 3
+        """
+    ).fetchall()
+    if duplicate_variant_barcodes:
+        codigos = ", ".join(row["codigo"] for row in duplicate_variant_barcodes)
+        raise RuntimeError(
+            f"No se pudo aplicar la unicidad de codigo_barras en variantes. Existen duplicados previos: {codigos}."
+        )
+    duplicate_catalog_barcodes = c.execute(
+        """
+        SELECT p.codigo
+        FROM (
+            SELECT TRIM(COALESCE(codigo_barras, '')) AS codigo
+            FROM productos
+            WHERE TRIM(COALESCE(codigo_barras, '')) <> ''
+        ) p
+        INNER JOIN (
+            SELECT TRIM(COALESCE(codigo_barras, '')) AS codigo
+            FROM producto_variantes
+            WHERE TRIM(COALESCE(codigo_barras, '')) <> ''
+        ) v ON v.codigo = p.codigo
+        ORDER BY p.codigo
+        LIMIT 3
+        """
+    ).fetchall()
+    if duplicate_catalog_barcodes:
+        codigos = ", ".join(row["codigo"] for row in duplicate_catalog_barcodes)
+        raise RuntimeError(
+            f"Se detectaron codigo_barras compartidos entre productos y variantes: {codigos}."
+        )
     c.execute("CREATE INDEX IF NOT EXISTS idx_producto_variantes_codigo_barras ON producto_variantes(codigo_barras)")
+    c.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_variantes_codigo_barras_unique
+        ON producto_variantes(codigo_barras)
+        WHERE codigo_barras IS NOT NULL AND TRIM(codigo_barras) <> ''
+        """
+    )
     c.execute("CREATE INDEX IF NOT EXISTS idx_producto_variante_valores_variante ON producto_variante_valores(variante_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_producto_variante_valores_valor ON producto_variante_valores(valor_id)")
 
@@ -2079,9 +2124,27 @@ def _codigo_barras_flag_enabled(value) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "on", "yes", "si"}
 
 
+def normalize_codigo_barras(value) -> str:
+    return str(value or "").strip()
+
+
+def _codigo_barras_en_variantes(codigo_barras, *, exclude_variant_id=None) -> bool:
+    codigo = normalize_codigo_barras(codigo_barras)
+    if not codigo:
+        return False
+    sql = "SELECT id FROM producto_variantes WHERE TRIM(COALESCE(codigo_barras, '')) = ?"
+    params = [codigo]
+    if exclude_variant_id is not None:
+        sql += " AND id <> ?"
+        params.append(int(exclude_variant_id))
+    if q(sql, tuple(params), fetchone=True) is not None:
+        return True
+    return _codigo_barras_en_variantes(codigo)
+
+
 def codigo_barras_exists(codigo_barras, exclude_id=None) -> bool:
     """Indica si el cÃ³digo de barras ya estÃ¡ asignado a otro producto."""
-    codigo = str(codigo_barras or "").strip()
+    codigo = normalize_codigo_barras(codigo_barras)
     if not codigo:
         return False
     sql = "SELECT id FROM productos WHERE TRIM(COALESCE(codigo_barras, '')) = ?"
@@ -2090,6 +2153,33 @@ def codigo_barras_exists(codigo_barras, exclude_id=None) -> bool:
         sql += " AND id <> ?"
         params.append(exclude_id)
     return q(sql, tuple(params), fetchone=True) is not None
+
+
+def _codigo_barras_en_variantes(codigo_barras, *, exclude_variant_id=None) -> bool:
+    codigo = normalize_codigo_barras(codigo_barras)
+    if not codigo:
+        return False
+    sql = "SELECT id FROM producto_variantes WHERE TRIM(COALESCE(codigo_barras, '')) = ?"
+    params = [codigo]
+    if exclude_variant_id is not None:
+        sql += " AND id <> ?"
+        params.append(int(exclude_variant_id))
+    return q(sql, tuple(params), fetchone=True) is not None
+
+
+def codigo_barras_exists(codigo_barras, exclude_id=None) -> bool:
+    """Indica si el codigo de barras ya esta asignado a otro producto o variante."""
+    codigo = normalize_codigo_barras(codigo_barras)
+    if not codigo:
+        return False
+    sql = "SELECT id FROM productos WHERE TRIM(COALESCE(codigo_barras, '')) = ?"
+    params = [codigo]
+    if exclude_id is not None:
+        sql += " AND id <> ?"
+        params.append(exclude_id)
+    if q(sql, tuple(params), fetchone=True) is not None:
+        return True
+    return _codigo_barras_en_variantes(codigo)
 
 
 def next_codigo_barras_interno():
@@ -2107,7 +2197,11 @@ def next_codigo_barras_interno():
                 "SELECT 1 FROM productos WHERE TRIM(COALESCE(codigo_barras, '')) = ? LIMIT 1",
                 (codigo,),
             ).fetchone()
-            if not existe:
+            existe_variante = c.execute(
+                "SELECT 1 FROM producto_variantes WHERE TRIM(COALESCE(codigo_barras, '')) = ? LIMIT 1",
+                (codigo,),
+            ).fetchone()
+            if not existe and not existe_variante:
                 c.execute(
                     "INSERT OR REPLACE INTO config VALUES ('siguiente_codigo_barras_interno', ?)",
                     (str(siguiente + 1),),
@@ -2120,7 +2214,7 @@ def next_codigo_barras_interno():
 
 
 def _resolve_codigo_barras_for_save(data, *, exclude_id=None) -> str:
-    codigo_barras = str(data.get("codigo_barras") or "").strip()
+    codigo_barras = normalize_codigo_barras(data.get("codigo_barras"))
     generar_interno = _codigo_barras_flag_enabled(data.get("generar_codigo_barras")) or _codigo_barras_flag_enabled(data.get("generar_codigo_barras_interno"))
     if not codigo_barras and generar_interno:
         codigo_barras = next_codigo_barras_interno()
@@ -2130,6 +2224,16 @@ def _resolve_codigo_barras_for_save(data, *, exclude_id=None) -> str:
 
 
 # â”€â”€â”€ TICKET AUTOMÃTICO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+def _resolve_codigo_barras_for_save(data, *, exclude_id=None) -> str:
+    codigo_barras = normalize_codigo_barras(data.get("codigo_barras"))
+    generar_interno = _codigo_barras_flag_enabled(data.get("generar_codigo_barras")) or _codigo_barras_flag_enabled(data.get("generar_codigo_barras_interno"))
+    if not codigo_barras and generar_interno:
+        codigo_barras = next_codigo_barras_interno()
+    if codigo_barras and codigo_barras_exists(codigo_barras, exclude_id=exclude_id):
+        raise ValueError("Ya existe un producto o variante con ese codigo de barras.")
+    return codigo_barras
+
 
 def next_ticket():
     """Devuelve el prÃ³ximo nÃºmero de ticket y lo actualiza en la configuraciÃ³n.
