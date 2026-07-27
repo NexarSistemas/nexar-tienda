@@ -2,6 +2,24 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-27 - Codex - fix/variant-form-validation
+
+### Tarea
+Corregir la validacion del formulario de variantes incorporado en la PR #141.
+
+### Que se cambio
+- El checkbox `activo` ahora distingue correctamente entre marcado y
+  desmarcado.
+- El servidor valida `stock_actual`, `stock_minimo` y `stock_maximo` antes de
+  persistir una variante.
+- Se rechazan valores negativos, no numericos, `NaN` e infinitos.
+- Se amplio la cobertura de tests para estados del checkbox, stock valido,
+  entradas invalidas y ausencia de persistencia ante errores.
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m unittest tests.test_product_variants`
+- `git diff --check`
+
 ## 2026-07-27 - Codex - feature/generic-product-variants
 
 ### Tarea

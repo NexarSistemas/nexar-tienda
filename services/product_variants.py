@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sqlite3
 from collections import defaultdict
 
@@ -15,6 +16,28 @@ def _normalize_text(value) -> str:
 
 def _clean_text(value) -> str:
     return " ".join(str(value or "").strip().split())
+
+
+def _validate_stock_value(value, label: str) -> float:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        value = 0
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} debe ser numerico.") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"{label} debe ser un numero finito.")
+    if number < 0:
+        raise ValueError(f"{label} no puede ser negativo.")
+    return number
+
+
+def _validate_variant_stock(stock_actual, stock_minimo, stock_maximo) -> tuple[float, float, float]:
+    return (
+        _validate_stock_value(stock_actual, "El stock actual"),
+        _validate_stock_value(stock_minimo, "El stock minimo"),
+        _validate_stock_value(stock_maximo, "El stock maximo"),
+    )
 
 
 def _build_combination_key(attribute_pairs: list[dict]) -> str:
@@ -218,6 +241,11 @@ def create_variant(
     product = db.get_producto(int(product_id or 0))
     if not product:
         raise ValueError("El producto indicado no existe.")
+    stock_actual, stock_minimo, stock_maximo = _validate_variant_stock(
+        stock_actual,
+        stock_minimo,
+        stock_maximo,
+    )
 
     attribute_pairs: list[dict] = []
     seen_attributes: set[str] = set()

@@ -217,6 +217,105 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertEqual(len(variantes), 1)
         self.assertEqual(variantes[0]["sku"], "CAMP-NEG")
 
+    def test_post_variantes_respeta_checkbox_activo_marcado_y_desmarcado(self):
+        producto_activo = self._crear_producto(descripcion="Producto activo")
+        producto_inactivo = self._crear_producto(descripcion="Producto inactivo")
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            base_data = {
+                "csrf_token": "test-token",
+                "attribute_name[]": ["Color"],
+                "value_name[]": ["Negro"],
+                "stock_actual": "2",
+                "stock_minimo": "1",
+                "stock_maximo": "5",
+                "costo": "100",
+                "precio": "150",
+            }
+
+            respuesta_activa = client.post(
+                f"/productos/{producto_activo}/variantes",
+                data={**base_data, "sku": "VAR-ACTIVA", "activo": "1"},
+                follow_redirects=False,
+            )
+            respuesta_inactiva = client.post(
+                f"/productos/{producto_inactivo}/variantes",
+                data={**base_data, "sku": "VAR-INACTIVA"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(respuesta_activa.status_code, 302)
+        self.assertEqual(respuesta_inactiva.status_code, 302)
+        self.assertEqual(self.product_variants.list_product_variants(producto_activo)[0]["activo"], 1)
+        self.assertEqual(self.product_variants.list_product_variants(producto_inactivo)[0]["activo"], 0)
+
+    def test_create_variant_acepta_stock_valido(self):
+        producto_id = self._crear_producto(descripcion="Stock valido")
+
+        self.product_variants.create_variant(
+            producto_id,
+            sku="STOCK-OK",
+            stock_actual="3.5",
+            stock_minimo="1",
+            stock_maximo="8",
+        )
+
+        variante = self.product_variants.list_product_variants(producto_id)[0]
+        self.assertEqual(float(variante["stock_actual"]), 3.5)
+        self.assertEqual(float(variante["stock_minimo"]), 1.0)
+        self.assertEqual(float(variante["stock_maximo"]), 8.0)
+
+    def test_create_variant_rechaza_stock_invalido_sin_persistencia(self):
+        producto_id = self._crear_producto(descripcion="Stock invalido")
+        invalid_cases = (
+            ("stock_actual", -1, "stock actual no puede ser negativo"),
+            ("stock_minimo", -1, "stock minimo no puede ser negativo"),
+            ("stock_maximo", -1, "stock maximo no puede ser negativo"),
+            ("stock_actual", "NaN", "stock actual debe ser un numero finito"),
+            ("stock_minimo", "inf", "stock minimo debe ser un numero finito"),
+            ("stock_maximo", "-inf", "stock maximo debe ser un numero finito"),
+            ("stock_actual", "no-numerico", "stock actual debe ser numerico"),
+        )
+
+        for field, value, message in invalid_cases:
+            with self.subTest(field=field, value=value):
+                stock = {"stock_actual": 0, "stock_minimo": 0, "stock_maximo": 0}
+                stock[field] = value
+                with self.assertRaisesRegex(ValueError, message):
+                    self.product_variants.create_variant(
+                        producto_id,
+                        attributes=[{"attribute_name": "Color", "value_name": "Negro"}],
+                        sku="STOCK-INVALIDO",
+                        **stock,
+                    )
+                self._assert_variant_tables_empty()
+
+    def test_post_variantes_muestra_error_claro_para_stock_no_numerico(self):
+        producto_id = self._crear_producto(descripcion="Stock ruta invalido")
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.post(
+                f"/productos/{producto_id}/variantes",
+                data={
+                    "csrf_token": "test-token",
+                    "attribute_name[]": ["Color"],
+                    "value_name[]": ["Negro"],
+                    "sku": "STOCK-RUTA-INVALIDO",
+                    "stock_actual": "no-numerico",
+                    "stock_minimo": "1",
+                    "stock_maximo": "5",
+                    "costo": "100",
+                    "precio": "150",
+                },
+                follow_redirects=False,
+            )
+            with client.session_transaction() as session:
+                flashes = session.get("_flashes", [])
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(("warning", "El stock actual debe ser numerico."), flashes)
+        self._assert_variant_tables_empty()
+
     def test_stock_independiente_por_variante(self):
         producto_id = self._crear_producto(descripcion="Buzo", stock=15)
 

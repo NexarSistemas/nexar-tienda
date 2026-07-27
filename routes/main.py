@@ -3214,10 +3214,10 @@ def producto_variantes_gestion(pid):
                 costo=float(request.form.get("costo") or 0),
                 precio=float(request.form.get("precio") or 0),
                 precio_promocional=float(request.form.get("precio_promocional")) if str(request.form.get("precio_promocional") or "").strip() else None,
-                stock_actual=float(request.form.get("stock_actual") or 0),
-                stock_minimo=float(request.form.get("stock_minimo") or 0),
-                stock_maximo=float(request.form.get("stock_maximo") or 0),
-                activo=_as_bool(request.form.get("activo", "1")),
+                stock_actual=request.form.get("stock_actual", ""),
+                stock_minimo=request.form.get("stock_minimo", ""),
+                stock_maximo=request.form.get("stock_maximo", ""),
+                activo="activo" in request.form,
                 external_id=request.form.get("external_id", ""),
             )
         except ValueError as exc:
