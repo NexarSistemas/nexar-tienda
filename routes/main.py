@@ -57,6 +57,7 @@ from services.mercadopago_checkout import (
     plan_supports_checkout,
 )
 from services import pricing_resolver
+from services import product_variants
 from services.license_sdk import (
     get_current_hwid,
     get_license_debug_state,
@@ -2683,6 +2684,7 @@ def productos():
         if nombre:
             proveedores_map.setdefault(nombre.lower(), nombre)
     proveedores_visibles = sorted(proveedores_map.values(), key=str.lower)
+    variant_counts = product_variants.count_variants_by_product([row["id"] for row in productos_rows])
     return render_template(
         "productos.html",
         productos=productos_rows,
@@ -2692,6 +2694,7 @@ def productos():
         categoria_filtro=categoria_filtro,
         proveedor_filtro=proveedor_filtro,
         rubro_actual=rubro_actual,
+        variant_counts=variant_counts,
     )
 
 
@@ -3165,10 +3168,12 @@ def producto_editar(pid):
         rubro_actual,
         [producto["categoria"], get_categoria_default(rubro_actual)],
     )
+    variantes = product_variants.list_product_variants(pid)
     return render_template(
         "producto_form.html",
         producto=producto,
         stock=stock,
+        variantes=variantes,
         categorias=categorias_visibles,
         accion="Editar",
         proveedores=db.get_proveedores(),
@@ -3177,6 +3182,58 @@ def producto_editar(pid):
         rubros_disponibles=get_rubros_disponibles(),
         unidades_disponibles=unidades_disponibles,
         unidad_actual=unidad_actual,
+    )
+
+
+@main_bp.route("/productos/<int:pid>/variantes", methods=["GET", "POST"])
+@vendedor_forbidden
+def producto_variantes_gestion(pid):
+    producto = db.get_producto(pid)
+    if not producto:
+        flash("Producto inexistente.", "danger")
+        return redirect(url_for("productos"))
+
+    if request.method == "POST":
+        attribute_names = request.form.getlist("attribute_name[]")
+        value_names = request.form.getlist("value_name[]")
+        attributes = []
+        total_rows = max(len(attribute_names), len(value_names), 0)
+        for idx in range(total_rows):
+            attributes.append(
+                {
+                    "attribute_name": attribute_names[idx] if idx < len(attribute_names) else "",
+                    "value_name": value_names[idx] if idx < len(value_names) else "",
+                }
+            )
+        try:
+            variant_id = product_variants.create_variant(
+                pid,
+                attributes=attributes,
+                sku=request.form.get("sku", ""),
+                codigo_barras=request.form.get("codigo_barras", ""),
+                costo=float(request.form.get("costo") or 0),
+                precio=float(request.form.get("precio") or 0),
+                precio_promocional=float(request.form.get("precio_promocional")) if str(request.form.get("precio_promocional") or "").strip() else None,
+                stock_actual=float(request.form.get("stock_actual") or 0),
+                stock_minimo=float(request.form.get("stock_minimo") or 0),
+                stock_maximo=float(request.form.get("stock_maximo") or 0),
+                activo=_as_bool(request.form.get("activo", "1")),
+                external_id=request.form.get("external_id", ""),
+            )
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return redirect(request.url)
+        _auditar_accion("ALTA_VARIANTE_PRODUCTO", "producto_variante", variant_id, detalle=f"{producto['descripcion'] or 'Producto'}")
+        flash("Variante creada.", "success")
+        return redirect(request.url)
+
+    stock = db.q("SELECT * FROM stock WHERE producto_id=?", (pid,), fetchone=True)
+    return render_template(
+        "producto_variantes.html",
+        producto=producto,
+        stock=stock,
+        variantes=product_variants.list_product_variants(pid),
+        atributos_catalogo=product_variants.list_attributes_catalog(),
     )
 
 

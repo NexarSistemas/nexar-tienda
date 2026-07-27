@@ -154,6 +154,10 @@
                                 {% if producto['proveedor_habitual'] %}
                                 <br><small class="text-muted">Proveedor: {{ producto['proveedor_habitual'] }}</small>
                                 {% endif %}
+                                {% set variantes_total = variant_counts.get(producto['id'], 0) %}
+                                {% if variantes_total > 0 %}
+                                <br><small class="text-primary">Variantes: {{ variantes_total }}</small>
+                                {% endif %}
                             </td>
                             <td>
                                 <span class="badge bg-light text-dark">{{ producto['categoria'] or 'Sin categoría' }}</span>
@@ -171,6 +175,9 @@
                                     {% if (session['user']['rol']|lower) != 'vendedor' %}
                                     <a href="{{ url_for('producto_editar', pid=producto['id']) }}" class="btn btn-outline-primary" title="Editar">
                                         <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{{ url_for('producto_variantes_gestion', pid=producto['id']) }}" class="btn btn-outline-secondary" title="Variantes">
+                                        <i class="fas fa-layer-group"></i>
                                     </a>
                                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmDelete" data-id="{{ producto['id'] }}" data-name="{{ producto['descripcion'] }}" title="Eliminar">
                                         <i class="fas fa-trash"></i>

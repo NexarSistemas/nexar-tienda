@@ -650,6 +650,63 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS producto_atributos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            nombre_normalizado TEXT NOT NULL UNIQUE,
+            activo INTEGER DEFAULT 1,
+            external_id TEXT DEFAULT '',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS producto_atributo_valores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            atributo_id INTEGER NOT NULL REFERENCES producto_atributos(id) ON DELETE CASCADE,
+            valor TEXT NOT NULL,
+            valor_normalizado TEXT NOT NULL,
+            activo INTEGER DEFAULT 1,
+            external_id TEXT DEFAULT '',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (atributo_id, valor_normalizado)
+        );
+
+        CREATE TABLE IF NOT EXISTS producto_variantes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+            combination_key TEXT NOT NULL,
+            nombre TEXT DEFAULT '',
+            sku TEXT DEFAULT NULL,
+            codigo_barras TEXT DEFAULT '',
+            costo REAL DEFAULT NULL,
+            precio REAL DEFAULT NULL,
+            precio_promocional REAL DEFAULT NULL,
+            activo INTEGER DEFAULT 1,
+            external_id TEXT DEFAULT '',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (producto_id, combination_key),
+            UNIQUE (sku)
+        );
+
+        CREATE TABLE IF NOT EXISTS producto_variante_valores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            variante_id INTEGER NOT NULL REFERENCES producto_variantes(id) ON DELETE CASCADE,
+            atributo_id INTEGER NOT NULL REFERENCES producto_atributos(id) ON DELETE CASCADE,
+            valor_id INTEGER NOT NULL REFERENCES producto_atributo_valores(id) ON DELETE RESTRICT,
+            UNIQUE (variante_id, atributo_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS stock_variantes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            variante_id INTEGER NOT NULL UNIQUE REFERENCES producto_variantes(id) ON DELETE CASCADE,
+            stock_actual REAL DEFAULT 0,
+            stock_minimo REAL DEFAULT 5,
+            stock_maximo REAL DEFAULT 50,
+            ultimo_ingreso TEXT DEFAULT '',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS clientes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             codigo TEXT UNIQUE,
@@ -970,6 +1027,11 @@ def init_db():
     if 'imagen' not in columnas_productos:
         c.execute("ALTER TABLE productos ADD COLUMN imagen TEXT DEFAULT ''")
     c.execute("CREATE INDEX IF NOT EXISTS idx_facturas_proveedores_compra_id ON facturas_proveedores(compra_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_producto_atributo_valores_atributo ON producto_atributo_valores(atributo_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_producto_variantes_producto ON producto_variantes(producto_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_producto_variantes_codigo_barras ON producto_variantes(codigo_barras)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_producto_variante_valores_variante ON producto_variante_valores(variante_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_producto_variante_valores_valor ON producto_variante_valores(valor_id)")
 
     # Verificar y agregar columna 'interes_financiacion' en 'ventas' (Paso 15)
     columnas_v = [r['name'] for r in c.execute("PRAGMA table_info(ventas)").fetchall()]
