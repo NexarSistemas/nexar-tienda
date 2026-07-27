@@ -2,6 +2,25 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-27 - Codex - fix/variant-fallback-audit
+
+### Tarea
+Corregir el hallazgo P2 posterior a la PR #156 en la auditoría del fallback de
+eliminación de variantes referenciadas.
+
+### Que se cambio
+- Cuando una eliminación queda bloqueada por referencias y la variante se
+  desactiva, se registra `DESACTIVACION_VARIANTE_PRODUCTO`.
+- La auditoría conserva las referencias en el motivo e identifica la
+  desactivación segura en el detalle.
+- La eliminación física sin referencias mantiene
+  `ELIMINACION_VARIANTE_PRODUCTO`.
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m unittest tests.test_product_variants`
+- `.venv\\Scripts\\python.exe -m unittest discover -s tests`
+- `git diff --check`
+
 ## 2026-07-27 - Codex - feat/product-variant-management
 
 ### Tarea

@@ -759,6 +759,13 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertEqual(edit_response.status_code, 302)
         self.assertEqual(state_response.status_code, 302)
         self.assertEqual(delete_response.status_code, 302)
+        self.assertIsNone(
+            self.database.q(
+                "SELECT id FROM producto_variantes WHERE id=?",
+                (variante_eliminacion,),
+                fetchone=True,
+            )
+        )
         acciones = {
             row["accion"]
             for row in self.database.q(
@@ -772,6 +779,56 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertIn("EDICION_VARIANTE_PRODUCTO", acciones)
         self.assertIn("DESACTIVACION_VARIANTE_PRODUCTO", acciones)
         self.assertIn("ELIMINACION_VARIANTE_PRODUCTO", acciones)
+
+    def test_ruta_eliminacion_referenciada_audita_desactivacion_segura(self):
+        producto_id = self._crear_producto(descripcion="Producto fallback auditable")
+        variante_id = self._crear_variante(producto_id, sku="AUD-FALLBACK")
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+        conn.execute(
+            """
+            CREATE TABLE historial_variante_auditoria_test (
+                id INTEGER PRIMARY KEY,
+                variante_id INTEGER NOT NULL REFERENCES producto_variantes(id) ON DELETE RESTRICT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO historial_variante_auditoria_test (variante_id) VALUES (?)",
+            (variante_id,),
+        )
+        conn.commit()
+
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.post(
+                f"/productos/{producto_id}/variantes/{variante_id}/eliminar",
+                data={"csrf_token": "test-token"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        variante = self.database.q(
+            "SELECT activo FROM producto_variantes WHERE id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+        self.assertIsNotNone(variante)
+        self.assertEqual(int(variante["activo"]), 0)
+        auditorias = self.database.q(
+            """
+            SELECT accion, detalle, motivo
+            FROM auditoria
+            WHERE entidad='producto_variante' AND entidad_id=?
+            ORDER BY id
+            """,
+            (variante_id,),
+        )
+        self.assertEqual(len(auditorias), 1)
+        self.assertEqual(auditorias[0]["accion"], "DESACTIVACION_VARIANTE_PRODUCTO")
+        self.assertIn("Desactivacion segura por eliminacion bloqueada", auditorias[0]["detalle"])
+        self.assertIn("historial_variante_auditoria_test", auditorias[0]["motivo"])
+        self.assertNotEqual(auditorias[0]["accion"], "INTENTO_ELIMINACION_VARIANTE_PRODUCTO")
 
     def test_migracion_sobre_base_existente_conserva_datos(self):
         legacy_db = Path(self.temp_dir.name) / "legacy_tienda.db"
