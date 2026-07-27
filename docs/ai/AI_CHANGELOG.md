@@ -2,6 +2,33 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-27 - Codex - feat/product-variant-management
+
+### Tarea
+Completar la gestión de variantes del Issue #144 sin incorporar variantes a
+POS, compras, movimientos ni reportes.
+
+### Que se cambio
+- Se agregaron edición atómica, activación, desactivación y eliminación desde
+  la ficha del producto.
+- El servicio valida atributos, combinaciones, SKU, código de barras, importes
+  y stock configurado antes de persistir.
+- Una variante sin referencias históricas se elimina con sus dependencias
+  propias; si una relación externa la referencia, se conserva y desactiva.
+- Las acciones usan permisos, CSRF y auditoría existentes.
+- Se amplió la cobertura de rutas, integridad, rollback y compatibilidad
+  legacy.
+
+### Alcance
+- `productos` y `stock` conservan su comportamiento y fuente de verdad legacy.
+- No se modificaron POS, compras, lector, ventas, movimientos, reportes ni
+  integraciones externas.
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m unittest tests.test_product_variants`
+- `.venv\\Scripts\\python.exe -m unittest discover -s tests`
+- `git diff --check`
+
 ## 2026-07-27 - Codex - docs/catalogo-universal
 
 ### Tarea

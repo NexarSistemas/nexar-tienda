@@ -3194,26 +3194,15 @@ def producto_variantes_gestion(pid):
         return redirect(url_for("productos"))
 
     if request.method == "POST":
-        attribute_names = request.form.getlist("attribute_name[]")
-        value_names = request.form.getlist("value_name[]")
-        attributes = []
-        total_rows = max(len(attribute_names), len(value_names), 0)
-        for idx in range(total_rows):
-            attributes.append(
-                {
-                    "attribute_name": attribute_names[idx] if idx < len(attribute_names) else "",
-                    "value_name": value_names[idx] if idx < len(value_names) else "",
-                }
-            )
         try:
             variant_id = product_variants.create_variant(
                 pid,
-                attributes=attributes,
+                attributes=_variant_attributes_from_form(),
                 sku=request.form.get("sku", ""),
                 codigo_barras=request.form.get("codigo_barras", ""),
-                costo=float(request.form.get("costo") or 0),
-                precio=float(request.form.get("precio") or 0),
-                precio_promocional=float(request.form.get("precio_promocional")) if str(request.form.get("precio_promocional") or "").strip() else None,
+                costo=request.form.get("costo"),
+                precio=request.form.get("precio"),
+                precio_promocional=request.form.get("precio_promocional"),
                 stock_actual=request.form.get("stock_actual", ""),
                 stock_minimo=request.form.get("stock_minimo", ""),
                 stock_maximo=request.form.get("stock_maximo", ""),
@@ -3227,14 +3216,155 @@ def producto_variantes_gestion(pid):
         flash("Variante creada.", "success")
         return redirect(request.url)
 
-    stock = db.q("SELECT * FROM stock WHERE producto_id=?", (pid,), fetchone=True)
+    return _render_product_variant_management(producto)
+
+
+def _variant_attributes_from_form():
+    attribute_names = request.form.getlist("attribute_name[]")
+    value_names = request.form.getlist("value_name[]")
+    attributes = []
+    for idx in range(max(len(attribute_names), len(value_names), 0)):
+        attributes.append(
+            {
+                "attribute_name": attribute_names[idx] if idx < len(attribute_names) else "",
+                "value_name": value_names[idx] if idx < len(value_names) else "",
+            }
+        )
+    return attributes
+
+
+def _variant_form_snapshot():
+    return {
+        "attributes": _variant_attributes_from_form(),
+        "sku": request.form.get("sku", ""),
+        "codigo_barras": request.form.get("codigo_barras", ""),
+        "costo": request.form.get("costo", ""),
+        "precio": request.form.get("precio", ""),
+        "precio_promocional": request.form.get("precio_promocional", ""),
+        "stock_actual": request.form.get("stock_actual", ""),
+        "stock_minimo": request.form.get("stock_minimo", ""),
+        "stock_maximo": request.form.get("stock_maximo", ""),
+    }
+
+
+def _render_product_variant_management(producto, *, editing_variant_id=None, edit_form_data=None):
+    product_id = int(producto["id"])
+    stock = db.q("SELECT * FROM stock WHERE producto_id=?", (product_id,), fetchone=True)
     return render_template(
         "producto_variantes.html",
         producto=producto,
         stock=stock,
-        variantes=product_variants.list_product_variants(pid),
+        variantes=product_variants.list_product_variants(product_id),
         atributos_catalogo=product_variants.list_attributes_catalog(),
+        editing_variant_id=editing_variant_id,
+        edit_form_data=edit_form_data or {},
     )
+
+
+@main_bp.route("/productos/<int:pid>/variantes/<int:variant_id>/editar", methods=["POST"])
+@vendedor_forbidden
+def producto_variante_editar(pid, variant_id):
+    producto = db.get_producto(pid)
+    if not producto:
+        flash("Producto inexistente.", "danger")
+        return redirect(url_for("productos"))
+    try:
+        product_variants.update_variant(
+            pid,
+            variant_id,
+            attributes=_variant_attributes_from_form(),
+            sku=request.form.get("sku", ""),
+            codigo_barras=request.form.get("codigo_barras", ""),
+            costo=request.form.get("costo"),
+            precio=request.form.get("precio"),
+            precio_promocional=request.form.get("precio_promocional"),
+            stock_actual=request.form.get("stock_actual", ""),
+            stock_minimo=request.form.get("stock_minimo", ""),
+            stock_maximo=request.form.get("stock_maximo", ""),
+        )
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return (
+            _render_product_variant_management(
+                producto,
+                editing_variant_id=variant_id,
+                edit_form_data=_variant_form_snapshot(),
+            ),
+            400,
+        )
+    _auditar_accion(
+        "EDICION_VARIANTE_PRODUCTO",
+        "producto_variante",
+        variant_id,
+        detalle=f"{producto['descripcion'] or 'Producto'}",
+    )
+    flash("Variante actualizada.", "success")
+    return redirect(url_for("producto_variantes_gestion", pid=pid, _anchor=f"variante-{variant_id}"))
+
+
+@main_bp.route("/productos/<int:pid>/variantes/<int:variant_id>/estado", methods=["POST"])
+@vendedor_forbidden
+def producto_variante_estado(pid, variant_id):
+    producto = db.get_producto(pid)
+    if not producto:
+        flash("Producto inexistente.", "danger")
+        return redirect(url_for("productos"))
+    active = request.form.get("activo") == "1"
+    try:
+        product_variants.set_variant_active(pid, variant_id, active)
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("producto_variantes_gestion", pid=pid))
+    accion = "ACTIVACION_VARIANTE_PRODUCTO" if active else "DESACTIVACION_VARIANTE_PRODUCTO"
+    _auditar_accion(
+        accion,
+        "producto_variante",
+        variant_id,
+        detalle=f"{producto['descripcion'] or 'Producto'}",
+    )
+    flash("Variante activada." if active else "Variante desactivada.", "success")
+    return redirect(url_for("producto_variantes_gestion", pid=pid, _anchor=f"variante-{variant_id}"))
+
+
+@main_bp.route("/productos/<int:pid>/variantes/<int:variant_id>/eliminar", methods=["POST"])
+@vendedor_forbidden
+def producto_variante_eliminar(pid, variant_id):
+    producto = db.get_producto(pid)
+    if not producto:
+        flash("Producto inexistente.", "danger")
+        return redirect(url_for("productos"))
+    try:
+        result = product_variants.delete_variant(pid, variant_id)
+    except ValueError as exc:
+        _auditar_accion(
+            "INTENTO_ELIMINACION_VARIANTE_PRODUCTO",
+            "producto_variante",
+            variant_id,
+            detalle=f"{producto['descripcion'] or 'Producto'}",
+            motivo=str(exc),
+        )
+        flash(str(exc), "warning")
+        return redirect(url_for("producto_variantes_gestion", pid=pid))
+
+    if result["deleted"]:
+        _auditar_accion(
+            "ELIMINACION_VARIANTE_PRODUCTO",
+            "producto_variante",
+            variant_id,
+            detalle=f"{producto['descripcion'] or 'Producto'}",
+        )
+        flash("Variante eliminada.", "success")
+    else:
+        reference_names = ", ".join(result["references"])
+        _auditar_accion(
+            "INTENTO_ELIMINACION_VARIANTE_PRODUCTO",
+            "producto_variante",
+            variant_id,
+            detalle=f"{producto['descripcion'] or 'Producto'}",
+            motivo=f"Referencias existentes: {reference_names}",
+        )
+        flash("La variante tiene historial asociado y fue desactivada en lugar de eliminarse.", "warning")
+    return redirect(url_for("producto_variantes_gestion", pid=pid))
 
 
 @main_bp.route("/productos/<int:pid>/eliminar", methods=["POST"])
