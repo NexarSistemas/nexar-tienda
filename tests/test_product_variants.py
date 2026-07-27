@@ -306,19 +306,24 @@ class ProductVariantsTests(unittest.TestCase):
         producto = self.database.get_producto(producto_id)
         stock = self.database.q("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,), fetchone=True)
         total_productos = self.database.q("SELECT COUNT(*) AS total FROM productos", fetchone=True)
-        indice = self.database.q(
+        indices = self.database.q(
             """
-            SELECT name
+            SELECT name, sql
             FROM sqlite_master
-            WHERE type='index' AND name='idx_producto_variantes_codigo_barras_unique'
+            WHERE type='index' AND name IN (
+                'idx_productos_codigo_barras_unique',
+                'idx_producto_variantes_codigo_barras_unique'
+            )
+            ORDER BY name
             """,
-            fetchone=True,
         )
 
         self.assertEqual(producto["descripcion"], "Producto idempotente")
         self.assertEqual(float(stock["stock_actual"] or 0), 5.0)
         self.assertEqual(int(total_productos["total"] or 0), 1)
-        self.assertIsNotNone(indice)
+        self.assertEqual(len(indices), 2)
+        for indice in indices:
+            self.assertIn("TRIM(COALESCE(codigo_barras, ''))", indice["sql"])
 
     def test_conserva_producto_y_stock_actual_tras_agregar_variantes(self):
         producto_id = self._crear_producto(descripcion="Taladro", stock=11, costo=300, precio=450)
@@ -560,6 +565,52 @@ class ProductVariantsTests(unittest.TestCase):
                 (producto_id, "direct-b", "Directa B", "DIR-B", "779000001006"),
             )
 
+    def test_sqlite_rechaza_duplicado_normalizado_entre_productos(self):
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+        values = ("PRD-7791", "7791", "Legacy 7791", "General", "unidad", 10, 20, "21%")
+        conn.execute(
+            """
+            INSERT INTO productos
+            (codigo_interno, codigo_barras, descripcion, categoria, unidad, costo, precio_venta, iva, activo)
+            VALUES (?,?,?,?,?,?,?,?,1)
+            """,
+            values,
+        )
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute(
+                """
+                INSERT INTO productos
+                (codigo_interno, codigo_barras, descripcion, categoria, unidad, costo, precio_venta, iva, activo)
+                VALUES (?,?,?,?,?,?,?,?,1)
+                """,
+                ("PRD-7791-ESP", " 7791 ", "Legacy 7791 espacios", "General", "unidad", 10, 20, "21%"),
+            )
+
+    def test_sqlite_rechaza_duplicado_normalizado_entre_variantes(self):
+        producto_id = self._crear_producto(descripcion="Base 8891")
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+        conn.execute(
+            """
+            INSERT INTO producto_variantes
+            (producto_id, combination_key, nombre, sku, codigo_barras, activo)
+            VALUES (?,?,?,?,?,1)
+            """,
+            (producto_id, "direct-8891", "Directa 8891", "DIR-8891", "8891"),
+        )
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute(
+                """
+                INSERT INTO producto_variantes
+                (producto_id, combination_key, nombre, sku, codigo_barras, activo)
+                VALUES (?,?,?,?,?,1)
+                """,
+                (producto_id, "direct-8891-spaces", "Directa 8891 espacios", "DIR-8891-ESP", " 8891 "),
+            )
+
     def test_sqlite_permita_null_y_vacio_segun_politica(self):
         producto_id = self._crear_producto(descripcion="Base nulos")
         conn = self._direct_conn()
@@ -651,7 +702,7 @@ class ProductVariantsTests(unittest.TestCase):
             "INSERT INTO productos (codigo_interno, codigo_barras, descripcion, categoria, costo, precio_venta) VALUES ('PRD-CONFLICTO', '779000001009', 'Legacy conflicto', 'General', 10, 20)"
         )
         conn.execute(
-            "INSERT INTO producto_variantes (producto_id, combination_key, nombre, sku, codigo_barras, activo) VALUES (1, 'conflict', 'Variante conflicto', 'VAR-CONFLICTO', '779000001009', 1)"
+            "INSERT INTO producto_variantes (producto_id, combination_key, nombre, sku, codigo_barras, activo) VALUES (1, 'conflict', 'Variante conflicto', 'VAR-CONFLICTO', ' 779000001009 ', 1)"
         )
         conn.commit()
         conn.close()
@@ -663,11 +714,11 @@ class ProductVariantsTests(unittest.TestCase):
             self.database.init_db()
 
         verify_conn = sqlite3.connect(legacy_db)
-        total_productos = verify_conn.execute("SELECT COUNT(*) FROM productos").fetchone()[0]
-        total_variantes = verify_conn.execute("SELECT COUNT(*) FROM producto_variantes").fetchone()[0]
+        productos = verify_conn.execute("SELECT codigo_barras FROM productos").fetchall()
+        variantes = verify_conn.execute("SELECT codigo_barras FROM producto_variantes").fetchall()
         verify_conn.close()
-        self.assertEqual(total_productos, 1)
-        self.assertEqual(total_variantes, 1)
+        self.assertEqual(productos, [("779000001009",)])
+        self.assertEqual(variantes, [(" 779000001009 ",)])
 
 
 if __name__ == "__main__":

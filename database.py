@@ -1086,19 +1086,21 @@ def init_db():
         raise RuntimeError(
             f"Se detectaron codigo_barras compartidos entre productos y variantes: {codigos}."
         )
+    c.execute("DROP INDEX IF EXISTS idx_productos_codigo_barras_unique")
     c.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_productos_codigo_barras_unique
-        ON productos(codigo_barras)
-        WHERE codigo_barras IS NOT NULL AND TRIM(codigo_barras) <> ''
+        ON productos(TRIM(COALESCE(codigo_barras, '')))
+        WHERE TRIM(COALESCE(codigo_barras, '')) <> ''
         """
     )
     c.execute("CREATE INDEX IF NOT EXISTS idx_producto_variantes_codigo_barras ON producto_variantes(codigo_barras)")
+    c.execute("DROP INDEX IF EXISTS idx_producto_variantes_codigo_barras_unique")
     c.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_variantes_codigo_barras_unique
-        ON producto_variantes(codigo_barras)
-        WHERE codigo_barras IS NOT NULL AND TRIM(codigo_barras) <> ''
+        ON producto_variantes(TRIM(COALESCE(codigo_barras, '')))
+        WHERE TRIM(COALESCE(codigo_barras, '')) <> ''
         """
     )
     c.execute(
