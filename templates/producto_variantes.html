@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}Variantes de Producto - {{ app_display_name }}{% endblock %}
+{% block page_title %}<i class="fas fa-layer-group me-2"></i>Variantes de Producto{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1">{{ producto["descripcion"] }}</h2>
+            <div class="text-muted">
+                <code>{{ producto["codigo_interno"] }}</code>
+                {% if stock %}
+                · Stock base legacy: {{ stock["stock_actual"] }}
+                {% endif %}
+            </div>
+        </div>
+        <a href="{{ url_for('producto_editar', pid=producto['id']) }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Volver al producto
+        </a>
+    </div>
+
+    <div class="alert alert-info">
+        Esta fase agrega la base genérica de variantes sin reemplazar todavía el flujo legacy de POS, compras y reportes.
+        El producto base sigue conservando su precio y stock actuales para compatibilidad.
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Nueva variante</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div id="attributeRows">
+                            <div class="row g-2 mb-2 attribute-row">
+                                <div class="col-6">
+                                    <label class="form-label">Atributo</label>
+                                    <input type="text" name="attribute_name[]" class="form-control" placeholder="Ej: Color">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Valor</label>
+                                    <input type="text" name="value_name[]" class="form-control" placeholder="Ej: Negro">
+                                </div>
+                            </div>
+                            <div class="row g-2 mb-3 attribute-row">
+                                <div class="col-6">
+                                    <input type="text" name="attribute_name[]" class="form-control" placeholder="Ej: Talle">
+                                </div>
+                                <div class="col-6">
+                                    <input type="text" name="value_name[]" class="form-control" placeholder="Ej: M">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-grid mb-3">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnAddAttributeRow">
+                                <i class="fas fa-plus me-1"></i>Agregar atributo
+                            </button>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="sku" class="form-label">SKU / código interno</label>
+                                <input type="text" id="sku" name="sku" class="form-control" placeholder="Opcional">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="codigo_barras" class="form-label">Código de barras</label>
+                                <input type="text" id="codigo_barras" name="codigo_barras" class="form-control" placeholder="Opcional">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="costo" class="form-label">Costo</label>
+                                <input type="number" id="costo" name="costo" class="form-control" step="0.01" min="0" value="{{ producto['costo'] }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="precio" class="form-label">Precio</label>
+                                <input type="number" id="precio" name="precio" class="form-control" step="0.01" min="0" value="{{ producto['precio_venta'] }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="precio_promocional" class="form-label">Precio promocional</label>
+                                <input type="number" id="precio_promocional" name="precio_promocional" class="form-control" step="0.01" min="0" placeholder="Opcional">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="stock_actual" class="form-label">Stock actual</label>
+                                <input type="number" id="stock_actual" name="stock_actual" class="form-control" step="0.01" min="0" value="0">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="stock_minimo" class="form-label">Stock mínimo</label>
+                                <input type="number" id="stock_minimo" name="stock_minimo" class="form-control" step="0.01" min="0" value="0">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="stock_maximo" class="form-label">Stock máximo</label>
+                                <input type="number" id="stock_maximo" name="stock_maximo" class="form-control" step="0.01" min="0" value="0">
+                            </div>
+                            <div class="col-md-8">
+                                <label for="external_id" class="form-label">Identificador externo</label>
+                                <input type="text" id="external_id" name="external_id" class="form-control" placeholder="Reservado para integraciones futuras">
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" value="1" id="activo" name="activo" checked>
+                                    <label class="form-check-label" for="activo">Variante activa</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-grid mt-4">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-1"></i>Crear variante
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            {% if atributos_catalogo %}
+            <div class="card mt-3">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="fas fa-tags me-2"></i>Atributos reutilizables existentes</h6>
+                </div>
+                <div class="card-body small">
+                    {% for atributo in atributos_catalogo %}
+                    <div class="mb-2">
+                        <strong>{{ atributo.nombre }}</strong>
+                        {% if atributo.valores %}
+                        <div class="text-muted">
+                            {{ atributo.valores | map(attribute='valor') | join(', ') }}
+                        </div>
+                        {% else %}
+                        <div class="text-muted">Sin valores cargados.</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-list me-2"></i>Variantes cargadas</h5>
+                    <span class="badge bg-primary">{{ variantes|length }}</span>
+                </div>
+                <div class="card-body p-0">
+                    {% if variantes %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Combinación</th>
+                                    <th>SKU</th>
+                                    <th>Código barras</th>
+                                    <th>Precio</th>
+                                    <th>Stock</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for variante in variantes %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ variante.nombre }}</strong>
+                                        {% if variante.precio_promocional is not none %}
+                                        <br><small class="text-muted">Promo: {{ variante.precio_promocional | fmt_ars }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td><code>{{ variante.sku or '-' }}</code></td>
+                                    <td>{{ variante.codigo_barras or '-' }}</td>
+                                    <td>{{ variante.precio | fmt_ars }}</td>
+                                    <td>{{ variante.stock_actual }}</td>
+                                    <td>
+                                        {% if variante.activo %}
+                                        <span class="badge bg-success">Activa</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Inactiva</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="p-4 text-center text-muted">
+                        <i class="fas fa-layer-group fa-2x mb-2 d-block"></i>
+                        Aún no hay variantes explícitas para este producto.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const addRowButton = document.getElementById('btnAddAttributeRow');
+    const rowsContainer = document.getElementById('attributeRows');
+
+    if (!addRowButton || !rowsContainer) {
+        return;
+    }
+
+    addRowButton.addEventListener('click', function () {
+        const row = document.createElement('div');
+        row.className = 'row g-2 mb-2 attribute-row';
+        row.innerHTML = `
+            <div class="col-5">
+                <input type="text" name="attribute_name[]" class="form-control" placeholder="Ej: Medida">
+            </div>
+            <div class="col-5">
+                <input type="text" name="value_name[]" class="form-control" placeholder="Ej: 10 mm">
+            </div>
+            <div class="col-2 d-grid">
+                <button type="button" class="btn btn-outline-danger btn-sm js-remove-row">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        rowsContainer.appendChild(row);
+    });
+
+    rowsContainer.addEventListener('click', function (event) {
+        const button = event.target.closest('.js-remove-row');
+        if (!button) {
+            return;
+        }
+        const row = button.closest('.attribute-row');
+        if (row) {
+            row.remove();
+        }
+    });
+});
+</script>
+{% endblock %}

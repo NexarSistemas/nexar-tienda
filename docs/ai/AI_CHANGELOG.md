@@ -2,6 +2,48 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-27 - Codex - feature/generic-product-variants
+
+### Tarea
+Incorporar la base genérica de variantes de producto preparada para múltiples
+rubros y una futura integración externa, sin romper el flujo legacy actual de
+productos simples, stock, compras y punto de venta.
+
+### Diagnóstico
+- El modelo vigente asumía un único `costo`, `precio_venta`, `codigo_barras` y
+  una sola fila de `stock` por `producto_id`.
+- Compras, stock y POS consumían directamente esa fuente única, por lo que una
+  integración completa de variantes en todos los módulos excedía un cambio
+  seguro para esta fase.
+- Hacía falta un dominio paralelo y retrocompatible para variantes explícitas,
+  sin migración destructiva ni cambios masivos sobre productos existentes.
+
+### Qué se cambió
+- `database.py` ahora crea el esquema genérico `producto_atributos`,
+  `producto_atributo_valores`, `producto_variantes`,
+  `producto_variante_valores` y `stock_variantes`, con índices e idempotencia.
+- `services/product_variants.py` centraliza la creación de atributos/valores
+  reutilizables, el alta de variantes, la unicidad de combinaciones por
+  producto y la consulta resumida de variantes.
+- `routes/main.py`, `templates/productos.html`, `templates/producto_form.html`
+  y `templates/producto_variantes.html` agregan una UI mínima para consultar y
+  crear variantes desde catálogo/producto, sin rediseñar pantallas legacy.
+- `tests/test_product_variants.py` cubre compatibilidad del producto común,
+  atributos/opciones, combinaciones, SKU/código de barras, stock independiente,
+  migración de base existente e idempotencia.
+- `docs/ai/PRODUCT_VARIANTS_PHASE1.md` documenta modelo, compatibilidad,
+  alcance actual, preparación conceptual para Tiendanube y pendientes.
+
+### Qué se probó
+- `.venv\\Scripts\\python.exe -m py_compile app.py database.py routes\\main.py services\\product_variants.py`
+- `.venv\\Scripts\\python.exe -m unittest tests.test_product_variants`
+
+### Alcance
+- No se integraron todavía variantes al POS, compras, reportes, exportaciones,
+  lector de códigos ni flujos comerciales/licencias.
+- Los productos actuales siguen funcionando con el modelo base legacy hasta una
+  fase posterior de adopción operativa.
+
 ## 2026-07-20 - Codex - chore/release-v1.36.7
 
 ### Tarea
