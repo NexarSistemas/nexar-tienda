@@ -1,5 +1,9 @@
 # Product Variants Phase 1
 
+> El contrato normativo vigente del dominio se encuentra en
+> [`../architecture/CATALOGO_UNIVERSAL_V1.md`](../architecture/CATALOGO_UNIVERSAL_V1.md).
+> Este documento conserva el alcance histórico de la primera implementación.
+
 ## Objetivo
 
 Agregar una base genérica de productos con variantes compatible con rubros

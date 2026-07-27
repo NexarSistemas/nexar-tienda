@@ -2,6 +2,25 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-27 - Codex - docs/catalogo-universal
+
+### Tarea
+Definir el contrato estable y neutral del catálogo universal para el Issue
+#143, sin cambiar comportamiento ni persistencia.
+
+### Que se documento
+- Entidades, relaciones, fuentes de verdad e invariantes para productos,
+  atributos, variantes, identificadores, precios, stock, categorías, imágenes
+  y canales externos.
+- Compatibilidad de productos legacy y política de transición para evitar una
+  doble fuente de verdad entre `stock` y `stock_variantes`.
+- Límites entre dominio, persistencia, servicios, UI, importadores y
+  adaptadores, con decisiones posteriores reservadas para #144-#154.
+
+### Que se probo
+- Revisión de enlaces documentales.
+- `git diff --check`
+
 ## 2026-07-27 - Codex - fix/variant-form-validation
 
 ### Tarea

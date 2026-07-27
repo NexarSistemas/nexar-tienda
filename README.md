@@ -97,6 +97,7 @@ Tambien se puede usar el helper del repo:
 - Stock con estados dinamicos y movimientos auditados
 - Rubros y categorias alineados al negocio
 - Unidades compatibles con tienda y almacen
+- Contrato estable del dominio: [`docs/architecture/CATALOGO_UNIVERSAL_V1.md`](docs/architecture/CATALOGO_UNIVERSAL_V1.md)
 
 ### Caja, Reportes y Finanzas
 
