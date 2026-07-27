@@ -3357,10 +3357,10 @@ def producto_variante_eliminar(pid, variant_id):
     else:
         reference_names = ", ".join(result["references"])
         _auditar_accion(
-            "INTENTO_ELIMINACION_VARIANTE_PRODUCTO",
+            "DESACTIVACION_VARIANTE_PRODUCTO",
             "producto_variante",
             variant_id,
-            detalle=f"{producto['descripcion'] or 'Producto'}",
+            detalle=f"{producto['descripcion'] or 'Producto'} - Desactivacion segura por eliminacion bloqueada",
             motivo=f"Referencias existentes: {reference_names}",
         )
         flash("La variante tiene historial asociado y fue desactivada en lugar de eliminarse.", "warning")
