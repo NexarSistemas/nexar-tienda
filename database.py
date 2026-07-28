@@ -648,7 +648,7 @@ def init_db():
             stock_anterior REAL DEFAULT 0,
             stock_nuevo REAL DEFAULT 0,
             variante_id INTEGER REFERENCES producto_variantes(id) ON DELETE SET NULL,
-            stock_fuente TEXT DEFAULT 'legacy',
+            stock_fuente TEXT DEFAULT 'stock',
             motivo TEXT DEFAULT '',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -1037,8 +1037,8 @@ def init_db():
     if 'variante_id' not in columnas_stock_movimientos:
         c.execute("ALTER TABLE stock_movimientos ADD COLUMN variante_id INTEGER REFERENCES producto_variantes(id) ON DELETE SET NULL")
     if 'stock_fuente' not in columnas_stock_movimientos:
-        c.execute("ALTER TABLE stock_movimientos ADD COLUMN stock_fuente TEXT DEFAULT 'legacy'")
-    c.execute("UPDATE stock_movimientos SET stock_fuente='legacy' WHERE TRIM(COALESCE(stock_fuente, '')) = ''")
+        c.execute("ALTER TABLE stock_movimientos ADD COLUMN stock_fuente TEXT DEFAULT 'stock'")
+    c.execute("UPDATE stock_movimientos SET stock_fuente='stock' WHERE LOWER(TRIM(COALESCE(stock_fuente, ''))) IN ('', 'legacy')")
 
     c.execute("CREATE INDEX IF NOT EXISTS idx_facturas_proveedores_compra_id ON facturas_proveedores(compra_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_producto_atributo_valores_atributo ON producto_atributo_valores(atributo_id)")

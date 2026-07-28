@@ -1517,7 +1517,59 @@ class ProductVariantsTests(unittest.TestCase):
         movimiento = self.database.q("SELECT * FROM stock_movimientos WHERE producto_id=1", fetchone=True)
         self.assertEqual(producto["stock_modo"], "legacy")
         self.assertIsNone(movimiento["variante_id"])
-        self.assertEqual(movimiento["stock_fuente"], "legacy")
+        self.assertEqual(movimiento["stock_fuente"], "stock")
+
+    def test_base_de_draft_pr_normaliza_stock_fuente_legacy_de_forma_idempotente(self):
+        draft_db = Path(self.temp_dir.name) / "draft_inventory.db"
+        conn = sqlite3.connect(draft_db)
+        conn.executescript(
+            """
+            CREATE TABLE productos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo_interno TEXT,
+                codigo_barras TEXT DEFAULT '',
+                descripcion TEXT NOT NULL,
+                categoria TEXT DEFAULT '',
+                costo REAL DEFAULT 0,
+                precio_venta REAL DEFAULT 0,
+                activo INTEGER DEFAULT 1,
+                stock_modo TEXT DEFAULT 'legacy'
+            );
+            CREATE TABLE stock (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                producto_id INTEGER UNIQUE,
+                stock_actual REAL DEFAULT 0,
+                stock_minimo REAL DEFAULT 5,
+                stock_maximo REAL DEFAULT 50
+            );
+            CREATE TABLE stock_movimientos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                producto_id INTEGER,
+                tipo TEXT DEFAULT 'AJUSTE',
+                cantidad REAL DEFAULT 0,
+                stock_anterior REAL DEFAULT 0,
+                stock_nuevo REAL DEFAULT 0,
+                variante_id INTEGER,
+                stock_fuente TEXT DEFAULT 'legacy',
+                motivo TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        conn.execute("INSERT INTO productos (codigo_interno, descripcion, categoria, costo, precio_venta) VALUES ('DRF', 'Draft', 'General', 1, 2)")
+        conn.execute("INSERT INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo) VALUES (1, 3, 1, 5)")
+        conn.execute("INSERT INTO stock_movimientos (producto_id, tipo, cantidad, stock_anterior, stock_nuevo, stock_fuente) VALUES (1, 'AJUSTE', 1, 2, 3, 'legacy')")
+        conn.commit()
+        conn.close()
+
+        self.database.DB_PATH = str(draft_db)
+        self.database._db_initialized = False
+        self.database.init_db()
+        self.database._db_initialized = False
+        self.database.init_db()
+
+        movimiento = self.database.q("SELECT * FROM stock_movimientos WHERE producto_id=1", fetchone=True)
+        self.assertEqual(movimiento["stock_fuente"], "stock")
 
     def test_operacion_concurrente_queda_protegida_por_begin_immediate(self):
         producto_id = self._crear_producto(descripcion="Concurrencia", stock=5)
