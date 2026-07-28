@@ -31,6 +31,23 @@ class ProveedorFacturasAnulacionTests(unittest.TestCase):
                 "dias_credito": 30,
             }
         )
+        self.producto_id = int(
+            self.database.add_producto(
+                {
+                    "descripcion": "Compra auxiliar",
+                    "marca": "",
+                    "categoria": "General",
+                    "tipo_unidad": "unidad",
+                    "unidad": "unidad",
+                    "stock_actual": 0,
+                    "stock_minimo": 0,
+                    "stock_maximo": 10,
+                    "costo": 100,
+                    "precio_venta": 150,
+                    "iva": "21%",
+                }
+            )
+        )
 
     def _crear_factura(self, numero="FAC-001", importe=1500):
         factura_id = self.database.crear_factura_proveedor(
@@ -82,9 +99,7 @@ class ProveedorFacturasAnulacionTests(unittest.TestCase):
                 "numero_remito": "REM-001",
                 "proveedor_id": self.proveedor_id,
                 "proveedor_nombre": "Proveedor Test",
-                "producto_id": 0,
-                "codigo_interno": "",
-                "descripcion": "Compra auxiliar",
+                "producto_id": self.producto_id,
                 "cantidad": 1,
                 "costo_unitario": 100,
                 "total": 100,

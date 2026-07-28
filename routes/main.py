@@ -167,7 +167,9 @@ PURCHASE_DRAFT_FIELDS = (
     "fecha",
     "numero_remito",
     "proveedor_id",
+    "producto_item",
     "producto_id",
+    "variante_id",
     "cantidad",
     "costo_unitario",
     "condicion_pago",
@@ -3063,6 +3065,8 @@ def producto_nuevo():
         flash("Producto creado.", "success")
         if desde_compra:
             draft_compra["producto_id"] = str(nuevo_id)
+            draft_compra["variante_id"] = ""
+            draft_compra["producto_item"] = f"{nuevo_id}:"
             producto_creado = db.get_producto(nuevo_id)
             if not draft_compra.get("producto_descripcion"):
                 draft_compra["producto_descripcion"] = request.form.get("descripcion", "")
@@ -3900,7 +3904,8 @@ def historial_eliminar(vid):
 @vendedor_forbidden
 def compras():
     draft = _purchase_draft_from_source(request.args)
-    return render_template("compras.html", compras=db.get_compras(request.args.get("q", ""), request.args.get("fecha_desde", ""), request.args.get("fecha_hasta", "")), buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), proveedores=db.get_proveedores(), productos=db.get_productos(), draft=draft, open_compra=_as_bool(request.args.get("open_compra")), created_product=_as_bool(request.args.get("created_product")), created_provider=_as_bool(request.args.get("created_provider")), hoy=date.today().isoformat(), usuario_es_admin=_is_admin_role(session.get("user", {}).get("rol")))
+    purchase_items = db.get_purchase_items()
+    return render_template("compras.html", compras=db.get_compras(request.args.get("q", ""), request.args.get("fecha_desde", ""), request.args.get("fecha_hasta", "")), buscar=request.args.get("q", ""), fecha_desde=request.args.get("fecha_desde", ""), fecha_hasta=request.args.get("fecha_hasta", ""), proveedores=db.get_proveedores(), productos=db.get_productos(), purchase_items=purchase_items, draft=draft, open_compra=_as_bool(request.args.get("open_compra")), created_product=_as_bool(request.args.get("created_product")), created_provider=_as_bool(request.args.get("created_provider")), hoy=date.today().isoformat(), usuario_es_admin=_is_admin_role(session.get("user", {}).get("rol")))
 
 
 @main_bp.route("/compras/nueva", methods=["GET", "POST"])
@@ -3910,6 +3915,11 @@ def compra_nueva():
         return redirect(url_for("compras", **_purchase_draft_query(_purchase_draft_from_source(request.args), open_compra="1", created_product=request.args.get("created_product", ""), created_provider=request.args.get("created_provider", ""))))
     if request.method == "POST":
         data = request.form.to_dict()
+        producto_item = str(data.get("producto_item", "") or "").strip()
+        if producto_item:
+            product_part, _, variant_part = producto_item.partition(":")
+            data["producto_id"] = product_part
+            data["variante_id"] = variant_part
         producto = db.get_producto(int(data.get("producto_id", 0) or 0))
         proveedor = db.get_proveedor(int(data.get("proveedor_id", 0) or 0))
         if producto:

@@ -2,6 +2,34 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-28 - Codex - feat/issue-146-purchases-variants
+
+### Tarea
+Adaptar compras para registrar un unico item vendible por linea: producto
+legacy sin variante o variante activa para productos con `stock_modo='variantes'`.
+
+### Que se cambio
+- `compras.variante_id` se agrega de forma idempotente y nullable, sin inferir
+  variantes para historicos.
+- El alta, edicion por diferencia y anulacion de compras usan
+  `services/inventory.py` para afectar exactamente `stock` o `stock_variantes`.
+- La seleccion de compras lista productos legacy y variantes activas con
+  atributos, SKU, codigo de barras, fuente de stock y costo efectivo.
+- Las validaciones rechazan compras sin variante para productos en modo
+  variantes, variantes inactivas o variantes ajenas.
+- Se conserva el comportamiento de costo editable de la compra sin sobrescribir
+  silenciosamente el catalogo.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m py_compile services/inventory.py database.py routes/main.py tests/test_purchase_variants.py tests/test_proveedor_facturas_anulacion.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_purchase_variants` - 12 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_product_variants` - 67 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_permisos_basicos` - 7 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_proveedor_facturas_anulacion` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 385 ejecutados; falla 1 error de limpieza de `TemporaryDirectory` en
+  `test_sqlite_rechaza_duplicado_directo_entre_variantes` por hilos existentes
+  de auto-refresh de licencia escribiendo contra DB temporal removida.
+
 ## 2026-07-28 - Codex - fix/issue-145-update-variant-active-state
 
 ### Tarea

@@ -189,46 +189,78 @@ def apply_inventory_delta(
     usuario: str = "",
     rol: str = "",
 ) -> dict:
-    delta = _validate_finite_number(cantidad, "La cantidad", allow_zero=False)
-    tipo_normalizado = str(tipo or "").strip().upper()
-    if tipo_normalizado in {"BAJA", "VENTA", "ANULACION_COMPRA"}:
-        delta = -delta
-
     conn = db.get_conn()
     try:
         cursor = conn.cursor()
         cursor.execute("BEGIN IMMEDIATE")
-        item = _resolve_inventory_item_in_cursor(cursor, product_id, variant_id)
-        anterior = float(item["stock_actual"] or 0)
-        nuevo = anterior + delta
-        if nuevo < 0:
-            raise ValueError("La operacion dejaria stock negativo.")
-        if item["fuente"] == SOURCE_LEGACY:
-            cursor.execute("UPDATE stock SET stock_actual=? WHERE producto_id=?", (nuevo, int(product_id)))
-        else:
-            cursor.execute(
-                "UPDATE stock_variantes SET stock_actual=?, updated_at=CURRENT_TIMESTAMP WHERE variante_id=?",
-                (nuevo, int(variant_id)),
-            )
-        _movement_insert(cursor, item, tipo_normalizado or "AJUSTE", delta, anterior, nuevo, motivo)
-        entity_id = int(variant_id) if item["variante"] is not None else int(product_id)
-        _audit_insert(
+        result = apply_inventory_delta_in_cursor(
             cursor,
-            f"{tipo_normalizado or 'AJUSTE'}_STOCK",
-            "stock_variante" if item["variante"] is not None else "stock",
-            entity_id,
-            _movement_detail(item, anterior, nuevo),
-            motivo,
-            usuario,
-            rol,
+            product_id,
+            cantidad,
+            variant_id=variant_id,
+            tipo=tipo,
+            motivo=motivo,
+            usuario=usuario,
+            rol=rol,
         )
         conn.commit()
-        return {"stock_anterior": anterior, "stock_nuevo": nuevo, "fuente": item["fuente"]}
+        return result
     except Exception:
         conn.rollback()
         raise
     finally:
         conn.close()
+
+
+def apply_inventory_delta_in_cursor(
+    cursor,
+    product_id: int,
+    cantidad,
+    *,
+    variant_id: int | None = None,
+    tipo: str,
+    motivo: str = "",
+    usuario: str = "",
+    rol: str = "",
+) -> dict:
+    try:
+        delta = float(cantidad)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("La cantidad debe ser numerica.") from exc
+    if not math.isfinite(delta):
+        raise ValueError("La cantidad debe ser un numero finito.")
+    if delta == 0:
+        raise ValueError("La cantidad debe ser distinta de 0.")
+
+    tipo_normalizado = str(tipo or "").strip().upper()
+    if tipo_normalizado in {"BAJA", "VENTA", "ANULACION_COMPRA"}:
+        delta = -abs(delta)
+
+    item = _resolve_inventory_item_in_cursor(cursor, product_id, variant_id)
+    anterior = float(item["stock_actual"] or 0)
+    nuevo = anterior + delta
+    if nuevo < 0:
+        raise ValueError("La operacion dejaria stock negativo.")
+    if item["fuente"] == SOURCE_LEGACY:
+        cursor.execute("UPDATE stock SET stock_actual=? WHERE producto_id=?", (nuevo, int(product_id)))
+    else:
+        cursor.execute(
+            "UPDATE stock_variantes SET stock_actual=?, updated_at=CURRENT_TIMESTAMP WHERE variante_id=?",
+            (nuevo, int(variant_id)),
+        )
+    _movement_insert(cursor, item, tipo_normalizado or "AJUSTE", delta, anterior, nuevo, motivo)
+    entity_id = int(variant_id) if item["variante"] is not None else int(product_id)
+    _audit_insert(
+        cursor,
+        f"{tipo_normalizado or 'AJUSTE'}_STOCK",
+        "stock_variante" if item["variante"] is not None else "stock",
+        entity_id,
+        _movement_detail(item, anterior, nuevo),
+        motivo,
+        usuario,
+        rol,
+    )
+    return {"stock_anterior": anterior, "stock_nuevo": nuevo, "fuente": item["fuente"]}
 
 
 def adjust_inventory_item(

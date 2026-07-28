@@ -27,7 +27,12 @@
                         <div class="col-md-4"><strong>Fecha:</strong><br>{{ compra.fecha }}</div>
                         <div class="col-md-4"><strong>Remito:</strong><br>{{ compra.numero_remito or '-' }}</div>
                         <div class="col-md-6"><strong>Proveedor:</strong><br>{{ compra.proveedor_nombre or '-' }}</div>
-                        <div class="col-md-6"><strong>Producto:</strong><br>{{ compra.descripcion or '-' }}</div>
+                        <div class="col-md-6">
+                            <strong>Producto:</strong><br>{{ compra.descripcion or '-' }}
+                            {% if compra.variante_id %}
+                            <br><small class="text-muted">{% if compra.variante_sku %}SKU {{ compra.variante_sku }}{% else %}Variante #{{ compra.variante_id }}{% endif %}</small>
+                            {% endif %}
+                        </div>
                         <div class="col-md-4"><strong>Cantidad:</strong><br>{{ compra.cantidad }}</div>
                         <div class="col-md-4"><strong>Costo Unitario:</strong><br>$ {{ "%.2f"|format(compra.costo_unitario) }}</div>
                         <div class="col-md-4"><strong>Total:</strong><br>$ {{ "%.2f"|format(compra.total) }}</div>
