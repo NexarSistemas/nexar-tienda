@@ -2,6 +2,41 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-28 - Codex - fix/issue-145-variant-stock
+
+### Tarea
+Integrar stock y movimientos por variante para el Issue #145 sin adoptar todavia
+compras, POS, ventas, lector, CSV, Tiendanube ni perfiles por rubro.
+
+### Diagnostico
+- El inventario manual, las alertas y los movimientos usaban `stock` como unica
+  fuente editable.
+- `stock_variantes` ya existia para configuracion de variantes, pero no habia
+  una decision persistente entre operacion legacy y operacion por variantes.
+- Una adopcion por existencia de variantes podia generar doble fuente o doble
+  descuento, por lo que se requeria una accion explicita.
+
+### Que se cambio
+- Se agrego `productos.stock_modo` con default `legacy` y `stock_movimientos`
+  ahora conserva `variante_id` y `stock_fuente`.
+- `services/inventory.py` centraliza resolucion de item vendible, fuente de
+  stock, altas, bajas, ajustes, listado operativo, alertas y transicion.
+- El ajuste manual de inventario usa el servicio central y escribe exactamente
+  una fuente: `stock` para legacy o `stock_variantes` para modo variantes.
+- La gestion de variantes incorpora una accion explicita para activar stock por
+  variantes con validacion de asignacion, transaccion atomica, movimientos y
+  auditoria.
+- El listado de stock muestra items vendibles; en productos por variantes, el
+  total del producto queda como proyeccion calculada desde sus variantes.
+- Se mantuvieron datos y bases existentes compatibles sin migraciones manuales.
+
+### Que se probo
+- `.venv\\Scripts\\python.exe -m py_compile database.py routes\\main.py services\\inventory.py services\\product_variants.py tests\\test_product_variants.py`
+- `.venv\\Scripts\\python.exe -m unittest tests.test_product_variants` - 56 OK
+- `.venv\\Scripts\\python.exe -m unittest discover -s tests` - 362 ejecutados;
+  mantiene el fallo conocido en `test_pricing_resolver` porque esperaba
+  `runtime` y obtuvo `supabase`.
+
 ## 2026-07-27 - Codex - fix/variant-fallback-audit
 
 ### Tarea

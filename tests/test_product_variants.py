@@ -30,6 +30,7 @@ class ProductVariantsTests(unittest.TestCase):
         import app as app_module
         import database
         from routes import main as routes_main
+        from services import inventory
         from services import product_variants
 
         self.database = importlib.reload(database)
@@ -38,9 +39,11 @@ class ProductVariantsTests(unittest.TestCase):
         self.database.init_db()
 
         self.product_variants = importlib.reload(product_variants)
+        self.inventory = importlib.reload(inventory)
         self.routes_main = importlib.reload(routes_main)
         self.routes_main.db = self.database
         self.routes_main.product_variants = self.product_variants
+        self.routes_main.inventory = self.inventory
 
         self.app_module = importlib.reload(app_module)
         self.app_module.db = self.database
@@ -1308,6 +1311,276 @@ class ProductVariantsTests(unittest.TestCase):
         verify_conn.close()
         self.assertEqual(productos, [("779000001009",)])
         self.assertEqual(variantes, [(" 779000001009 ",)])
+
+    def test_inventario_legacy_usa_solo_tabla_stock_aunque_existan_variantes(self):
+        producto_id = self._crear_producto(descripcion="Legacy operativo", stock=10)
+        variante_id = self._crear_variante(producto_id, stock_actual=4)
+
+        self.inventory.adjust_inventory_item(
+            producto_id,
+            stock_actual=7,
+            stock_minimo=1,
+            stock_maximo=20,
+            motivo="Conteo legacy",
+        )
+
+        stock = self.database.q("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,), fetchone=True)
+        stock_variante = self.database.q(
+            "SELECT stock_actual FROM stock_variantes WHERE variante_id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+        movimiento = self.database.q("SELECT * FROM stock_movimientos ORDER BY id DESC LIMIT 1", fetchone=True)
+
+        self.assertEqual(float(stock["stock_actual"] or 0), 7.0)
+        self.assertEqual(float(stock_variante["stock_actual"] or 0), 4.0)
+        self.assertIsNone(movimiento["variante_id"])
+        self.assertEqual(movimiento["stock_fuente"], "stock")
+
+        with self.assertRaisesRegex(ValueError, "stock legacy"):
+            self.inventory.adjust_inventory_item(
+                producto_id,
+                variant_id=variante_id,
+                stock_actual=3,
+                stock_minimo=1,
+                stock_maximo=10,
+            )
+
+    def test_inventario_por_variantes_usa_solo_stock_variantes(self):
+        producto_id = self._crear_producto(descripcion="Variante operativa", stock=6)
+        variante_id = self._crear_variante(producto_id, stock_actual=6, stock_minimo=1, stock_maximo=10)
+        self.inventory.activate_variant_stock_mode(producto_id, [{"variant_id": variante_id, "stock_actual": 6, "stock_minimo": 1, "stock_maximo": 10}])
+
+        self.inventory.adjust_inventory_item(
+            producto_id,
+            variant_id=variante_id,
+            stock_actual=3,
+            stock_minimo=1,
+            stock_maximo=10,
+            motivo="Ajuste variante",
+        )
+
+        stock = self.database.q("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,), fetchone=True)
+        stock_variante = self.database.q(
+            "SELECT stock_actual FROM stock_variantes WHERE variante_id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+        movimiento = self.database.q("SELECT * FROM stock_movimientos ORDER BY id DESC LIMIT 1", fetchone=True)
+
+        self.assertEqual(float(stock["stock_actual"] or 0), 6.0)
+        self.assertEqual(float(stock_variante["stock_actual"] or 0), 3.0)
+        self.assertEqual(int(movimiento["variante_id"] or 0), variante_id)
+        self.assertEqual(movimiento["stock_fuente"], "stock_variantes")
+
+        with self.assertRaisesRegex(ValueError, "debe indicar una variante"):
+            self.inventory.adjust_inventory_item(producto_id, stock_actual=1, stock_minimo=0, stock_maximo=5)
+
+    def test_alta_baja_y_ajuste_no_generan_doble_descuento(self):
+        producto_id = self._crear_producto(descripcion="Deltas", stock=5)
+
+        self.inventory.apply_inventory_delta(producto_id, 3, tipo="ALTA", motivo="Ingreso")
+        self.inventory.apply_inventory_delta(producto_id, 2, tipo="BAJA", motivo="Egreso")
+        self.inventory.adjust_inventory_item(producto_id, stock_actual=10, stock_minimo=1, stock_maximo=20)
+
+        stock = self.database.q("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,), fetchone=True)
+        movimientos = self.database.q("SELECT * FROM stock_movimientos WHERE producto_id=? ORDER BY id", (producto_id,))
+
+        self.assertEqual(float(stock["stock_actual"] or 0), 10.0)
+        self.assertEqual([row["tipo"] for row in movimientos], ["ALTA", "BAJA", "AJUSTE"])
+        self.assertTrue(all(row["variante_id"] is None for row in movimientos))
+        self.assertEqual([float(row["stock_nuevo"] or 0) for row in movimientos], [8.0, 6.0, 10.0])
+
+    def test_transicion_legacy_a_variantes_correcta_y_auditada(self):
+        producto_id = self._crear_producto(descripcion="Transicion", stock=9)
+        variante_a = self._crear_variante(producto_id, sku="TR-A", stock_actual=4, stock_minimo=1, stock_maximo=8)
+        variante_b = self._crear_variante(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Blanco"}],
+            sku="TR-B",
+            stock_actual=5,
+            stock_minimo=1,
+            stock_maximo=8,
+        )
+
+        self.inventory.activate_variant_stock_mode(
+            producto_id,
+            [
+                {"variant_id": variante_a, "stock_actual": 4, "stock_minimo": 1, "stock_maximo": 8},
+                {"variant_id": variante_b, "stock_actual": 5, "stock_minimo": 1, "stock_maximo": 8},
+            ],
+            motivo="Adopcion explicita",
+            usuario="admin",
+            rol="Administrador",
+        )
+
+        producto = self.database.get_producto(producto_id)
+        movimientos = self.database.q(
+            "SELECT * FROM stock_movimientos WHERE producto_id=? AND tipo='TRANSICION_VARIANTES' ORDER BY variante_id",
+            (producto_id,),
+        )
+        auditoria = self.database.q(
+            "SELECT * FROM auditoria WHERE accion='ACTIVACION_STOCK_VARIANTES' AND entidad_id=?",
+            (producto_id,),
+            fetchone=True,
+        )
+
+        self.assertEqual(producto["stock_modo"], "variantes")
+        self.assertEqual([int(row["variante_id"]) for row in movimientos], [variante_a, variante_b])
+        self.assertEqual([row["stock_fuente"] for row in movimientos], ["stock_variantes", "stock_variantes"])
+        self.assertIsNotNone(auditoria)
+        self.assertIn("stock legacy 9.00", auditoria["detalle"])
+
+    def test_transicion_rollback_completo_ante_fallo(self):
+        producto_id = self._crear_producto(descripcion="Rollback transicion", stock=9)
+        variante_id = self._crear_variante(producto_id, stock_actual=4, stock_minimo=1, stock_maximo=8)
+
+        with self.assertRaisesRegex(ValueError, "debe coincidir"):
+            self.inventory.activate_variant_stock_mode(
+                producto_id,
+                [{"variant_id": variante_id, "stock_actual": 4, "stock_minimo": 1, "stock_maximo": 8}],
+            )
+
+        producto = self.database.get_producto(producto_id)
+        stock = self.database.q("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,), fetchone=True)
+        movimientos = self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos WHERE producto_id=?", (producto_id,), fetchone=True)
+        auditoria = self.database.q("SELECT COUNT(*) AS total FROM auditoria WHERE entidad_id=?", (producto_id,), fetchone=True)
+
+        self.assertEqual(producto["stock_modo"], "legacy")
+        self.assertEqual(float(stock["stock_actual"] or 0), 9.0)
+        self.assertEqual(int(movimientos["total"] or 0), 0)
+        self.assertEqual(int(auditoria["total"] or 0), 0)
+
+    def test_restricciones_de_stock_invalidas(self):
+        producto_id = self._crear_producto(descripcion="Invalidos", stock=3)
+
+        casos = [
+            {"stock_actual": "nan", "stock_minimo": 1, "stock_maximo": 5, "error": "numero finito"},
+            {"stock_actual": -1, "stock_minimo": 1, "stock_maximo": 5, "error": "no puede ser negativo"},
+            {"stock_actual": 1, "stock_minimo": 6, "stock_maximo": 5, "error": "mayor o igual"},
+        ]
+        for caso in casos:
+            with self.subTest(caso=caso):
+                with self.assertRaisesRegex(ValueError, caso["error"]):
+                    self.inventory.adjust_inventory_item(
+                        producto_id,
+                        stock_actual=caso["stock_actual"],
+                        stock_minimo=caso["stock_minimo"],
+                        stock_maximo=caso["stock_maximo"],
+                    )
+
+    def test_base_antigua_recibe_modo_y_movimientos_compatibles(self):
+        legacy_db = Path(self.temp_dir.name) / "legacy_inventory.db"
+        conn = sqlite3.connect(legacy_db)
+        conn.executescript(
+            """
+            CREATE TABLE productos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo_interno TEXT,
+                codigo_barras TEXT DEFAULT '',
+                descripcion TEXT NOT NULL,
+                categoria TEXT DEFAULT '',
+                costo REAL DEFAULT 0,
+                precio_venta REAL DEFAULT 0,
+                activo INTEGER DEFAULT 1
+            );
+            CREATE TABLE stock (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                producto_id INTEGER UNIQUE,
+                stock_actual REAL DEFAULT 0,
+                stock_minimo REAL DEFAULT 5,
+                stock_maximo REAL DEFAULT 50
+            );
+            CREATE TABLE stock_movimientos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                producto_id INTEGER,
+                tipo TEXT DEFAULT 'AJUSTE',
+                cantidad REAL DEFAULT 0,
+                stock_anterior REAL DEFAULT 0,
+                stock_nuevo REAL DEFAULT 0,
+                motivo TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        conn.execute("INSERT INTO productos (codigo_interno, descripcion, categoria, costo, precio_venta) VALUES ('LEG', 'Legacy', 'General', 1, 2)")
+        conn.execute("INSERT INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo) VALUES (1, 3, 1, 5)")
+        conn.execute("INSERT INTO stock_movimientos (producto_id, tipo, cantidad, stock_anterior, stock_nuevo) VALUES (1, 'AJUSTE', 1, 2, 3)")
+        conn.commit()
+        conn.close()
+
+        self.database.DB_PATH = str(legacy_db)
+        self.database._db_initialized = False
+        self.database.init_db()
+
+        producto = self.database.get_producto(1)
+        movimiento = self.database.q("SELECT * FROM stock_movimientos WHERE producto_id=1", fetchone=True)
+        self.assertEqual(producto["stock_modo"], "legacy")
+        self.assertIsNone(movimiento["variante_id"])
+        self.assertEqual(movimiento["stock_fuente"], "stock")
+
+    def test_base_de_draft_pr_normaliza_stock_fuente_legacy_de_forma_idempotente(self):
+        draft_db = Path(self.temp_dir.name) / "draft_inventory.db"
+        conn = sqlite3.connect(draft_db)
+        conn.executescript(
+            """
+            CREATE TABLE productos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo_interno TEXT,
+                codigo_barras TEXT DEFAULT '',
+                descripcion TEXT NOT NULL,
+                categoria TEXT DEFAULT '',
+                costo REAL DEFAULT 0,
+                precio_venta REAL DEFAULT 0,
+                activo INTEGER DEFAULT 1,
+                stock_modo TEXT DEFAULT 'legacy'
+            );
+            CREATE TABLE stock (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                producto_id INTEGER UNIQUE,
+                stock_actual REAL DEFAULT 0,
+                stock_minimo REAL DEFAULT 5,
+                stock_maximo REAL DEFAULT 50
+            );
+            CREATE TABLE stock_movimientos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                producto_id INTEGER,
+                tipo TEXT DEFAULT 'AJUSTE',
+                cantidad REAL DEFAULT 0,
+                stock_anterior REAL DEFAULT 0,
+                stock_nuevo REAL DEFAULT 0,
+                variante_id INTEGER,
+                stock_fuente TEXT DEFAULT 'legacy',
+                motivo TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        conn.execute("INSERT INTO productos (codigo_interno, descripcion, categoria, costo, precio_venta) VALUES ('DRF', 'Draft', 'General', 1, 2)")
+        conn.execute("INSERT INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo) VALUES (1, 3, 1, 5)")
+        conn.execute("INSERT INTO stock_movimientos (producto_id, tipo, cantidad, stock_anterior, stock_nuevo, stock_fuente) VALUES (1, 'AJUSTE', 1, 2, 3, 'legacy')")
+        conn.commit()
+        conn.close()
+
+        self.database.DB_PATH = str(draft_db)
+        self.database._db_initialized = False
+        self.database.init_db()
+        self.database._db_initialized = False
+        self.database.init_db()
+
+        movimiento = self.database.q("SELECT * FROM stock_movimientos WHERE producto_id=1", fetchone=True)
+        self.assertEqual(movimiento["stock_fuente"], "stock")
+
+    def test_operacion_concurrente_queda_protegida_por_begin_immediate(self):
+        producto_id = self._crear_producto(descripcion="Concurrencia", stock=5)
+        conn = self._direct_conn()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            with self.assertRaises(sqlite3.OperationalError):
+                self.inventory.apply_inventory_delta(producto_id, 1, tipo="ALTA")
+        finally:
+            conn.rollback()
+            conn.close()
 
 
 if __name__ == "__main__":

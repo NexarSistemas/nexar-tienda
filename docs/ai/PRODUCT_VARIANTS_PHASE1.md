@@ -60,8 +60,26 @@ proveedor externo.
 Estas acciones no cambian la fuente de verdad legacy ni habilitan todavía
 variantes en POS, compras, movimientos o reportes.
 
+## Integracion de stock del Issue #145
+
+- `productos.stock_modo` define de forma persistente si el producto opera con
+  stock legacy (`stock`) o por variantes (`stock_variantes`). La existencia de
+  variantes creadas no cambia el modo por si sola.
+- `services/inventory.py` centraliza la resolucion del item vendible, altas,
+  bajas, ajustes, listado operativo, alertas y transicion a variantes.
+- En modo legacy, los movimientos rechazan `variante_id` y escriben solo en
+  `stock`. En modo variantes, la variante es obligatoria y se escribe solo en
+  `stock_variantes`.
+- `stock_movimientos` conserva registros legacy y suma `variante_id` y
+  `stock_fuente` para identificar producto, variante opcional y tabla afectada.
+- La activacion de stock por variantes es una accion explicita y transaccional:
+  valida que la suma asignada a variantes coincida con el stock legacy, no borra
+  la fila legacy, registra movimientos/auditoria y revierte todo ante error.
+- Los totales de productos con variantes son proyecciones calculadas desde sus
+  variantes activas, no una segunda fuente editable.
+
 ## Pendientes para una fase siguiente
 
-- Resolver variante efectiva en POS, compras, stock, reportes e importación.
+- Resolver variante efectiva en POS, compras, reportes e importación.
 - Definir sincronización controlada entre producto base legacy y variantes.
 - Implementar adaptadores externos hacia Tiendanube u otras plataformas.
