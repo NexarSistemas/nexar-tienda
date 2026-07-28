@@ -3209,6 +3209,9 @@ def producto_variantes_gestion(pid):
                 stock_maximo=request.form.get("stock_maximo", ""),
                 activo="activo" in request.form,
                 external_id=request.form.get("external_id", ""),
+                motivo_stock="Alta de variante",
+                usuario=(session.get("user") or {}).get("username", ""),
+                rol=(session.get("user") or {}).get("rol", ""),
             )
         except ValueError as exc:
             flash(str(exc), "warning")
@@ -3259,7 +3262,11 @@ def _render_product_variant_management(producto, *, editing_variant_id=None, edi
         stock=stock,
         variantes=variantes,
         stock_modo=stock_modo,
-        stock_variantes_total=sum(float(variante["stock_actual"] or 0) for variante in variantes),
+        stock_variantes_total=sum(
+            float(variante["stock_actual"] or 0)
+            for variante in variantes
+            if int(variante.get("activo") or 0) == 1
+        ),
         atributos_catalogo=product_variants.list_attributes_catalog(),
         editing_variant_id=editing_variant_id,
         edit_form_data=edit_form_data or {},
@@ -3319,6 +3326,9 @@ def producto_variante_editar(pid, variant_id):
             stock_actual=request.form.get("stock_actual", ""),
             stock_minimo=request.form.get("stock_minimo", ""),
             stock_maximo=request.form.get("stock_maximo", ""),
+            motivo_stock="Edicion de variante",
+            usuario=(session.get("user") or {}).get("username", ""),
+            rol=(session.get("user") or {}).get("rol", ""),
         )
     except ValueError as exc:
         flash(str(exc), "warning")
@@ -3462,17 +3472,21 @@ def stock_ajustar(pid):
         except ValueError as exc:
             flash(str(exc), "warning")
             return redirect(request.url)
-        inventory.adjust_inventory_item(
-            pid,
-            variant_id=variant_id,
-            stock_actual=stock_actual,
-            stock_minimo=request.form.get("stock_minimo", stock_row["stock_minimo"]),
-            stock_maximo=request.form.get("stock_maximo", stock_row["stock_maximo"]),
-            proveedor_habitual=request.form.get("proveedor_habitual", ""),
-            motivo=request.form.get("motivo", "Ajuste manual"),
-            usuario=(session.get("user") or {}).get("username", ""),
-            rol=(session.get("user") or {}).get("rol", ""),
-        )
+        try:
+            inventory.adjust_inventory_item(
+                pid,
+                variant_id=variant_id,
+                stock_actual=stock_actual,
+                stock_minimo=request.form.get("stock_minimo", stock_row["stock_minimo"]),
+                stock_maximo=request.form.get("stock_maximo", stock_row["stock_maximo"]),
+                proveedor_habitual=request.form.get("proveedor_habitual", ""),
+                motivo=request.form.get("motivo", "Ajuste manual"),
+                usuario=(session.get("user") or {}).get("username", ""),
+                rol=(session.get("user") or {}).get("rol", ""),
+            )
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return redirect(request.url)
         flash("✅ Stock actualizado.", "success")
         return redirect(url_for("stock"))
     return render_template(
