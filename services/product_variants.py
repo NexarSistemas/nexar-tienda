@@ -5,6 +5,7 @@ import sqlite3
 from collections import defaultdict
 
 import database as db
+from services import inventory
 
 
 DEFAULT_COMBINATION_KEY = "__default__"
@@ -33,11 +34,18 @@ def _validate_stock_value(value, label: str) -> float:
 
 
 def _validate_variant_stock(stock_actual, stock_minimo, stock_maximo) -> tuple[float, float, float]:
-    return (
+    actual, minimo, maximo = (
         _validate_stock_value(stock_actual, "El stock actual"),
         _validate_stock_value(stock_minimo, "El stock minimo"),
         _validate_stock_value(stock_maximo, "El stock maximo"),
     )
+    if maximo < minimo:
+        raise ValueError("El stock maximo debe ser mayor o igual al stock minimo.")
+    return actual, minimo, maximo
+
+
+def _product_uses_variant_stock(product) -> bool:
+    return str(product["stock_modo"] if "stock_modo" in product.keys() else "legacy").strip().lower() == "variantes"
 
 
 def _validate_optional_money(value, label: str) -> float | None:
@@ -333,6 +341,9 @@ def create_variant(
     stock_maximo=50,
     activo: bool = True,
     external_id: str = "",
+    motivo_stock: str = "",
+    usuario: str = "",
+    rol: str = "",
 ) -> int:
     product = db.get_producto(int(product_id or 0))
     if not product:
@@ -384,13 +395,28 @@ def create_variant(
             },
         )
         _insert_variant_attribute_values(cursor, variant_id, attribute_pairs)
-        _insert_variant_stock(
-            cursor,
-            variant_id,
-            stock_actual=stock_actual,
-            stock_minimo=stock_minimo,
-            stock_maximo=stock_maximo,
-        )
+        if _product_uses_variant_stock(product):
+            if activo:
+                inventory.adjust_inventory_item_in_cursor(
+                    cursor,
+                    int(product_id),
+                    variant_id=variant_id,
+                    stock_actual=stock_actual,
+                    stock_minimo=stock_minimo,
+                    stock_maximo=stock_maximo,
+                    motivo=motivo_stock or "Alta de variante",
+                    usuario=usuario,
+                    rol=rol,
+                    values_already_validated=True,
+                )
+        else:
+            _insert_variant_stock(
+                cursor,
+                variant_id,
+                stock_actual=stock_actual,
+                stock_minimo=stock_minimo,
+                stock_maximo=stock_maximo,
+            )
         conn.commit()
         return variant_id
     except sqlite3.IntegrityError as exc:
@@ -416,7 +442,13 @@ def update_variant(
     stock_actual=0,
     stock_minimo=5,
     stock_maximo=50,
+    motivo_stock: str = "",
+    usuario: str = "",
+    rol: str = "",
 ) -> None:
+    product = db.get_producto(int(product_id or 0))
+    if not product:
+        raise ValueError("El producto indicado no existe.")
     stock_actual, stock_minimo, stock_maximo = _validate_variant_stock(
         stock_actual,
         stock_minimo,
@@ -469,13 +501,27 @@ def update_variant(
         )
         cursor.execute("DELETE FROM producto_variante_valores WHERE variante_id=?", (int(variant_id),))
         _insert_variant_attribute_values(cursor, int(variant_id), attribute_pairs)
-        _update_variant_stock(
-            cursor,
-            int(variant_id),
-            stock_actual=stock_actual,
-            stock_minimo=stock_minimo,
-            stock_maximo=stock_maximo,
-        )
+        if _product_uses_variant_stock(product):
+            inventory.adjust_inventory_item_in_cursor(
+                cursor,
+                int(product_id),
+                variant_id=int(variant_id),
+                stock_actual=stock_actual,
+                stock_minimo=stock_minimo,
+                stock_maximo=stock_maximo,
+                motivo=motivo_stock or "Edicion de variante",
+                usuario=usuario,
+                rol=rol,
+                values_already_validated=True,
+            )
+        else:
+            _update_variant_stock(
+                cursor,
+                int(variant_id),
+                stock_actual=stock_actual,
+                stock_minimo=stock_minimo,
+                stock_maximo=stock_maximo,
+            )
         conn.commit()
     except sqlite3.IntegrityError as exc:
         conn.rollback()

@@ -1376,6 +1376,157 @@ class ProductVariantsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "debe indicar una variante"):
             self.inventory.adjust_inventory_item(producto_id, stock_actual=1, stock_minimo=0, stock_maximo=5)
 
+    def test_crear_y_editar_variante_operativa_usa_inventario_movimientos_y_auditoria(self):
+        producto_id = self._crear_producto(descripcion="Alta operativa", stock=0)
+        variante_base = self._crear_variante(producto_id, sku="OP-BASE", stock_actual=0, stock_minimo=0, stock_maximo=5)
+        self.inventory.activate_variant_stock_mode(
+            producto_id,
+            [{"variant_id": variante_base, "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 5}],
+        )
+
+        variante_id = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Rojo"}],
+            sku="OP-ROJO",
+            stock_actual=3,
+            stock_minimo=1,
+            stock_maximo=8,
+            motivo_stock="Alta centralizada",
+            usuario="admin",
+            rol="Administrador",
+        )
+
+        self.product_variants.update_variant(
+            producto_id,
+            variante_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="OP-AZUL",
+            stock_actual=5,
+            stock_minimo=1,
+            stock_maximo=9,
+            motivo_stock="Edicion centralizada",
+            usuario="admin",
+            rol="Administrador",
+        )
+
+        stock = self.database.q(
+            "SELECT stock_actual, stock_minimo, stock_maximo FROM stock_variantes WHERE variante_id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+        movimientos = self.database.q(
+            """
+            SELECT tipo, stock_fuente, variante_id, stock_anterior, stock_nuevo, motivo
+            FROM stock_movimientos
+            WHERE producto_id=? AND variante_id=? AND tipo='AJUSTE'
+            ORDER BY id
+            """,
+            (producto_id, variante_id),
+        )
+        auditorias = self.database.q(
+            """
+            SELECT accion, entidad, entidad_id, motivo
+            FROM auditoria
+            WHERE accion='AJUSTE_STOCK' AND entidad_id=?
+            ORDER BY id
+            """,
+            (variante_id,),
+        )
+
+        self.assertEqual(float(stock["stock_actual"] or 0), 5.0)
+        self.assertEqual(float(stock["stock_minimo"] or 0), 1.0)
+        self.assertEqual(float(stock["stock_maximo"] or 0), 9.0)
+        self.assertEqual([float(row["stock_nuevo"] or 0) for row in movimientos], [3.0, 5.0])
+        self.assertTrue(all(row["stock_fuente"] == "stock_variantes" for row in movimientos))
+        self.assertTrue(all(int(row["variante_id"] or 0) == variante_id for row in movimientos))
+        self.assertEqual([row["motivo"] for row in movimientos], ["Alta centralizada", "Edicion centralizada"])
+        self.assertEqual(len(auditorias), 2)
+        self.assertTrue(all(row["entidad"] == "stock_variante" for row in auditorias))
+
+    def test_valoracion_de_inventario_usa_costo_propio_de_variante_y_fallback(self):
+        producto_id = self._crear_producto(descripcion="Costos variantes", stock=5, costo=10, precio=20)
+        variante_propia = self._crear_variante(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Negro"}],
+            sku="COSTO-PROPIO",
+            costo=7,
+            stock_actual=2,
+            stock_minimo=0,
+            stock_maximo=10,
+        )
+        variante_fallback = self._crear_variante(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Blanco"}],
+            sku="COSTO-FALLBACK",
+            costo=None,
+            stock_actual=3,
+            stock_minimo=0,
+            stock_maximo=10,
+        )
+        self.inventory.activate_variant_stock_mode(
+            producto_id,
+            [
+                {"variant_id": variante_propia, "stock_actual": 2, "stock_minimo": 0, "stock_maximo": 10},
+                {"variant_id": variante_fallback, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 10},
+            ],
+        )
+
+        items = {item["variante_id"]: item for item in self.inventory.list_inventory_items()}
+
+        self.assertEqual(items[variante_propia]["costo"], 7.0)
+        self.assertEqual(items[variante_propia]["valor_stock"], 14.0)
+        self.assertEqual(items[variante_fallback]["costo"], 10.0)
+        self.assertEqual(items[variante_fallback]["valor_stock"], 30.0)
+
+    def test_stock_ajustar_limpia_value_error_de_limites_invalidos_sin_500(self):
+        producto_id = self._crear_producto(descripcion="Ruta ajuste invalido", stock=4)
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.post(
+                f"/stock/{producto_id}/ajustar",
+                data={
+                    "csrf_token": "test-token",
+                    "stock_actual": "4",
+                    "stock_minimo": "9",
+                    "stock_maximo": "3",
+                    "motivo": "Limites invalidos",
+                },
+                follow_redirects=False,
+            )
+            with client.session_transaction() as session:
+                flashes = session.get("_flashes", [])
+
+        movimientos = self.database.q(
+            "SELECT COUNT(*) AS total FROM stock_movimientos WHERE producto_id=?",
+            (producto_id,),
+            fetchone=True,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(("warning", "El stock maximo debe ser mayor o igual al stock minimo."), flashes)
+        self.assertEqual(int(movimientos["total"] or 0), 0)
+
+    def test_total_proyectado_de_variantes_solo_incluye_activas(self):
+        producto_id = self._crear_producto(descripcion="Total activo", stock=4)
+        variante_activa = self._crear_variante(producto_id, sku="TOTAL-ACTIVA", stock_actual=4)
+        self._crear_variante(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Gris"}],
+            sku="TOTAL-INACTIVA",
+            stock_actual=6,
+            activo=False,
+        )
+        self.inventory.activate_variant_stock_mode(
+            producto_id,
+            [{"variant_id": variante_activa, "stock_actual": 4, "stock_minimo": 1, "stock_maximo": 5}],
+        )
+
+        producto = self.database.get_producto(producto_id)
+        with mock.patch.object(self.routes_main, "render_template") as render_template:
+            self.routes_main._render_product_variant_management(producto)
+
+        _, kwargs = render_template.call_args
+        self.assertEqual(kwargs["stock_variantes_total"], 4.0)
+
     def test_alta_baja_y_ajuste_no_generan_doble_descuento(self):
         producto_id = self._crear_producto(descripcion="Deltas", stock=5)
 

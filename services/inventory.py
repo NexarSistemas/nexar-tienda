@@ -248,45 +248,79 @@ def adjust_inventory_item(
     try:
         cursor = conn.cursor()
         cursor.execute("BEGIN IMMEDIATE")
-        item = _resolve_inventory_item_in_cursor(cursor, product_id, variant_id)
-        anterior = float(item["stock_actual"] or 0)
-        if item["fuente"] == SOURCE_LEGACY:
-            cursor.execute(
-                """
-                UPDATE stock
-                SET stock_actual=?, stock_minimo=?, stock_maximo=?, proveedor_habitual=?
-                WHERE producto_id=?
-                """,
-                (nuevo, minimo, maximo, str(proveedor_habitual or "").strip(), int(product_id)),
-            )
-        else:
-            cursor.execute(
-                """
-                UPDATE stock_variantes
-                SET stock_actual=?, stock_minimo=?, stock_maximo=?, updated_at=CURRENT_TIMESTAMP
-                WHERE variante_id=?
-                """,
-                (nuevo, minimo, maximo, int(variant_id)),
-            )
-        _movement_insert(cursor, item, "AJUSTE", nuevo - anterior, anterior, nuevo, motivo or "Ajuste manual")
-        entity_id = int(variant_id) if item["variante"] is not None else int(product_id)
-        _audit_insert(
+        result = adjust_inventory_item_in_cursor(
             cursor,
-            "AJUSTE_STOCK",
-            "stock_variante" if item["variante"] is not None else "stock",
-            entity_id,
-            _movement_detail(item, anterior, nuevo),
-            motivo or "Ajuste manual",
-            usuario,
-            rol,
+            product_id,
+            stock_actual=nuevo,
+            stock_minimo=minimo,
+            stock_maximo=maximo,
+            variant_id=variant_id,
+            proveedor_habitual=proveedor_habitual,
+            motivo=motivo,
+            usuario=usuario,
+            rol=rol,
+            values_already_validated=True,
         )
         conn.commit()
-        return {"stock_anterior": anterior, "stock_nuevo": nuevo, "fuente": item["fuente"]}
+        return result
     except Exception:
         conn.rollback()
         raise
     finally:
         conn.close()
+
+
+def adjust_inventory_item_in_cursor(
+    cursor,
+    product_id: int,
+    *,
+    stock_actual,
+    stock_minimo,
+    stock_maximo,
+    variant_id: int | None = None,
+    proveedor_habitual: str | None = None,
+    motivo: str = "",
+    usuario: str = "",
+    rol: str = "",
+    values_already_validated: bool = False,
+) -> dict:
+    if values_already_validated:
+        nuevo, minimo, maximo = float(stock_actual), float(stock_minimo), float(stock_maximo)
+    else:
+        nuevo, minimo, maximo = _validate_limits(stock_actual, stock_minimo, stock_maximo)
+    item = _resolve_inventory_item_in_cursor(cursor, product_id, variant_id)
+    anterior = float(item["stock_actual"] or 0)
+    if item["fuente"] == SOURCE_LEGACY:
+        cursor.execute(
+            """
+            UPDATE stock
+            SET stock_actual=?, stock_minimo=?, stock_maximo=?, proveedor_habitual=?
+            WHERE producto_id=?
+            """,
+            (nuevo, minimo, maximo, str(proveedor_habitual or "").strip(), int(product_id)),
+        )
+    else:
+        cursor.execute(
+            """
+            UPDATE stock_variantes
+            SET stock_actual=?, stock_minimo=?, stock_maximo=?, updated_at=CURRENT_TIMESTAMP
+            WHERE variante_id=?
+            """,
+            (nuevo, minimo, maximo, int(variant_id)),
+        )
+    _movement_insert(cursor, item, "AJUSTE", nuevo - anterior, anterior, nuevo, motivo or "Ajuste manual")
+    entity_id = int(variant_id) if item["variante"] is not None else int(product_id)
+    _audit_insert(
+        cursor,
+        "AJUSTE_STOCK",
+        "stock_variante" if item["variante"] is not None else "stock",
+        entity_id,
+        _movement_detail(item, anterior, nuevo),
+        motivo or "Ajuste manual",
+        usuario,
+        rol,
+    )
+    return {"stock_anterior": anterior, "stock_nuevo": nuevo, "fuente": item["fuente"]}
 
 
 def _movement_detail(item: dict, anterior: float, nuevo: float) -> str:
@@ -399,7 +433,7 @@ def list_inventory_items(search: str = "") -> list[dict]:
                p.costo, p.precio_venta, COALESCE(p.stock_modo, 'legacy') AS stock_modo,
                s.stock_actual AS legacy_stock_actual, s.stock_minimo AS legacy_stock_minimo,
                s.stock_maximo AS legacy_stock_maximo, s.ultimo_ingreso, s.proveedor_habitual,
-               v.id AS variante_id, v.nombre AS variante_nombre, v.sku AS variante_sku,
+               v.id AS variante_id, v.nombre AS variante_nombre, v.sku AS variante_sku, v.costo AS variante_costo,
                sv.stock_actual AS variante_stock_actual, sv.stock_minimo AS variante_stock_minimo,
                sv.stock_maximo AS variante_stock_maximo
         FROM productos p
@@ -421,6 +455,9 @@ def list_inventory_items(search: str = "") -> list[dict]:
         stock_minimo = float((row["variante_stock_minimo"] if mode == STOCK_MODE_VARIANTS else row["legacy_stock_minimo"]) or 0)
         stock_maximo = float((row["variante_stock_maximo"] if mode == STOCK_MODE_VARIANTS else row["legacy_stock_maximo"]) or 0)
         estado = _stock_status(stock_actual, stock_minimo, stock_maximo)
+        costo = float(row["costo"] or 0)
+        if mode == STOCK_MODE_VARIANTS and row["variante_costo"] is not None:
+            costo = float(row["variante_costo"] or 0)
         item = {
             "id": int(row["producto_id"]),
             "producto_id": int(row["producto_id"]),
@@ -431,7 +468,7 @@ def list_inventory_items(search: str = "") -> list[dict]:
             "variante_sku": row["variante_sku"] or "",
             "categoria": row["categoria"],
             "unidad": row["unidad"],
-            "costo": float(row["costo"] or 0),
+            "costo": costo,
             "precio_venta": float(row["precio_venta"] or 0),
             "stock_modo": mode,
             "stock_actual": stock_actual,
@@ -440,7 +477,7 @@ def list_inventory_items(search: str = "") -> list[dict]:
             "ultimo_ingreso": row["ultimo_ingreso"] or "",
             "proveedor_habitual": row["proveedor_habitual"] or "",
             "estado": estado,
-            "valor_stock": stock_actual * float(row["costo"] or 0),
+            "valor_stock": stock_actual * costo,
         }
         haystack = " ".join(
             str(item.get(key) or "")
