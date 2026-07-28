@@ -55,6 +55,9 @@
                 </div>
                 <div class="card-body">
                     <form method="POST" id="formAjuste">
+                        {% if variante %}
+                        <input type="hidden" name="variante_id" value="{{ variante['id'] }}">
+                        {% endif %}
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="stock_actual" class="form-label">

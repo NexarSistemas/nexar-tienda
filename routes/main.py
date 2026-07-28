@@ -58,6 +58,7 @@ from services.mercadopago_checkout import (
 )
 from services import pricing_resolver
 from services import product_variants
+from services import inventory
 from services.license_sdk import (
     get_current_hwid,
     get_license_debug_state,
@@ -3250,15 +3251,52 @@ def _variant_form_snapshot():
 def _render_product_variant_management(producto, *, editing_variant_id=None, edit_form_data=None):
     product_id = int(producto["id"])
     stock = db.q("SELECT * FROM stock WHERE producto_id=?", (product_id,), fetchone=True)
+    variantes = product_variants.list_product_variants(product_id)
+    stock_modo = (producto["stock_modo"] if "stock_modo" in producto.keys() else "legacy") or "legacy"
     return render_template(
         "producto_variantes.html",
         producto=producto,
         stock=stock,
-        variantes=product_variants.list_product_variants(product_id),
+        variantes=variantes,
+        stock_modo=stock_modo,
+        stock_variantes_total=sum(float(variante["stock_actual"] or 0) for variante in variantes),
         atributos_catalogo=product_variants.list_attributes_catalog(),
         editing_variant_id=editing_variant_id,
         edit_form_data=edit_form_data or {},
     )
+
+
+@main_bp.route("/productos/<int:pid>/variantes/activar-stock", methods=["POST"])
+@vendedor_forbidden
+def producto_variantes_activar_stock(pid):
+    producto = db.get_producto(pid)
+    if not producto:
+        flash("Producto inexistente.", "danger")
+        return redirect(url_for("productos"))
+    variantes = product_variants.list_product_variants(pid)
+    allocations = [
+        {
+            "variant_id": variante["id"],
+            "stock_actual": variante["stock_actual"],
+            "stock_minimo": variante["stock_minimo"],
+            "stock_maximo": variante["stock_maximo"],
+        }
+        for variante in variantes
+        if int(variante.get("activo") or 0) == 1
+    ]
+    try:
+        inventory.activate_variant_stock_mode(
+            pid,
+            allocations,
+            motivo=request.form.get("motivo", "Activacion de stock por variantes"),
+            usuario=(session.get("user") or {}).get("username", ""),
+            rol=(session.get("user") or {}).get("rol", ""),
+        )
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("producto_variantes_gestion", pid=pid))
+    flash("Stock por variantes activado.", "success")
+    return redirect(url_for("producto_variantes_gestion", pid=pid))
 
 
 @main_bp.route("/productos/<int:pid>/variantes/<int:variant_id>/editar", methods=["POST"])
@@ -3387,7 +3425,7 @@ def stock():
     buscar = request.args.get("buscar", "")
     estado = request.args.get("estado", "")
     rows = []
-    for r in db.get_stock_full(search=buscar):
+    for r in inventory.list_inventory_items(search=buscar):
         item = dict(r)
         item["estado"] = item["estado"].replace(" ", "_")
         rows.append(item)
@@ -3396,7 +3434,7 @@ def stock():
     return render_template(
         "stock.html",
         productos=rows,
-        alertas=db.get_alertas_count(),
+        alertas=inventory.get_alertas_count(),
         total_stock_value=sum(float(r["valor_stock"] or 0) for r in rows),
         usuario_puede_editar_stock=not _is_vendedor_role(session.get("user", {}).get("rol")),
     )
@@ -3406,24 +3444,44 @@ def stock():
 @vendedor_forbidden
 def stock_ajustar(pid):
     producto = db.get_producto(pid)
-    stock_row = db.q("SELECT * FROM stock WHERE producto_id=?", (pid,), fetchone=True)
+    if not producto:
+        flash("Producto inexistente.", "danger")
+        return redirect(url_for("stock"))
+    variant_id_raw = request.args.get("variante_id") or request.form.get("variante_id")
+    variant_id = int(variant_id_raw) if str(variant_id_raw or "").strip().isdigit() else None
+    try:
+        resolved = inventory.resolve_inventory_item(pid, variant_id)
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("stock"))
+    stock_row = resolved["stock"]
+    variante = resolved["variante"]
     if request.method == "POST":
-        anterior = float(stock_row["stock_actual"] or 0)
         try:
-            nuevo = db.validar_cantidad_producto(producto, request.form.get("stock_actual", anterior) or anterior, campo="stock")
+            stock_actual = db.validar_cantidad_producto(producto, request.form.get("stock_actual", stock_row["stock_actual"]) or stock_row["stock_actual"], campo="stock")
         except ValueError as exc:
             flash(str(exc), "warning")
             return redirect(request.url)
-        db.update_stock_item(pid, nuevo, float(request.form.get("stock_minimo", 5)), float(request.form.get("stock_maximo", 50)), request.form.get("proveedor_habitual", ""))
-        db.q("INSERT INTO stock_movimientos (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo) VALUES (?,?,?,?,?,?)", (pid, "AJUSTE", nuevo - anterior, anterior, nuevo, request.form.get("motivo", "Ajuste manual")), commit=True)
-        _auditar_accion("AJUSTE_STOCK", "stock", pid, detalle=f"{producto['descripcion'] or 'Producto'} · {anterior:.2f} -> {nuevo:.2f}", motivo=request.form.get("motivo", "Ajuste manual"))
+        inventory.adjust_inventory_item(
+            pid,
+            variant_id=variant_id,
+            stock_actual=stock_actual,
+            stock_minimo=request.form.get("stock_minimo", stock_row["stock_minimo"]),
+            stock_maximo=request.form.get("stock_maximo", stock_row["stock_maximo"]),
+            proveedor_habitual=request.form.get("proveedor_habitual", ""),
+            motivo=request.form.get("motivo", "Ajuste manual"),
+            usuario=(session.get("user") or {}).get("username", ""),
+            rol=(session.get("user") or {}).get("rol", ""),
+        )
         flash("✅ Stock actualizado.", "success")
         return redirect(url_for("stock"))
     return render_template(
         "stock_ajustar.html",
         producto=producto,
         stock=stock_row,
-        movimientos=db.get_stock_movimientos(pid),
+        variante=variante,
+        stock_modo=resolved["modo"],
+        movimientos=inventory.get_inventory_movements(pid, variant_id),
         proveedores=db.get_proveedores(),
     )
 

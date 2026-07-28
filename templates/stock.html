@@ -160,6 +160,9 @@
                     </td>
                     <td>
                         <strong>{{ prod['descripcion'] }}</strong>
+                        {% if prod.get('variante_id') %}
+                        <br><small class="text-muted">Variante: {{ prod.get('variante_nombre') or ('#' ~ prod.get('variante_id')) }}{% if prod.get('variante_sku') %} · SKU {{ prod.get('variante_sku') }}{% endif %}</small>
+                        {% endif %}
                         {% if prod['unidad'] %}
                         <br><small class="text-muted">{{ prod['unidad'] }}</small>
                         {% endif %}
@@ -204,7 +207,7 @@
                     </td>
                     <td class="text-center">
                         {% if usuario_puede_editar_stock %}
-                        <a href="{{ url_for('stock_ajustar', pid=prod['id']) }}" 
+                        <a href="{{ url_for('stock_ajustar', pid=prod['id'], variante_id=prod.get('variante_id')) if prod.get('variante_id') else url_for('stock_ajustar', pid=prod['id']) }}"
                            class="btn btn-sm btn-outline-primary"
                            title="Ajustar stock">
                             <i class="fas fa-pencil-alt"></i>
