@@ -2,6 +2,27 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-28 - Codex - fix/issue-145-post-merge-review
+
+### Tarea
+Corregir los dos threads abiertos de la PR #159 sobre variantes inactivas en
+productos con `stock_modo='variantes'`.
+
+### Que se cambio
+- Las variantes inactivas ahora persisten su configuracion de stock en
+  `stock_variantes` sin registrar movimientos ni auditoria operativa.
+- La edicion de variantes inactivas evita el resolvedor operativo que exige
+  `activo=1`, pero las operaciones reales de inventario siguen rechazandolas.
+- Se agregaron regresiones de alta, edicion, rechazo operativo y exclusion de
+  inventario/totales activos.
+
+### Que se probo
+- `.venv/bin/python -m py_compile services/product_variants.py tests/test_product_variants.py`
+- `.venv/bin/python -m unittest tests.test_product_variants` - 63 OK
+- `.venv/bin/python -m unittest discover -s tests` - 369 ejecutados; mantiene
+  19 fallos conocidos en `tests/test_license_integration.py` por
+  `arca_facturacion` agregado a permisos esperados.
+
 ## 2026-07-28 - Codex - fix/issue-145-variant-stock
 
 ### Tarea

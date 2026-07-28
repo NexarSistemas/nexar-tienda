@@ -255,7 +255,7 @@ def _insert_variant_stock(cursor, variant_id: int, *, stock_actual, stock_minimo
     )
 
 
-def _update_variant_stock(cursor, variant_id: int, *, stock_actual, stock_minimo, stock_maximo) -> None:
+def _persist_variant_stock_config(cursor, variant_id: int, *, stock_actual, stock_minimo, stock_maximo) -> None:
     cursor.execute(
         """
         UPDATE stock_variantes
@@ -409,6 +409,14 @@ def create_variant(
                     rol=rol,
                     values_already_validated=True,
                 )
+            else:
+                _persist_variant_stock_config(
+                    cursor,
+                    variant_id,
+                    stock_actual=stock_actual,
+                    stock_minimo=stock_minimo,
+                    stock_maximo=stock_maximo,
+                )
         else:
             _insert_variant_stock(
                 cursor,
@@ -461,7 +469,7 @@ def update_variant(
     conn = db.get_conn()
     try:
         cursor = conn.cursor()
-        _get_variant_for_product_in_cursor(cursor, product_id, variant_id)
+        variant = _get_variant_for_product_in_cursor(cursor, product_id, variant_id)
         attribute_pairs = _resolve_attribute_pairs(cursor, attributes)
         sku_clean = _validate_variant_sku(cursor, sku, exclude_variant_id=variant_id)
         barcode_clean = _validate_variant_barcode(cursor, codigo_barras, exclude_variant_id=variant_id)
@@ -501,7 +509,7 @@ def update_variant(
         )
         cursor.execute("DELETE FROM producto_variante_valores WHERE variante_id=?", (int(variant_id),))
         _insert_variant_attribute_values(cursor, int(variant_id), attribute_pairs)
-        if _product_uses_variant_stock(product):
+        if _product_uses_variant_stock(product) and int(variant["activo"] or 0) == 1:
             inventory.adjust_inventory_item_in_cursor(
                 cursor,
                 int(product_id),
@@ -515,7 +523,7 @@ def update_variant(
                 values_already_validated=True,
             )
         else:
-            _update_variant_stock(
+            _persist_variant_stock_config(
                 cursor,
                 int(variant_id),
                 stock_actual=stock_actual,

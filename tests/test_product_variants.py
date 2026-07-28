@@ -1443,6 +1443,130 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertEqual(len(auditorias), 2)
         self.assertTrue(all(row["entidad"] == "stock_variante" for row in auditorias))
 
+    def test_crear_variante_inactiva_en_modo_variantes_persiste_stock_sin_movimiento_operativo(self):
+        producto_id = self._crear_producto(descripcion="Alta inactiva", stock=0)
+        variante_base = self._crear_variante(producto_id, sku="INACT-BASE", stock_actual=0, stock_minimo=0, stock_maximo=5)
+        self.inventory.activate_variant_stock_mode(
+            producto_id,
+            [{"variant_id": variante_base, "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 5}],
+        )
+
+        variante_inactiva = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Gris"}],
+            sku="INACT-GRIS",
+            stock_actual=7,
+            stock_minimo=2,
+            stock_maximo=12,
+            activo=False,
+            motivo_stock="Alta inactiva",
+            usuario="admin",
+            rol="Administrador",
+        )
+
+        stock = self.database.q(
+            "SELECT stock_actual, stock_minimo, stock_maximo FROM stock_variantes WHERE variante_id=?",
+            (variante_inactiva,),
+            fetchone=True,
+        )
+        movimientos = self.database.q(
+            "SELECT COUNT(*) AS total FROM stock_movimientos WHERE variante_id=?",
+            (variante_inactiva,),
+            fetchone=True,
+        )
+        auditorias = self.database.q(
+            "SELECT COUNT(*) AS total FROM auditoria WHERE accion='AJUSTE_STOCK' AND entidad_id=?",
+            (variante_inactiva,),
+            fetchone=True,
+        )
+        inventory_variant_ids = {item["variante_id"] for item in self.inventory.list_inventory_items()}
+        producto = self.database.get_producto(producto_id)
+        with mock.patch.object(self.routes_main, "render_template") as render_template:
+            self.routes_main._render_product_variant_management(producto)
+        _, kwargs = render_template.call_args
+
+        self.assertEqual(float(stock["stock_actual"] or 0), 7.0)
+        self.assertEqual(float(stock["stock_minimo"] or 0), 2.0)
+        self.assertEqual(float(stock["stock_maximo"] or 0), 12.0)
+        self.assertEqual(int(movimientos["total"] or 0), 0)
+        self.assertEqual(int(auditorias["total"] or 0), 0)
+        self.assertNotIn(variante_inactiva, inventory_variant_ids)
+        self.assertEqual(kwargs["stock_variantes_total"], 0.0)
+
+    def test_editar_variante_inactiva_en_modo_variantes_persiste_configuracion_y_rechaza_operaciones(self):
+        producto_id = self._crear_producto(descripcion="Edicion inactiva", stock=0)
+        variante_base = self._crear_variante(producto_id, sku="EDIT-BASE", stock_actual=0, stock_minimo=0, stock_maximo=5)
+        self.inventory.activate_variant_stock_mode(
+            producto_id,
+            [{"variant_id": variante_base, "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 5}],
+        )
+        variante_inactiva = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Gris"}],
+            sku="EDIT-GRIS",
+            stock_actual=3,
+            stock_minimo=1,
+            stock_maximo=8,
+            activo=False,
+        )
+
+        self.product_variants.update_variant(
+            producto_id,
+            variante_inactiva,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="EDIT-AZUL",
+            codigo_barras="779000009001",
+            costo=80,
+            precio=140,
+            precio_promocional=120,
+            stock_actual=6,
+            stock_minimo=2,
+            stock_maximo=10,
+            motivo_stock="Edicion inactiva",
+            usuario="admin",
+            rol="Administrador",
+        )
+
+        variante = self.product_variants.list_product_variants(producto_id)[1]
+        stock = self.database.q(
+            "SELECT stock_actual, stock_minimo, stock_maximo FROM stock_variantes WHERE variante_id=?",
+            (variante_inactiva,),
+            fetchone=True,
+        )
+        movimientos = self.database.q(
+            "SELECT COUNT(*) AS total FROM stock_movimientos WHERE variante_id=?",
+            (variante_inactiva,),
+            fetchone=True,
+        )
+        auditorias = self.database.q(
+            "SELECT COUNT(*) AS total FROM auditoria WHERE accion='AJUSTE_STOCK' AND entidad_id=?",
+            (variante_inactiva,),
+            fetchone=True,
+        )
+
+        self.assertEqual(variante["sku"], "EDIT-AZUL")
+        self.assertEqual(variante["codigo_barras"], "779000009001")
+        self.assertEqual(variante["resumen_atributos"], "Color: Azul")
+        self.assertEqual(variante["costo_propio"], 80.0)
+        self.assertEqual(variante["precio_propio"], 140.0)
+        self.assertEqual(variante["precio_promocional"], 120.0)
+        self.assertEqual(float(stock["stock_actual"] or 0), 6.0)
+        self.assertEqual(float(stock["stock_minimo"] or 0), 2.0)
+        self.assertEqual(float(stock["stock_maximo"] or 0), 10.0)
+        self.assertEqual(int(movimientos["total"] or 0), 0)
+        self.assertEqual(int(auditorias["total"] or 0), 0)
+
+        with self.assertRaisesRegex(ValueError, "no esta activa"):
+            self.inventory.adjust_inventory_item(
+                producto_id,
+                variant_id=variante_inactiva,
+                stock_actual=7,
+                stock_minimo=2,
+                stock_maximo=10,
+            )
+        with self.assertRaisesRegex(ValueError, "no esta activa"):
+            self.inventory.apply_inventory_delta(producto_id, 1, variant_id=variante_inactiva, tipo="ALTA")
+
     def test_valoracion_de_inventario_usa_costo_propio_de_variante_y_fallback(self):
         producto_id = self._crear_producto(descripcion="Costos variantes", stock=5, costo=10, precio=20)
         variante_propia = self._crear_variante(
