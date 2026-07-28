@@ -2,6 +2,34 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-28 - Codex - fix/issue-145-update-variant-active-state
+
+### Tarea
+Corregir la decision operativo/no operativo de `update_variant()` para usar el
+estado final solicitado de la variante, no el estado previo persistido.
+
+### Que se cambio
+- `update_variant()` acepta `activo` opcional y conserva el estado anterior si
+  no se informa.
+- La fila de `producto_variantes` se actualiza con el estado final dentro de la
+  misma transaccion antes de decidir si corresponde flujo operativo.
+- Las variantes que quedan activas usan `inventory.adjust_inventory_item_in_cursor()`;
+  las que quedan inactivas guardan configuracion de stock sin movimiento ni
+  auditoria operativa.
+- Se agregaron regresiones para las cuatro transiciones: inactiva->activa,
+  activa->inactiva, activa->activa e inactiva->inactiva.
+
+### Que se probo
+- `.venv/bin/python -m py_compile services/product_variants.py tests/test_product_variants.py`
+- `.venv/bin/python -m unittest tests.test_product_variants` - 67 OK
+- `/home/rolando-j-navarta/proyectos/nexar/nexar-tienda/.venv/bin/python -m unittest tests.test_license_integration`
+  en `main@4edf0dec623d357ad65d659e34e03bb4a60149b9` - 177 OK
+- `env PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_license_integration` - 177 OK
+- Los 19 fallos previos de `license_integration` se reproducen solo cuando la
+  `.env` local inyecta `NEXAR_EXTRA_MODULES=arca_facturacion`; no se modifico
+  licenciamiento.
+- `env PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 373 OK
+
 ## 2026-07-28 - Codex - fix/issue-145-post-merge-review
 
 ### Tarea

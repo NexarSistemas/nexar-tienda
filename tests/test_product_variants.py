@@ -117,6 +117,25 @@ class ProductVariantsTests(unittest.TestCase):
         payload.update(overrides)
         return self.product_variants.create_variant(producto_id, **payload)
 
+    def _crear_producto_en_modo_variantes(self, descripcion="Producto por variantes"):
+        producto_id = self._crear_producto(descripcion=descripcion, stock=0)
+        variante_base = self._crear_variante(
+            producto_id,
+            sku=f"BASE-{producto_id}",
+            stock_actual=0,
+            stock_minimo=0,
+            stock_maximo=5,
+        )
+        self.inventory.activate_variant_stock_mode(
+            producto_id,
+            [{"variant_id": variante_base, "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 5}],
+        )
+        return producto_id
+
+    def _variante_por_id(self, producto_id, variante_id):
+        variantes = {item["id"]: item for item in self.product_variants.list_product_variants(producto_id)}
+        return variantes[variante_id]
+
     def test_creacion_producto_comun_permanece_compatible(self):
         producto_id = self._crear_producto(descripcion="Producto comun", stock=8, costo=50, precio=90)
 
@@ -1527,7 +1546,7 @@ class ProductVariantsTests(unittest.TestCase):
             rol="Administrador",
         )
 
-        variante = self.product_variants.list_product_variants(producto_id)[1]
+        variante = self._variante_por_id(producto_id, variante_inactiva)
         stock = self.database.q(
             "SELECT stock_actual, stock_minimo, stock_maximo FROM stock_variantes WHERE variante_id=?",
             (variante_inactiva,),
@@ -1566,6 +1585,233 @@ class ProductVariantsTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(ValueError, "no esta activa"):
             self.inventory.apply_inventory_delta(producto_id, 1, variant_id=variante_inactiva, tipo="ALTA")
+
+    def test_update_variant_transicion_inactiva_a_activa_usa_flujo_operativo(self):
+        producto_id = self._crear_producto_en_modo_variantes("Transicion inactiva activa")
+        variante_id = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Rojo"}],
+            sku="TR-IA",
+            stock_actual=2,
+            stock_minimo=1,
+            stock_maximo=6,
+            activo=False,
+        )
+
+        self.product_variants.update_variant(
+            producto_id,
+            variante_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="TR-IA-EDIT",
+            stock_actual=5,
+            stock_minimo=2,
+            stock_maximo=9,
+            activo=True,
+            motivo_stock="Activacion desde edicion",
+            usuario="admin",
+            rol="Administrador",
+        )
+
+        variante = self._variante_por_id(producto_id, variante_id)
+        movimientos = self.database.q(
+            """
+            SELECT stock_anterior, stock_nuevo, motivo
+            FROM stock_movimientos
+            WHERE variante_id=? AND tipo='AJUSTE'
+            """,
+            (variante_id,),
+        )
+        auditorias = self.database.q(
+            "SELECT accion, entidad FROM auditoria WHERE accion='AJUSTE_STOCK' AND entidad_id=?",
+            (variante_id,),
+        )
+
+        self.assertEqual(variante["activo"], 1)
+        self.assertEqual(variante["sku"], "TR-IA-EDIT")
+        self.assertEqual(variante["resumen_atributos"], "Color: Azul")
+        self.assertEqual(variante["stock_actual"], 5.0)
+        self.assertEqual(variante["stock_minimo"], 2.0)
+        self.assertEqual(variante["stock_maximo"], 9.0)
+        self.assertEqual(len(movimientos), 1)
+        self.assertEqual(float(movimientos[0]["stock_anterior"] or 0), 2.0)
+        self.assertEqual(float(movimientos[0]["stock_nuevo"] or 0), 5.0)
+        self.assertEqual(movimientos[0]["motivo"], "Activacion desde edicion")
+        self.assertEqual(len(auditorias), 1)
+        self.assertEqual(auditorias[0]["entidad"], "stock_variante")
+
+    def test_update_variant_transicion_activa_a_inactiva_no_registra_ajuste_operativo(self):
+        producto_id = self._crear_producto_en_modo_variantes("Transicion activa inactiva")
+        variante_id = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Rojo"}],
+            sku="TR-AI",
+            stock_actual=4,
+            stock_minimo=1,
+            stock_maximo=8,
+            activo=True,
+        )
+        movimientos_previos = self.database.q(
+            "SELECT COUNT(*) AS total FROM stock_movimientos WHERE variante_id=? AND tipo='AJUSTE'",
+            (variante_id,),
+            fetchone=True,
+        )
+        auditorias_previas = self.database.q(
+            "SELECT COUNT(*) AS total FROM auditoria WHERE accion='AJUSTE_STOCK' AND entidad_id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+
+        self.product_variants.update_variant(
+            producto_id,
+            variante_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="TR-AI-EDIT",
+            stock_actual=6,
+            stock_minimo=2,
+            stock_maximo=10,
+            activo=False,
+            motivo_stock="Desactivacion desde edicion",
+            usuario="admin",
+            rol="Administrador",
+        )
+
+        variante = self._variante_por_id(producto_id, variante_id)
+        movimientos = self.database.q(
+            "SELECT COUNT(*) AS total FROM stock_movimientos WHERE variante_id=? AND tipo='AJUSTE'",
+            (variante_id,),
+            fetchone=True,
+        )
+        auditorias = self.database.q(
+            "SELECT COUNT(*) AS total FROM auditoria WHERE accion='AJUSTE_STOCK' AND entidad_id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+
+        self.assertEqual(variante["activo"], 0)
+        self.assertEqual(variante["sku"], "TR-AI-EDIT")
+        self.assertEqual(variante["resumen_atributos"], "Color: Azul")
+        self.assertEqual(variante["stock_actual"], 6.0)
+        self.assertEqual(variante["stock_minimo"], 2.0)
+        self.assertEqual(variante["stock_maximo"], 10.0)
+        self.assertEqual(int(movimientos["total"] or 0), int(movimientos_previos["total"] or 0))
+        self.assertEqual(int(auditorias["total"] or 0), int(auditorias_previas["total"] or 0))
+        with self.assertRaisesRegex(ValueError, "no esta activa"):
+            self.inventory.apply_inventory_delta(producto_id, 1, variant_id=variante_id, tipo="ALTA")
+
+    def test_update_variant_transicion_activa_a_activa_mantiene_flujo_operativo(self):
+        producto_id = self._crear_producto_en_modo_variantes("Transicion activa activa")
+        variante_id = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Rojo"}],
+            sku="TR-AA",
+            stock_actual=3,
+            stock_minimo=1,
+            stock_maximo=6,
+            activo=True,
+        )
+        movimientos_previos = self.database.q(
+            "SELECT COUNT(*) AS total FROM stock_movimientos WHERE variante_id=? AND tipo='AJUSTE'",
+            (variante_id,),
+            fetchone=True,
+        )
+        auditorias_previas = self.database.q(
+            "SELECT COUNT(*) AS total FROM auditoria WHERE accion='AJUSTE_STOCK' AND entidad_id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+
+        self.product_variants.update_variant(
+            producto_id,
+            variante_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="TR-AA-EDIT",
+            stock_actual=7,
+            stock_minimo=2,
+            stock_maximo=10,
+            activo=True,
+            motivo_stock="Edicion activa",
+            usuario="admin",
+            rol="Administrador",
+        )
+
+        variante = self._variante_por_id(producto_id, variante_id)
+        movimientos = self.database.q(
+            """
+            SELECT stock_nuevo, motivo
+            FROM stock_movimientos
+            WHERE variante_id=? AND tipo='AJUSTE'
+            ORDER BY id
+            """,
+            (variante_id,),
+        )
+        auditorias = self.database.q(
+            "SELECT COUNT(*) AS total FROM auditoria WHERE accion='AJUSTE_STOCK' AND entidad_id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+
+        self.assertEqual(variante["activo"], 1)
+        self.assertEqual(variante["sku"], "TR-AA-EDIT")
+        self.assertEqual(variante["stock_actual"], 7.0)
+        self.assertEqual(int(auditorias["total"] or 0), int(auditorias_previas["total"] or 0) + 1)
+        self.assertEqual(len(movimientos), int(movimientos_previos["total"] or 0) + 1)
+        self.assertEqual(float(movimientos[-1]["stock_nuevo"] or 0), 7.0)
+        self.assertEqual(movimientos[-1]["motivo"], "Edicion activa")
+
+    def test_update_variant_transicion_inactiva_a_inactiva_mantiene_persistencia_no_operativa(self):
+        producto_id = self._crear_producto_en_modo_variantes("Transicion inactiva inactiva")
+        variante_id = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Rojo"}],
+            sku="TR-II",
+            stock_actual=2,
+            stock_minimo=1,
+            stock_maximo=6,
+            activo=False,
+        )
+
+        self.product_variants.update_variant(
+            producto_id,
+            variante_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Azul"}],
+            sku="TR-II-EDIT",
+            stock_actual=4,
+            stock_minimo=2,
+            stock_maximo=9,
+            activo=False,
+            motivo_stock="Edicion inactiva explicita",
+            usuario="admin",
+            rol="Administrador",
+        )
+
+        variante = self._variante_por_id(producto_id, variante_id)
+        movimientos = self.database.q(
+            "SELECT COUNT(*) AS total FROM stock_movimientos WHERE variante_id=? AND tipo='AJUSTE'",
+            (variante_id,),
+            fetchone=True,
+        )
+        auditorias = self.database.q(
+            "SELECT COUNT(*) AS total FROM auditoria WHERE accion='AJUSTE_STOCK' AND entidad_id=?",
+            (variante_id,),
+            fetchone=True,
+        )
+
+        self.assertEqual(variante["activo"], 0)
+        self.assertEqual(variante["sku"], "TR-II-EDIT")
+        self.assertEqual(variante["resumen_atributos"], "Color: Azul")
+        self.assertEqual(variante["stock_actual"], 4.0)
+        self.assertEqual(variante["stock_minimo"], 2.0)
+        self.assertEqual(variante["stock_maximo"], 9.0)
+        self.assertEqual(int(movimientos["total"] or 0), 0)
+        self.assertEqual(int(auditorias["total"] or 0), 0)
+        with self.assertRaisesRegex(ValueError, "no esta activa"):
+            self.inventory.adjust_inventory_item(
+                producto_id,
+                variant_id=variante_id,
+                stock_actual=5,
+                stock_minimo=2,
+                stock_maximo=9,
+            )
 
     def test_valoracion_de_inventario_usa_costo_propio_de_variante_y_fallback(self):
         producto_id = self._crear_producto(descripcion="Costos variantes", stock=5, costo=10, precio=20)

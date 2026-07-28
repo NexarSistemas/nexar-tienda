@@ -450,6 +450,7 @@ def update_variant(
     stock_actual=0,
     stock_minimo=5,
     stock_maximo=50,
+    activo: bool | None = None,
     motivo_stock: str = "",
     usuario: str = "",
     rol: str = "",
@@ -475,6 +476,7 @@ def update_variant(
         barcode_clean = _validate_variant_barcode(cursor, codigo_barras, exclude_variant_id=variant_id)
         combination_key = _build_combination_key(attribute_pairs)
         variant_name = _build_variant_name(attribute_pairs)
+        final_active = int(variant["activo"] or 0) if activo is None else (1 if activo else 0)
 
         duplicate = cursor.execute(
             """
@@ -492,7 +494,7 @@ def update_variant(
             """
             UPDATE producto_variantes
             SET combination_key=?, nombre=?, sku=?, codigo_barras=?, costo=?,
-                precio=?, precio_promocional=?, updated_at=CURRENT_TIMESTAMP
+                precio=?, precio_promocional=?, activo=?, updated_at=CURRENT_TIMESTAMP
             WHERE id=? AND producto_id=?
             """,
             (
@@ -503,13 +505,14 @@ def update_variant(
                 costo,
                 precio,
                 precio_promocional,
+                final_active,
                 int(variant_id),
                 int(product_id),
             ),
         )
         cursor.execute("DELETE FROM producto_variante_valores WHERE variante_id=?", (int(variant_id),))
         _insert_variant_attribute_values(cursor, int(variant_id), attribute_pairs)
-        if _product_uses_variant_stock(product) and int(variant["activo"] or 0) == 1:
+        if _product_uses_variant_stock(product) and final_active == 1:
             inventory.adjust_inventory_item_in_cursor(
                 cursor,
                 int(product_id),
