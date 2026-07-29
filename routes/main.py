@@ -1886,6 +1886,10 @@ def formatear_precio_por_unidad_ticket(valor, unidad) -> str:
 def _serializar_producto_pos(producto):
     payload = dict(producto)
     unidad_visual = normalizar_unidad(payload.get("unidad") or payload.get("tipo_unidad") or "unidad")
+    payload["producto_id"] = int(payload.get("producto_id") or payload.get("id") or 0)
+    payload["id"] = payload["producto_id"]
+    payload["variante_id"] = int(payload["variante_id"]) if payload.get("variante_id") is not None else None
+    payload["stock_fuente"] = payload.get("stock_fuente") or ("variante" if payload["variante_id"] is not None else "producto")
     payload["unidad"] = get_unidad_label(unidad_visual)
     payload["stock_actual"] = cantidad_para_mostrar(unidad_visual, payload.get("stock_actual", 0))
     payload["precio_venta_display"] = convertir_precio_desde_base(payload.get("precio_venta", 0), unidad_visual)
@@ -3572,14 +3576,13 @@ def api_producto_buscar():
     codigo = (request.args.get("codigo", "") or "").strip()
     if not codigo:
         return jsonify({"ok": False, "msg": "Código vacío."}), 400
-    producto = db.get_producto_by_codigo(codigo)
-    if not producto:
-        return jsonify({"ok": False, "msg": "Producto no encontrado."}), 404
-    stock_row = db.q("SELECT stock_actual FROM stock WHERE producto_id=?", (producto["id"],), fetchone=True)
-    payload = dict(producto)
-    payload["stock_actual"] = float(stock_row["stock_actual"] or 0) if stock_row else 0
-    payload = _serializar_producto_pos(payload)
-    return jsonify({"ok": True, "producto": payload})
+    result = db.resolve_producto_pos_exact(codigo)
+    items = [_serializar_producto_pos(item) for item in result["items"]]
+    if result["status"] == "found":
+        return jsonify({"ok": True, "producto": items[0]})
+    if result["status"] == "ambiguous":
+        return jsonify({"ok": False, "ambiguous": True, "productos": items, "msg": "El codigo coincide con mas de un item vendible."}), 409
+    return jsonify({"ok": False, "msg": "Producto no encontrado."}), 404
 
 
 @main_bp.route("/api/carrito/agregar", methods=["POST"])
@@ -3587,12 +3590,14 @@ def api_producto_buscar():
 def api_carrito_agregar():
     payload = request.get_json(silent=True) or {}
     pid = int(payload.get("producto_id", -1) or -1)
+    variant_id_raw = payload.get("variante_id")
+    variant_id = int(variant_id_raw) if variant_id_raw not in (None, "", 0, "0") else None
     cart = _cart()
     if pid < 0:
         return jsonify({"ok": True, "carrito": cart})
     producto = db.get_producto(pid)
-    stock_row = db.q("SELECT stock_actual FROM stock WHERE producto_id=?", (pid,), fetchone=True)
-    if not producto or not stock_row:
+    item_vendible = db.get_sellable_item_pos(pid, variant_id)
+    if not producto or not item_vendible:
         return jsonify({"ok": False, "error": "Producto o cantidad invalida."}), 400
     unidad_visual = normalizar_unidad(producto["unidad"] or producto["tipo_unidad"] or "unidad")
     try:
@@ -3603,26 +3608,29 @@ def api_carrito_agregar():
         )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    if cantidad > float(stock_row["stock_actual"] or 0):
+    stock_disponible = float(item_vendible["stock_actual"] or 0)
+    if cantidad > stock_disponible:
         return jsonify({"ok": False, "error": "Stock insuficiente."}), 400
-    existing = next((i for i in cart if i["producto_id"] == pid), None)
+    existing = next((i for i in cart if int(i["producto_id"]) == pid and i.get("variante_id") == variant_id), None)
     if existing:
         nueva_cantidad = db.validar_cantidad_producto(producto, float(existing["cantidad"] or 0) + cantidad, campo="cantidad")
-        if nueva_cantidad > float(stock_row["stock_actual"] or 0):
+        if nueva_cantidad > stock_disponible:
             return jsonify({"ok": False, "error": "Stock insuficiente."}), 400
         existing["cantidad"] = nueva_cantidad
         existing["subtotal"] = round(existing["cantidad"] * existing["precio_unitario"], 2)
     else:
-        precio = float(producto["precio_venta"] or 0)
+        precio = float(item_vendible["precio_venta"] or 0)
         cart.append({
             "producto_id": pid,
-            "codigo_interno": producto["codigo_interno"],
-            "descripcion": producto["descripcion"],
+            "variante_id": variant_id,
+            "stock_fuente": item_vendible["stock_fuente"],
+            "codigo_interno": item_vendible["codigo_interno"],
+            "descripcion": item_vendible["descripcion"],
             "categoria": producto["categoria"],
             "unidad": get_unidad_label(unidad_visual),
             "cantidad": cantidad,
             "precio_unitario": precio,
-            "costo_unitario": float(producto["costo"] or 0),
+            "costo_unitario": float(item_vendible["costo"] or 0),
             "iva": producto["iva"] or "",
             "descuento": 0,
             "subtotal": round(cantidad * precio, 2),
@@ -3634,7 +3642,13 @@ def api_carrito_agregar():
 @main_bp.route("/api/carrito/quitar/<int:pid>", methods=["POST"])
 @login_required
 def api_carrito_quitar(pid):
-    cart = [i for i in _cart() if i["producto_id"] != pid]
+    payload = request.get_json(silent=True) or {}
+    variant_id_raw = payload.get("variante_id")
+    variant_id = int(variant_id_raw) if variant_id_raw not in (None, "", 0, "0") else None
+    cart = [
+        i for i in _cart()
+        if not (int(i["producto_id"]) == pid and i.get("variante_id") == variant_id)
+    ]
     _save_cart(cart)
     return jsonify({"ok": True, "carrito": cart})
 
@@ -3676,9 +3690,12 @@ def venta_finalizar():
         cliente_nombre = cliente["nombre"] if cliente else cliente_nombre
     temporada_actual = db.get_temporada_actual()
     temporada_nombre = temporada_actual["nombre"] if temporada_actual else ""
-    venta_id = db.crear_venta(cart, cliente_nombre, medio_pago, float(request.form.get("descuento_adicional", 0) or 0), session["user"]["username"], cliente_id=cliente_id, temporada=temporada_nombre)
+    try:
+        venta_id = db.crear_venta(cart, cliente_nombre, medio_pago, float(request.form.get("descuento_adicional", 0) or 0), session["user"]["username"], cliente_id=cliente_id, temporada=temporada_nombre)
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("punto_venta"))
     db.reconciliar_cc_clientes_desde_ventas()
-    db.decrementar_stock_venta(venta_id)
     venta = db.q("SELECT numero_ticket, total, cliente_nombre, medio_pago FROM ventas WHERE id=?", (venta_id,), fetchone=True)
     _auditar_accion("VENTA_REGISTRADA", "venta", venta_id, detalle=f"Ticket #{venta['numero_ticket'] if venta else venta_id} · Cliente: {(venta['cliente_nombre'] if venta else cliente_nombre) or 'Mostrador'} · Medio: {(venta['medio_pago'] if venta else medio_pago) or medio_pago} · Total: {float((venta['total'] if venta else 0) or 0):.2f}")
     _clear_cart()

@@ -2,6 +2,35 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-29 - Codex - feature/issue-147-pos-variants
+
+### Tarea
+Adaptar POS y lector de codigos para identificar, vender y revertir la variante
+exacta sin cambiar productos legacy ni integraciones externas.
+
+### Que se cambio
+- `ventas_detalle` conserva `variante_id` y `stock_fuente` con migracion
+  idempotente y segura para bases existentes.
+- La busqueda del POS ahora devuelve items vendibles: producto legacy o variante
+  activa segun `productos.stock_modo`.
+- El lector resuelve codigo interno, SKU y codigo de barras a una unica opcion
+  o informa ambiguedad para seleccion manual.
+- El carrito preserva `variante_id`, fuente de stock, precio/costo efectivo y
+  precio promocional propio de variante cuando existe.
+- `crear_venta()` descuenta stock con `services/inventory.py` dentro de la misma
+  transaccion que crea venta y detalle; ante error hay rollback completo.
+- La anulacion de ventas repone la misma fuente historica y permite reponer una
+  variante desactivada sin tocar otras variantes ni el stock legacy.
+- El POS mantiene cambios visuales minimos y no modifica Tiendanube, CSV,
+  perfiles por rubro ni sincronizacion.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .\\.venv\\Scripts\\python.exe -m py_compile database.py routes\\main.py tests\\test_pos_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .\\.venv\\Scripts\\python.exe -m unittest tests.test_pos_variants` - 9 OK
+- `PYTHON_DOTENV_DISABLED=1 .\\.venv\\Scripts\\python.exe -m unittest tests.test_venta_finalizar_temporada tests.test_product_variants tests.test_purchase_variants` - 101 OK
+- `PYTHON_DOTENV_DISABLED=1 .\\.venv\\Scripts\\python.exe -m unittest tests.test_cc_clientes_anulacion tests.test_permisos_basicos tests.test_auditoria_visual tests.test_reportes_historicos_coherentes` - 20 OK
+- `PYTHON_DOTENV_DISABLED=1 .\\.venv\\Scripts\\python.exe -m unittest discover -s tests` - 415 OK
+
 ## 2026-07-29 - Codex - feat/issue-146-purchases-variants-p1-stock-reversal-lock
 
 ### Tarea

@@ -297,6 +297,11 @@ document.addEventListener('DOMContentLoaded', function () {
     if (data.ok && data.producto) {
       return data.producto;
     }
+    if (data.ambiguous) {
+      lastResults = data.productos || [];
+      renderDropdown(lastResults);
+      showAlert(data.msg || 'El codigo requiere seleccionar una variante.', 'warning');
+    }
     return null;
   }
 
@@ -311,6 +316,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const stock = parseFloat(p.stock_actual || 0);
       const stockColor = stock <= 0 ? '#c62828' : '#2563eb';
       const badgePeso = productoPermiteFraccionado(p) ? '<span class="badge-peso ms-1" style="font-size:.65rem">FRACC.</span>' : '';
+      const variantMeta = p.variante_id ? ` · ${p.variante_sku || 'Variante'}${p.codigo_barras ? ' · ' + p.codigo_barras : ''}` : '';
       return `
         <div class="px-3 py-2 border-bottom search-result" data-idx="${idx}">
           <div class="d-flex justify-content-between align-items-center">
@@ -324,7 +330,7 @@ document.addEventListener('DOMContentLoaded', function () {
               <small style="color:${stockColor}">${stock <= 0 ? 'Sin stock' : 'Stock: ' + stock}</small>
             </div>
           </div>
-          <small class="text-muted">${p.codigo_interno || ''}</small>
+          <small class="text-muted">${p.codigo_interno || ''}${variantMeta}</small>
         </div>
       `;
     }).join('');
@@ -369,7 +375,8 @@ document.addEventListener('DOMContentLoaded', function () {
       const normalized = term.toLowerCase();
       const exactMatch = items.find((item) =>
         String(item.codigo_interno || '').toLowerCase() === normalized ||
-        String(item.codigo_barras || '').toLowerCase() === normalized
+        String(item.codigo_barras || '').toLowerCase() === normalized ||
+        String(item.variante_sku || '').toLowerCase() === normalized
       );
       if (exactMatch) {
         showSuggestion(exactMatch);
@@ -411,6 +418,7 @@ document.addEventListener('DOMContentLoaded', function () {
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
         body: JSON.stringify({
           producto_id: currentProduct.id,
+          variante_id: currentProduct.variante_id || null,
           cantidad: cantidad
         })
       });
@@ -446,7 +454,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     cartBody.innerHTML = cart.map((item, idx) => `
       <tr class="item-row">
-        <td><strong>${item.descripcion}</strong><br><small class="text-muted">${item.codigo_interno || ''}</small></td>
+        <td><strong>${item.descripcion}</strong><br><small class="text-muted">${item.codigo_interno || ''}${item.variante_id ? ' · Variante' : ''}</small></td>
         <td><small>${item.categoria || '-'}</small></td>
         <td>${formatNum(item.cantidad)} ${item.unidad || ''}</td>
         <td>$${formatNum(item.precio_unitario)}</td>
@@ -497,7 +505,8 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       const response = await fetch('/api/carrito/quitar/' + item.producto_id, {
         method: 'POST',
-        headers: { 'X-CSRFToken': csrfToken }
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ variante_id: item.variante_id || null })
       });
       const data = await response.json();
       if (!data.ok) {
