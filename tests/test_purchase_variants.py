@@ -763,6 +763,76 @@ class PurchaseVariantsTests(unittest.TestCase):
         columnas = [row["name"] for row in self.database.q("PRAGMA table_info(compras)")]
         self.assertIn("stock_reversion_bloqueada", columnas)
 
+    def test_init_db_backfill_bloquea_compras_legacy_activas_de_productos_ya_migrados(self):
+        producto_migrado = self._crear_producto("Backfill migrado", stock=1)
+        compra_legacy_activa = self.database.add_compra(self._compra_data(producto_migrado, cantidad=5, costo_unitario=10))
+        factura = self.database.crear_factura_desde_compra(
+            compra_legacy_activa,
+            self.proveedor_id,
+            50,
+            numero_factura="FAC-BACKFILL",
+            fecha="2026-07-28",
+            fecha_vencimiento="2026-08-28",
+            observaciones="Factura backfill",
+        )
+        compra_legacy_anulada = self.database.add_compra(self._compra_data(producto_migrado, cantidad=2, costo_unitario=10))
+        self.database.anular_compra(compra_legacy_anulada, motivo="Anulada antes de migrar")
+        variante_migrada = self._crear_variante(producto_migrado, "Negro", sku="BFILL-NEG")
+        self._activar_variantes(producto_migrado, [{"variant_id": variante_migrada, "stock_actual": 6, "stock_minimo": 0, "stock_maximo": 50}])
+        compra_por_variante = self.database.add_compra(
+            self._compra_data(producto_migrado, variante_id=variante_migrada, cantidad=3, costo_unitario=10)
+        )
+        producto_legacy = self._crear_producto("Backfill legacy", stock=1)
+        compra_producto_legacy = self.database.add_compra(self._compra_data(producto_legacy, cantidad=4, costo_unitario=10))
+        self.database.q(
+            """
+            UPDATE compras
+            SET stock_reversion_bloqueada=0
+            WHERE id IN (?, ?, ?, ?)
+            """,
+            (compra_legacy_activa, compra_legacy_anulada, compra_por_variante, compra_producto_legacy),
+            fetchall=False,
+            commit=True,
+        )
+        compra_antes = self.database.get_compra(compra_legacy_activa)
+        factura_antes = self.database.get_factura_proveedor(int(factura["id"]))
+        stock_producto_migrado_antes = self._stock_producto(producto_migrado)
+        stock_variante_antes = self._stock_variante(variante_migrada)
+        stock_producto_legacy_antes = self._stock_producto(producto_legacy)
+        movimientos_antes = int(self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"])
+        auditoria_antes = int(self.database.q("SELECT COUNT(*) AS total FROM auditoria", fetchone=True)["total"])
+
+        self.database._db_initialized = False
+        self.database.init_db()
+        self.database._db_initialized = False
+        self.database.init_db()
+
+        self.assertEqual(int(self.database.get_compra(compra_legacy_activa)["stock_reversion_bloqueada"]), 1)
+        self.assertEqual(int(self.database.get_compra(compra_legacy_anulada)["stock_reversion_bloqueada"]), 0)
+        self.assertEqual(int(self.database.get_compra(compra_por_variante)["stock_reversion_bloqueada"]), 0)
+        self.assertEqual(int(self.database.get_compra(compra_producto_legacy)["stock_reversion_bloqueada"]), 0)
+        with self.assertRaisesRegex(ValueError, "compra migrada"):
+            self.database.update_compra(compra_legacy_activa, self._compra_data(producto_migrado, cantidad=4, costo_unitario=10))
+        with self.assertRaisesRegex(ValueError, "compra migrada"):
+            self.database.anular_compra(compra_legacy_activa)
+        with self.assertRaisesRegex(ValueError, "compra migrada"):
+            self.database.delete_compra(compra_legacy_activa)
+
+        compra_despues = self.database.get_compra(compra_legacy_activa)
+        factura_despues = self.database.get_factura_proveedor(int(factura["id"]))
+        self.assertEqual(float(compra_despues["cantidad"]), float(compra_antes["cantidad"]))
+        self.assertEqual(float(compra_despues["costo_unitario"]), float(compra_antes["costo_unitario"]))
+        self.assertEqual(float(compra_despues["total"]), float(compra_antes["total"]))
+        self.assertEqual(int(compra_despues["anulada"]), 0)
+        self.assertEqual(int(factura_despues["proveedor_id"]), int(factura_antes["proveedor_id"]))
+        self.assertEqual(factura_despues["numero_factura"], factura_antes["numero_factura"])
+        self.assertEqual(float(factura_despues["importe"]), float(factura_antes["importe"]))
+        self.assertEqual(self._stock_producto(producto_migrado), stock_producto_migrado_antes)
+        self.assertEqual(self._stock_variante(variante_migrada), stock_variante_antes)
+        self.assertEqual(self._stock_producto(producto_legacy), stock_producto_legacy_antes)
+        self.assertEqual(int(self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"]), movimientos_antes)
+        self.assertEqual(int(self.database.q("SELECT COUNT(*) AS total FROM auditoria", fetchone=True)["total"]), auditoria_antes)
+
     def test_migracion_legacy_conserva_compra_sin_inferir_variante(self):
         legacy_db = Path(self.temp_dir.name) / "legacy.db"
         conn = sqlite3.connect(legacy_db)

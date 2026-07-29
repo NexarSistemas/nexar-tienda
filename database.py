@@ -1239,6 +1239,22 @@ def init_db():
         END
         """
     )
+    c.execute(
+        """
+        UPDATE compras
+        SET stock_reversion_bloqueada=1
+        WHERE COALESCE(stock_reversion_bloqueada, 0)=0
+          AND producto_id IN (
+              SELECT id
+              FROM productos
+              WHERE LOWER(TRIM(COALESCE(stock_modo, 'legacy'))) = 'variantes'
+          )
+          AND COALESCE(anulada, 0)=0
+          AND variante_id IS NULL
+          AND LOWER(TRIM(COALESCE(stock_fuente, 'producto'))) IN ('producto', 'stock', 'legacy')
+          AND COALESCE(cantidad, 0) > 0
+        """
+    )
     if 'anulada_at' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN anulada_at TEXT DEFAULT ''")
     if 'anulada_por' not in columnas_compras:
