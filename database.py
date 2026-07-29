@@ -756,6 +756,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             venta_id INTEGER REFERENCES ventas(id) ON DELETE CASCADE,
             producto_id INTEGER DEFAULT 0,
+            variante_id INTEGER REFERENCES producto_variantes(id) ON DELETE SET NULL,
+            stock_fuente TEXT DEFAULT 'producto',
             codigo_interno TEXT DEFAULT '',
             descripcion TEXT DEFAULT '',
             categoria TEXT DEFAULT '',
@@ -1220,6 +1222,20 @@ def init_db():
             ), '')
             WHERE producto_id > 0"""
         )
+    if 'variante_id' not in columnas_vd:
+        c.execute("ALTER TABLE ventas_detalle ADD COLUMN variante_id INTEGER REFERENCES producto_variantes(id) ON DELETE SET NULL")
+    if 'stock_fuente' not in columnas_vd:
+        c.execute("ALTER TABLE ventas_detalle ADD COLUMN stock_fuente TEXT DEFAULT 'producto'")
+    c.execute(
+        """
+        UPDATE ventas_detalle
+        SET stock_fuente = CASE
+            WHEN variante_id IS NOT NULL THEN 'variante'
+            ELSE 'producto'
+        END
+        WHERE TRIM(COALESCE(stock_fuente, '')) = ''
+        """
+    )
 
     columnas_compras = [r['name'] for r in c.execute("PRAGMA table_info(compras)").fetchall()]
     if 'anulada' not in columnas_compras:
@@ -4340,40 +4356,65 @@ def get_venta_detalle(vid):
 
 
 def crear_venta(items, cliente_nombre, medio_pago, descuento_adicional, vendedor, cliente_id=0, temporada='', interes_financiacion=0):
-    """Crea una venta con detalle."""
+    """Crea una venta con detalle y descuenta stock en la misma transaccion."""
+    from services import inventory
+
     conn = get_conn()
-    c = conn.cursor()
+    try:
+        c = conn.cursor()
+        numero_ticket = next_ticket()
+        c.execute("BEGIN IMMEDIATE")
+        ahora = datetime.now()
+        fecha = ahora.strftime('%Y-%m-%d')
+        hora = ahora.strftime('%H:%M:%S')
 
-    numero_ticket = next_ticket()
-    ahora = datetime.now()
-    fecha = ahora.strftime('%Y-%m-%d')
-    hora = ahora.strftime('%H:%M:%S')
+        subtotal = sum(item.get('subtotal', 0) for item in items)
+        total = subtotal - descuento_adicional + interes_financiacion
 
-    subtotal = sum(item.get('subtotal', 0) for item in items)
-    total = subtotal - descuento_adicional + interes_financiacion
-
-    c.execute(
-        """INSERT INTO ventas
-        (numero_ticket,fecha,hora,cliente_id,cliente_nombre,medio_pago,subtotal,descuento_adicional,total,vendedor,temporada,interes_financiacion)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (numero_ticket, fecha, hora, cliente_id, cliente_nombre, medio_pago, subtotal, descuento_adicional, total, vendedor, temporada, interes_financiacion)
-    )
-    venta_id = c.lastrowid
-
-    for item in items:
         c.execute(
-            """INSERT INTO ventas_detalle
-            (venta_id,producto_id,codigo_interno,descripcion,categoria,unidad,cantidad,precio_unitario,costo_unitario,iva,descuento,subtotal)
+            """INSERT INTO ventas
+            (numero_ticket,fecha,hora,cliente_id,cliente_nombre,medio_pago,subtotal,descuento_adicional,total,vendedor,temporada,interes_financiacion)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (venta_id, item.get('producto_id', 0), item.get('codigo_interno', ''), item.get('descripcion', ''),
-             item.get('categoria', ''), item.get('unidad', ''), item.get('cantidad', 1),
-             item.get('precio_unitario', 0), item.get('costo_unitario', 0), item.get('iva', ''),
-             item.get('descuento', 0), item.get('subtotal', 0))
+            (numero_ticket, fecha, hora, cliente_id, cliente_nombre, medio_pago, subtotal, descuento_adicional, total, vendedor, temporada, interes_financiacion)
         )
+        venta_id = c.lastrowid
 
-    conn.commit()
-    conn.close()
-    return venta_id
+        for item in items:
+            producto_id = int(item.get('producto_id', 0) or 0)
+            variante_id = item.get('variante_id')
+            variante_id = int(variante_id) if variante_id not in (None, '', 0, '0') else None
+            cantidad = float(item.get('cantidad', 1) or 0)
+            if producto_id > 0:
+                stock_result = inventory.apply_inventory_delta_in_cursor(
+                    c,
+                    producto_id,
+                    cantidad,
+                    variant_id=variante_id,
+                    tipo='VENTA',
+                    motivo=f'Venta #{venta_id}',
+                    usuario=vendedor,
+                    stock_source=item.get('stock_fuente'),
+                )
+                stock_fuente = 'variante' if stock_result['fuente'] == inventory.SOURCE_VARIANTS else 'producto'
+            else:
+                stock_fuente = 'producto'
+            c.execute(
+                """INSERT INTO ventas_detalle
+                (venta_id,producto_id,variante_id,stock_fuente,codigo_interno,descripcion,categoria,unidad,cantidad,precio_unitario,costo_unitario,iva,descuento,subtotal)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (venta_id, producto_id, variante_id, stock_fuente, item.get('codigo_interno', ''), item.get('descripcion', ''),
+                 item.get('categoria', ''), item.get('unidad', ''), cantidad,
+                 item.get('precio_unitario', 0), item.get('costo_unitario', 0), item.get('iva', ''),
+                 item.get('descuento', 0), item.get('subtotal', 0))
+            )
+
+        conn.commit()
+        return venta_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def delete_venta(venta_id):
@@ -4383,9 +4424,12 @@ def delete_venta(venta_id):
 
 def anular_venta(venta_id, motivo='', usuario='', rol=''):
     """Marca una venta como anulada y restaura stock una sola vez."""
+    from services import inventory
+
     conn = get_conn()
     try:
         c = conn.cursor()
+        c.execute("BEGIN IMMEDIATE")
         venta = c.execute("SELECT * FROM ventas WHERE id=?", (venta_id,)).fetchone()
         if not venta:
             raise ValueError("La venta indicada no existe.")
@@ -4399,25 +4443,19 @@ def anular_venta(venta_id, motivo='', usuario='', rol=''):
             cantidad = float(item["cantidad"] or 0)
             if producto_id <= 0 or cantidad <= 0:
                 continue
-
-            stock = c.execute("SELECT stock_actual, stock_minimo, stock_maximo, proveedor_habitual FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
-            if stock:
-                stock_anterior = float(stock["stock_actual"] or 0)
-                stock_nuevo = stock_anterior + cantidad
-                c.execute("UPDATE stock SET stock_actual=? WHERE producto_id=?", (stock_nuevo, producto_id))
-            else:
-                stock_anterior = 0.0
-                stock_nuevo = cantidad
-                c.execute(
-                    "INSERT INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo, proveedor_habitual) VALUES (?,?,?,?,?)",
-                    (producto_id, stock_nuevo, 5, 50, ""),
-                )
-
-            c.execute(
-                """INSERT INTO stock_movimientos
-                (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo)
-                VALUES (?,?,?,?,?,?)""",
-                (producto_id, 'ANULACION_VENTA', cantidad, stock_anterior, stock_nuevo, motivo_movimiento),
+            variante_id = item["variante_id"] if "variante_id" in item.keys() else None
+            variante_id = int(variante_id) if variante_id not in (None, "", 0, "0") else None
+            inventory.apply_inventory_delta_in_cursor(
+                c,
+                producto_id,
+                cantidad,
+                variant_id=variante_id,
+                tipo="ANULACION_VENTA",
+                motivo=motivo_movimiento,
+                usuario=usuario,
+                rol=rol,
+                allow_inactive_variant=True,
+                stock_source=item["stock_fuente"] if "stock_fuente" in item.keys() else None,
             )
 
         if (
@@ -5495,7 +5533,7 @@ def get_dashboard_stats():
     }
 
 
-def buscar_productos_pos(search):
+def _buscar_productos_pos_legacy(search):
     """Busca productos para POS por nombre/cÃ³digo/categorÃ­a."""
     rubro_cond, rubro_params = _build_rubro_compatible_filter(None)
     sql = """SELECT p.id, p.codigo_interno, p.codigo_barras, p.descripcion, p.categoria, p.unidad,
@@ -5520,8 +5558,139 @@ def buscar_productos_pos(search):
     return q(sql, params)
 
 
+def _normalize_sellable_row(row):
+    item = dict(row)
+    item["id"] = int(item["producto_id"])
+    item["variante_id"] = int(item["variante_id"]) if item.get("variante_id") is not None else None
+    item["stock_actual"] = float(item.get("stock_actual") or 0)
+    item["precio_venta"] = float(item.get("precio_venta") or 0)
+    item["costo"] = float(item.get("costo") or 0)
+    item["stock_fuente"] = "variante" if item["variante_id"] is not None else "producto"
+    return item
+
+
+def buscar_productos_pos(search):
+    """Busca items vendibles para POS por descripcion, SKU o codigo."""
+    rubro_cond, rubro_params = _build_rubro_compatible_filter(None)
+    sql = f"""
+        SELECT p.id AS producto_id, NULL AS variante_id, 'producto' AS stock_fuente,
+               p.codigo_interno, p.codigo_barras, '' AS variante_sku,
+               p.descripcion, p.descripcion AS producto_descripcion, '' AS variante_nombre,
+               p.categoria, p.unidad, p.tipo_unidad, p.permite_fraccionado, p.por_peso,
+               p.precio_venta AS precio_venta, p.costo AS costo, s.stock_actual
+        FROM productos p
+        JOIN stock s ON s.producto_id = p.id
+        WHERE p.activo=1
+          AND COALESCE(p.stock_modo, 'legacy') <> 'variantes'
+          AND {rubro_cond}
+    """
+    params = list(rubro_params)
+    if search:
+        sql += " AND (p.descripcion LIKE ? OR p.categoria LIKE ? OR p.codigo_interno LIKE ? OR p.codigo_barras LIKE ?)"
+        params += [f"%{search}%"] * 4
+    sql += f"""
+        UNION ALL
+        SELECT p.id AS producto_id, v.id AS variante_id, 'variante' AS stock_fuente,
+               p.codigo_interno, COALESCE(NULLIF(TRIM(v.codigo_barras), ''), p.codigo_barras) AS codigo_barras,
+               COALESCE(v.sku, '') AS variante_sku,
+               p.descripcion || ' / ' || v.nombre AS descripcion,
+               p.descripcion AS producto_descripcion, v.nombre AS variante_nombre,
+               p.categoria, p.unidad, p.tipo_unidad, p.permite_fraccionado, p.por_peso,
+               COALESCE(v.precio_promocional, v.precio, p.precio_venta) AS precio_venta,
+               COALESCE(v.costo, p.costo) AS costo,
+               COALESCE(sv.stock_actual, 0) AS stock_actual
+        FROM productos p
+        JOIN producto_variantes v ON v.producto_id = p.id AND v.activo=1
+        LEFT JOIN stock_variantes sv ON sv.variante_id = v.id
+        WHERE p.activo=1
+          AND COALESCE(p.stock_modo, 'legacy') = 'variantes'
+          AND {rubro_cond}
+    """
+    params += list(rubro_params)
+    if search:
+        sql += """
+          AND (
+              p.descripcion LIKE ? OR p.categoria LIKE ? OR p.codigo_interno LIKE ?
+              OR p.codigo_barras LIKE ? OR v.nombre LIKE ? OR v.sku LIKE ? OR v.codigo_barras LIKE ?
+          )
+        """
+        params += [f"%{search}%"] * 7
+    sql += " ORDER BY descripcion LIMIT 50"
+    return [_normalize_sellable_row(row) for row in q(sql, params)]
+
+
+def get_sellable_item_pos(product_id, variant_id=None):
+    product_id = int(product_id or 0)
+    if variant_id in (None, "", 0, "0"):
+        row = q(
+            """
+            SELECT p.id AS producto_id, NULL AS variante_id, 'producto' AS stock_fuente,
+                   p.codigo_interno, p.codigo_barras, '' AS variante_sku,
+                   p.descripcion, p.descripcion AS producto_descripcion, '' AS variante_nombre,
+                   p.categoria, p.unidad, p.tipo_unidad, p.permite_fraccionado, p.por_peso,
+                   p.precio_venta AS precio_venta, p.costo AS costo, s.stock_actual
+            FROM productos p
+            JOIN stock s ON s.producto_id = p.id
+            WHERE p.id=? AND p.activo=1 AND COALESCE(p.stock_modo, 'legacy') <> 'variantes'
+            LIMIT 1
+            """,
+            (product_id,),
+            fetchone=True,
+        )
+        return _normalize_sellable_row(row) if row else None
+    row = q(
+        """
+        SELECT p.id AS producto_id, v.id AS variante_id, 'variante' AS stock_fuente,
+               p.codigo_interno, COALESCE(NULLIF(TRIM(v.codigo_barras), ''), p.codigo_barras) AS codigo_barras,
+               COALESCE(v.sku, '') AS variante_sku,
+               p.descripcion || ' / ' || v.nombre AS descripcion,
+               p.descripcion AS producto_descripcion, v.nombre AS variante_nombre,
+               p.categoria, p.unidad, p.tipo_unidad, p.permite_fraccionado, p.por_peso,
+               COALESCE(v.precio_promocional, v.precio, p.precio_venta) AS precio_venta,
+               COALESCE(v.costo, p.costo) AS costo,
+               COALESCE(sv.stock_actual, 0) AS stock_actual
+        FROM productos p
+        JOIN producto_variantes v ON v.producto_id = p.id AND v.activo=1
+        LEFT JOIN stock_variantes sv ON sv.variante_id = v.id
+        WHERE p.id=? AND v.id=? AND p.activo=1 AND COALESCE(p.stock_modo, 'legacy') = 'variantes'
+        LIMIT 1
+        """,
+        (product_id, int(variant_id or 0)),
+        fetchone=True,
+    )
+    return _normalize_sellable_row(row) if row else None
+
+
+def resolve_producto_pos_exact(term):
+    """Resuelve un codigo/SKU exacto a un unico item vendible o marca ambiguedad."""
+    normalized = str(term or "").strip().lower()
+    if not normalized:
+        return {"status": "not_found", "items": []}
+    matches = []
+    for item in buscar_productos_pos(term):
+        exact_values = [
+            item.get("codigo_interno"),
+            item.get("codigo_barras"),
+            item.get("variante_sku"),
+        ]
+        if any(str(value or "").strip().lower() == normalized for value in exact_values):
+            matches.append(item)
+    if len(matches) == 1:
+        return {"status": "found", "items": matches}
+    if len(matches) > 1:
+        return {"status": "ambiguous", "items": matches}
+    return {"status": "not_found", "items": []}
+
+
 def decrementar_stock_venta(venta_id):
     """Decrementa stock de productos vendidos."""
+    movimientos_venta = q(
+        "SELECT COUNT(*) AS total FROM stock_movimientos WHERE motivo=? AND tipo='VENTA'",
+        (f"Venta #{venta_id}",),
+        fetchone=True,
+    )
+    if int(movimientos_venta["total"] or 0) > 0:
+        return
     items = get_venta_detalle(venta_id)
     for item in items:
         pid = item['producto_id']

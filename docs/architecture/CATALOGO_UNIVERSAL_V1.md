@@ -12,8 +12,9 @@ Comercio. Es neutral respecto de canales externos y sirve como límite común
 para persistencia, servicios, UI, importadores y futuros adaptadores.
 
 El contrato describe semántica, relaciones, fuentes de verdad e invariantes.
-No cambia el esquema SQLite ni habilita variantes en compras, POS, stock,
-importación, exportación o sincronización.
+Las adopciones operativas se habilitan por Issue y deben conservar estos
+límites sin extenderse a importación, exportación o sincronización salvo alcance
+explícito.
 
 Las tablas y campos citados describen la implementación disponible al publicar
 esta versión. Las entidades conceptuales que todavía no tienen persistencia
@@ -184,7 +185,7 @@ las colecciones conceptuales completas indicadas por el contrato.
 ## 6. Compatibilidad legacy y transición de stock
 
 La ausencia de variantes explícitas significa que el producto base es el ítem
-vendible. POS, compras, reportes, lector y movimientos continúan usando
+vendible. Los módulos que todavía no adoptaron variantes continúan usando
 `productos` y `stock` hasta que sus Issues de adopción sean implementados.
 
 La mera existencia de una variante creada por la UI actual no cambia
@@ -204,6 +205,20 @@ La transición a operación por variantes debe respetar esta política:
 
 Este contrato no selecciona una estrategia de reparto del stock existente
 porque hacerlo sin interacción o evidencia podría alterar inventario.
+
+### 6.1 POS y lector
+
+En el POS, el lector y la búsqueda trabajan con un único ítem vendible:
+
+- producto legacy activo cuando `stock_modo` no es `variantes`;
+- variante activa cuando el producto opera con `stock_modo='variantes'`.
+
+Un código exacto, SKU o código de barras puede agregar directamente solo si
+resuelve una opción única. Si el código del producto base corresponde a varias
+variantes activas, el POS debe informar ambigüedad y pedir selección manual. La
+venta guarda `ventas_detalle.variante_id` y `ventas_detalle.stock_fuente`, y el
+descuento o reposición de stock se ejecuta dentro de la transacción de venta o
+anulación mediante `services/inventory.py`.
 
 ## 7. Responsabilidades por capa
 
