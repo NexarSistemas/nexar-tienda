@@ -789,6 +789,18 @@ def init_db():
             motivo_anulacion TEXT DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS stock_migracion_variantes_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+            compra_id INTEGER NOT NULL REFERENCES compras(id) ON DELETE CASCADE,
+            variante_id INTEGER NOT NULL REFERENCES producto_variantes(id) ON DELETE CASCADE,
+            cantidad_asignada REAL NOT NULL DEFAULT 0,
+            saldo_reversible REAL NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (compra_id, variante_id)
+        );
+
         CREATE TABLE IF NOT EXISTS caja (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             usuario_id INTEGER,
@@ -1243,6 +1255,25 @@ def init_db():
     if 'motivo_anulacion' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN motivo_anulacion TEXT DEFAULT ''")
     c.execute("CREATE INDEX IF NOT EXISTS idx_compras_variante ON compras(variante_id)")
+
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS stock_migracion_variantes_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+            compra_id INTEGER NOT NULL REFERENCES compras(id) ON DELETE CASCADE,
+            variante_id INTEGER NOT NULL REFERENCES producto_variantes(id) ON DELETE CASCADE,
+            cantidad_asignada REAL NOT NULL DEFAULT 0,
+            saldo_reversible REAL NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (compra_id, variante_id)
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_stock_migracion_ledger_producto ON stock_migracion_variantes_ledger(producto_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_stock_migracion_ledger_compra ON stock_migracion_variantes_ledger(compra_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_stock_migracion_ledger_variante ON stock_migracion_variantes_ledger(variante_id)")
 
     # Verificar y agregar columnas de recuperaciÃ³n en usuarios
     columnas_u = [r['name'] for r in c.execute("PRAGMA table_info(usuarios)").fetchall()]
@@ -4752,12 +4783,97 @@ def _resolve_purchase_item_in_cursor(cursor, product_id: int, variant_id: int | 
     }
 
 
+def _product_stock_mode_in_cursor(cursor, product_id: int) -> str:
+    row = cursor.execute("SELECT stock_modo FROM productos WHERE id=? LIMIT 1", (int(product_id or 0),)).fetchone()
+    return str((row["stock_modo"] if row and "stock_modo" in row.keys() else "legacy") or "legacy").strip().lower()
+
+
+def _apply_migrated_legacy_purchase_reversal(cursor, product_id: int, delta: float, compra_id: int, *, usuario='', rol='') -> None:
+    cantidad = abs(float(delta or 0))
+    if cantidad <= 0:
+        return
+
+    rows = cursor.execute(
+        """
+        SELECT l.*, v.producto_id AS variante_producto_id
+        FROM stock_migracion_variantes_ledger l
+        JOIN producto_variantes v ON v.id = l.variante_id
+        WHERE l.producto_id=? AND l.compra_id=? AND l.saldo_reversible > 0
+        ORDER BY l.id
+        """,
+        (int(product_id), int(compra_id)),
+    ).fetchall()
+    saldo_total = round(sum(float(row["saldo_reversible"] or 0) for row in rows), 6)
+    if saldo_total < round(cantidad, 6):
+        raise ValueError("No se puede revertir la compra legacy migrada: falta saldo reversible de migracion para sus variantes.")
+
+    from services import inventory
+
+    pendiente = cantidad
+    consumos = []
+    for row in rows:
+        if pendiente <= 0:
+            break
+        if int(row["variante_producto_id"] or 0) != int(product_id):
+            raise ValueError("Ledger de migracion inconsistente: la variante no pertenece al producto.")
+        saldo = float(row["saldo_reversible"] or 0)
+        consumo = min(saldo, pendiente)
+        if consumo <= 0:
+            continue
+        stock = cursor.execute(
+            "SELECT stock_actual FROM stock_variantes WHERE variante_id=? LIMIT 1",
+            (int(row["variante_id"]),),
+        ).fetchone()
+        stock_actual = float(stock["stock_actual"] or 0) if stock else 0.0
+        if round(stock_actual, 6) < round(consumo, 6):
+            raise ValueError("No se puede revertir la compra legacy migrada: una variante no tiene stock suficiente.")
+        consumos.append((row, consumo))
+        pendiente = round(pendiente - consumo, 6)
+
+    if round(pendiente, 6) > 0:
+        raise ValueError("No se puede revertir la compra legacy migrada: la distribucion registrada no cubre toda la cantidad.")
+
+    for row, consumo in consumos:
+        inventory.apply_inventory_delta_in_cursor(
+            cursor,
+            int(product_id),
+            -consumo,
+            variant_id=int(row["variante_id"]),
+            tipo="ANULACION_COMPRA",
+            motivo=f"Compra #{compra_id}",
+            usuario=usuario,
+            rol=rol,
+            allow_inactive_variant=True,
+            stock_source="variante",
+        )
+        nuevo_saldo = round(float(row["saldo_reversible"] or 0) - consumo, 6)
+        cursor.execute(
+            """
+            UPDATE stock_migracion_variantes_ledger
+            SET saldo_reversible=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (nuevo_saldo, int(row["id"])),
+        )
+
+
 def _apply_purchase_delta(cursor, product_id: int, variant_id: int | None, delta: float, compra_id: int, *, usuario='', rol='', historical_reversal: bool = False, stock_fuente: str | None = None) -> None:
     if abs(float(delta or 0)) <= 0:
         return
     from services import inventory
 
     delta_value = float(delta)
+    fuente = _compra_stock_fuente({"stock_fuente": stock_fuente}, fallback_variant_id=variant_id)
+    if (
+        historical_reversal
+        and delta_value < 0
+        and fuente == "producto"
+        and variant_id is None
+        and _product_stock_mode_in_cursor(cursor, product_id) == "variantes"
+    ):
+        _apply_migrated_legacy_purchase_reversal(cursor, product_id, delta_value, compra_id, usuario=usuario, rol=rol)
+        return
+
     inventory.apply_inventory_delta_in_cursor(
         cursor,
         int(product_id),
@@ -4768,7 +4884,7 @@ def _apply_purchase_delta(cursor, product_id: int, variant_id: int | None, delta
         usuario=usuario,
         rol=rol,
         allow_inactive_variant=bool(historical_reversal and delta_value < 0),
-        stock_source=stock_fuente,
+        stock_source=fuente,
     )
 
 

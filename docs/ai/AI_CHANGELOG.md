@@ -2,6 +2,36 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-29 - Codex - feat/issue-146-purchases-variants-p1-migrated-reversal
+
+### Tarea
+Corregir el P1 de PR #160 para que las compras legacy revertidas despues de
+migrar un producto a variantes descuenten stock operativo de variantes, no la
+fila legacy no operativa.
+
+### Que se cambio
+- `stock_migracion_variantes_ledger` registra durante
+  `activate_variant_stock_mode()` como las compras legacy activas quedan
+  asignadas a las variantes de la distribucion explicita.
+- Las reversiones historicas de compras legacy consumen `saldo_reversible` del
+  ledger y descuentan `stock_variantes` con validacion de pertenencia, stock
+  disponible y rollback total.
+- Los productos no migrados siguen revirtiendo `productos.stock`; las compras
+  nuevas por variante y las variantes inactivas historicas conservan su flujo
+  previo.
+- El ledger evita reutilizar dos veces la misma unidad migrada y conserva
+  auditoria/movimientos por variante.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m py_compile database.py services\inventory.py tests\test_purchase_variants.py tests\test_product_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_product_variants.ProductVariantsTests.test_api_publica_inventory_delta_rechaza_cantidades_negativas_y_cero tests.test_product_variants.ProductVariantsTests.test_api_publica_inventory_delta_positiva_y_helper_negativo_controlado`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_purchase_variants`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_product_variants`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_proveedor_facturas_anulacion`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_reportes_historicos_coherentes`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests`
+- `git diff --check`
+
 ## 2026-07-29 - Codex - feat/issue-146-purchases-variants-p2-inventory-api
 
 ### Tarea
