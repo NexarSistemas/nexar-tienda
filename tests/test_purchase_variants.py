@@ -154,6 +154,7 @@ class PurchaseVariantsTests(unittest.TestCase):
         self.assertEqual(self.database.q("SELECT COUNT(*) AS total FROM stock_variantes", fetchone=True)["total"], 0)
         compra = self.database.get_compra(compra_id)
         self.assertIsNone(compra["variante_id"])
+        self.assertEqual(compra["stock_fuente"], "producto")
 
     def test_compra_por_variante_incrementa_solo_variante_elegida(self):
         producto_id = self._crear_producto("Remera", stock=0, costo=50)
@@ -175,6 +176,7 @@ class PurchaseVariantsTests(unittest.TestCase):
         self.assertEqual(self._stock_variante(rojo), 0.0)
         compra = self.database.get_compra(compra_id)
         self.assertEqual(int(compra["variante_id"]), negro)
+        self.assertEqual(compra["stock_fuente"], "variante")
         self.assertIn("Color: Negro", compra["descripcion"])
 
     def test_busqueda_por_sku_codigo_y_descripcion(self):
@@ -294,6 +296,65 @@ class PurchaseVariantsTests(unittest.TestCase):
         self.assertEqual(self._stock_variante(negro), 0.0)
         self.assertEqual(self._stock_variante(azul), 4.0)
 
+    def test_edicion_de_legacy_a_variante_revierte_fuente_anterior_y_aplica_nueva(self):
+        producto_legacy = self._crear_producto("Origen legacy", stock=0, costo=10)
+        producto_variantes = self._crear_producto("Destino variante", stock=1, costo=20)
+        variante_id = self._crear_variante(producto_variantes, "Negro", sku="EVF-NEG")
+        self._activar_variantes(producto_variantes, [{"variant_id": variante_id, "stock_actual": 1, "stock_minimo": 0, "stock_maximo": 50}])
+        compra_id = self.database.add_compra(self._compra_data(producto_legacy, cantidad=4, costo_unitario=10))
+
+        data = self._compra_data(producto_variantes, variante_id=variante_id, cantidad=3, costo_unitario=20)
+        self.database.update_compra(compra_id, data)
+
+        compra = self.database.get_compra(compra_id)
+        self.assertEqual(compra["stock_fuente"], "variante")
+        self.assertEqual(self._stock_producto(producto_legacy), 0.0)
+        self.assertEqual(self._stock_variante(variante_id), 4.0)
+        movimientos = self.database.q(
+            "SELECT producto_id, variante_id, stock_fuente, cantidad FROM stock_movimientos WHERE tipo IN ('COMPRA', 'ANULACION_COMPRA') ORDER BY id",
+        )
+        self.assertEqual(
+            [
+                (int(row["producto_id"]), row["variante_id"], row["stock_fuente"], float(row["cantidad"]))
+                for row in movimientos
+            ],
+            [
+                (producto_legacy, None, "stock", 4.0),
+                (producto_legacy, None, "stock", -4.0),
+                (producto_variantes, variante_id, "stock_variantes", 3.0),
+            ],
+        )
+
+    def test_anulacion_legacy_historica_tras_migrar_revierte_solo_stock_producto(self):
+        producto_id = self._crear_producto("Legacy migrado", stock=2, costo=10)
+        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5, costo_unitario=10))
+        variante_a = self._crear_variante(producto_id, "Negro", sku="LM-NEG")
+        variante_b = self._crear_variante(producto_id, "Rojo", sku="LM-ROJ")
+        self._activar_variantes(
+            producto_id,
+            [
+                {"variant_id": variante_a, "stock_actual": 4, "stock_minimo": 0, "stock_maximo": 50},
+                {"variant_id": variante_b, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50},
+            ],
+        )
+
+        self.database.anular_compra(compra_id, motivo="Historica legacy", usuario="admin", rol="Administrador")
+
+        compra = self.database.get_compra(compra_id)
+        self.assertEqual(int(compra["anulada"]), 1)
+        self.assertIsNone(compra["variante_id"])
+        self.assertEqual(compra["stock_fuente"], "producto")
+        self.assertEqual(self._stock_producto(producto_id), 2.0)
+        self.assertEqual(self._stock_variante(variante_a), 4.0)
+        self.assertEqual(self._stock_variante(variante_b), 3.0)
+        movimientos = self.database.q(
+            "SELECT variante_id, stock_fuente, cantidad FROM stock_movimientos WHERE tipo IN ('COMPRA', 'ANULACION_COMPRA') ORDER BY id",
+        )
+        self.assertEqual(
+            [(row["variante_id"], row["stock_fuente"], float(row["cantidad"])) for row in movimientos],
+            [(None, "stock", 5.0), (None, "stock", -5.0)],
+        )
+
     def test_anulacion_revierte_una_sola_vez(self):
         producto_id = self._crear_producto("Bufanda", stock=0)
         variante_id = self._crear_variante(producto_id, "Verde", sku="BUF-VER")
@@ -329,6 +390,7 @@ class PurchaseVariantsTests(unittest.TestCase):
 
         compra = self.database.get_compra(compra_id)
         self.assertEqual(int(compra["anulada"]), 1)
+        self.assertEqual(compra["stock_fuente"], "variante")
         self.assertEqual(self._stock_variante(comprada), 0.0)
         self.assertEqual(self._stock_variante(otra), 4.0)
         self.assertEqual(self._stock_producto(producto_id), 4.0)
@@ -405,16 +467,55 @@ class PurchaseVariantsTests(unittest.TestCase):
         )
         self.assertEqual(movimientos, [])
 
+    def test_rollback_completo_si_falla_reversion_legacy_historica(self):
+        producto_id = self._crear_producto("Rollback legacy migrado", stock=0)
+        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=3))
+        variante_id = self._crear_variante(producto_id, "Negro", sku="RBL-NEG")
+        self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50}])
+        self.database.q("UPDATE stock SET stock_actual=1 WHERE producto_id=?", (producto_id,), fetchall=False, commit=True)
+
+        with self.assertRaisesRegex(ValueError, "stock negativo"):
+            self.database.anular_compra(compra_id)
+
+        compra = self.database.get_compra(compra_id)
+        self.assertEqual(int(compra["anulada"]), 0)
+        self.assertEqual(self._stock_producto(producto_id), 1.0)
+        self.assertEqual(self._stock_variante(variante_id), 3.0)
+        movimientos = self.database.q(
+            "SELECT cantidad FROM stock_movimientos WHERE producto_id=? AND tipo='ANULACION_COMPRA'",
+            (producto_id,),
+        )
+        self.assertEqual(movimientos, [])
+
     def test_compras_historicas_sin_variante_e_init_db_idempotente(self):
         self.database.init_db()
         columnas = [row["name"] for row in self.database.q("PRAGMA table_info(compras)")]
         self.assertIn("variante_id", columnas)
+        self.assertIn("stock_fuente", columnas)
         producto_id = self._crear_producto("Historico", stock=0)
         compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=1))
-        self.database.q("UPDATE compras SET variante_id=NULL WHERE id=?", (compra_id,), fetchall=False, commit=True)
+        variante_id = self._crear_variante(producto_id, "Negro", sku="BF-NEG")
+        self.database.q("UPDATE compras SET variante_id=NULL, stock_fuente='' WHERE id=?", (compra_id,), fetchall=False, commit=True)
+        self.database.q(
+            """
+            INSERT INTO compras (producto_id, variante_id, stock_fuente, descripcion, cantidad)
+            VALUES (?, ?, '', 'Historico variante', 1)
+            """,
+            (producto_id, variante_id),
+            fetchall=False,
+            commit=True,
+        )
+
+        self.database._db_initialized = False
+        self.database.init_db()
+        self.database._db_initialized = False
+        self.database.init_db()
 
         compra = self.database.get_compra(compra_id)
         self.assertIsNone(compra["variante_id"])
+        self.assertEqual(compra["stock_fuente"], "producto")
+        compra_variante = self.database.q("SELECT stock_fuente FROM compras WHERE descripcion='Historico variante'", fetchone=True)
+        self.assertEqual(compra_variante["stock_fuente"], "variante")
 
     def test_migracion_legacy_conserva_compra_sin_inferir_variante(self):
         legacy_db = Path(self.temp_dir.name) / "legacy.db"
@@ -429,8 +530,9 @@ class PurchaseVariantsTests(unittest.TestCase):
         self.database.DB_PATH = str(legacy_db)
         self.database._db_initialized = False
         self.database.init_db()
-        compra = self.database.q("SELECT variante_id FROM compras WHERE id=1", fetchone=True)
+        compra = self.database.q("SELECT variante_id, stock_fuente FROM compras WHERE id=1", fetchone=True)
         self.assertIsNone(compra["variante_id"])
+        self.assertEqual(compra["stock_fuente"], "producto")
 
     def test_ruta_compra_con_variante_respeta_login_csrf_y_validacion(self):
         producto_id = self._crear_producto("Ruta", stock=0)

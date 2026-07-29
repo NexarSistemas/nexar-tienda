@@ -96,8 +96,48 @@ def _variant_for_update(cursor, product_id: int, variant_id: int, *, allow_inact
     return variant
 
 
-def _resolve_inventory_item_in_cursor(cursor, product_id: int, variant_id: int | None = None, *, allow_inactive_variant: bool = False) -> dict:
+def _normalize_source(value) -> str | None:
+    source = str(value or "").strip().lower()
+    if source in {"producto", "stock", "legacy"}:
+        return SOURCE_LEGACY
+    if source in {"variante", "stock_variantes"}:
+        return SOURCE_VARIANTS
+    return None
+
+
+def _resolve_inventory_item_in_cursor(cursor, product_id: int, variant_id: int | None = None, *, allow_inactive_variant: bool = False, stock_source: str | None = None) -> dict:
     product = _product_for_update(cursor, product_id)
+    source_override = _normalize_source(stock_source)
+    if source_override == SOURCE_LEGACY:
+        if variant_id is not None:
+            raise ValueError("La fuente historica de producto no admite variante.")
+        stock = _ensure_legacy_stock(cursor, int(product["id"]))
+        return {
+            "producto": product,
+            "variante": None,
+            "modo": STOCK_MODE_LEGACY,
+            "fuente": SOURCE_LEGACY,
+            "stock": stock,
+            "stock_actual": float(stock["stock_actual"] or 0),
+            "stock_minimo": float(stock["stock_minimo"] or 0),
+            "stock_maximo": float(stock["stock_maximo"] or 0),
+        }
+    if source_override == SOURCE_VARIANTS:
+        if variant_id is None:
+            raise ValueError("La fuente historica de variante requiere una variante.")
+        variant = _variant_for_update(cursor, int(product["id"]), int(variant_id), allow_inactive=allow_inactive_variant)
+        stock = _ensure_variant_stock(cursor, int(variant["id"]))
+        return {
+            "producto": product,
+            "variante": variant,
+            "modo": STOCK_MODE_VARIANTS,
+            "fuente": SOURCE_VARIANTS,
+            "stock": stock,
+            "stock_actual": float(stock["stock_actual"] or 0),
+            "stock_minimo": float(stock["stock_minimo"] or 0),
+            "stock_maximo": float(stock["stock_maximo"] or 0),
+        }
+
     mode = _normalize_mode(product["stock_modo"] if "stock_modo" in product.keys() else None)
 
     if mode == STOCK_MODE_LEGACY:
@@ -223,6 +263,7 @@ def apply_inventory_delta_in_cursor(
     usuario: str = "",
     rol: str = "",
     allow_inactive_variant: bool = False,
+    stock_source: str | None = None,
 ) -> dict:
     try:
         delta = float(cantidad)
@@ -237,7 +278,13 @@ def apply_inventory_delta_in_cursor(
     if tipo_normalizado in {"BAJA", "VENTA", "ANULACION_COMPRA"}:
         delta = -abs(delta)
 
-    item = _resolve_inventory_item_in_cursor(cursor, product_id, variant_id, allow_inactive_variant=allow_inactive_variant)
+    item = _resolve_inventory_item_in_cursor(
+        cursor,
+        product_id,
+        variant_id,
+        allow_inactive_variant=allow_inactive_variant,
+        stock_source=stock_source,
+    )
     anterior = float(item["stock_actual"] or 0)
     nuevo = anterior + delta
     if nuevo < 0:

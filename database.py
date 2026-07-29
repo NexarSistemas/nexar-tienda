@@ -776,6 +776,7 @@ def init_db():
             proveedor_nombre TEXT DEFAULT '',
             producto_id INTEGER DEFAULT 0,
             variante_id INTEGER REFERENCES producto_variantes(id) ON DELETE SET NULL,
+            stock_fuente TEXT DEFAULT 'producto',
             codigo_interno TEXT DEFAULT '',
             descripcion TEXT DEFAULT '',
             cantidad REAL DEFAULT 1,
@@ -1224,6 +1225,17 @@ def init_db():
         c.execute("ALTER TABLE compras ADD COLUMN anulada INTEGER DEFAULT 0")
     if 'variante_id' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN variante_id INTEGER REFERENCES producto_variantes(id) ON DELETE SET NULL")
+    if 'stock_fuente' not in columnas_compras:
+        c.execute("ALTER TABLE compras ADD COLUMN stock_fuente TEXT DEFAULT 'producto'")
+    c.execute(
+        """
+        UPDATE compras
+        SET stock_fuente = CASE
+            WHEN variante_id IS NOT NULL THEN 'variante'
+            ELSE 'producto'
+        END
+        """
+    )
     if 'anulada_at' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN anulada_at TEXT DEFAULT ''")
     if 'anulada_por' not in columnas_compras:
@@ -4674,6 +4686,16 @@ def _compra_variante_id(data) -> int | None:
     return variant_id if variant_id > 0 else None
 
 
+def _compra_stock_fuente(data, *, fallback_variant_id: int | None = None) -> str:
+    raw = data["stock_fuente"] if hasattr(data, "keys") and "stock_fuente" in data.keys() else None
+    fuente = str(raw or "").strip().lower()
+    if fuente in {"producto", "stock", "legacy"}:
+        return "producto"
+    if fuente in {"variante", "stock_variantes"}:
+        return "variante"
+    return "variante" if fallback_variant_id is not None else "producto"
+
+
 def _resolve_purchase_item_in_cursor(cursor, product_id: int, variant_id: int | None, *, allow_inactive_variant: bool = False) -> dict:
     product = cursor.execute("SELECT * FROM productos WHERE id=? AND activo=1 LIMIT 1", (int(product_id or 0),)).fetchone()
     if not product:
@@ -4712,6 +4734,7 @@ def _resolve_purchase_item_in_cursor(cursor, product_id: int, variant_id: int | 
         return {
             "producto_id": int(product["id"]),
             "variante_id": int(variant["id"]),
+            "stock_fuente": "variante",
             "codigo_interno": product["codigo_interno"] or "",
             "descripcion": f"{product['descripcion'] or ''} / {(resumen['resumen'] if resumen else '') or variant['nombre'] or 'Variante predeterminada'}",
             "costo_unitario": float(variant["costo"]) if variant["costo"] is not None else float(product["costo"] or 0),
@@ -4722,13 +4745,14 @@ def _resolve_purchase_item_in_cursor(cursor, product_id: int, variant_id: int | 
     return {
         "producto_id": int(product["id"]),
         "variante_id": None,
+        "stock_fuente": "producto",
         "codigo_interno": product["codigo_interno"] or "",
         "descripcion": product["descripcion"] or "",
         "costo_unitario": float(product["costo"] or 0),
     }
 
 
-def _apply_purchase_delta(cursor, product_id: int, variant_id: int | None, delta: float, compra_id: int, *, usuario='', rol='', historical_reversal: bool = False) -> None:
+def _apply_purchase_delta(cursor, product_id: int, variant_id: int | None, delta: float, compra_id: int, *, usuario='', rol='', historical_reversal: bool = False, stock_fuente: str | None = None) -> None:
     if abs(float(delta or 0)) <= 0:
         return
     from services import inventory
@@ -4744,6 +4768,7 @@ def _apply_purchase_delta(cursor, product_id: int, variant_id: int | None, delta
         usuario=usuario,
         rol=rol,
         allow_inactive_variant=bool(historical_reversal and delta_value < 0),
+        stock_source=stock_fuente,
     )
 
 
@@ -4758,6 +4783,7 @@ def update_compra(cid, data):
         c = conn.cursor()
         producto_anterior = int(compra_actual['producto_id'] or 0)
         variante_anterior = _compra_variante_id(compra_actual)
+        stock_fuente_anterior = _compra_stock_fuente(compra_actual, fallback_variant_id=variante_anterior)
         cantidad_anterior = float(compra_actual['cantidad'] or 0)
         proveedor_nuevo = int(data.get('proveedor_id', 0) or 0)
         producto_nuevo = int(data.get('producto_id', 0) or 0)
@@ -4767,25 +4793,37 @@ def update_compra(cid, data):
             raise ValueError("La cantidad no puede ser negativa.")
         same_item = producto_anterior == producto_nuevo and variante_anterior == variante_nueva
         delta_same_item = cantidad_nueva - cantidad_anterior if same_item else 0
+        historical_same_decrease = bool(same_item and stock_fuente_anterior == "producto" and delta_same_item <= 0)
         allow_historical_item = bool(same_item and variante_nueva is not None and delta_same_item <= 0)
-        item = _resolve_purchase_item_in_cursor(c, producto_nuevo, variante_nueva, allow_inactive_variant=allow_historical_item) if producto_nuevo > 0 else None
+        item = None
+        if producto_nuevo > 0 and not historical_same_decrease:
+            item = _resolve_purchase_item_in_cursor(c, producto_nuevo, variante_nueva, allow_inactive_variant=allow_historical_item)
+        elif producto_nuevo > 0:
+            item = {
+                "producto_id": producto_nuevo,
+                "variante_id": variante_nueva,
+                "stock_fuente": stock_fuente_anterior,
+                "codigo_interno": compra_actual["codigo_interno"] or data.get('codigo_interno', ''),
+                "descripcion": compra_actual["descripcion"] or data.get('descripcion', ''),
+                "costo_unitario": float(compra_actual["costo_unitario"] or 0),
+            }
         costo_nuevo = float(data.get('costo_unitario', item["costo_unitario"] if item else 0) or 0)
         total_nuevo = float(data.get('total', cantidad_nueva * costo_nuevo) or 0)
         fecha_nueva = data.get('fecha', datetime.now().strftime('%Y-%m-%d'))
 
         if producto_anterior != producto_nuevo or variante_anterior != variante_nueva:
             if producto_anterior > 0 and cantidad_anterior > 0:
-                _apply_purchase_delta(c, producto_anterior, variante_anterior, -cantidad_anterior, cid, historical_reversal=True)
+                _apply_purchase_delta(c, producto_anterior, variante_anterior, -cantidad_anterior, cid, historical_reversal=True, stock_fuente=stock_fuente_anterior)
             if producto_nuevo > 0 and cantidad_nueva > 0:
-                _apply_purchase_delta(c, producto_nuevo, variante_nueva, cantidad_nueva, cid)
+                _apply_purchase_delta(c, producto_nuevo, variante_nueva, cantidad_nueva, cid, stock_fuente=item["stock_fuente"] if item else None)
         else:
             delta = delta_same_item
             if producto_nuevo > 0 and delta:
-                _apply_purchase_delta(c, producto_nuevo, variante_nueva, delta, cid, historical_reversal=delta < 0)
+                _apply_purchase_delta(c, producto_nuevo, variante_nueva, delta, cid, historical_reversal=delta < 0, stock_fuente=item["stock_fuente"] if item else stock_fuente_anterior)
 
         c.execute(
             """UPDATE compras
-            SET fecha=?,numero_remito=?,proveedor_id=?,proveedor_nombre=?,producto_id=?,variante_id=?,codigo_interno=?,descripcion=?,cantidad=?,costo_unitario=?,total=?,observaciones=?
+            SET fecha=?,numero_remito=?,proveedor_id=?,proveedor_nombre=?,producto_id=?,variante_id=?,stock_fuente=?,codigo_interno=?,descripcion=?,cantidad=?,costo_unitario=?,total=?,observaciones=?
             WHERE id=?""",
             (
                 fecha_nueva,
@@ -4794,6 +4832,7 @@ def update_compra(cid, data):
                 data.get('proveedor_nombre', ''),
                 producto_nuevo,
                 variante_nueva,
+                item["stock_fuente"] if item else stock_fuente_anterior,
                 item["codigo_interno"] if item else data.get('codigo_interno', ''),
                 item["descripcion"] if item else data.get('descripcion', ''),
                 cantidad_nueva,
@@ -4833,9 +4872,10 @@ def anular_compra(compra_id, motivo='', usuario='', rol=''):
         c = conn.cursor()
         producto_id = int(compra_actual['producto_id'] or 0)
         variante_id = _compra_variante_id(compra_actual)
+        stock_fuente = _compra_stock_fuente(compra_actual, fallback_variant_id=variante_id)
         cantidad = float(compra_actual['cantidad'] or 0)
         if producto_id > 0 and cantidad > 0:
-            _apply_purchase_delta(c, producto_id, variante_id, -cantidad, compra_id, usuario=usuario, rol=rol, historical_reversal=True)
+            _apply_purchase_delta(c, producto_id, variante_id, -cantidad, compra_id, usuario=usuario, rol=rol, historical_reversal=True, stock_fuente=stock_fuente)
 
         marca_tiempo = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         c.execute(
@@ -4912,6 +4952,7 @@ def _add_compra_in_cursor(c, data):
         data.get('proveedor_nombre', ''),
         item["producto_id"],
         item["variante_id"],
+        item["stock_fuente"],
         item["codigo_interno"],
         item["descripcion"],
         cantidad,
@@ -4921,12 +4962,12 @@ def _add_compra_in_cursor(c, data):
     )
     c.execute(
         """INSERT INTO compras
-        (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,variante_id,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,variante_id,stock_fuente,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         params,
     )
     compra_id = c.lastrowid
-    _apply_purchase_delta(c, item["producto_id"], item["variante_id"], cantidad, compra_id)
+    _apply_purchase_delta(c, item["producto_id"], item["variante_id"], cantidad, compra_id, stock_fuente=item["stock_fuente"])
     return compra_id
 
 

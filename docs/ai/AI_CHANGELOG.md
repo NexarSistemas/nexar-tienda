@@ -2,6 +2,29 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-29 - Codex - feat/issue-146-purchases-variants
+
+### Tarea
+Corregir el P1 de PR #160 sobre reversibilidad de compras legacy anteriores a
+la migracion de un producto a stock por variantes.
+
+### Que se cambio
+- `compras` conserva `stock_fuente` historico (`producto` o `variante`) con
+  migracion idempotente y backfill deterministico desde `variante_id`.
+- Las altas y destinos nuevos de compra siguen validando el modo operativo
+  actual del producto.
+- Las reversiones de edicion/anulacion usan la fuente historica: compras legacy
+  revierten `productos.stock` aunque el producto opere hoy por variantes, y
+  compras por variante revierten su variante historica aun si esta inactiva.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m py_compile database.py services\\inventory.py tests\\test_purchase_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_purchase_variants` - 20 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_proveedor_facturas_anulacion` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_reportes_historicos_coherentes` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_product_variants` - 67 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest discover -s tests` - 393 OK
+
 ## 2026-07-28 - Codex - feat/issue-146-purchases-variants-post-review
 
 ### Tarea
