@@ -130,18 +130,6 @@ class PurchaseVariantsTests(unittest.TestCase):
         row = self.database.q("SELECT stock_actual FROM stock_variantes WHERE variante_id=?", (variant_id,), fetchone=True)
         return float(row["stock_actual"] or 0) if row else 0.0
 
-    def _ledger_rows(self, compra_id=None, producto_id=None):
-        sql = "SELECT * FROM stock_migracion_variantes_ledger WHERE 1=1"
-        params = []
-        if compra_id is not None:
-            sql += " AND compra_id=?"
-            params.append(compra_id)
-        if producto_id is not None:
-            sql += " AND producto_id=?"
-            params.append(producto_id)
-        sql += " ORDER BY id"
-        return self.database.q(sql, params)
-
     def _stock_operativo_total(self, producto_id):
         return sum(
             float(item["stock_actual"] or 0)
@@ -185,7 +173,6 @@ class PurchaseVariantsTests(unittest.TestCase):
         self.assertEqual(int(compra["anulada"]), 1)
         self.assertEqual(self._stock_producto(producto_id), 3.0)
         self.assertEqual(self._stock_operativo_total(producto_id), 3.0)
-        self.assertEqual(self._ledger_rows(compra_id=compra_id), [])
         movimientos = self.database.q(
             "SELECT variante_id, stock_fuente, cantidad FROM stock_movimientos WHERE producto_id=? AND tipo IN ('COMPRA', 'ANULACION_COMPRA') ORDER BY id",
             (producto_id,),
@@ -364,9 +351,8 @@ class PurchaseVariantsTests(unittest.TestCase):
             ],
         )
 
-    def test_anulacion_legacy_historica_tras_migrar_revierte_stock_operativo_por_ledger(self):
-        producto_id = self._crear_producto("Legacy migrado", stock=2, costo=10)
-        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5, costo_unitario=10))
+    def test_producto_legacy_sin_compras_pendientes_migra_correctamente(self):
+        producto_id = self._crear_producto("Legacy limpio", stock=7, costo=10)
         variante_a = self._crear_variante(producto_id, "Negro", sku="LM-NEG")
         variante_b = self._crear_variante(producto_id, "Rojo", sku="LM-ROJ")
         self._activar_variantes(
@@ -377,114 +363,96 @@ class PurchaseVariantsTests(unittest.TestCase):
             ],
         )
 
-        ledger_antes = self._ledger_rows(compra_id=compra_id)
-        self.assertEqual(
-            [(int(row["variante_id"]), float(row["cantidad_asignada"]), float(row["saldo_reversible"])) for row in ledger_antes],
-            [(variante_a, 4.0, 4.0), (variante_b, 1.0, 1.0)],
-        )
+        producto = self.database.get_producto(producto_id)
+        self.assertEqual(producto["stock_modo"], "variantes")
+        self.assertEqual(self._stock_producto(producto_id), 7.0)
+        self.assertEqual(self._stock_variante(variante_a), 4.0)
+        self.assertEqual(self._stock_variante(variante_b), 3.0)
         self.assertEqual(self._stock_operativo_total(producto_id), 7.0)
-        self.database.anular_compra(compra_id, motivo="Historica legacy", usuario="admin", rol="Administrador")
+
+    def test_producto_con_compra_legacy_activa_no_puede_migrar_y_deja_db_intacta(self):
+        producto_id = self._crear_producto("Legacy bloqueado", stock=2, costo=10)
+        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5, costo_unitario=10))
+        variante_a = self._crear_variante(producto_id, "Negro", sku="LB-NEG")
+        variante_b = self._crear_variante(producto_id, "Rojo", sku="LB-ROJ")
+        movimientos_antes = self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"]
+        auditoria_antes = self.database.q("SELECT COUNT(*) AS total FROM auditoria", fetchone=True)["total"]
+
+        with self.assertRaisesRegex(ValueError, "compras legacy activas"):
+            self._activar_variantes(
+                producto_id,
+                [
+                    {"variant_id": variante_a, "stock_actual": 4, "stock_minimo": 0, "stock_maximo": 50},
+                    {"variant_id": variante_b, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50},
+                ],
+            )
+
+        compra = self.database.get_compra(compra_id)
+        producto = self.database.get_producto(producto_id)
+        self.assertEqual(int(compra["anulada"]), 0)
+        self.assertEqual(producto["stock_modo"], "legacy")
+        self.assertEqual(self._stock_producto(producto_id), 7.0)
+        self.assertEqual(self._stock_variante(variante_a), 0.0)
+        self.assertEqual(self._stock_variante(variante_b), 0.0)
+        self.assertEqual(self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"], movimientos_antes)
+        self.assertEqual(self.database.q("SELECT COUNT(*) AS total FROM auditoria", fetchone=True)["total"], auditoria_antes)
+
+    def test_compra_legacy_anulada_no_bloquea_migracion(self):
+        producto_id = self._crear_producto("Legacy anulado migra", stock=2)
+        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5))
+        self.database.anular_compra(compra_id, motivo="Duplicada")
+        variante_id = self._crear_variante(producto_id, "Negro", sku="LAM-NEG")
+
+        self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 2, "stock_minimo": 0, "stock_maximo": 50}])
+
+        self.assertEqual(self.database.get_producto(producto_id)["stock_modo"], "variantes")
+        self.assertEqual(self._stock_variante(variante_id), 2.0)
+
+    def test_varias_compras_legacy_una_activa_bloquea_migracion(self):
+        producto_id = self._crear_producto("Legacy varias", stock=1)
+        compra_anulada = self.database.add_compra(self._compra_data(producto_id, cantidad=2))
+        self.database.anular_compra(compra_anulada)
+        compra_activa = self.database.add_compra(self._compra_data(producto_id, cantidad=3))
+        variante_id = self._crear_variante(producto_id, "Negro", sku="LVB-NEG")
+
+        with self.assertRaisesRegex(ValueError, "compras legacy activas"):
+            self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 4, "stock_minimo": 0, "stock_maximo": 50}])
+
+        self.assertEqual(int(self.database.get_compra(compra_activa)["anulada"]), 0)
+        self.assertEqual(self.database.get_producto(producto_id)["stock_modo"], "legacy")
+        self.assertEqual(self._stock_producto(producto_id), 4.0)
+
+    def test_compra_por_variante_no_aplica_al_bloqueo_de_migracion_de_otro_producto(self):
+        producto_variantes = self._crear_producto("Ya variantes", stock=0)
+        variante_origen = self._crear_variante(producto_variantes, "Negro", sku="CPV-NEG")
+        self._activar_variantes(producto_variantes, [{"variant_id": variante_origen, "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 50}])
+        self.database.add_compra(self._compra_data(producto_variantes, variante_id=variante_origen, cantidad=3))
+        producto_legacy = self._crear_producto("Legacy independiente", stock=4)
+        variante_destino = self._crear_variante(producto_legacy, "Rojo", sku="CPV-ROJ")
+
+        self._activar_variantes(producto_legacy, [{"variant_id": variante_destino, "stock_actual": 4, "stock_minimo": 0, "stock_maximo": 50}])
+
+        self.assertEqual(self.database.get_producto(producto_legacy)["stock_modo"], "variantes")
+
+    def test_compra_legacy_sigue_editable_y_anulable_antes_de_migrar(self):
+        producto_id = self._crear_producto("Legacy antes de migrar", stock=1)
+        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5))
+
+        self.database.update_compra(compra_id, self._compra_data(producto_id, cantidad=3))
+        self.assertEqual(self._stock_producto(producto_id), 4.0)
+        self.database.anular_compra(compra_id, motivo="Reversion legacy")
 
         compra = self.database.get_compra(compra_id)
         self.assertEqual(int(compra["anulada"]), 1)
-        self.assertIsNone(compra["variante_id"])
-        self.assertEqual(compra["stock_fuente"], "producto")
-        self.assertEqual(self._stock_producto(producto_id), 7.0)
-        self.assertEqual(self._stock_variante(variante_a), 0.0)
-        self.assertEqual(self._stock_variante(variante_b), 2.0)
-        self.assertEqual(self._stock_operativo_total(producto_id), 2.0)
-        ledger_despues = self._ledger_rows(compra_id=compra_id)
-        self.assertTrue(all(float(row["saldo_reversible"] or 0) == 0.0 for row in ledger_despues))
+        self.assertEqual(self._stock_producto(producto_id), 1.0)
         movimientos = self.database.q(
-            "SELECT variante_id, stock_fuente, cantidad FROM stock_movimientos WHERE tipo IN ('COMPRA', 'ANULACION_COMPRA') ORDER BY id",
+            "SELECT variante_id, stock_fuente, cantidad FROM stock_movimientos WHERE producto_id=? AND tipo IN ('COMPRA', 'ANULACION_COMPRA') ORDER BY id",
+            (producto_id,),
         )
         self.assertEqual(
             [(row["variante_id"], row["stock_fuente"], float(row["cantidad"])) for row in movimientos],
-            [(None, "stock", 5.0), (variante_a, "stock_variantes", -4.0), (variante_b, "stock_variantes", -1.0)],
+            [(None, "stock", 5.0), (None, "stock", -2.0), (None, "stock", -3.0)],
         )
-        auditorias = self.database.q(
-            "SELECT accion, entidad, entidad_id FROM auditoria WHERE accion='ANULACION_COMPRA_STOCK' ORDER BY id",
-        )
-        self.assertEqual([(row["entidad"], int(row["entidad_id"])) for row in auditorias], [("stock_variante", variante_a), ("stock_variante", variante_b)])
-
-    def test_varias_compras_legacy_migradas_anulacion_parcial_consume_solo_su_ledger(self):
-        producto_id = self._crear_producto("Multiples legacy", stock=0)
-        compra_a = self.database.add_compra(self._compra_data(producto_id, cantidad=4))
-        compra_b = self.database.add_compra(self._compra_data(producto_id, cantidad=6))
-        variante_a = self._crear_variante(producto_id, "Negro", sku="ML-NEG")
-        variante_b = self._crear_variante(producto_id, "Rojo", sku="ML-ROJ")
-        self._activar_variantes(
-            producto_id,
-            [
-                {"variant_id": variante_a, "stock_actual": 5, "stock_minimo": 0, "stock_maximo": 50},
-                {"variant_id": variante_b, "stock_actual": 5, "stock_minimo": 0, "stock_maximo": 50},
-            ],
-        )
-
-        self.database.anular_compra(compra_a, motivo="Parcial", usuario="admin", rol="Administrador")
-
-        self.assertEqual(int(self.database.get_compra(compra_a)["anulada"]), 1)
-        self.assertEqual(int(self.database.get_compra(compra_b)["anulada"]), 0)
-        self.assertEqual(self._stock_variante(variante_a), 1.0)
-        self.assertEqual(self._stock_variante(variante_b), 5.0)
-        self.assertEqual(self._stock_operativo_total(producto_id), 6.0)
-        self.assertTrue(all(float(row["saldo_reversible"] or 0) == 0.0 for row in self._ledger_rows(compra_id=compra_a)))
-        self.assertEqual(
-            [(int(row["variante_id"]), float(row["saldo_reversible"])) for row in self._ledger_rows(compra_id=compra_b)],
-            [(variante_a, 1.0), (variante_b, 5.0)],
-        )
-
-    def test_compra_legacy_migrada_con_bajas_posteriores_suficientes_se_anula(self):
-        producto_id = self._crear_producto("Legacy con ventas", stock=2)
-        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5))
-        variante_a = self._crear_variante(producto_id, "Negro", sku="LV-NEG")
-        variante_b = self._crear_variante(producto_id, "Rojo", sku="LV-ROJ")
-        self._activar_variantes(
-            producto_id,
-            [
-                {"variant_id": variante_a, "stock_actual": 4, "stock_minimo": 0, "stock_maximo": 50},
-                {"variant_id": variante_b, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50},
-            ],
-        )
-        self.inventory.apply_inventory_delta(producto_id, 1, variant_id=variante_b, tipo="VENTA", motivo="Venta posterior")
-
-        self.database.anular_compra(compra_id, motivo="Historica", usuario="admin", rol="Administrador")
-
-        self.assertEqual(self._stock_variante(variante_a), 0.0)
-        self.assertEqual(self._stock_variante(variante_b), 1.0)
-        self.assertEqual(self._stock_operativo_total(producto_id), 1.0)
-        self.assertEqual(int(self.database.get_compra(compra_id)["anulada"]), 1)
-
-    def test_compra_legacy_migrada_con_bajas_posteriores_insuficientes_hace_rollback(self):
-        producto_id = self._crear_producto("Legacy venta insuficiente", stock=2)
-        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5))
-        variante_a = self._crear_variante(producto_id, "Negro", sku="LVI-NEG")
-        variante_b = self._crear_variante(producto_id, "Rojo", sku="LVI-ROJ")
-        self._activar_variantes(
-            producto_id,
-            [
-                {"variant_id": variante_a, "stock_actual": 4, "stock_minimo": 0, "stock_maximo": 50},
-                {"variant_id": variante_b, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50},
-            ],
-        )
-        self.inventory.apply_inventory_delta(producto_id, 2, variant_id=variante_a, tipo="VENTA", motivo="Venta posterior")
-
-        with self.assertRaisesRegex(ValueError, "stock suficiente"):
-            self.database.anular_compra(compra_id)
-
-        compra = self.database.get_compra(compra_id)
-        self.assertEqual(int(compra["anulada"]), 0)
-        self.assertEqual(self._stock_variante(variante_a), 2.0)
-        self.assertEqual(self._stock_variante(variante_b), 3.0)
-        self.assertEqual(
-            [(int(row["variante_id"]), float(row["saldo_reversible"])) for row in self._ledger_rows(compra_id=compra_id)],
-            [(variante_a, 4.0), (variante_b, 1.0)],
-        )
-        movimientos = self.database.q(
-            "SELECT * FROM stock_movimientos WHERE producto_id=? AND tipo='ANULACION_COMPRA'",
-            (producto_id,),
-        )
-        self.assertEqual(movimientos, [])
 
     def test_anulacion_revierte_una_sola_vez(self):
         producto_id = self._crear_producto("Bufanda", stock=0)
@@ -549,34 +517,6 @@ class PurchaseVariantsTests(unittest.TestCase):
         )
         self.assertEqual([float(row["cantidad"]) for row in movimientos], [5.0, -3.0])
 
-    def test_edicion_reduce_cantidad_legacy_despues_de_migrar_consume_ledger(self):
-        producto_id = self._crear_producto("Edicion legacy migrada", stock=1)
-        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5))
-        variante_a = self._crear_variante(producto_id, "Negro", sku="ELM-NEG")
-        variante_b = self._crear_variante(producto_id, "Rojo", sku="ELM-ROJ")
-        self._activar_variantes(
-            producto_id,
-            [
-                {"variant_id": variante_a, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50},
-                {"variant_id": variante_b, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50},
-            ],
-        )
-
-        data = self._compra_data(producto_id, cantidad=2)
-        self.database.update_compra(compra_id, data)
-
-        compra = self.database.get_compra(compra_id)
-        self.assertEqual(float(compra["cantidad"]), 2.0)
-        self.assertEqual(compra["stock_fuente"], "producto")
-        self.assertEqual(self._stock_producto(producto_id), 6.0)
-        self.assertEqual(self._stock_variante(variante_a), 0.0)
-        self.assertEqual(self._stock_variante(variante_b), 3.0)
-        self.assertEqual(self._stock_operativo_total(producto_id), 3.0)
-        self.assertEqual(
-            [(int(row["variante_id"]), float(row["saldo_reversible"])) for row in self._ledger_rows(compra_id=compra_id)],
-            [(variante_a, 0.0), (variante_b, 2.0)],
-        )
-
     def test_variante_inactiva_sigue_rechazada_para_alta_y_destino_de_edicion(self):
         producto_id = self._crear_producto("Destino inactivo", stock=0)
         origen = self._crear_variante(producto_id, "Negro", sku="DIN-NEG")
@@ -626,53 +566,11 @@ class PurchaseVariantsTests(unittest.TestCase):
         )
         self.assertEqual(movimientos, [])
 
-    def test_rollback_completo_si_falla_reversion_legacy_historica(self):
-        producto_id = self._crear_producto("Rollback legacy migrado", stock=0)
-        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=3))
-        variante_id = self._crear_variante(producto_id, "Negro", sku="RBL-NEG")
-        self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50}])
-        self.database.q("UPDATE stock SET stock_actual=1 WHERE producto_id=?", (producto_id,), fetchall=False, commit=True)
-        self.database.q("UPDATE stock_variantes SET stock_actual=1 WHERE variante_id=?", (variante_id,), fetchall=False, commit=True)
-
-        with self.assertRaisesRegex(ValueError, "stock suficiente"):
-            self.database.anular_compra(compra_id)
-
-        compra = self.database.get_compra(compra_id)
-        self.assertEqual(int(compra["anulada"]), 0)
-        self.assertEqual(self._stock_producto(producto_id), 1.0)
-        self.assertEqual(self._stock_variante(variante_id), 1.0)
-        self.assertEqual(float(self._ledger_rows(compra_id=compra_id)[0]["saldo_reversible"] or 0), 3.0)
-        movimientos = self.database.q(
-            "SELECT cantidad FROM stock_movimientos WHERE producto_id=? AND tipo='ANULACION_COMPRA'",
-            (producto_id,),
-        )
-        self.assertEqual(movimientos, [])
-
-    def test_segundo_intento_anulacion_migrada_no_consume_dos_veces(self):
-        producto_id = self._crear_producto("Doble anulacion migrada", stock=0)
-        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=3))
-        variante_id = self._crear_variante(producto_id, "Negro", sku="DAM-NEG")
-        self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50}])
-
-        self.database.anular_compra(compra_id, motivo="Primera", usuario="admin", rol="Administrador")
-        with self.assertRaisesRegex(ValueError, "ya"):
-            self.database.anular_compra(compra_id, motivo="Segunda", usuario="admin", rol="Administrador")
-
-        self.assertEqual(self._stock_variante(variante_id), 0.0)
-        self.assertEqual(float(self._ledger_rows(compra_id=compra_id)[0]["saldo_reversible"] or 0), 0.0)
-        movimientos = self.database.q(
-            "SELECT cantidad FROM stock_movimientos WHERE producto_id=? AND tipo='ANULACION_COMPRA'",
-            (producto_id,),
-        )
-        self.assertEqual([float(row["cantidad"]) for row in movimientos], [-3.0])
-
     def test_compras_historicas_sin_variante_e_init_db_idempotente(self):
         self.database.init_db()
         columnas = [row["name"] for row in self.database.q("PRAGMA table_info(compras)")]
         self.assertIn("variante_id", columnas)
         self.assertIn("stock_fuente", columnas)
-        tablas = [row["name"] for row in self.database.q("SELECT name FROM sqlite_master WHERE type='table'")]
-        self.assertIn("stock_migracion_variantes_ledger", tablas)
         producto_id = self._crear_producto("Historico", stock=0)
         compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=1))
         variante_id = self._crear_variante(producto_id, "Negro", sku="BF-NEG")
@@ -698,22 +596,20 @@ class PurchaseVariantsTests(unittest.TestCase):
         compra_variante = self.database.q("SELECT stock_fuente FROM compras WHERE descripcion='Historico variante'", fetchone=True)
         self.assertEqual(compra_variante["stock_fuente"], "variante")
 
-    def test_migracion_repetida_no_duplica_ledger_y_init_db_es_idempotente(self):
-        producto_id = self._crear_producto("Ledger idempotente", stock=0)
-        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=2))
-        variante_id = self._crear_variante(producto_id, "Negro", sku="IDEM-NEG")
-        self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 2, "stock_minimo": 0, "stock_maximo": 50}])
+    def test_init_db_idempotente_sin_tabla_de_asignacion_migrada(self):
+        table_name = "stock_migracion_" + "variantes_ledger"
+        self.database.q(
+            f"CREATE TABLE {table_name} (id INTEGER PRIMARY KEY)",
+            fetchall=False,
+            commit=True,
+        )
         self.database._db_initialized = False
         self.database.init_db()
         self.database._db_initialized = False
         self.database.init_db()
 
-        ledger = self._ledger_rows(compra_id=compra_id)
-        self.assertEqual(len(ledger), 1)
-        self.assertEqual(float(ledger[0]["cantidad_asignada"] or 0), 2.0)
-        with self.assertRaisesRegex(ValueError, "ya opera por variantes"):
-            self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 2, "stock_minimo": 0, "stock_maximo": 50}])
-        self.assertEqual(len(self._ledger_rows(compra_id=compra_id)), 1)
+        tablas = [row["name"] for row in self.database.q("SELECT name FROM sqlite_master WHERE type='table'")]
+        self.assertNotIn(table_name, tablas)
 
     def test_migracion_legacy_conserva_compra_sin_inferir_variante(self):
         legacy_db = Path(self.temp_dir.name) / "legacy.db"
@@ -732,9 +628,8 @@ class PurchaseVariantsTests(unittest.TestCase):
         self.assertIsNone(compra["variante_id"])
         self.assertEqual(compra["stock_fuente"], "producto")
 
-    def test_fallo_en_distribucion_de_variante_revierte_stock_modo_y_ledger(self):
+    def test_fallo_en_distribucion_de_variante_revierte_stock_modo(self):
         producto_id = self._crear_producto("Rollback distribucion", stock=5)
-        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=2))
         variante_a = self._crear_variante(producto_id, "Negro", sku="RD-NEG")
         variante_b = self._crear_variante(producto_id, "Rojo", sku="RD-ROJ")
 
@@ -744,16 +639,15 @@ class PurchaseVariantsTests(unittest.TestCase):
                     producto_id,
                     [
                         {"variant_id": variante_a, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50},
-                        {"variant_id": variante_b, "stock_actual": 4, "stock_minimo": 0, "stock_maximo": 50},
+                        {"variant_id": variante_b, "stock_actual": 2, "stock_minimo": 0, "stock_maximo": 50},
                     ],
                 )
 
         producto = self.database.get_producto(producto_id)
         self.assertEqual(producto["stock_modo"], "legacy")
-        self.assertEqual(self._ledger_rows(compra_id=compra_id), [])
         self.assertEqual(self._stock_variante(variante_a), 0.0)
         self.assertEqual(self._stock_variante(variante_b), 0.0)
-        self.assertEqual(self._stock_producto(producto_id), 7.0)
+        self.assertEqual(self._stock_producto(producto_id), 5.0)
 
     def test_ruta_compra_con_variante_respeta_login_csrf_y_validacion(self):
         producto_id = self._crear_producto("Ruta", stock=0)

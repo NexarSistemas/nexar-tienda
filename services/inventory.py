@@ -412,48 +412,22 @@ def _movement_detail(item: dict, anterior: float, nuevo: float) -> str:
     return f"{product_name} / {variant_name} - {anterior:.2f} -> {nuevo:.2f}"
 
 
-def _record_variant_migration_purchase_ledger(cursor, product_id: int, allocations: list[dict]) -> None:
-    cursor.execute("DELETE FROM stock_migracion_variantes_ledger WHERE producto_id=?", (int(product_id),))
-    open_purchases = cursor.execute(
+def _ensure_no_reversible_legacy_purchases(cursor, product_id: int) -> None:
+    pending = cursor.execute(
         """
-        SELECT id, cantidad
+        SELECT id
         FROM compras
         WHERE producto_id=?
           AND variante_id IS NULL
           AND COALESCE(anulada, 0)=0
           AND LOWER(TRIM(COALESCE(stock_fuente, 'producto'))) IN ('', 'producto', 'stock', 'legacy')
           AND COALESCE(cantidad, 0) > 0
-        ORDER BY id
+        LIMIT 1
         """,
         (int(product_id),),
-    ).fetchall()
-    if not open_purchases:
-        return
-
-    allocation_slots = [
-        {"variant_id": int(item["variant_id"]), "remaining": float(item["stock_actual"] or 0)}
-        for item in allocations
-        if float(item["stock_actual"] or 0) > 0
-    ]
-    slot_index = 0
-    for purchase in open_purchases:
-        remaining_purchase = float(purchase["cantidad"] or 0)
-        while remaining_purchase > 0 and slot_index < len(allocation_slots):
-            slot = allocation_slots[slot_index]
-            assigned = min(remaining_purchase, slot["remaining"])
-            if assigned > 0:
-                cursor.execute(
-                    """
-                    INSERT INTO stock_migracion_variantes_ledger
-                    (producto_id, compra_id, variante_id, cantidad_asignada, saldo_reversible)
-                    VALUES (?,?,?,?,?)
-                    """,
-                    (int(product_id), int(purchase["id"]), slot["variant_id"], assigned, assigned),
-                )
-                remaining_purchase = round(remaining_purchase - assigned, 6)
-                slot["remaining"] = round(slot["remaining"] - assigned, 6)
-            if slot["remaining"] <= 0:
-                slot_index += 1
+    ).fetchone()
+    if pending:
+        raise ValueError("No se puede activar stock por variantes: existen compras legacy activas pendientes de edicion o anulacion.")
 
 
 def activate_variant_stock_mode(
@@ -495,7 +469,7 @@ def activate_variant_stock_mode(
         if round(legacy_actual, 6) != assigned_total:
             raise ValueError("La suma asignada a variantes debe coincidir con el stock legacy existente.")
 
-        _record_variant_migration_purchase_ledger(cursor, int(product_id), normalized)
+        _ensure_no_reversible_legacy_purchases(cursor, int(product_id))
         for item in normalized:
             _ensure_variant_stock(cursor, item["variant_id"])
             cursor.execute(
