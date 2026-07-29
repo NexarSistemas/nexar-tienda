@@ -2,6 +2,27 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-29 - Codex - feature/issue-147-pos-variants-test-isolation
+
+### Tarea
+Corregir solo el aislamiento de `tests/test_pos_variants.py` para que sus apps
+Flask temporales no inicien hilos de auto-refresh de licencia.
+
+### Que se cambio
+- Se confirma que `app.create_app()` invoca `ensure_license_auto_refresh_thread()`
+  y que `app.py` tambien crea una app global al importar el modulo.
+- `tests/test_pos_variants.py` parchea localmente
+  `routes.main.ensure_license_auto_refresh_thread` antes de importar/reload de
+  `app`, cubriendo tanto la app global del modulo como la app creada en `setUp`.
+- El patch se restaura con `addCleanup()` y no modifica comportamiento
+  productivo ni logica funcional del POS.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_pos_variants` - 14 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_pos_variants tests.test_pos_variants tests.test_pos_variants` - 42 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_venta_finalizar_temporada tests.test_product_variants tests.test_purchase_variants` - 101 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 420 OK
+
 ## 2026-07-29 - Codex - feature/issue-147-pos-variants-post-review
 
 ### Tarea

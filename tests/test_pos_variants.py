@@ -27,7 +27,6 @@ class PosVariantsTests(unittest.TestCase):
         os.environ["FLASK_ENV"] = "development"
         os.environ["NEXAR_LICENSE_MODE"] = "prod"
 
-        import app as app_module
         import database
         from routes import main as routes_main
         from services import inventory
@@ -45,6 +44,11 @@ class PosVariantsTests(unittest.TestCase):
         self.routes_main.inventory = self.inventory
         self.routes_main.product_variants = self.product_variants
 
+        auto_refresh_patcher = mock.patch.object(self.routes_main, "ensure_license_auto_refresh_thread", autospec=True)
+        auto_refresh_patcher.start()
+        self.addCleanup(auto_refresh_patcher.stop)
+
+        app_module = importlib.import_module("app")
         self.app_module = importlib.reload(app_module)
         self.app_module.db = self.database
         self.app = self.app_module.create_app()
