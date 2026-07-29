@@ -462,32 +462,51 @@ class PurchaseVariantsTests(unittest.TestCase):
 
     def test_compra_legacy_migrada_bloquea_anulacion_eliminacion_y_cambios_de_stock(self):
         producto_id = self._crear_producto("Legacy no reversible", stock=1)
-        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5))
+        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5, costo_unitario=10))
         variante_id = self._crear_variante(producto_id, "Negro", sku="LNR-NEG")
         self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 6, "stock_minimo": 0, "stock_maximo": 50}])
+        otro_producto = self._crear_producto("Otro destino", stock=0)
+        otro_proveedor = int(self.database.add_proveedor({"nombre": "Proveedor alternativo"}))
         compra_antes = self.database.get_compra(compra_id)
         stock_producto_antes = self._stock_producto(producto_id)
         stock_variante_antes = self._stock_variante(variante_id)
+        movimientos_antes = int(self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"])
+        auditoria_antes = int(self.database.q("SELECT COUNT(*) AS total FROM auditoria", fetchone=True)["total"])
 
         with self.assertRaisesRegex(ValueError, "compra migrada"):
             self.database.anular_compra(compra_id)
         with self.assertRaisesRegex(ValueError, "compra migrada"):
             self.database.delete_compra(compra_id)
-        with self.assertRaisesRegex(ValueError, "compra migrada"):
-            self.database.update_compra(compra_id, self._compra_data(producto_id, cantidad=4))
-        with self.assertRaisesRegex(ValueError, "compra migrada"):
-            self.database.update_compra(compra_id, self._compra_data(producto_id, variante_id=variante_id, cantidad=5))
-
-        otro_producto = self._crear_producto("Otro destino", stock=0)
-        with self.assertRaisesRegex(ValueError, "compra migrada"):
-            self.database.update_compra(compra_id, self._compra_data(otro_producto, cantidad=5))
+        casos_bloqueados = [
+            self._compra_data(producto_id, cantidad=4, costo_unitario=10),
+            self._compra_data(producto_id, variante_id=variante_id, cantidad=5, costo_unitario=10),
+            self._compra_data(otro_producto, cantidad=5, costo_unitario=10),
+            self._compra_data(producto_id, cantidad=5, costo_unitario=11),
+            {**self._compra_data(producto_id, cantidad=5, costo_unitario=10), "total": 51},
+            {**self._compra_data(producto_id, cantidad=5, costo_unitario=10), "fecha": "2026-07-29"},
+            {
+                **self._compra_data(producto_id, cantidad=5, costo_unitario=10),
+                "proveedor_id": otro_proveedor,
+                "proveedor_nombre": "Proveedor alternativo",
+            },
+        ]
+        for data in casos_bloqueados:
+            with self.assertRaisesRegex(ValueError, "compra migrada"):
+                self.database.update_compra(compra_id, data)
 
         compra_despues = self.database.get_compra(compra_id)
         self.assertEqual(int(compra_despues["anulada"]), int(compra_antes["anulada"]))
         self.assertEqual(float(compra_despues["cantidad"]), float(compra_antes["cantidad"]))
         self.assertEqual(int(compra_despues["producto_id"]), int(compra_antes["producto_id"]))
+        self.assertEqual(compra_despues["variante_id"], compra_antes["variante_id"])
+        self.assertEqual(str(compra_despues["fecha"]), str(compra_antes["fecha"]))
+        self.assertEqual(int(compra_despues["proveedor_id"]), int(compra_antes["proveedor_id"]))
+        self.assertEqual(float(compra_despues["costo_unitario"]), float(compra_antes["costo_unitario"]))
+        self.assertEqual(float(compra_despues["total"]), float(compra_antes["total"]))
         self.assertEqual(self._stock_producto(producto_id), stock_producto_antes)
         self.assertEqual(self._stock_variante(variante_id), stock_variante_antes)
+        self.assertEqual(int(self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"]), movimientos_antes)
+        self.assertEqual(int(self.database.q("SELECT COUNT(*) AS total FROM auditoria", fetchone=True)["total"]), auditoria_antes)
         movimientos = self.database.q(
             "SELECT * FROM stock_movimientos WHERE producto_id=? AND tipo='ANULACION_COMPRA'",
             (producto_id,),
@@ -499,18 +518,91 @@ class PurchaseVariantsTests(unittest.TestCase):
         compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5))
         variante_id = self._crear_variante(producto_id, "Negro", sku="LDOC-NEG")
         self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 6, "stock_minimo": 0, "stock_maximo": 50}])
+        stock_producto_antes = self._stock_producto(producto_id)
+        stock_variante_antes = self._stock_variante(variante_id)
+        movimientos_antes = int(self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"])
+        auditoria_antes = int(self.database.q("SELECT COUNT(*) AS total FROM auditoria", fetchone=True)["total"])
 
         data = self._compra_data(producto_id, cantidad=5)
         data["numero_remito"] = "REM-DOC"
         data["observaciones"] = "Solo documental"
         self.database.update_compra(compra_id, data)
+        self.database.actualizar_compra_basica(
+            compra_id,
+            self.proveedor_id,
+            "2026-07-28",
+            "Solo documental via basica",
+            numero_remito="REM-BASICA",
+            proveedor_nombre="Proveedor Compras",
+        )
 
         compra = self.database.get_compra(compra_id)
-        self.assertEqual(compra["numero_remito"], "REM-DOC")
-        self.assertEqual(compra["observaciones"], "Solo documental")
+        self.assertEqual(compra["numero_remito"], "REM-BASICA")
+        self.assertEqual(compra["observaciones"], "Solo documental via basica")
         self.assertEqual(int(compra["stock_reversion_bloqueada"]), 1)
+        self.assertEqual(float(compra["costo_unitario"]), 0.0)
+        self.assertEqual(float(compra["total"]), 0.0)
+        self.assertEqual(self._stock_producto(producto_id), stock_producto_antes)
+        self.assertEqual(self._stock_variante(variante_id), stock_variante_antes)
+        self.assertEqual(int(self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"]), movimientos_antes)
+        self.assertEqual(int(self.database.q("SELECT COUNT(*) AS total FROM auditoria", fetchone=True)["total"]), auditoria_antes)
         compras = self.database.get_compras()
         self.assertTrue(any(int(row["id"]) == int(compra_id) for row in compras))
+
+    def test_compra_legacy_migrada_bloquea_fecha_proveedor_y_preserva_factura_asociada(self):
+        producto_id = self._crear_producto("Legacy factura", stock=1)
+        compra_id = self.database.add_compra(self._compra_data(producto_id, cantidad=5, costo_unitario=10))
+        factura = self.database.crear_factura_desde_compra(
+            compra_id,
+            self.proveedor_id,
+            50,
+            numero_factura="FAC-LOCK",
+            fecha="2026-07-28",
+            fecha_vencimiento="2026-08-28",
+            observaciones="Factura original",
+        )
+        variante_id = self._crear_variante(producto_id, "Negro", sku="LFAC-NEG")
+        self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 6, "stock_minimo": 0, "stock_maximo": 50}])
+        otro_proveedor = int(self.database.add_proveedor({"nombre": "Proveedor factura alternativo"}))
+        compra_antes = self.database.get_compra(compra_id)
+        factura_antes = self.database.get_factura_proveedor(int(factura["id"]))
+        stock_producto_antes = self._stock_producto(producto_id)
+        stock_variante_antes = self._stock_variante(variante_id)
+        movimientos_antes = int(self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"])
+        auditoria_antes = int(self.database.q("SELECT COUNT(*) AS total FROM auditoria", fetchone=True)["total"])
+
+        with self.assertRaisesRegex(ValueError, "fecha o proveedor|compra migrada"):
+            self.database.actualizar_compra_basica(
+                compra_id,
+                otro_proveedor,
+                "2026-07-28",
+                "Intento proveedor",
+                numero_remito="REM-BLOCK",
+                proveedor_nombre="Proveedor factura alternativo",
+            )
+        with self.assertRaisesRegex(ValueError, "fecha o proveedor|compra migrada"):
+            self.database.actualizar_compra_basica(
+                compra_id,
+                self.proveedor_id,
+                "2026-07-29",
+                "Intento fecha",
+                numero_remito="REM-BLOCK",
+                proveedor_nombre="Proveedor Compras",
+            )
+
+        compra_despues = self.database.get_compra(compra_id)
+        factura_despues = self.database.get_factura_proveedor(int(factura["id"]))
+        self.assertEqual(int(compra_despues["proveedor_id"]), int(compra_antes["proveedor_id"]))
+        self.assertEqual(str(compra_despues["proveedor_nombre"]), str(compra_antes["proveedor_nombre"]))
+        self.assertEqual(str(compra_despues["fecha"]), str(compra_antes["fecha"]))
+        self.assertEqual(compra_despues["numero_remito"], compra_antes["numero_remito"])
+        self.assertEqual(int(factura_despues["proveedor_id"]), int(factura_antes["proveedor_id"]))
+        self.assertEqual(factura_despues["numero_factura"], factura_antes["numero_factura"])
+        self.assertEqual(str(factura_despues["fecha"]), str(factura_antes["fecha"]))
+        self.assertEqual(self._stock_producto(producto_id), stock_producto_antes)
+        self.assertEqual(self._stock_variante(variante_id), stock_variante_antes)
+        self.assertEqual(int(self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"]), movimientos_antes)
+        self.assertEqual(int(self.database.q("SELECT COUNT(*) AS total FROM auditoria", fetchone=True)["total"]), auditoria_antes)
 
     def test_anulacion_revierte_una_sola_vez(self):
         producto_id = self._crear_producto("Bufanda", stock=0)

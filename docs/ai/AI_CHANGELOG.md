@@ -14,8 +14,11 @@ de compras legacy durante la migracion a variantes.
 - `activate_variant_stock_mode()` permite migrar productos con historial valido
   y marca esas compras dentro de la misma transaccion antes de transferir stock.
 - `update_compra()`, `anular_compra()` y `delete_compra()` impiden cambios de
-  stock sobre compras marcadas; la lectura y los cambios documentales siguen
-  permitidos.
+  stock, valuacion, fecha y proveedor sobre compras marcadas; la lectura y los
+  cambios documentales siguen permitidos.
+- `actualizar_compra_basica()` permite remito y observaciones, pero bloquea
+  fecha o proveedor en compras migradas para no reubicar historial, reportes ni
+  facturas asociadas.
 - Las compras anuladas antes de migrar no se marcan; las compras nuevas por
   variante quedan reversibles normalmente.
 - La estructura de asignacion migrada descartada se elimina de forma idempotente
@@ -28,7 +31,7 @@ de compras legacy durante la migracion a variantes.
 - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_product_variants`
 - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_proveedor_facturas_anulacion`
 - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_reportes_historicos_coherentes`
-- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests` (404 tests)
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests` (405 tests)
 - `git diff --check`
 
 ## 2026-07-29 - Codex - feat/issue-146-purchases-variants-p2-inventory-api

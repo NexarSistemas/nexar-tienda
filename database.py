@@ -4640,6 +4640,12 @@ def actualizar_compra_basica(compra_id, proveedor_id, fecha, observaciones, cond
         raise ValueError("La compra indicada no existe.")
 
     proveedor_id = int(proveedor_id or 0)
+    fecha_final = str(fecha or compra["fecha"] or "").strip()
+    if _compra_stock_reversion_bloqueada(compra) and (
+        proveedor_id != int(compra["proveedor_id"] or 0)
+        or fecha_final != str(compra["fecha"] or "").strip()
+    ):
+        raise ValueError("No se puede modificar fecha o proveedor de una compra migrada a stock por variantes.")
     if proveedor_nombre is None:
         proveedor = get_proveedor(proveedor_id) if proveedor_id > 0 else None
         proveedor_nombre = proveedor["nombre"] if proveedor else ""
@@ -4649,7 +4655,7 @@ def actualizar_compra_basica(compra_id, proveedor_id, fecha, observaciones, cond
         SET fecha=?, numero_remito=?, proveedor_id=?, proveedor_nombre=?, observaciones=?
         WHERE id=?""",
         (
-            str(fecha or compra["fecha"] or "").strip(),
+            fecha_final,
             str(compra["numero_remito"] if numero_remito is None else numero_remito or "").strip(),
             proveedor_id,
             str(proveedor_nombre or "").strip(),
@@ -4797,18 +4803,25 @@ def update_compra(cid, data):
         variante_anterior = _compra_variante_id(compra_actual)
         stock_fuente_anterior = _compra_stock_fuente(compra_actual, fallback_variant_id=variante_anterior)
         cantidad_anterior = float(compra_actual['cantidad'] or 0)
-        proveedor_nuevo = int(data.get('proveedor_id', 0) or 0)
-        producto_nuevo = int(data.get('producto_id', 0) or 0)
-        variante_nueva = _compra_variante_id(data)
-        cantidad_nueva = float(data.get('cantidad', 1) or 0)
+        proveedor_nuevo = int(data.get('proveedor_id', compra_actual["proveedor_id"] or 0) or 0)
+        producto_nuevo = int(data.get('producto_id', producto_anterior) or 0)
+        variante_nueva = _compra_variante_id(data) if "variante_id" in data else variante_anterior
+        cantidad_nueva = float(data.get('cantidad', cantidad_anterior) or 0)
         if cantidad_nueva < 0:
             raise ValueError("La cantidad no puede ser negativa.")
+        costo_nuevo = float(data.get('costo_unitario', compra_actual["costo_unitario"] or 0) or 0)
+        total_nuevo = float(data.get('total', compra_actual["total"] or 0) or 0)
+        fecha_nueva = data.get('fecha', compra_actual["fecha"] or datetime.now().strftime('%Y-%m-%d'))
         if _compra_stock_reversion_bloqueada(compra_actual) and (
             producto_anterior != producto_nuevo
             or variante_anterior != variante_nueva
             or round(cantidad_anterior, 6) != round(cantidad_nueva, 6)
+            or proveedor_nuevo != int(compra_actual["proveedor_id"] or 0)
+            or str(fecha_nueva or "").strip() != str(compra_actual["fecha"] or "").strip()
+            or round(float(compra_actual["costo_unitario"] or 0), 6) != round(costo_nuevo, 6)
+            or round(float(compra_actual["total"] or 0), 6) != round(total_nuevo, 6)
         ):
-            raise ValueError("No se puede modificar producto, variante o cantidad de una compra migrada a stock por variantes.")
+            raise ValueError("No se puede modificar producto, variante, cantidad, fecha, proveedor, costo o total de una compra migrada a stock por variantes.")
         same_item = producto_anterior == producto_nuevo and variante_anterior == variante_nueva
         delta_same_item = cantidad_nueva - cantidad_anterior if same_item else 0
         historical_same_decrease = bool(same_item and stock_fuente_anterior == "producto" and delta_same_item <= 0)
@@ -4825,9 +4838,9 @@ def update_compra(cid, data):
                 "descripcion": compra_actual["descripcion"] or data.get('descripcion', ''),
                 "costo_unitario": float(compra_actual["costo_unitario"] or 0),
             }
-        costo_nuevo = float(data.get('costo_unitario', item["costo_unitario"] if item else 0) or 0)
-        total_nuevo = float(data.get('total', cantidad_nueva * costo_nuevo) or 0)
-        fecha_nueva = data.get('fecha', datetime.now().strftime('%Y-%m-%d'))
+        if not _compra_stock_reversion_bloqueada(compra_actual):
+            costo_nuevo = float(data.get('costo_unitario', item["costo_unitario"] if item else 0) or 0)
+            total_nuevo = float(data.get('total', cantidad_nueva * costo_nuevo) or 0)
 
         if producto_anterior != producto_nuevo or variante_anterior != variante_nueva:
             if producto_anterior > 0 and cantidad_anterior > 0:
