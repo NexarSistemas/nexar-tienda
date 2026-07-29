@@ -2,6 +2,30 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-28 - Codex - feat/issue-146-purchases-variants-post-review
+
+### Tarea
+Corregir los dos threads P1 abiertos en la PR #160 sin ampliar el alcance de
+compras por variantes.
+
+### Que se cambio
+- La seleccion de compras ya no corta el listado completo en 500 items cuando
+  `/compras` carga el selector local.
+- Las reversiones historicas de compras permiten resolver una variante
+  desactivada solo para deltas negativos del item anterior, manteniendo el
+  rechazo de variantes inactivas para altas, incrementos nuevos y destinos de
+  edicion.
+- Se agregaron regresiones para mas de 500 items seleccionables, anulacion y
+  edicion de compras historicas con variante desactivada, rechazo operativo de
+  inactivas y rollback ante falla de reversion.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m py_compile services/inventory.py database.py tests/test_purchase_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_purchase_variants` - 17 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_proveedor_facturas_anulacion` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_product_variants` - 67 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 390 OK
+
 ## 2026-07-28 - Codex - feat/issue-146-purchases-variants
 
 ### Tarea

@@ -188,6 +188,39 @@ class PurchaseVariantsTests(unittest.TestCase):
         self.assertEqual(int(self.database.get_purchase_items("ZAP-BC")[0]["variante_id"]), variante_id)
         self.assertEqual(int(self.database.get_purchase_items("Zapatilla")[0]["variante_id"]), variante_id)
 
+    def test_selector_compras_incluye_mas_de_500_items_y_permite_ultimo(self):
+        ultimo_id = None
+        for index in range(501):
+            descripcion = f"Item masivo {index:03d}"
+            if index == 500:
+                descripcion = "ZZZ ultimo seleccionable"
+            ultimo_id = self._crear_producto(descripcion, stock=0, costo=11)
+
+        items = self.database.get_purchase_items()
+        self.assertGreaterEqual(len(items), 501)
+        self.assertTrue(any(int(item["producto_id"]) == ultimo_id for item in items))
+
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response_listado = client.get("/compras")
+            self.assertEqual(response_listado.status_code, 200)
+            self.assertIn(b"ZZZ ultimo seleccionable", response_listado.data)
+            response = client.post(
+                "/compras/nueva",
+                data={
+                    "csrf_token": "test-token",
+                    "fecha": "2026-07-28",
+                    "proveedor_id": self.proveedor_id,
+                    "producto_item": f"{ultimo_id}:",
+                    "cantidad": "2",
+                    "costo_unitario": "11",
+                    "condicion_pago": "contado",
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self._stock_producto(ultimo_id), 2.0)
+
     def test_costo_propio_y_fallback(self):
         producto_id = self._crear_producto("Buzo", stock=0, costo=40)
         propio = self._crear_variante(producto_id, "Negro", sku="BUZ-NEG", costo=65)
@@ -277,6 +310,100 @@ class PurchaseVariantsTests(unittest.TestCase):
             (variante_id,),
         )
         self.assertEqual([float(row["cantidad"]) for row in movimientos], [3.0, -3.0])
+
+    def test_anulacion_revierte_variante_desactivada_sin_tocar_otras_fuentes(self):
+        producto_id = self._crear_producto("Campera variante", stock=4)
+        comprada = self._crear_variante(producto_id, "Negro", sku="CVAR-NEG")
+        otra = self._crear_variante(producto_id, "Rojo", sku="CVAR-ROJ")
+        self._activar_variantes(
+            producto_id,
+            [
+                {"variant_id": comprada, "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 50},
+                {"variant_id": otra, "stock_actual": 4, "stock_minimo": 0, "stock_maximo": 50},
+            ],
+        )
+        compra_id = self.database.add_compra(self._compra_data(producto_id, variante_id=comprada, cantidad=3))
+        self.product_variants.set_variant_active(producto_id, comprada, False)
+
+        self.database.anular_compra(compra_id, motivo="Historica", usuario="admin", rol="Administrador")
+
+        compra = self.database.get_compra(compra_id)
+        self.assertEqual(int(compra["anulada"]), 1)
+        self.assertEqual(self._stock_variante(comprada), 0.0)
+        self.assertEqual(self._stock_variante(otra), 4.0)
+        self.assertEqual(self._stock_producto(producto_id), 4.0)
+        movimientos = self.database.q(
+            "SELECT variante_id, cantidad FROM stock_movimientos WHERE tipo IN ('COMPRA', 'ANULACION_COMPRA') ORDER BY id",
+        )
+        self.assertEqual([(int(row["variante_id"]), float(row["cantidad"])) for row in movimientos], [(comprada, 3.0), (comprada, -3.0)])
+
+    def test_edicion_reduce_cantidad_de_variante_desactivada(self):
+        producto_id = self._crear_producto("Edicion historica", stock=0)
+        variante_id = self._crear_variante(producto_id, "Negro", sku="EH-NEG")
+        self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 50}])
+        compra_id = self.database.add_compra(self._compra_data(producto_id, variante_id=variante_id, cantidad=5))
+        self.product_variants.set_variant_active(producto_id, variante_id, False)
+
+        data = self._compra_data(producto_id, variante_id=variante_id, cantidad=2)
+        self.database.update_compra(compra_id, data)
+
+        compra = self.database.get_compra(compra_id)
+        self.assertEqual(float(compra["cantidad"]), 2.0)
+        self.assertEqual(self._stock_variante(variante_id), 2.0)
+        movimientos = self.database.q(
+            "SELECT cantidad FROM stock_movimientos WHERE variante_id=? AND tipo IN ('COMPRA', 'ANULACION_COMPRA') ORDER BY id",
+            (variante_id,),
+        )
+        self.assertEqual([float(row["cantidad"]) for row in movimientos], [5.0, -3.0])
+
+    def test_variante_inactiva_sigue_rechazada_para_alta_y_destino_de_edicion(self):
+        producto_id = self._crear_producto("Destino inactivo", stock=0)
+        origen = self._crear_variante(producto_id, "Negro", sku="DIN-NEG")
+        destino = self._crear_variante(producto_id, "Azul", sku="DIN-AZU")
+        self._activar_variantes(
+            producto_id,
+            [
+                {"variant_id": origen, "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 50},
+                {"variant_id": destino, "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 50},
+            ],
+        )
+        compra_id = self.database.add_compra(self._compra_data(producto_id, variante_id=origen, cantidad=2))
+        self.product_variants.set_variant_active(producto_id, destino, False)
+
+        with self.assertRaisesRegex(ValueError, "inactiva|pertenece"):
+            self.database.add_compra(self._compra_data(producto_id, variante_id=destino, cantidad=1))
+        with self.assertRaisesRegex(ValueError, "inactiva|pertenece"):
+            self.database.update_compra(compra_id, self._compra_data(producto_id, variante_id=destino, cantidad=2))
+
+        compra = self.database.get_compra(compra_id)
+        self.assertEqual(int(compra["variante_id"]), origen)
+        self.assertEqual(self._stock_variante(origen), 2.0)
+        self.assertEqual(self._stock_variante(destino), 0.0)
+
+    def test_rollback_completo_si_falla_reversion_historica(self):
+        producto_id = self._crear_producto("Rollback historico", stock=0)
+        variante_id = self._crear_variante(producto_id, "Negro", sku="RBH-NEG")
+        self._activar_variantes(producto_id, [{"variant_id": variante_id, "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 50}])
+        compra_id = self.database.add_compra(self._compra_data(producto_id, variante_id=variante_id, cantidad=3))
+        self.product_variants.set_variant_active(producto_id, variante_id, False)
+        self.database.q(
+            "UPDATE stock_variantes SET stock_actual=1 WHERE variante_id=?",
+            (variante_id,),
+            fetchall=False,
+            commit=True,
+        )
+
+        with self.assertRaisesRegex(ValueError, "stock negativo"):
+            self.database.anular_compra(compra_id)
+
+        compra = self.database.get_compra(compra_id)
+        self.assertEqual(int(compra["anulada"]), 0)
+        self.assertEqual(self._stock_variante(variante_id), 1.0)
+        movimientos = self.database.q(
+            "SELECT cantidad FROM stock_movimientos WHERE variante_id=? AND tipo='ANULACION_COMPRA'",
+            (variante_id,),
+        )
+        self.assertEqual(movimientos, [])
 
     def test_compras_historicas_sin_variante_e_init_db_idempotente(self):
         self.database.init_db()

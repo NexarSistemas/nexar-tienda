@@ -4495,11 +4495,12 @@ def get_compras(search='', fecha_desde='', fecha_hasta='', limit=200):
     return q(sql, params)
 
 
-def get_purchase_items(search='', limit=500):
+def get_purchase_items(search='', limit=None):
     """Devuelve items vendibles disponibles para compras."""
     search_norm = str(search or "").strip()
     params = []
     filter_sql = ""
+    limit_sql = ""
     if search_norm:
         filter_sql = """
             WHERE descripcion LIKE ?
@@ -4510,7 +4511,11 @@ def get_purchase_items(search='', limit=500):
                OR variante_resumen LIKE ?
         """
         params = [f"%{search_norm}%"] * 6
-    params.append(int(limit or 500))
+    if limit is not None:
+        limit_value = int(limit or 0)
+        if limit_value > 0:
+            limit_sql = "LIMIT ?"
+            params.append(limit_value)
     return q(
         f"""
         SELECT *
@@ -4560,7 +4565,7 @@ def get_purchase_items(search='', limit=500):
         ) items
         {filter_sql}
         ORDER BY descripcion, variante_resumen, variante_id
-        LIMIT ?
+        {limit_sql}
         """,
         params,
     )
@@ -4669,7 +4674,7 @@ def _compra_variante_id(data) -> int | None:
     return variant_id if variant_id > 0 else None
 
 
-def _resolve_purchase_item_in_cursor(cursor, product_id: int, variant_id: int | None) -> dict:
+def _resolve_purchase_item_in_cursor(cursor, product_id: int, variant_id: int | None, *, allow_inactive_variant: bool = False) -> dict:
     product = cursor.execute("SELECT * FROM productos WHERE id=? AND activo=1 LIMIT 1", (int(product_id or 0),)).fetchone()
     if not product:
         raise ValueError("El producto indicado no existe o no esta activo.")
@@ -4682,10 +4687,11 @@ def _resolve_purchase_item_in_cursor(cursor, product_id: int, variant_id: int | 
             """
             SELECT *
             FROM producto_variantes
-            WHERE id=? AND producto_id=? AND activo=1
+            WHERE id=? AND producto_id=?
+              AND (? = 1 OR activo=1)
             LIMIT 1
             """,
-            (int(variant_id), int(product["id"])),
+            (int(variant_id), int(product["id"]), 1 if allow_inactive_variant else 0),
         ).fetchone()
         if not variant:
             raise ValueError("La variante indicada no existe, esta inactiva o no pertenece al producto.")
@@ -4722,20 +4728,22 @@ def _resolve_purchase_item_in_cursor(cursor, product_id: int, variant_id: int | 
     }
 
 
-def _apply_purchase_delta(cursor, product_id: int, variant_id: int | None, delta: float, compra_id: int, *, usuario='', rol='') -> None:
+def _apply_purchase_delta(cursor, product_id: int, variant_id: int | None, delta: float, compra_id: int, *, usuario='', rol='', historical_reversal: bool = False) -> None:
     if abs(float(delta or 0)) <= 0:
         return
     from services import inventory
 
+    delta_value = float(delta)
     inventory.apply_inventory_delta_in_cursor(
         cursor,
         int(product_id),
-        float(delta),
+        delta_value,
         variant_id=variant_id,
         tipo="COMPRA" if delta > 0 else "ANULACION_COMPRA",
         motivo=f"Compra #{compra_id}",
         usuario=usuario,
         rol=rol,
+        allow_inactive_variant=bool(historical_reversal and delta_value < 0),
     )
 
 
@@ -4757,20 +4765,23 @@ def update_compra(cid, data):
         cantidad_nueva = float(data.get('cantidad', 1) or 0)
         if cantidad_nueva < 0:
             raise ValueError("La cantidad no puede ser negativa.")
-        item = _resolve_purchase_item_in_cursor(c, producto_nuevo, variante_nueva) if producto_nuevo > 0 else None
+        same_item = producto_anterior == producto_nuevo and variante_anterior == variante_nueva
+        delta_same_item = cantidad_nueva - cantidad_anterior if same_item else 0
+        allow_historical_item = bool(same_item and variante_nueva is not None and delta_same_item <= 0)
+        item = _resolve_purchase_item_in_cursor(c, producto_nuevo, variante_nueva, allow_inactive_variant=allow_historical_item) if producto_nuevo > 0 else None
         costo_nuevo = float(data.get('costo_unitario', item["costo_unitario"] if item else 0) or 0)
         total_nuevo = float(data.get('total', cantidad_nueva * costo_nuevo) or 0)
         fecha_nueva = data.get('fecha', datetime.now().strftime('%Y-%m-%d'))
 
         if producto_anterior != producto_nuevo or variante_anterior != variante_nueva:
             if producto_anterior > 0 and cantidad_anterior > 0:
-                _apply_purchase_delta(c, producto_anterior, variante_anterior, -cantidad_anterior, cid)
+                _apply_purchase_delta(c, producto_anterior, variante_anterior, -cantidad_anterior, cid, historical_reversal=True)
             if producto_nuevo > 0 and cantidad_nueva > 0:
                 _apply_purchase_delta(c, producto_nuevo, variante_nueva, cantidad_nueva, cid)
         else:
-            delta = cantidad_nueva - cantidad_anterior
+            delta = delta_same_item
             if producto_nuevo > 0 and delta:
-                _apply_purchase_delta(c, producto_nuevo, variante_nueva, delta, cid)
+                _apply_purchase_delta(c, producto_nuevo, variante_nueva, delta, cid, historical_reversal=delta < 0)
 
         c.execute(
             """UPDATE compras
@@ -4824,7 +4835,7 @@ def anular_compra(compra_id, motivo='', usuario='', rol=''):
         variante_id = _compra_variante_id(compra_actual)
         cantidad = float(compra_actual['cantidad'] or 0)
         if producto_id > 0 and cantidad > 0:
-            _apply_purchase_delta(c, producto_id, variante_id, -cantidad, compra_id, usuario=usuario, rol=rol)
+            _apply_purchase_delta(c, producto_id, variante_id, -cantidad, compra_id, usuario=usuario, rol=rol, historical_reversal=True)
 
         marca_tiempo = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         c.execute(

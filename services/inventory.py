@@ -79,7 +79,7 @@ def _product_for_update(cursor, product_id: int):
     return product
 
 
-def _variant_for_update(cursor, product_id: int, variant_id: int):
+def _variant_for_update(cursor, product_id: int, variant_id: int, *, allow_inactive: bool = False):
     variant = cursor.execute(
         """
         SELECT *
@@ -91,12 +91,12 @@ def _variant_for_update(cursor, product_id: int, variant_id: int):
     ).fetchone()
     if not variant:
         raise ValueError("La variante indicada no pertenece al producto.")
-    if int(variant["activo"] or 0) != 1:
+    if not allow_inactive and int(variant["activo"] or 0) != 1:
         raise ValueError("La variante indicada no esta activa.")
     return variant
 
 
-def _resolve_inventory_item_in_cursor(cursor, product_id: int, variant_id: int | None = None) -> dict:
+def _resolve_inventory_item_in_cursor(cursor, product_id: int, variant_id: int | None = None, *, allow_inactive_variant: bool = False) -> dict:
     product = _product_for_update(cursor, product_id)
     mode = _normalize_mode(product["stock_modo"] if "stock_modo" in product.keys() else None)
 
@@ -117,7 +117,7 @@ def _resolve_inventory_item_in_cursor(cursor, product_id: int, variant_id: int |
 
     if variant_id is None:
         raise ValueError("El producto opera por variantes; debe indicar una variante.")
-    variant = _variant_for_update(cursor, int(product["id"]), int(variant_id))
+    variant = _variant_for_update(cursor, int(product["id"]), int(variant_id), allow_inactive=allow_inactive_variant)
     stock = _ensure_variant_stock(cursor, int(variant["id"]))
     return {
         "producto": product,
@@ -222,6 +222,7 @@ def apply_inventory_delta_in_cursor(
     motivo: str = "",
     usuario: str = "",
     rol: str = "",
+    allow_inactive_variant: bool = False,
 ) -> dict:
     try:
         delta = float(cantidad)
@@ -236,7 +237,7 @@ def apply_inventory_delta_in_cursor(
     if tipo_normalizado in {"BAJA", "VENTA", "ANULACION_COMPRA"}:
         delta = -abs(delta)
 
-    item = _resolve_inventory_item_in_cursor(cursor, product_id, variant_id)
+    item = _resolve_inventory_item_in_cursor(cursor, product_id, variant_id, allow_inactive_variant=allow_inactive_variant)
     anterior = float(item["stock_actual"] or 0)
     nuevo = anterior + delta
     if nuevo < 0:
