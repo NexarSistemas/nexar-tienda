@@ -2,6 +2,30 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-29 - Codex - feat/issue-146-purchases-variants-p2-inventory-api
+
+### Tarea
+Corregir el P2 de PR #160 sobre cantidades negativas en la API publica de
+inventario.
+
+### Que se cambio
+- `services.inventory.apply_inventory_delta()` vuelve a validar cantidad finita
+  y mayor a cero antes de delegar en el helper transaccional.
+- `apply_inventory_delta_in_cursor()` conserva soporte de deltas con signo para
+  reversiones atomicas controladas, sin cambiar las anulaciones historicas de
+  compras.
+- Se agregaron regresiones de contrato publico, cantidad cero, flujo positivo y
+  helper interno con delta negativo coherente.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m py_compile services\\inventory.py tests\\test_product_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_product_variants.ProductVariantsTests.test_api_publica_inventory_delta_rechaza_cantidades_negativas_y_cero tests.test_product_variants.ProductVariantsTests.test_api_publica_inventory_delta_positiva_y_helper_negativo_controlado tests.test_product_variants.ProductVariantsTests.test_alta_baja_y_ajuste_no_generan_doble_descuento` - 3 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_product_variants` - 69 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_purchase_variants` - 20 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_proveedor_facturas_anulacion` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_reportes_historicos_coherentes` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest discover -s tests` - 395 OK
+
 ## 2026-07-29 - Codex - feat/issue-146-purchases-variants
 
 ### Tarea

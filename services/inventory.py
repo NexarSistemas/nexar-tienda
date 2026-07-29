@@ -229,6 +229,7 @@ def apply_inventory_delta(
     usuario: str = "",
     rol: str = "",
 ) -> dict:
+    delta = _validate_finite_number(cantidad, "La cantidad", allow_zero=False)
     conn = db.get_conn()
     try:
         cursor = conn.cursor()
@@ -236,7 +237,7 @@ def apply_inventory_delta(
         result = apply_inventory_delta_in_cursor(
             cursor,
             product_id,
-            cantidad,
+            delta,
             variant_id=variant_id,
             tipo=tipo,
             motivo=motivo,

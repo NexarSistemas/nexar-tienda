@@ -1910,7 +1910,59 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertEqual(float(stock["stock_actual"] or 0), 10.0)
         self.assertEqual([row["tipo"] for row in movimientos], ["ALTA", "BAJA", "AJUSTE"])
         self.assertTrue(all(row["variante_id"] is None for row in movimientos))
+        self.assertEqual([float(row["cantidad"] or 0) for row in movimientos], [3.0, -2.0, 4.0])
         self.assertEqual([float(row["stock_nuevo"] or 0) for row in movimientos], [8.0, 6.0, 10.0])
+
+    def test_api_publica_inventory_delta_rechaza_cantidades_negativas_y_cero(self):
+        producto_id = self._crear_producto(descripcion="Contrato publico", stock=5)
+
+        for tipo in ("ALTA", "BAJA", "VENTA", "ANULACION_COMPRA", "AJUSTE"):
+            with self.subTest(tipo=tipo):
+                with self.assertRaisesRegex(ValueError, "no puede ser negativo"):
+                    self.inventory.apply_inventory_delta(producto_id, -1, tipo=tipo)
+        with self.assertRaisesRegex(ValueError, "mayor a 0"):
+            self.inventory.apply_inventory_delta(producto_id, 0, tipo="ALTA")
+
+        stock = self.database.q("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,), fetchone=True)
+        movimientos = self.database.q("SELECT COUNT(*) AS total FROM stock_movimientos WHERE producto_id=?", (producto_id,), fetchone=True)
+        self.assertEqual(float(stock["stock_actual"] or 0), 5.0)
+        self.assertEqual(int(movimientos["total"] or 0), 0)
+
+    def test_api_publica_inventory_delta_positiva_y_helper_negativo_controlado(self):
+        producto_id = self._crear_producto(descripcion="Contrato helper", stock=5)
+
+        self.inventory.apply_inventory_delta(producto_id, 2, tipo="ALTA", motivo="Ingreso publico")
+        conn = self.database.get_conn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            result = self.inventory.apply_inventory_delta_in_cursor(
+                cursor,
+                producto_id,
+                -3,
+                tipo="ANULACION_COMPRA",
+                motivo="Reversion controlada",
+                usuario="admin",
+                rol="Administrador",
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+        self.assertEqual(result["stock_nuevo"], 4.0)
+        stock = self.database.q("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,), fetchone=True)
+        movimientos = self.database.q(
+            "SELECT tipo, cantidad, stock_anterior, stock_nuevo FROM stock_movimientos WHERE producto_id=? ORDER BY id",
+            (producto_id,),
+        )
+        self.assertEqual(float(stock["stock_actual"] or 0), 4.0)
+        self.assertEqual(
+            [(row["tipo"], float(row["cantidad"] or 0), float(row["stock_anterior"] or 0), float(row["stock_nuevo"] or 0)) for row in movimientos],
+            [("ALTA", 2.0, 5.0, 7.0), ("ANULACION_COMPRA", -3.0, 7.0, 4.0)],
+        )
 
     def test_transicion_legacy_a_variantes_correcta_y_auditada(self):
         producto_id = self._crear_producto(descripcion="Transicion", stock=9)
