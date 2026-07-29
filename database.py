@@ -784,6 +784,7 @@ def init_db():
             total REAL DEFAULT 0,
             observaciones TEXT DEFAULT '',
             anulada INTEGER DEFAULT 0,
+            stock_reversion_bloqueada INTEGER NOT NULL DEFAULT 0,
             anulada_at TEXT DEFAULT '',
             anulada_por TEXT DEFAULT '',
             motivo_anulacion TEXT DEFAULT ''
@@ -1223,6 +1224,8 @@ def init_db():
     columnas_compras = [r['name'] for r in c.execute("PRAGMA table_info(compras)").fetchall()]
     if 'anulada' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN anulada INTEGER DEFAULT 0")
+    if 'stock_reversion_bloqueada' not in columnas_compras:
+        c.execute("ALTER TABLE compras ADD COLUMN stock_reversion_bloqueada INTEGER NOT NULL DEFAULT 0")
     if 'variante_id' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN variante_id INTEGER REFERENCES producto_variantes(id) ON DELETE SET NULL")
     if 'stock_fuente' not in columnas_compras:
@@ -4775,6 +4778,12 @@ def _apply_purchase_delta(cursor, product_id: int, variant_id: int | None, delta
     )
 
 
+def _compra_stock_reversion_bloqueada(compra) -> bool:
+    if not compra or "stock_reversion_bloqueada" not in compra.keys():
+        return False
+    return bool(int(compra["stock_reversion_bloqueada"] or 0))
+
+
 def update_compra(cid, data):
     """Actualiza una compra."""
     compra_actual = get_compra(cid)
@@ -4794,6 +4803,12 @@ def update_compra(cid, data):
         cantidad_nueva = float(data.get('cantidad', 1) or 0)
         if cantidad_nueva < 0:
             raise ValueError("La cantidad no puede ser negativa.")
+        if _compra_stock_reversion_bloqueada(compra_actual) and (
+            producto_anterior != producto_nuevo
+            or variante_anterior != variante_nueva
+            or round(cantidad_anterior, 6) != round(cantidad_nueva, 6)
+        ):
+            raise ValueError("No se puede modificar producto, variante o cantidad de una compra migrada a stock por variantes.")
         same_item = producto_anterior == producto_nuevo and variante_anterior == variante_nueva
         delta_same_item = cantidad_nueva - cantidad_anterior if same_item else 0
         historical_same_decrease = bool(same_item and stock_fuente_anterior == "producto" and delta_same_item <= 0)
@@ -4865,6 +4880,9 @@ def anular_compra(compra_id, motivo='', usuario='', rol=''):
         raise ValueError("La compra indicada no existe.")
     if int(compra_actual["anulada"] or 0):
         raise ValueError("La compra ya estÃ¡ anulada.")
+
+    if _compra_stock_reversion_bloqueada(compra_actual):
+        raise ValueError("No se puede anular una compra migrada a stock por variantes.")
 
     factura_asociada = get_factura_por_compra(compra_id)
     if factura_asociada:
@@ -4965,8 +4983,8 @@ def _add_compra_in_cursor(c, data):
     )
     c.execute(
         """INSERT INTO compras
-        (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,variante_id,stock_fuente,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,variante_id,stock_fuente,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones,stock_reversion_bloqueada)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
         params,
     )
     compra_id = c.lastrowid

@@ -2,21 +2,24 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
-## 2026-07-29 - Codex - feat/issue-146-purchases-variants-p1-block-legacy-migration
+## 2026-07-29 - Codex - feat/issue-146-purchases-variants-p1-stock-reversal-lock
 
 ### Tarea
-Corregir el P1 de PR #160 evitando inferir procedencia historica de compras
-legacy durante la migracion a variantes.
+Corregir el bloqueo excesivo del P1 de PR #160 sin inferir procedencia historica
+de compras legacy durante la migracion a variantes.
 
 ### Que se cambio
-- `activate_variant_stock_mode()` rechaza la migracion si el producto conserva
-  compras legacy activas que aun pueden editarse o anularse.
-- La validacion ocurre dentro de la misma transaccion y antes de escribir
-  `stock_modo`, `stock_variantes`, movimientos o auditoria.
-- Las compras legacy anuladas no bloquean; las compras por variante tampoco
-  aplican a esta validacion.
-- La estructura de asignacion migrada del intento anterior se elimina de forma
-  idempotente y no se usa para revertir compras.
+- `compras.stock_reversion_bloqueada` marca explicitamente compras legacy no
+  anuladas cuyo stock fue transferido al activar variantes.
+- `activate_variant_stock_mode()` permite migrar productos con historial valido
+  y marca esas compras dentro de la misma transaccion antes de transferir stock.
+- `update_compra()`, `anular_compra()` y `delete_compra()` impiden cambios de
+  stock sobre compras marcadas; la lectura y los cambios documentales siguen
+  permitidos.
+- Las compras anuladas antes de migrar no se marcan; las compras nuevas por
+  variante quedan reversibles normalmente.
+- La estructura de asignacion migrada descartada se elimina de forma idempotente
+  y no se usa para revertir compras.
 
 ### Que se probo
 - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m py_compile database.py services\inventory.py tests\test_purchase_variants.py tests\test_product_variants.py`
@@ -25,7 +28,7 @@ legacy durante la migracion a variantes.
 - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_product_variants`
 - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_proveedor_facturas_anulacion`
 - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_reportes_historicos_coherentes`
-- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests` (402 tests)
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests` (404 tests)
 - `git diff --check`
 
 ## 2026-07-29 - Codex - feat/issue-146-purchases-variants-p2-inventory-api

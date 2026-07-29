@@ -412,22 +412,19 @@ def _movement_detail(item: dict, anterior: float, nuevo: float) -> str:
     return f"{product_name} / {variant_name} - {anterior:.2f} -> {nuevo:.2f}"
 
 
-def _ensure_no_reversible_legacy_purchases(cursor, product_id: int) -> None:
-    pending = cursor.execute(
+def _mark_legacy_purchases_stock_reversal_blocked(cursor, product_id: int) -> None:
+    cursor.execute(
         """
-        SELECT id
-        FROM compras
+        UPDATE compras
+        SET stock_reversion_bloqueada=1
         WHERE producto_id=?
           AND variante_id IS NULL
           AND COALESCE(anulada, 0)=0
           AND LOWER(TRIM(COALESCE(stock_fuente, 'producto'))) IN ('', 'producto', 'stock', 'legacy')
           AND COALESCE(cantidad, 0) > 0
-        LIMIT 1
         """,
         (int(product_id),),
-    ).fetchone()
-    if pending:
-        raise ValueError("No se puede activar stock por variantes: existen compras legacy activas pendientes de edicion o anulacion.")
+    )
 
 
 def activate_variant_stock_mode(
@@ -469,7 +466,7 @@ def activate_variant_stock_mode(
         if round(legacy_actual, 6) != assigned_total:
             raise ValueError("La suma asignada a variantes debe coincidir con el stock legacy existente.")
 
-        _ensure_no_reversible_legacy_purchases(cursor, int(product_id))
+        _mark_legacy_purchases_stock_reversal_blocked(cursor, int(product_id))
         for item in normalized:
             _ensure_variant_stock(cursor, item["variant_id"])
             cursor.execute(
