@@ -2,6 +2,32 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-29 - Codex - feature/issue-147-pos-variants-post-review
+
+### Tarea
+Corregir la resolucion automatica del POS cuando el codigo exacto coincide con
+mas de una variante vendible.
+
+### Que se cambio
+- `searchExactProduct()` devuelve estados explicitos `found`, `ambiguous` y
+  `not_found` para no colapsar ambiguedad y ausencia en `null`.
+- `buscarProducto()` detiene completamente el flujo automatico ante
+  ambiguedad y conserva el dropdown para seleccion manual.
+- Se elimina la seleccion automatica por `items.find()` sobre la busqueda
+  general para que codigos compartidos o heredados no elijan la primera
+  variante.
+- Se mantienen la resolucion automatica de codigos unicos y la seleccion
+  automatica por descripcion cuando la busqueda devuelve un unico resultado.
+- Se agregan regresiones focalizadas del endpoint exacto, codigo padre
+  compartido, codigo unico y flujo de decision del template.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m py_compile routes/main.py tests/test_pos_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_pos_variants` - 14 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_venta_finalizar_temporada tests.test_product_variants tests.test_purchase_variants` - 101 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 420 ejecutados; falla con 4 errores de limpieza de `TemporaryDirectory`
+  por hilos de auto-refresh de licencia escribiendo contra bases temporales ya eliminadas.
+
 ## 2026-07-29 - Codex - feature/issue-147-pos-variants
 
 ### Tarea

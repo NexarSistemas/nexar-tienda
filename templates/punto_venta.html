@@ -295,14 +295,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const response = await fetch('/api/producto/buscar?codigo=' + encodeURIComponent(term || ''));
     const data = await response.json();
     if (data.ok && data.producto) {
-      return data.producto;
+      return { status: 'found', product: data.producto };
     }
     if (data.ambiguous) {
       lastResults = data.productos || [];
       renderDropdown(lastResults);
       showAlert(data.msg || 'El codigo requiere seleccionar una variante.', 'warning');
+      return { status: 'ambiguous', products: lastResults };
     }
-    return null;
+    return { status: 'not_found' };
   }
 
   function renderDropdown(items) {
@@ -361,25 +362,18 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     try {
-      const exactProduct = await searchExactProduct(term);
-      if (exactProduct) {
-        showSuggestion(exactProduct);
+      const exactResult = await searchExactProduct(term);
+      if (exactResult.status === 'found') {
+        showSuggestion(exactResult.product);
+        return;
+      }
+      if (exactResult.status === 'ambiguous') {
         return;
       }
       const items = await searchProducts(term);
       if (!items.length) {
         showAlert('No se encontraron productos para esa búsqueda.', 'warning');
         renderDropdown([]);
-        return;
-      }
-      const normalized = term.toLowerCase();
-      const exactMatch = items.find((item) =>
-        String(item.codigo_interno || '').toLowerCase() === normalized ||
-        String(item.codigo_barras || '').toLowerCase() === normalized ||
-        String(item.variante_sku || '').toLowerCase() === normalized
-      );
-      if (exactMatch) {
-        showSuggestion(exactMatch);
         return;
       }
       if (items.length === 1) {

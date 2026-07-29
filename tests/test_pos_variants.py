@@ -181,6 +181,86 @@ class PosVariantsTests(unittest.TestCase):
         self.assertEqual(ambiguo["status"], "ambiguous")
         self.assertEqual({int(item["variante_id"]) for item in ambiguo["items"]}, {negro, rojo})
 
+    def test_api_producto_buscar_ambiguo_devuelve_409_y_todas_las_variantes(self):
+        producto_id = self._crear_producto("Campera API", stock=5, codigo_barras="CAMP-API")
+        negro = self._crear_variante(producto_id, "Negro", sku="CAMP-API-NEG", stock=2)
+        rojo = self._crear_variante(producto_id, "Rojo", sku="CAMP-API-ROJ", stock=3)
+        self._activar_variantes(
+            producto_id,
+            [
+                {"variant_id": negro, "stock_actual": 2, "stock_minimo": 0, "stock_maximo": 50},
+                {"variant_id": rojo, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50},
+            ],
+        )
+
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.get("/api/producto/buscar?codigo=CAMP-API")
+
+        data = response.get_json()
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(data["ok"])
+        self.assertTrue(data["ambiguous"])
+        self.assertEqual({int(item["variante_id"]) for item in data["productos"]}, {negro, rojo})
+
+    def test_codigo_unico_sigue_resolviendo_variante_correcta(self):
+        producto_id = self._crear_producto("Zapatilla unica", stock=5, codigo_barras="ZAP-PADRE")
+        azul = self._crear_variante(producto_id, "Azul", sku="ZAP-UNICA-AZUL", codigo_barras="ZAP-AZUL-BC", stock=2)
+        rojo = self._crear_variante(producto_id, "Rojo", sku="ZAP-UNICA-ROJO", stock=3)
+        self._activar_variantes(
+            producto_id,
+            [
+                {"variant_id": azul, "stock_actual": 2, "stock_minimo": 0, "stock_maximo": 50},
+                {"variant_id": rojo, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50},
+            ],
+        )
+
+        result = self.database.resolve_producto_pos_exact("ZAP-AZUL-BC")
+
+        self.assertEqual(result["status"], "found")
+        self.assertEqual(int(result["items"][0]["variante_id"]), azul)
+
+    def test_codigo_padre_compartido_exige_seleccion_manual(self):
+        producto_id = self._crear_producto("Buzo padre", stock=5)
+        self.database.q(
+            "UPDATE productos SET codigo_interno=? WHERE id=?",
+            ("BUZ-PADRE", producto_id),
+            commit=True,
+        )
+        negro = self._crear_variante(producto_id, "Negro", sku="BUZ-PADRE-NEG", stock=2)
+        rojo = self._crear_variante(producto_id, "Rojo", sku="BUZ-PADRE-ROJ", stock=3)
+        self._activar_variantes(
+            producto_id,
+            [
+                {"variant_id": negro, "stock_actual": 2, "stock_minimo": 0, "stock_maximo": 50},
+                {"variant_id": rojo, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50},
+            ],
+        )
+
+        result = self.database.resolve_producto_pos_exact("BUZ-PADRE")
+
+        self.assertEqual(result["status"], "ambiguous")
+        self.assertEqual({int(item["variante_id"]) for item in result["items"]}, {negro, rojo})
+
+    def test_busqueda_por_descripcion_con_unico_resultado_sigue_disponible(self):
+        producto_id = self._crear_producto("Descripcion exacta POS", stock=2)
+
+        items = self.database.buscar_productos_pos("Descripcion exacta POS")
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(int(items[0]["producto_id"]), producto_id)
+        self.assertIsNone(items[0]["variante_id"])
+
+    def test_template_pos_no_resuelve_automaticamente_primera_coincidencia_ambigua(self):
+        template = (PROJECT_ROOT / "templates" / "punto_venta.html").read_text(encoding="utf-8")
+        buscar_inicio = template.index("async function buscarProducto()")
+        buscar_fin = template.index("async function confirmarItem()", buscar_inicio)
+        buscar_producto = template[buscar_inicio:buscar_fin]
+
+        self.assertIn("exactResult.status === 'ambiguous'", buscar_producto)
+        self.assertNotIn("items.find", buscar_producto)
+        self.assertIn("if (items.length === 1)", buscar_producto)
+
     def test_carrito_manual_persiste_variante_y_precio_promocional(self):
         producto_id = self._crear_producto("Remera", stock=4, costo=20, precio=100)
         negro = self._crear_variante(producto_id, "Negro", sku="REM-NEG", costo=35, precio=120, promo=99, stock=4)
