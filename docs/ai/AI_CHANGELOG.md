@@ -2,6 +2,39 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-29 - Codex - fix/issue-147-pos-variants-followup
+
+### Tarea
+Corregir los dos hallazgos post-merge de PR #162 sobre ventas POS con variantes
+y resolucion exacta de codigos.
+
+### Que se cambio
+- `crear_venta()` deja de confiar en `stock_fuente` proveniente del carrito para
+  ventas nuevas y resuelve el item contra el `stock_modo` actual dentro de la
+  transaccion de inventario.
+- Si un item legacy del carrito queda migrado a `stock_modo='variantes'` antes
+  de finalizar y no trae variante valida, la venta falla con rollback completo
+  sin descontar stock legacy oculto.
+- La anulacion de ventas conserva el uso de `stock_fuente` persistido en
+  `ventas_detalle` para restaurar historicos en su fuente original.
+- `resolve_producto_pos_exact()` usa una consulta exacta directa para codigo
+  interno, codigo de barras y SKU, sin depender del `LIMIT 50` de la busqueda
+  general y devolviendo todas las coincidencias exactas para detectar
+  ambiguedad.
+- Se agregaron regresiones de carrito legacy migrado, variante valida con fuente
+  stale, anulacion historica, exacto fuera del limite de busqueda, ambiguedad de
+  mas de 50 variantes y compatibilidad legacy.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m py_compile database.py tests/test_pos_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_pos_variants` - 19 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_venta_finalizar_temporada tests.test_product_variants tests.test_purchase_variants tests.test_cc_clientes_anulacion tests.test_reportes_historicos_coherentes` - 109 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 425 ejecutados; 1 error de limpieza de `TemporaryDirectory`
+  en `test_reportes_historicos_coherentes.ReportesHistoricosCoherentesTests.test_compra_anulada_no_suma_como_compra_activa`
+  por hilos de auto-refresh de licencia accediendo a bases temporales ya
+  removidas.
+- `git diff --check`
+
 ## 2026-07-29 - Codex - feature/issue-147-pos-variants-test-isolation
 
 ### Tarea

@@ -224,6 +224,19 @@ class PosVariantsTests(unittest.TestCase):
         self.assertEqual(result["status"], "found")
         self.assertEqual(int(result["items"][0]["variante_id"]), azul)
 
+    def test_codigo_exacto_no_depende_del_limite_de_busqueda_general(self):
+        for index in range(55):
+            self._crear_producto(f"A Coincidencia limite {index:02d}", stock=1, codigo_barras=f"LIM-{index:02d}")
+        producto_id = self._crear_producto("Z Coincidencia limite exacta", stock=2, codigo_barras="LIMITE-EXACTO")
+
+        busqueda_general = self.database.buscar_productos_pos("LIMITE")
+        result = self.database.resolve_producto_pos_exact("LIMITE-EXACTO")
+
+        self.assertEqual(len(busqueda_general), 50)
+        self.assertNotIn(producto_id, {int(item["producto_id"]) for item in busqueda_general})
+        self.assertEqual(result["status"], "found")
+        self.assertEqual(int(result["items"][0]["producto_id"]), producto_id)
+
     def test_codigo_padre_compartido_exige_seleccion_manual(self):
         producto_id = self._crear_producto("Buzo padre", stock=5)
         self.database.q(
@@ -245,6 +258,31 @@ class PosVariantsTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ambiguous")
         self.assertEqual({int(item["variante_id"]) for item in result["items"]}, {negro, rojo})
+
+    def test_codigo_padre_compartido_por_mas_de_50_variantes_devuelve_ambiguedad_completa(self):
+        producto_id = self._crear_producto("Buzo masivo", stock=55)
+        self.database.q(
+            "UPDATE productos SET codigo_interno=? WHERE id=?",
+            ("BUZ-MASIVO", producto_id),
+            commit=True,
+        )
+        variants = [
+            self._crear_variante(producto_id, f"Color {index:02d}", sku=f"BUZ-MASIVO-{index:02d}", stock=0)
+            for index in range(55)
+        ]
+        self._activar_variantes(
+            producto_id,
+            [
+                {"variant_id": variant_id, "stock_actual": 1, "stock_minimo": 0, "stock_maximo": 50}
+                for variant_id in variants
+            ],
+        )
+
+        result = self.database.resolve_producto_pos_exact("BUZ-MASIVO")
+
+        self.assertEqual(result["status"], "ambiguous")
+        self.assertEqual(len(result["items"]), len(variants))
+        self.assertEqual({int(item["variante_id"]) for item in result["items"]}, set(variants))
 
     def test_busqueda_por_descripcion_con_unico_resultado_sigue_disponible(self):
         producto_id = self._crear_producto("Descripcion exacta POS", stock=2)
@@ -328,6 +366,35 @@ class PosVariantsTests(unittest.TestCase):
         self.assertEqual(self._stock_variante(negro), 1.0)
         self.assertEqual(self._stock_variante(rojo), 4.0)
 
+    def test_venta_falla_si_carrito_legacy_queda_migrado_a_variantes(self):
+        producto_id = self._crear_producto("Migrado POS", stock=5, costo=10, precio=20, codigo_barras="MIG-POS")
+        item_legacy = self.database.get_sellable_item_pos(producto_id)
+        variante = self._crear_variante(producto_id, "Unica", sku="MIG-POS-VAR", stock=0)
+        self._activar_variantes(producto_id, [{"variant_id": variante, "stock_actual": 5, "stock_minimo": 0, "stock_maximo": 50}])
+
+        with self.assertRaisesRegex(ValueError, "debe indicar una variante"):
+            self.database.crear_venta([self._cart_item(item_legacy, 2)], "Mostrador", "Efectivo", 0, "admin")
+
+        self.assertEqual(int(self.database.q("SELECT COUNT(*) AS total FROM ventas", fetchone=True)["total"]), 0)
+        self.assertEqual(int(self.database.q("SELECT COUNT(*) AS total FROM ventas_detalle", fetchone=True)["total"]), 0)
+        self.assertEqual(self._stock_producto(producto_id), 5.0)
+        self.assertEqual(self._stock_variante(variante), 5.0)
+
+    def test_venta_con_variante_valida_no_confia_en_stock_fuente_del_carrito(self):
+        producto_id = self._crear_producto("Migrado con variante", stock=3, costo=10, precio=20)
+        variante = self._crear_variante(producto_id, "Unica", sku="MIG-VAR-OK", stock=0)
+        self._activar_variantes(producto_id, [{"variant_id": variante, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50}])
+        item = self._cart_item(self.database.get_sellable_item_pos(producto_id, variante), 2)
+        item["stock_fuente"] = "producto"
+
+        venta_id = self.database.crear_venta([item], "Mostrador", "Efectivo", 0, "admin")
+
+        detalle = self.database.get_venta_detalle(venta_id)[0]
+        self.assertEqual(int(detalle["variante_id"]), variante)
+        self.assertEqual(detalle["stock_fuente"], "variante")
+        self.assertEqual(self._stock_producto(producto_id), 3.0)
+        self.assertEqual(self._stock_variante(variante), 1.0)
+
     def test_rollback_completo_si_falla_descuento_de_venta(self):
         producto_id = self._crear_producto("Rollback venta", stock=3)
         item = self.database.get_sellable_item_pos(producto_id)
@@ -364,6 +431,25 @@ class PosVariantsTests(unittest.TestCase):
         )
         self.assertIn((vendida, "stock_variantes", "VENTA", -1.0), [(row["variante_id"], row["stock_fuente"], row["tipo"], float(row["cantidad"])) for row in movimientos])
         self.assertIn((vendida, "stock_variantes", "ANULACION_VENTA", 1.0), [(row["variante_id"], row["stock_fuente"], row["tipo"], float(row["cantidad"])) for row in movimientos])
+
+    def test_anulacion_historica_legacy_restaura_fuente_original_tras_migrar(self):
+        producto_id = self._crear_producto("Venta legacy historica", stock=5, costo=10, precio=20)
+        venta_id = self.database.crear_venta(
+            [self._cart_item(self.database.get_sellable_item_pos(producto_id), 2)],
+            "Mostrador",
+            "Efectivo",
+            0,
+            "admin",
+        )
+        variante = self._crear_variante(producto_id, "Unica", sku="LEG-HIST-VAR", stock=0)
+        self._activar_variantes(producto_id, [{"variant_id": variante, "stock_actual": 3, "stock_minimo": 0, "stock_maximo": 50}])
+
+        self.database.anular_venta(venta_id, motivo="Devolucion historica", usuario="admin", rol="Administrador")
+
+        detalle = self.database.get_venta_detalle(venta_id)[0]
+        self.assertEqual(detalle["stock_fuente"], "producto")
+        self.assertEqual(self._stock_producto(producto_id), 5.0)
+        self.assertEqual(self._stock_variante(variante), 3.0)
 
     def test_producto_legacy_mantiene_flujo_de_venta(self):
         producto_id = self._crear_producto("Legacy POS", stock=3, costo=10, precio=25, codigo_barras="LEG-POS")
