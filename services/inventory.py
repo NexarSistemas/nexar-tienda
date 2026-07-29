@@ -79,7 +79,7 @@ def _product_for_update(cursor, product_id: int):
     return product
 
 
-def _variant_for_update(cursor, product_id: int, variant_id: int):
+def _variant_for_update(cursor, product_id: int, variant_id: int, *, allow_inactive: bool = False):
     variant = cursor.execute(
         """
         SELECT *
@@ -91,13 +91,53 @@ def _variant_for_update(cursor, product_id: int, variant_id: int):
     ).fetchone()
     if not variant:
         raise ValueError("La variante indicada no pertenece al producto.")
-    if int(variant["activo"] or 0) != 1:
+    if not allow_inactive and int(variant["activo"] or 0) != 1:
         raise ValueError("La variante indicada no esta activa.")
     return variant
 
 
-def _resolve_inventory_item_in_cursor(cursor, product_id: int, variant_id: int | None = None) -> dict:
+def _normalize_source(value) -> str | None:
+    source = str(value or "").strip().lower()
+    if source in {"producto", "stock", "legacy"}:
+        return SOURCE_LEGACY
+    if source in {"variante", "stock_variantes"}:
+        return SOURCE_VARIANTS
+    return None
+
+
+def _resolve_inventory_item_in_cursor(cursor, product_id: int, variant_id: int | None = None, *, allow_inactive_variant: bool = False, stock_source: str | None = None) -> dict:
     product = _product_for_update(cursor, product_id)
+    source_override = _normalize_source(stock_source)
+    if source_override == SOURCE_LEGACY:
+        if variant_id is not None:
+            raise ValueError("La fuente historica de producto no admite variante.")
+        stock = _ensure_legacy_stock(cursor, int(product["id"]))
+        return {
+            "producto": product,
+            "variante": None,
+            "modo": STOCK_MODE_LEGACY,
+            "fuente": SOURCE_LEGACY,
+            "stock": stock,
+            "stock_actual": float(stock["stock_actual"] or 0),
+            "stock_minimo": float(stock["stock_minimo"] or 0),
+            "stock_maximo": float(stock["stock_maximo"] or 0),
+        }
+    if source_override == SOURCE_VARIANTS:
+        if variant_id is None:
+            raise ValueError("La fuente historica de variante requiere una variante.")
+        variant = _variant_for_update(cursor, int(product["id"]), int(variant_id), allow_inactive=allow_inactive_variant)
+        stock = _ensure_variant_stock(cursor, int(variant["id"]))
+        return {
+            "producto": product,
+            "variante": variant,
+            "modo": STOCK_MODE_VARIANTS,
+            "fuente": SOURCE_VARIANTS,
+            "stock": stock,
+            "stock_actual": float(stock["stock_actual"] or 0),
+            "stock_minimo": float(stock["stock_minimo"] or 0),
+            "stock_maximo": float(stock["stock_maximo"] or 0),
+        }
+
     mode = _normalize_mode(product["stock_modo"] if "stock_modo" in product.keys() else None)
 
     if mode == STOCK_MODE_LEGACY:
@@ -117,7 +157,7 @@ def _resolve_inventory_item_in_cursor(cursor, product_id: int, variant_id: int |
 
     if variant_id is None:
         raise ValueError("El producto opera por variantes; debe indicar una variante.")
-    variant = _variant_for_update(cursor, int(product["id"]), int(variant_id))
+    variant = _variant_for_update(cursor, int(product["id"]), int(variant_id), allow_inactive=allow_inactive_variant)
     stock = _ensure_variant_stock(cursor, int(variant["id"]))
     return {
         "producto": product,
@@ -190,45 +230,86 @@ def apply_inventory_delta(
     rol: str = "",
 ) -> dict:
     delta = _validate_finite_number(cantidad, "La cantidad", allow_zero=False)
-    tipo_normalizado = str(tipo or "").strip().upper()
-    if tipo_normalizado in {"BAJA", "VENTA", "ANULACION_COMPRA"}:
-        delta = -delta
-
     conn = db.get_conn()
     try:
         cursor = conn.cursor()
         cursor.execute("BEGIN IMMEDIATE")
-        item = _resolve_inventory_item_in_cursor(cursor, product_id, variant_id)
-        anterior = float(item["stock_actual"] or 0)
-        nuevo = anterior + delta
-        if nuevo < 0:
-            raise ValueError("La operacion dejaria stock negativo.")
-        if item["fuente"] == SOURCE_LEGACY:
-            cursor.execute("UPDATE stock SET stock_actual=? WHERE producto_id=?", (nuevo, int(product_id)))
-        else:
-            cursor.execute(
-                "UPDATE stock_variantes SET stock_actual=?, updated_at=CURRENT_TIMESTAMP WHERE variante_id=?",
-                (nuevo, int(variant_id)),
-            )
-        _movement_insert(cursor, item, tipo_normalizado or "AJUSTE", delta, anterior, nuevo, motivo)
-        entity_id = int(variant_id) if item["variante"] is not None else int(product_id)
-        _audit_insert(
+        result = apply_inventory_delta_in_cursor(
             cursor,
-            f"{tipo_normalizado or 'AJUSTE'}_STOCK",
-            "stock_variante" if item["variante"] is not None else "stock",
-            entity_id,
-            _movement_detail(item, anterior, nuevo),
-            motivo,
-            usuario,
-            rol,
+            product_id,
+            delta,
+            variant_id=variant_id,
+            tipo=tipo,
+            motivo=motivo,
+            usuario=usuario,
+            rol=rol,
         )
         conn.commit()
-        return {"stock_anterior": anterior, "stock_nuevo": nuevo, "fuente": item["fuente"]}
+        return result
     except Exception:
         conn.rollback()
         raise
     finally:
         conn.close()
+
+
+def apply_inventory_delta_in_cursor(
+    cursor,
+    product_id: int,
+    cantidad,
+    *,
+    variant_id: int | None = None,
+    tipo: str,
+    motivo: str = "",
+    usuario: str = "",
+    rol: str = "",
+    allow_inactive_variant: bool = False,
+    stock_source: str | None = None,
+) -> dict:
+    try:
+        delta = float(cantidad)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("La cantidad debe ser numerica.") from exc
+    if not math.isfinite(delta):
+        raise ValueError("La cantidad debe ser un numero finito.")
+    if delta == 0:
+        raise ValueError("La cantidad debe ser distinta de 0.")
+
+    tipo_normalizado = str(tipo or "").strip().upper()
+    if tipo_normalizado in {"BAJA", "VENTA", "ANULACION_COMPRA"}:
+        delta = -abs(delta)
+
+    item = _resolve_inventory_item_in_cursor(
+        cursor,
+        product_id,
+        variant_id,
+        allow_inactive_variant=allow_inactive_variant,
+        stock_source=stock_source,
+    )
+    anterior = float(item["stock_actual"] or 0)
+    nuevo = anterior + delta
+    if nuevo < 0:
+        raise ValueError("La operacion dejaria stock negativo.")
+    if item["fuente"] == SOURCE_LEGACY:
+        cursor.execute("UPDATE stock SET stock_actual=? WHERE producto_id=?", (nuevo, int(product_id)))
+    else:
+        cursor.execute(
+            "UPDATE stock_variantes SET stock_actual=?, updated_at=CURRENT_TIMESTAMP WHERE variante_id=?",
+            (nuevo, int(variant_id)),
+        )
+    _movement_insert(cursor, item, tipo_normalizado or "AJUSTE", delta, anterior, nuevo, motivo)
+    entity_id = int(variant_id) if item["variante"] is not None else int(product_id)
+    _audit_insert(
+        cursor,
+        f"{tipo_normalizado or 'AJUSTE'}_STOCK",
+        "stock_variante" if item["variante"] is not None else "stock",
+        entity_id,
+        _movement_detail(item, anterior, nuevo),
+        motivo,
+        usuario,
+        rol,
+    )
+    return {"stock_anterior": anterior, "stock_nuevo": nuevo, "fuente": item["fuente"]}
 
 
 def adjust_inventory_item(
@@ -331,6 +412,21 @@ def _movement_detail(item: dict, anterior: float, nuevo: float) -> str:
     return f"{product_name} / {variant_name} - {anterior:.2f} -> {nuevo:.2f}"
 
 
+def _mark_legacy_purchases_stock_reversal_blocked(cursor, product_id: int) -> None:
+    cursor.execute(
+        """
+        UPDATE compras
+        SET stock_reversion_bloqueada=1
+        WHERE producto_id=?
+          AND variante_id IS NULL
+          AND COALESCE(anulada, 0)=0
+          AND LOWER(TRIM(COALESCE(stock_fuente, 'producto'))) IN ('', 'producto', 'stock', 'legacy')
+          AND COALESCE(cantidad, 0) > 0
+        """,
+        (int(product_id),),
+    )
+
+
 def activate_variant_stock_mode(
     product_id: int,
     allocations: list[dict],
@@ -370,6 +466,7 @@ def activate_variant_stock_mode(
         if round(legacy_actual, 6) != assigned_total:
             raise ValueError("La suma asignada a variantes debe coincidir con el stock legacy existente.")
 
+        _mark_legacy_purchases_stock_reversal_blocked(cursor, int(product_id))
         for item in normalized:
             _ensure_variant_stock(cursor, item["variant_id"])
             cursor.execute(

@@ -2,6 +2,140 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-29 - Codex - feat/issue-146-purchases-variants-p1-stock-reversal-lock
+
+### Tarea
+Corregir el bloqueo excesivo del P1 de PR #160 sin inferir procedencia historica
+de compras legacy durante la migracion a variantes.
+
+### Que se cambio
+- `compras.stock_reversion_bloqueada` marca explicitamente compras legacy no
+  anuladas cuyo stock fue transferido al activar variantes.
+- `activate_variant_stock_mode()` permite migrar productos con historial valido
+  y marca esas compras dentro de la misma transaccion antes de transferir stock.
+- `update_compra()`, `anular_compra()` y `delete_compra()` impiden cambios de
+  stock, valuacion, fecha y proveedor sobre compras marcadas; la lectura y los
+  cambios documentales siguen permitidos.
+- `actualizar_compra_basica()` permite remito y observaciones, pero bloquea
+  fecha o proveedor en compras migradas para no reubicar historial, reportes ni
+  facturas asociadas.
+- `init_db()` marca idempotentemente compras legacy activas de productos que ya
+  estan en `stock_modo='variantes'`, sin tocar stock, movimientos, auditoria,
+  facturas ni valores economicos.
+- Las compras anuladas antes de migrar no se marcan; las compras nuevas por
+  variante quedan reversibles normalmente.
+- La estructura de asignacion migrada descartada se elimina de forma idempotente
+  y no se usa para revertir compras.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m py_compile database.py services\inventory.py tests\test_purchase_variants.py tests\test_product_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_product_variants.ProductVariantsTests.test_api_publica_inventory_delta_rechaza_cantidades_negativas_y_cero tests.test_product_variants.ProductVariantsTests.test_api_publica_inventory_delta_positiva_y_helper_negativo_controlado`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_purchase_variants`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_product_variants`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_proveedor_facturas_anulacion`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_reportes_historicos_coherentes`
+- `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests` (406 tests)
+- `git diff --check`
+
+## 2026-07-29 - Codex - feat/issue-146-purchases-variants-p2-inventory-api
+
+### Tarea
+Corregir el P2 de PR #160 sobre cantidades negativas en la API publica de
+inventario.
+
+### Que se cambio
+- `services.inventory.apply_inventory_delta()` vuelve a validar cantidad finita
+  y mayor a cero antes de delegar en el helper transaccional.
+- `apply_inventory_delta_in_cursor()` conserva soporte de deltas con signo para
+  reversiones atomicas controladas, sin cambiar las anulaciones historicas de
+  compras.
+- Se agregaron regresiones de contrato publico, cantidad cero, flujo positivo y
+  helper interno con delta negativo coherente.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m py_compile services\\inventory.py tests\\test_product_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_product_variants.ProductVariantsTests.test_api_publica_inventory_delta_rechaza_cantidades_negativas_y_cero tests.test_product_variants.ProductVariantsTests.test_api_publica_inventory_delta_positiva_y_helper_negativo_controlado tests.test_product_variants.ProductVariantsTests.test_alta_baja_y_ajuste_no_generan_doble_descuento` - 3 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_product_variants` - 69 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_purchase_variants` - 20 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_proveedor_facturas_anulacion` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_reportes_historicos_coherentes` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest discover -s tests` - 395 OK
+
+## 2026-07-29 - Codex - feat/issue-146-purchases-variants
+
+### Tarea
+Corregir el P1 de PR #160 sobre reversibilidad de compras legacy anteriores a
+la migracion de un producto a stock por variantes.
+
+### Que se cambio
+- `compras` conserva `stock_fuente` historico (`producto` o `variante`) con
+  migracion idempotente y backfill deterministico desde `variante_id`.
+- Las altas y destinos nuevos de compra siguen validando el modo operativo
+  actual del producto.
+- Las reversiones de edicion/anulacion usan la fuente historica: compras legacy
+  revierten `productos.stock` aunque el producto opere hoy por variantes, y
+  compras por variante revierten su variante historica aun si esta inactiva.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m py_compile database.py services\\inventory.py tests\\test_purchase_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_purchase_variants` - 20 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_proveedor_facturas_anulacion` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_reportes_historicos_coherentes` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest tests.test_product_variants` - 67 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv\\Scripts\\python.exe -m unittest discover -s tests` - 393 OK
+
+## 2026-07-28 - Codex - feat/issue-146-purchases-variants-post-review
+
+### Tarea
+Corregir los dos threads P1 abiertos en la PR #160 sin ampliar el alcance de
+compras por variantes.
+
+### Que se cambio
+- La seleccion de compras ya no corta el listado completo en 500 items cuando
+  `/compras` carga el selector local.
+- Las reversiones historicas de compras permiten resolver una variante
+  desactivada solo para deltas negativos del item anterior, manteniendo el
+  rechazo de variantes inactivas para altas, incrementos nuevos y destinos de
+  edicion.
+- Se agregaron regresiones para mas de 500 items seleccionables, anulacion y
+  edicion de compras historicas con variante desactivada, rechazo operativo de
+  inactivas y rollback ante falla de reversion.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m py_compile services/inventory.py database.py tests/test_purchase_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_purchase_variants` - 17 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_proveedor_facturas_anulacion` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_product_variants` - 67 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 390 OK
+
+## 2026-07-28 - Codex - feat/issue-146-purchases-variants
+
+### Tarea
+Adaptar compras para registrar un unico item vendible por linea: producto
+legacy sin variante o variante activa para productos con `stock_modo='variantes'`.
+
+### Que se cambio
+- `compras.variante_id` se agrega de forma idempotente y nullable, sin inferir
+  variantes para historicos.
+- El alta, edicion por diferencia y anulacion de compras usan
+  `services/inventory.py` para afectar exactamente `stock` o `stock_variantes`.
+- La seleccion de compras lista productos legacy y variantes activas con
+  atributos, SKU, codigo de barras, fuente de stock y costo efectivo.
+- Las validaciones rechazan compras sin variante para productos en modo
+  variantes, variantes inactivas o variantes ajenas.
+- Se conserva el comportamiento de costo editable de la compra sin sobrescribir
+  silenciosamente el catalogo.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m py_compile services/inventory.py database.py routes/main.py tests/test_purchase_variants.py tests/test_proveedor_facturas_anulacion.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_purchase_variants` - 12 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_product_variants` - 67 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_permisos_basicos` - 7 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_proveedor_facturas_anulacion` - 4 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 385 ejecutados; falla 1 error de limpieza de `TemporaryDirectory` en
+  `test_sqlite_rechaza_duplicado_directo_entre_variantes` por hilos existentes
+  de auto-refresh de licencia escribiendo contra DB temporal removida.
+
 ## 2026-07-28 - Codex - fix/issue-145-update-variant-active-state
 
 ### Tarea

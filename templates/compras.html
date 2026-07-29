@@ -41,7 +41,7 @@
           <td>{{ c.proveedor_nombre or '-' }}</td>
           <td>
             <strong>{{ c.descripcion }}</strong>
-            <br><small class="text-muted"><code>{{ c.codigo_interno }}</code></small>
+            <br><small class="text-muted"><code>{{ c.codigo_interno }}</code>{% if c.variante_id %} · {{ c.variante_resumen or c.variante_nombre or ('Variante #' ~ c.variante_id) }}{% endif %}</small>
           </td>
           <td>{{ c.cantidad }}</td>
           <td>{{ c.costo_unitario|fmt_ars }}</td>
@@ -209,12 +209,27 @@
                   <i class="fas fa-plus me-1"></i>Crear producto
                 </button>
               </div>
-              <select name="producto_id" class="form-select" id="producto_id" required>
-                <option value="">- Seleccionar producto -</option>
-                {% for p in productos %}
-                <option value="{{ p.id }}" {% if draft.producto_id == (p.id|string) %}selected{% endif %}>{{ p.descripcion }} ({{ p.codigo_interno }})</option>
+              <input type="hidden" name="producto_id" id="producto_id" value="{{ draft.producto_id }}">
+              <input type="hidden" name="variante_id" id="variante_id" value="{{ draft.variante_id }}">
+              <select name="producto_item" class="form-select" id="producto_item" required>
+                <option value="">- Seleccionar producto o variante -</option>
+                {% for item in purchase_items %}
+                {% set option_value = (item.producto_id|string) ~ ':' ~ (item.variante_id|string if item.variante_id else '') %}
+                <option
+                  value="{{ option_value }}"
+                  data-product-id="{{ item.producto_id }}"
+                  data-variant-id="{{ item.variante_id or '' }}"
+                  data-cost="{{ item.costo_unitario }}"
+                  data-barcode="{{ item.variante_codigo_barras or item.codigo_barras or '' }}"
+                  data-source="{{ item.stock_fuente }}"
+                  {% if draft.producto_item == option_value or (not draft.producto_item and draft.producto_id == (item.producto_id|string) and draft.variante_id == ((item.variante_id|string) if item.variante_id else '')) %}selected{% endif %}
+                >
+                  {{ item.descripcion }}{% if item.variante_id %} / {{ item.variante_resumen or item.variante_nombre or ('Variante #' ~ item.variante_id) }}{% endif %}
+                  · {{ item.stock_fuente }}{% if item.variante_sku %} · SKU {{ item.variante_sku }}{% endif %}{% if item.variante_codigo_barras or item.codigo_barras %} · Cod {{ item.variante_codigo_barras or item.codigo_barras }}{% endif %}
+                </option>
                 {% endfor %}
               </select>
+              <div class="form-text">Los productos con stock por variantes requieren seleccionar una variante activa.</div>
             </div>
             <div class="col-md-4">
               <label class="form-label fw-bold">Codigo de barras</label>
@@ -330,6 +345,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const proveedorDraftFields = document.getElementById('proveedorDraftFields');
     const crearProductoBtn = document.getElementById('btnCrearProducto');
     const crearProveedorBtn = document.getElementById('btnCrearProveedor');
+    const productoItem = document.getElementById('producto_item');
+    const productoId = document.getElementById('producto_id');
+    const varianteId = document.getElementById('variante_id');
+    const costoUnitario = document.getElementById('costo_unitario');
+    const codigoBarras = document.getElementById('codigo_barras');
     const compraModalEl = document.getElementById('compraModal');
     const modalAnularCompraEl = document.getElementById('modalAnularCompra');
     const formAnularCompra = document.getElementById('formAnularCompra');
@@ -339,7 +359,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function buildCompraDraft() {
         const data = {};
-        ['fecha', 'numero_remito', 'proveedor_id', 'producto_id', 'cantidad', 'costo_unitario', 'condicion_pago', 'numero_factura', 'fecha_factura', 'fecha_vencimiento', 'observaciones_factura', 'observaciones', 'producto_descripcion', 'codigo_barras'].forEach((field) => {
+        syncSelectedPurchaseItem(false);
+        ['fecha', 'numero_remito', 'proveedor_id', 'producto_item', 'producto_id', 'variante_id', 'cantidad', 'costo_unitario', 'condicion_pago', 'numero_factura', 'fecha_factura', 'fecha_vencimiento', 'observaciones_factura', 'observaciones', 'producto_descripcion', 'codigo_barras'].forEach((field) => {
             const input = compraForm.elements.namedItem(field);
             if (input && input.value) {
                 data[field] = input.value;
@@ -365,6 +386,18 @@ document.addEventListener('DOMContentLoaded', function () {
         facturaProveedorFields.style.display = mostrar ? '' : 'none';
     }
 
+    function syncSelectedPurchaseItem(updateCost = true) {
+        const selected = productoItem.options[productoItem.selectedIndex];
+        productoId.value = selected ? (selected.getAttribute('data-product-id') || '') : '';
+        varianteId.value = selected ? (selected.getAttribute('data-variant-id') || '') : '';
+        if (selected && updateCost && !costoUnitario.value) {
+            costoUnitario.value = selected.getAttribute('data-cost') || '';
+        }
+        if (selected && !codigoBarras.value) {
+            codigoBarras.value = selected.getAttribute('data-barcode') || '';
+        }
+    }
+
     function buildProductoUrl() {
         const params = new URLSearchParams(buildCompraDraft());
         params.set('return_to', 'compra_nueva');
@@ -386,6 +419,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
     proveedorForm.addEventListener('submit', syncProviderDraftFields);
     condicionPago.addEventListener('change', syncFacturaProveedorVisibility);
+    productoItem.addEventListener('change', function () {
+        costoUnitario.value = '';
+        codigoBarras.value = '';
+        syncSelectedPurchaseItem(true);
+    });
+    syncSelectedPurchaseItem(false);
     syncFacturaProveedorVisibility();
 
     if (modalAnularCompraEl && formAnularCompra) {

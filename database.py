@@ -775,6 +775,8 @@ def init_db():
             proveedor_id INTEGER DEFAULT 0,
             proveedor_nombre TEXT DEFAULT '',
             producto_id INTEGER DEFAULT 0,
+            variante_id INTEGER REFERENCES producto_variantes(id) ON DELETE SET NULL,
+            stock_fuente TEXT DEFAULT 'producto',
             codigo_interno TEXT DEFAULT '',
             descripcion TEXT DEFAULT '',
             cantidad REAL DEFAULT 1,
@@ -782,6 +784,7 @@ def init_db():
             total REAL DEFAULT 0,
             observaciones TEXT DEFAULT '',
             anulada INTEGER DEFAULT 0,
+            stock_reversion_bloqueada INTEGER NOT NULL DEFAULT 0,
             anulada_at TEXT DEFAULT '',
             anulada_por TEXT DEFAULT '',
             motivo_anulacion TEXT DEFAULT ''
@@ -1221,12 +1224,46 @@ def init_db():
     columnas_compras = [r['name'] for r in c.execute("PRAGMA table_info(compras)").fetchall()]
     if 'anulada' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN anulada INTEGER DEFAULT 0")
+    if 'stock_reversion_bloqueada' not in columnas_compras:
+        c.execute("ALTER TABLE compras ADD COLUMN stock_reversion_bloqueada INTEGER NOT NULL DEFAULT 0")
+    if 'variante_id' not in columnas_compras:
+        c.execute("ALTER TABLE compras ADD COLUMN variante_id INTEGER REFERENCES producto_variantes(id) ON DELETE SET NULL")
+    if 'stock_fuente' not in columnas_compras:
+        c.execute("ALTER TABLE compras ADD COLUMN stock_fuente TEXT DEFAULT 'producto'")
+    c.execute(
+        """
+        UPDATE compras
+        SET stock_fuente = CASE
+            WHEN variante_id IS NOT NULL THEN 'variante'
+            ELSE 'producto'
+        END
+        """
+    )
+    c.execute(
+        """
+        UPDATE compras
+        SET stock_reversion_bloqueada=1
+        WHERE COALESCE(stock_reversion_bloqueada, 0)=0
+          AND producto_id IN (
+              SELECT id
+              FROM productos
+              WHERE LOWER(TRIM(COALESCE(stock_modo, 'legacy'))) = 'variantes'
+          )
+          AND COALESCE(anulada, 0)=0
+          AND variante_id IS NULL
+          AND LOWER(TRIM(COALESCE(stock_fuente, 'producto'))) IN ('producto', 'stock', 'legacy')
+          AND COALESCE(cantidad, 0) > 0
+        """
+    )
     if 'anulada_at' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN anulada_at TEXT DEFAULT ''")
     if 'anulada_por' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN anulada_por TEXT DEFAULT ''")
     if 'motivo_anulacion' not in columnas_compras:
         c.execute("ALTER TABLE compras ADD COLUMN motivo_anulacion TEXT DEFAULT ''")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_compras_variante ON compras(variante_id)")
+
+    c.execute("DROP TABLE IF EXISTS " + "stock_migracion_" + "variantes_ledger")
 
     # Verificar y agregar columnas de recuperaciÃ³n en usuarios
     columnas_u = [r['name'] for r in c.execute("PRAGMA table_info(usuarios)").fetchall()]
@@ -4444,6 +4481,20 @@ def get_compras(search='', fecha_desde='', fecha_hasta='', limit=200):
     """Devuelve compras filtrables."""
     sql = """
         SELECT compras.*,
+               pv.nombre AS variante_nombre,
+               pv.sku AS variante_sku,
+               pv.codigo_barras AS variante_codigo_barras,
+               COALESCE((
+                   SELECT GROUP_CONCAT(nombre_valor, ', ')
+                   FROM (
+                       SELECT a.nombre || ': ' || av.valor AS nombre_valor
+                       FROM producto_variante_valores vv
+                       JOIN producto_atributos a ON a.id = vv.atributo_id
+                       JOIN producto_atributo_valores av ON av.id = vv.valor_id
+                       WHERE vv.variante_id = compras.variante_id
+                       ORDER BY a.nombre_normalizado, av.valor_normalizado
+                   )
+               ), '') AS variante_resumen,
                (
                    SELECT fp.id
                    FROM facturas_proveedores fp
@@ -4459,6 +4510,7 @@ def get_compras(search='', fecha_desde='', fecha_hasta='', limit=200):
                    LIMIT 1
                ) as factura_proveedor_numero
         FROM compras
+        LEFT JOIN producto_variantes pv ON pv.id = compras.variante_id
         WHERE 1=1
     """
     params = []
@@ -4476,10 +4528,100 @@ def get_compras(search='', fecha_desde='', fecha_hasta='', limit=200):
     return q(sql, params)
 
 
+def get_purchase_items(search='', limit=None):
+    """Devuelve items vendibles disponibles para compras."""
+    search_norm = str(search or "").strip()
+    params = []
+    filter_sql = ""
+    limit_sql = ""
+    if search_norm:
+        filter_sql = """
+            WHERE descripcion LIKE ?
+               OR codigo_interno LIKE ?
+               OR codigo_barras LIKE ?
+               OR variante_codigo_barras LIKE ?
+               OR variante_sku LIKE ?
+               OR variante_resumen LIKE ?
+        """
+        params = [f"%{search_norm}%"] * 6
+    if limit is not None:
+        limit_value = int(limit or 0)
+        if limit_value > 0:
+            limit_sql = "LIMIT ?"
+            params.append(limit_value)
+    return q(
+        f"""
+        SELECT *
+        FROM (
+            SELECT p.id AS producto_id,
+                   NULL AS variante_id,
+                   p.codigo_interno,
+                   p.descripcion,
+                   p.codigo_barras,
+                   '' AS variante_nombre,
+                   '' AS variante_sku,
+                   '' AS variante_codigo_barras,
+                   '' AS variante_resumen,
+                   COALESCE(p.stock_modo, 'legacy') AS stock_modo,
+                   'stock' AS stock_fuente,
+                   p.costo AS costo_unitario
+            FROM productos p
+            WHERE p.activo=1 AND COALESCE(p.stock_modo, 'legacy') <> 'variantes'
+
+            UNION ALL
+
+            SELECT p.id AS producto_id,
+                   v.id AS variante_id,
+                   p.codigo_interno,
+                   p.descripcion,
+                   p.codigo_barras,
+                   COALESCE(v.nombre, '') AS variante_nombre,
+                   COALESCE(v.sku, '') AS variante_sku,
+                   COALESCE(v.codigo_barras, '') AS variante_codigo_barras,
+                   COALESCE((
+                       SELECT GROUP_CONCAT(nombre_valor, ', ')
+                       FROM (
+                           SELECT a.nombre || ': ' || av.valor AS nombre_valor
+                           FROM producto_variante_valores vv
+                           JOIN producto_atributos a ON a.id = vv.atributo_id
+                           JOIN producto_atributo_valores av ON av.id = vv.valor_id
+                           WHERE vv.variante_id = v.id
+                           ORDER BY a.nombre_normalizado, av.valor_normalizado
+                       )
+                   ), 'Variante predeterminada') AS variante_resumen,
+                   COALESCE(p.stock_modo, 'legacy') AS stock_modo,
+                   'stock_variantes' AS stock_fuente,
+                   COALESCE(v.costo, p.costo, 0) AS costo_unitario
+            FROM productos p
+            JOIN producto_variantes v ON v.producto_id = p.id
+            WHERE p.activo=1 AND COALESCE(p.stock_modo, 'legacy') = 'variantes' AND v.activo=1
+        ) items
+        {filter_sql}
+        ORDER BY descripcion, variante_resumen, variante_id
+        {limit_sql}
+        """,
+        params,
+    )
+
+
 def get_compra(cid):
     """Devuelve una compra por ID."""
     return q(
         """SELECT compras.*,
+               pv.nombre AS variante_nombre,
+               pv.sku AS variante_sku,
+               pv.codigo_barras AS variante_codigo_barras,
+               COALESCE((
+                   SELECT GROUP_CONCAT(nombre_valor, ', ')
+                   FROM (
+                       SELECT a.nombre || ': ' || av.valor AS nombre_valor
+                       FROM producto_variante_valores vv
+                       JOIN producto_atributos a ON a.id = vv.atributo_id
+                       JOIN producto_atributo_valores av ON av.id = vv.valor_id
+                       WHERE vv.variante_id = compras.variante_id
+                       ORDER BY a.nombre_normalizado, av.valor_normalizado
+                   )
+               ), '') AS variante_resumen,
                (
                    SELECT fp.id
                    FROM facturas_proveedores fp
@@ -4495,6 +4637,7 @@ def get_compra(cid):
                    LIMIT 1
                ) as factura_proveedor_numero
         FROM compras
+        LEFT JOIN producto_variantes pv ON pv.id = compras.variante_id
         WHERE compras.id=?""",
         (cid,),
         fetchone=True,
@@ -4513,6 +4656,12 @@ def actualizar_compra_basica(compra_id, proveedor_id, fecha, observaciones, cond
         raise ValueError("La compra indicada no existe.")
 
     proveedor_id = int(proveedor_id or 0)
+    fecha_final = str(fecha or compra["fecha"] or "").strip()
+    if _compra_stock_reversion_bloqueada(compra) and (
+        proveedor_id != int(compra["proveedor_id"] or 0)
+        or fecha_final != str(compra["fecha"] or "").strip()
+    ):
+        raise ValueError("No se puede modificar fecha o proveedor de una compra migrada a stock por variantes.")
     if proveedor_nombre is None:
         proveedor = get_proveedor(proveedor_id) if proveedor_id > 0 else None
         proveedor_nombre = proveedor["nombre"] if proveedor else ""
@@ -4522,7 +4671,7 @@ def actualizar_compra_basica(compra_id, proveedor_id, fecha, observaciones, cond
         SET fecha=?, numero_remito=?, proveedor_id=?, proveedor_nombre=?, observaciones=?
         WHERE id=?""",
         (
-            str(fecha or compra["fecha"] or "").strip(),
+            fecha_final,
             str(compra["numero_remito"] if numero_remito is None else numero_remito or "").strip(),
             proveedor_id,
             str(proveedor_nombre or "").strip(),
@@ -4556,6 +4705,107 @@ def actualizar_factura_compra_basica(factura_id, numero_factura, fecha, fecha_ve
     )
 
 
+def _compra_variante_id(data) -> int | None:
+    raw = data["variante_id"] if hasattr(data, "keys") and "variante_id" in data.keys() else None
+    if raw in (None, ""):
+        return None
+    variant_id = int(raw or 0)
+    return variant_id if variant_id > 0 else None
+
+
+def _compra_stock_fuente(data, *, fallback_variant_id: int | None = None) -> str:
+    raw = data["stock_fuente"] if hasattr(data, "keys") and "stock_fuente" in data.keys() else None
+    fuente = str(raw or "").strip().lower()
+    if fuente in {"producto", "stock", "legacy"}:
+        return "producto"
+    if fuente in {"variante", "stock_variantes"}:
+        return "variante"
+    return "variante" if fallback_variant_id is not None else "producto"
+
+
+def _resolve_purchase_item_in_cursor(cursor, product_id: int, variant_id: int | None, *, allow_inactive_variant: bool = False) -> dict:
+    product = cursor.execute("SELECT * FROM productos WHERE id=? AND activo=1 LIMIT 1", (int(product_id or 0),)).fetchone()
+    if not product:
+        raise ValueError("El producto indicado no existe o no esta activo.")
+
+    stock_mode = str(product["stock_modo"] if "stock_modo" in product.keys() else "legacy").strip().lower()
+    if stock_mode == "variantes":
+        if variant_id is None:
+            raise ValueError("El producto opera por variantes; selecciona una variante activa.")
+        variant = cursor.execute(
+            """
+            SELECT *
+            FROM producto_variantes
+            WHERE id=? AND producto_id=?
+              AND (? = 1 OR activo=1)
+            LIMIT 1
+            """,
+            (int(variant_id), int(product["id"]), 1 if allow_inactive_variant else 0),
+        ).fetchone()
+        if not variant:
+            raise ValueError("La variante indicada no existe, esta inactiva o no pertenece al producto.")
+        resumen = cursor.execute(
+            """
+            SELECT GROUP_CONCAT(nombre_valor, ', ') AS resumen
+            FROM (
+                SELECT a.nombre || ': ' || av.valor AS nombre_valor
+                FROM producto_variante_valores vv
+                JOIN producto_atributos a ON a.id = vv.atributo_id
+                JOIN producto_atributo_valores av ON av.id = vv.valor_id
+                WHERE vv.variante_id = ?
+                ORDER BY a.nombre_normalizado, av.valor_normalizado
+            )
+            """,
+            (int(variant_id),),
+        ).fetchone()
+        return {
+            "producto_id": int(product["id"]),
+            "variante_id": int(variant["id"]),
+            "stock_fuente": "variante",
+            "codigo_interno": product["codigo_interno"] or "",
+            "descripcion": f"{product['descripcion'] or ''} / {(resumen['resumen'] if resumen else '') or variant['nombre'] or 'Variante predeterminada'}",
+            "costo_unitario": float(variant["costo"]) if variant["costo"] is not None else float(product["costo"] or 0),
+        }
+
+    if variant_id is not None:
+        raise ValueError("El producto legacy no admite variante en la compra.")
+    return {
+        "producto_id": int(product["id"]),
+        "variante_id": None,
+        "stock_fuente": "producto",
+        "codigo_interno": product["codigo_interno"] or "",
+        "descripcion": product["descripcion"] or "",
+        "costo_unitario": float(product["costo"] or 0),
+    }
+
+
+def _apply_purchase_delta(cursor, product_id: int, variant_id: int | None, delta: float, compra_id: int, *, usuario='', rol='', historical_reversal: bool = False, stock_fuente: str | None = None) -> None:
+    if abs(float(delta or 0)) <= 0:
+        return
+    from services import inventory
+
+    delta_value = float(delta)
+    fuente = _compra_stock_fuente({"stock_fuente": stock_fuente}, fallback_variant_id=variant_id)
+    inventory.apply_inventory_delta_in_cursor(
+        cursor,
+        int(product_id),
+        delta_value,
+        variant_id=variant_id,
+        tipo="COMPRA" if delta > 0 else "ANULACION_COMPRA",
+        motivo=f"Compra #{compra_id}",
+        usuario=usuario,
+        rol=rol,
+        allow_inactive_variant=bool(historical_reversal and delta_value < 0),
+        stock_source=fuente,
+    )
+
+
+def _compra_stock_reversion_bloqueada(compra) -> bool:
+    if not compra or "stock_reversion_bloqueada" not in compra.keys():
+        return False
+    return bool(int(compra["stock_reversion_bloqueada"] or 0))
+
+
 def update_compra(cid, data):
     """Actualiza una compra."""
     compra_actual = get_compra(cid)
@@ -4563,44 +4813,88 @@ def update_compra(cid, data):
         return
 
     conn = get_conn()
-    c = conn.cursor()
+    try:
+        c = conn.cursor()
+        producto_anterior = int(compra_actual['producto_id'] or 0)
+        variante_anterior = _compra_variante_id(compra_actual)
+        stock_fuente_anterior = _compra_stock_fuente(compra_actual, fallback_variant_id=variante_anterior)
+        cantidad_anterior = float(compra_actual['cantidad'] or 0)
+        proveedor_nuevo = int(data.get('proveedor_id', compra_actual["proveedor_id"] or 0) or 0)
+        producto_nuevo = int(data.get('producto_id', producto_anterior) or 0)
+        variante_nueva = _compra_variante_id(data) if "variante_id" in data else variante_anterior
+        cantidad_nueva = float(data.get('cantidad', cantidad_anterior) or 0)
+        if cantidad_nueva < 0:
+            raise ValueError("La cantidad no puede ser negativa.")
+        costo_nuevo = float(data.get('costo_unitario', compra_actual["costo_unitario"] or 0) or 0)
+        total_nuevo = float(data.get('total', compra_actual["total"] or 0) or 0)
+        fecha_nueva = data.get('fecha', compra_actual["fecha"] or datetime.now().strftime('%Y-%m-%d'))
+        if _compra_stock_reversion_bloqueada(compra_actual) and (
+            producto_anterior != producto_nuevo
+            or variante_anterior != variante_nueva
+            or round(cantidad_anterior, 6) != round(cantidad_nueva, 6)
+            or proveedor_nuevo != int(compra_actual["proveedor_id"] or 0)
+            or str(fecha_nueva or "").strip() != str(compra_actual["fecha"] or "").strip()
+            or round(float(compra_actual["costo_unitario"] or 0), 6) != round(costo_nuevo, 6)
+            or round(float(compra_actual["total"] or 0), 6) != round(total_nuevo, 6)
+        ):
+            raise ValueError("No se puede modificar producto, variante, cantidad, fecha, proveedor, costo o total de una compra migrada a stock por variantes.")
+        same_item = producto_anterior == producto_nuevo and variante_anterior == variante_nueva
+        delta_same_item = cantidad_nueva - cantidad_anterior if same_item else 0
+        historical_same_decrease = bool(same_item and stock_fuente_anterior == "producto" and delta_same_item <= 0)
+        allow_historical_item = bool(same_item and variante_nueva is not None and delta_same_item <= 0)
+        item = None
+        if producto_nuevo > 0 and not historical_same_decrease:
+            item = _resolve_purchase_item_in_cursor(c, producto_nuevo, variante_nueva, allow_inactive_variant=allow_historical_item)
+        elif producto_nuevo > 0:
+            item = {
+                "producto_id": producto_nuevo,
+                "variante_id": variante_nueva,
+                "stock_fuente": stock_fuente_anterior,
+                "codigo_interno": compra_actual["codigo_interno"] or data.get('codigo_interno', ''),
+                "descripcion": compra_actual["descripcion"] or data.get('descripcion', ''),
+                "costo_unitario": float(compra_actual["costo_unitario"] or 0),
+            }
+        if not _compra_stock_reversion_bloqueada(compra_actual):
+            costo_nuevo = float(data.get('costo_unitario', item["costo_unitario"] if item else 0) or 0)
+            total_nuevo = float(data.get('total', cantidad_nueva * costo_nuevo) or 0)
 
-    producto_anterior = int(compra_actual['producto_id'] or 0)
-    cantidad_anterior = float(compra_actual['cantidad'] or 0)
-    proveedor_nuevo = int(data.get('proveedor_id', 0) or 0)
-    producto_nuevo = int(data.get('producto_id', 0) or 0)
-    cantidad_nueva = float(data.get('cantidad', 1) or 0)
-    costo_nuevo = float(data.get('costo_unitario', 0) or 0)
-    total_nuevo = float(data.get('total', 0) or 0)
-    fecha_nueva = data.get('fecha', datetime.now().strftime('%Y-%m-%d'))
+        if producto_anterior != producto_nuevo or variante_anterior != variante_nueva:
+            if producto_anterior > 0 and cantidad_anterior > 0:
+                _apply_purchase_delta(c, producto_anterior, variante_anterior, -cantidad_anterior, cid, historical_reversal=True, stock_fuente=stock_fuente_anterior)
+            if producto_nuevo > 0 and cantidad_nueva > 0:
+                _apply_purchase_delta(c, producto_nuevo, variante_nueva, cantidad_nueva, cid, stock_fuente=item["stock_fuente"] if item else None)
+        else:
+            delta = delta_same_item
+            if producto_nuevo > 0 and delta:
+                _apply_purchase_delta(c, producto_nuevo, variante_nueva, delta, cid, historical_reversal=delta < 0, stock_fuente=item["stock_fuente"] if item else stock_fuente_anterior)
 
-    if producto_anterior > 0 and cantidad_anterior > 0:
-        stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_anterior,)).fetchone()
-        if stock:
-            c.execute(
-                "UPDATE stock SET stock_actual=? WHERE producto_id=?",
-                (float(stock['stock_actual'] or 0) - cantidad_anterior, producto_anterior)
+        c.execute(
+            """UPDATE compras
+            SET fecha=?,numero_remito=?,proveedor_id=?,proveedor_nombre=?,producto_id=?,variante_id=?,stock_fuente=?,codigo_interno=?,descripcion=?,cantidad=?,costo_unitario=?,total=?,observaciones=?
+            WHERE id=?""",
+            (
+                fecha_nueva,
+                data.get('numero_remito', ''),
+                proveedor_nuevo,
+                data.get('proveedor_nombre', ''),
+                producto_nuevo,
+                variante_nueva,
+                item["stock_fuente"] if item else stock_fuente_anterior,
+                item["codigo_interno"] if item else data.get('codigo_interno', ''),
+                item["descripcion"] if item else data.get('descripcion', ''),
+                cantidad_nueva,
+                costo_nuevo,
+                total_nuevo,
+                data.get('observaciones', ''),
+                cid,
             )
-
-    if producto_nuevo > 0 and cantidad_nueva > 0:
-        stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_nuevo,)).fetchone()
-        if stock:
-            c.execute(
-                "UPDATE stock SET stock_actual=?, ultimo_ingreso=? WHERE producto_id=?",
-                (float(stock['stock_actual'] or 0) + cantidad_nueva, fecha_nueva, producto_nuevo)
-            )
-        if costo_nuevo > 0:
-            c.execute("UPDATE productos SET costo=? WHERE id=?", (costo_nuevo, producto_nuevo))
-
-    c.execute(
-        """UPDATE compras SET fecha=?,numero_remito=?,proveedor_id=?,proveedor_nombre=?,producto_id=?,codigo_interno=?,descripcion=?,cantidad=?,costo_unitario=?,total=?,observaciones=? WHERE id=?""",
-        (fecha_nueva, data.get('numero_remito', ''),
-         proveedor_nuevo, data.get('proveedor_nombre', ''), producto_nuevo,
-         data.get('codigo_interno', ''), data.get('descripcion', ''), cantidad_nueva,
-         costo_nuevo, total_nuevo, data.get('observaciones', ''), cid)
-    )
-    conn.commit()
-    conn.close()
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def delete_compra(cid):
@@ -4616,6 +4910,9 @@ def anular_compra(compra_id, motivo='', usuario='', rol=''):
     if int(compra_actual["anulada"] or 0):
         raise ValueError("La compra ya estÃ¡ anulada.")
 
+    if _compra_stock_reversion_bloqueada(compra_actual):
+        raise ValueError("No se puede anular una compra migrada a stock por variantes.")
+
     factura_asociada = get_factura_por_compra(compra_id)
     if factura_asociada:
         raise ValueError("No se puede anular automÃ¡ticamente una compra asociada a cuenta corriente proveedor. AnulÃ¡ o ajustÃ¡ primero la factura/proveedor.")
@@ -4624,23 +4921,11 @@ def anular_compra(compra_id, motivo='', usuario='', rol=''):
     try:
         c = conn.cursor()
         producto_id = int(compra_actual['producto_id'] or 0)
+        variante_id = _compra_variante_id(compra_actual)
+        stock_fuente = _compra_stock_fuente(compra_actual, fallback_variant_id=variante_id)
         cantidad = float(compra_actual['cantidad'] or 0)
         if producto_id > 0 and cantidad > 0:
-            stock = c.execute("SELECT stock_actual FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
-            stock_actual = float(stock['stock_actual'] or 0) if stock else 0.0
-            if stock_actual < cantidad:
-                raise ValueError("No se puede anular porque el stock actual es menor a la cantidad ingresada. AjustÃ¡ stock o revisÃ¡ movimientos.")
-            stock_nuevo = stock_actual - cantidad
-            c.execute(
-                "UPDATE stock SET stock_actual=? WHERE producto_id=?",
-                (stock_nuevo, producto_id)
-            )
-            c.execute(
-                """INSERT INTO stock_movimientos
-                (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo)
-                VALUES (?,?,?,?,?,?)""",
-                (producto_id, 'ANULACION_COMPRA', -cantidad, stock_actual, stock_nuevo, f'AnulaciÃ³n compra #{compra_id}'),
-            )
+            _apply_purchase_delta(c, producto_id, variante_id, -cantidad, compra_id, usuario=usuario, rol=rol, historical_reversal=True, stock_fuente=stock_fuente)
 
         marca_tiempo = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         c.execute(
@@ -4672,70 +4957,67 @@ def incrementar_stock_compra(producto_id, cantidad, compra_id=None):
     if cantidad <= 0:
         return
 
-    stock_actual = q("SELECT * FROM stock WHERE producto_id=?", (producto_id,), fetchone=True)
-    if stock_actual:
-        nuevo = stock_actual['stock_actual'] + cantidad
-        q("UPDATE stock SET stock_actual=? WHERE producto_id=?", (nuevo, producto_id), fetchall=False, commit=True)
-    else:
-        q(
-            "INSERT INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo, ultimo_ingreso, proveedor_habitual) VALUES (?,?,?,?,?,?)",
-            (producto_id, cantidad, 5, 50, datetime.now().strftime('%Y-%m-%d'), ''),
-            fetchall=False, commit=True
-        )
-
-    q(
-        """INSERT INTO stock_movimientos
-        (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo)
-        VALUES (?,?,?,?,?,?)""",
-        (producto_id, 'COMPRA', cantidad,
-         stock_actual['stock_actual'] if stock_actual else 0,
-         stock_actual['stock_actual'] + cantidad if stock_actual else cantidad,
-         f'Compra #{compra_id}' if compra_id else 'Compra'),
-        fetchall=False, commit=True
-    )
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        _apply_purchase_delta(c, int(producto_id), None, float(cantidad), compra_id or 0)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def add_compra(data, conn=None):
     """Agrega una compra."""
+    if conn is not None:
+        return _add_compra_in_cursor(conn.cursor(), data)
+
+    local_conn = get_conn()
+    try:
+        compra_id = _add_compra_in_cursor(local_conn.cursor(), data)
+        local_conn.commit()
+        return compra_id
+    except Exception:
+        local_conn.rollback()
+        raise
+    finally:
+        local_conn.close()
+
+
+def _add_compra_in_cursor(c, data):
+    producto_id = int(data.get('producto_id', 0) or 0)
+    variante_id = _compra_variante_id(data)
+    cantidad = float(data.get('cantidad', 1) or 0)
+    if cantidad <= 0:
+        raise ValueError("La cantidad debe ser mayor a 0.")
+    item = _resolve_purchase_item_in_cursor(c, producto_id, variante_id)
+    costo_unitario = float(data.get('costo_unitario', item["costo_unitario"]) or 0)
+    total = float(data.get('total', cantidad * costo_unitario) or 0)
     params = (
         data.get('fecha', datetime.now().strftime('%Y-%m-%d')),
         data.get('numero_remito', ''),
-        data.get('proveedor_id', 0),
+        int(data.get('proveedor_id', 0) or 0),
         data.get('proveedor_nombre', ''),
-        data.get('producto_id', 0),
-        data.get('codigo_interno', ''),
-        data.get('descripcion', ''),
-        float(data.get('cantidad', 1)),
-        float(data.get('costo_unitario', 0)),
-        float(data.get('total', 0)),
+        item["producto_id"],
+        item["variante_id"],
+        item["stock_fuente"],
+        item["codigo_interno"],
+        item["descripcion"],
+        cantidad,
+        costo_unitario,
+        total,
         data.get('observaciones', ''),
     )
-
-    if conn is not None:
-        c = conn.cursor()
-        c.execute(
-            """INSERT INTO compras
-            (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            params,
-        )
-        compra_id = c.lastrowid
-        if data.get('producto_id') and float(data.get('cantidad', 1)) > 0:
-            _incrementar_stock_compra_tx(conn, int(data.get('producto_id')), float(data.get('cantidad', 1)), compra_id)
-        return compra_id
-
-    compra_id = q(
+    c.execute(
         """INSERT INTO compras
-        (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (fecha,numero_remito,proveedor_id,proveedor_nombre,producto_id,variante_id,stock_fuente,codigo_interno,descripcion,cantidad,costo_unitario,total,observaciones,stock_reversion_bloqueada)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
         params,
-        fetchall=False,
-        commit=True
     )
-
-    if data.get('producto_id') and float(data.get('cantidad', 1)) > 0:
-        incrementar_stock_compra(int(data.get('producto_id')), float(data.get('cantidad', 1)), compra_id)
-
+    compra_id = c.lastrowid
+    _apply_purchase_delta(c, item["producto_id"], item["variante_id"], cantidad, compra_id, stock_fuente=item["stock_fuente"])
     return compra_id
 
 
@@ -4743,34 +5025,7 @@ def _incrementar_stock_compra_tx(conn, producto_id, cantidad, compra_id=None):
     """Version transaccional de incremento de stock para compras."""
     if cantidad <= 0:
         return
-
-    c = conn.cursor()
-    stock_actual = c.execute("SELECT * FROM stock WHERE producto_id=?", (producto_id,)).fetchone()
-    if stock_actual:
-        nuevo = float(stock_actual['stock_actual'] or 0) + cantidad
-        c.execute("UPDATE stock SET stock_actual=? WHERE producto_id=?", (nuevo, producto_id))
-        stock_anterior = float(stock_actual['stock_actual'] or 0)
-    else:
-        c.execute(
-            "INSERT INTO stock (producto_id, stock_actual, stock_minimo, stock_maximo, ultimo_ingreso, proveedor_habitual) VALUES (?,?,?,?,?,?)",
-            (producto_id, cantidad, 5, 50, datetime.now().strftime('%Y-%m-%d'), ''),
-        )
-        stock_anterior = 0.0
-        nuevo = cantidad
-
-    c.execute(
-        """INSERT INTO stock_movimientos
-        (producto_id,tipo,cantidad,stock_anterior,stock_nuevo,motivo)
-        VALUES (?,?,?,?,?,?)""",
-        (
-            producto_id,
-            'COMPRA',
-            cantidad,
-            stock_anterior,
-            nuevo,
-            f'Compra #{compra_id}' if compra_id else 'Compra',
-        ),
-    )
+    _apply_purchase_delta(conn.cursor(), int(producto_id), None, float(cantidad), compra_id or 0)
 
 
 def add_compra_con_factura(data, factura_data=None):
