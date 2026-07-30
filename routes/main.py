@@ -58,6 +58,7 @@ from services.mercadopago_checkout import (
 )
 from services import pricing_resolver
 from services import product_variants
+from services import attribute_profiles
 from services import inventory
 from services.license_sdk import (
     get_current_hwid,
@@ -4931,12 +4932,16 @@ def config():
         return redirect(url_for("config"))
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
+    attribute_profile_context = attribute_profiles.get_config_context(rubro_actual)
     return render_template(
         "config.html",
         cfg=cfg,
         categorias_configurables=db.get_categorias_configuracion(rubro_actual),
         categorias_rubro=get_categorias_disponibles(rubro_actual),
         categorias_gastos=db.get_gasto_categorias(),
+        attribute_profiles=attribute_profile_context["profiles"],
+        attribute_profile_active=attribute_profile_context["active_profile"],
+        attribute_profile_active_id=attribute_profile_context["active_profile_id"],
         rubro_actual=rubro_actual,
         rubro_guardado=db.get_rubro_configurado(),
         mostrar_aviso_rubro_pendiente=db.debe_mostrar_aviso_rubro_pendiente(),
@@ -5584,6 +5589,69 @@ def config_categoria_eliminar():
     try:
         db.delete_categoria(request.form.get("nombre", ""))
         flash("Categoría desactivada correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    return redirect(url_for("config"))
+
+
+def _attribute_names_from_config_form():
+    raw_value = request.form.get("atributos", "")
+    return [item.strip() for item in raw_value.replace("\n", ",").split(",")]
+
+
+@main_bp.route("/config/atributo-perfil", methods=["POST"])
+@admin_required
+def config_atributo_perfil_crear():
+    try:
+        attribute_profiles.create_profile(
+            request.form.get("nombre", ""),
+            descripcion=request.form.get("descripcion", ""),
+            activo=_as_bool(request.form.get("activo", "1")),
+            orden=request.form.get("orden", 0),
+            attribute_names=_attribute_names_from_config_form(),
+        )
+        flash("Perfil de atributos guardado correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    return redirect(url_for("config"))
+
+
+@main_bp.route("/config/atributo-perfil/<int:profile_id>/editar", methods=["POST"])
+@admin_required
+def config_atributo_perfil_editar(profile_id):
+    try:
+        attribute_profiles.update_profile(
+            profile_id,
+            request.form.get("nombre", ""),
+            descripcion=request.form.get("descripcion", ""),
+            activo=_as_bool(request.form.get("activo", "1")),
+            orden=request.form.get("orden", 0),
+            attribute_names=_attribute_names_from_config_form(),
+        )
+        flash("Perfil de atributos actualizado correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    return redirect(url_for("config"))
+
+
+@main_bp.route("/config/atributo-perfil/<int:profile_id>/estado", methods=["POST"])
+@admin_required
+def config_atributo_perfil_estado(profile_id):
+    active = _as_bool(request.form.get("activo", "1"))
+    try:
+        attribute_profiles.set_profile_active(profile_id, active)
+        flash("Perfil activado correctamente." if active else "Perfil desactivado correctamente.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    return redirect(url_for("config"))
+
+
+@main_bp.route("/config/atributo-perfil/rubro", methods=["POST"])
+@admin_required
+def config_atributo_perfil_rubro():
+    try:
+        attribute_profiles.set_rubro_profile(get_rubro_actual(db.get_config()), request.form.get("perfil_id", ""))
+        flash("Perfil del rubro actualizado correctamente.", "success")
     except ValueError as exc:
         flash(str(exc), "warning")
     return redirect(url_for("config"))

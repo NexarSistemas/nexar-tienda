@@ -618,7 +618,7 @@ class ProductVariantsTests(unittest.TestCase):
                 self.product_variants.update_variant(
                     producto_id,
                     variante_id,
-                    attributes=[{"attribute_name": "Material", "value_name": "Madera"}],
+                    attributes=[{"attribute_name": "Textura", "value_name": "Lisa"}],
                     sku="ROLLBACK-NUEVO",
                     precio=999,
                     stock_actual=99,
@@ -632,7 +632,7 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertEqual(variante["precio"], 150.0)
         self.assertEqual(variante["stock_actual"], 2.0)
         self.assertFalse(
-            any(item["nombre"] == "Material" for item in self.product_variants.list_attributes_catalog())
+            any(item["nombre"] == "Textura" for item in self.product_variants.list_attributes_catalog())
         )
 
     def test_rutas_gestion_exigen_csrf(self):

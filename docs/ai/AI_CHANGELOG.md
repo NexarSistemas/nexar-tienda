@@ -2,6 +2,29 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-07-30 - Codex - feature/issue-148-attribute-profiles
+
+### Tarea
+Implementar Issue #148: perfiles configurables y reutilizables de atributos por
+rubro, sin condicionales fijos por nombre de rubro.
+
+### Que se cambio
+- Se agregaron tablas persistentes para perfiles de atributos, sus asociaciones
+  con `producto_atributos` y la seleccion manual por rubro.
+- Se incorporaron datos iniciales idempotentes para Indumentaria, Calzado y
+  Ferreteria como registros editables en SQLite.
+- Se agrego un servicio central transaccional para crear, editar, activar,
+  desactivar y seleccionar perfiles sin borrar atributos, valores ni variantes
+  existentes.
+- La pantalla de configuracion permite administrar perfiles, asociar atributos
+  existentes o nuevos y seleccionar el perfil del rubro actual.
+- La documentacion del catalogo universal explicita la separacion entre perfil,
+  rubro, capacidades del negocio, atributos y variantes.
+
+### Alcance protegido
+- No se modificaron POS, compras, Tiendanube ni generacion masiva de variantes.
+- No se alteraron stock decimal, unidades, equivalencias ni fraccionamiento.
+
 ## 2026-07-30 - Codex - fix/test-license-refresh-bootstrap
 
 ### Tarea
