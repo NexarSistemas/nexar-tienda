@@ -4393,7 +4393,6 @@ def crear_venta(items, cliente_nombre, medio_pago, descuento_adicional, vendedor
                     tipo='VENTA',
                     motivo=f'Venta #{venta_id}',
                     usuario=vendedor,
-                    stock_source=item.get('stock_fuente'),
                 )
                 stock_fuente = 'variante' if stock_result['fuente'] == inventory.SOURCE_VARIANTS else 'producto'
             else:
@@ -5661,20 +5660,65 @@ def get_sellable_item_pos(product_id, variant_id=None):
     return _normalize_sellable_row(row) if row else None
 
 
-def resolve_producto_pos_exact(term):
-    """Resuelve un codigo/SKU exacto a un unico item vendible o marca ambiguedad."""
+def _buscar_productos_pos_exactos(term):
+    """Busca codigos/SKU exactos sin aplicar el limite de la busqueda general."""
     normalized = str(term or "").strip().lower()
     if not normalized:
+        return []
+
+    rubro_cond, rubro_params = _build_rubro_compatible_filter(None)
+    params = list(rubro_params) + [normalized, normalized]
+    sql = f"""
+        SELECT p.id AS producto_id, NULL AS variante_id, 'producto' AS stock_fuente,
+               p.codigo_interno, p.codigo_barras, '' AS variante_sku,
+               p.descripcion, p.descripcion AS producto_descripcion, '' AS variante_nombre,
+               p.categoria, p.unidad, p.tipo_unidad, p.permite_fraccionado, p.por_peso,
+               p.precio_venta AS precio_venta, p.costo AS costo, s.stock_actual
+        FROM productos p
+        JOIN stock s ON s.producto_id = p.id
+        WHERE p.activo=1
+          AND COALESCE(p.stock_modo, 'legacy') <> 'variantes'
+          AND {rubro_cond}
+          AND (
+              LOWER(TRIM(COALESCE(p.codigo_interno, ''))) = ?
+              OR LOWER(TRIM(COALESCE(p.codigo_barras, ''))) = ?
+          )
+    """
+
+    sql += f"""
+        UNION ALL
+        SELECT p.id AS producto_id, v.id AS variante_id, 'variante' AS stock_fuente,
+               p.codigo_interno, COALESCE(NULLIF(TRIM(v.codigo_barras), ''), p.codigo_barras) AS codigo_barras,
+               COALESCE(v.sku, '') AS variante_sku,
+               p.descripcion || ' / ' || v.nombre AS descripcion,
+               p.descripcion AS producto_descripcion, v.nombre AS variante_nombre,
+               p.categoria, p.unidad, p.tipo_unidad, p.permite_fraccionado, p.por_peso,
+               COALESCE(v.precio_promocional, v.precio, p.precio_venta) AS precio_venta,
+               COALESCE(v.costo, p.costo) AS costo,
+               COALESCE(sv.stock_actual, 0) AS stock_actual
+        FROM productos p
+        JOIN producto_variantes v ON v.producto_id = p.id AND v.activo=1
+        LEFT JOIN stock_variantes sv ON sv.variante_id = v.id
+        WHERE p.activo=1
+          AND COALESCE(p.stock_modo, 'legacy') = 'variantes'
+          AND {rubro_cond}
+          AND (
+              LOWER(TRIM(COALESCE(p.codigo_interno, ''))) = ?
+              OR LOWER(TRIM(COALESCE(p.codigo_barras, ''))) = ?
+              OR LOWER(TRIM(COALESCE(v.sku, ''))) = ?
+              OR LOWER(TRIM(COALESCE(v.codigo_barras, ''))) = ?
+          )
+        ORDER BY descripcion
+    """
+    params += list(rubro_params) + [normalized, normalized, normalized, normalized]
+    return [_normalize_sellable_row(row) for row in q(sql, params)]
+
+
+def resolve_producto_pos_exact(term):
+    """Resuelve un codigo/SKU exacto a un unico item vendible o marca ambiguedad."""
+    if not str(term or "").strip():
         return {"status": "not_found", "items": []}
-    matches = []
-    for item in buscar_productos_pos(term):
-        exact_values = [
-            item.get("codigo_interno"),
-            item.get("codigo_barras"),
-            item.get("variante_sku"),
-        ]
-        if any(str(value or "").strip().lower() == normalized for value in exact_values):
-            matches.append(item)
+    matches = _buscar_productos_pos_exactos(term)
     if len(matches) == 1:
         return {"status": "found", "items": matches}
     if len(matches) > 1:

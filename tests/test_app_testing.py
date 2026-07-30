@@ -1,0 +1,42 @@
+import importlib
+import os
+import sys
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
+class AppTestingTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        os.environ["SECRET_KEY"] = "test-secret"
+        os.environ["NEXAR_TEST_DISABLE_LICENSE_AUTO_REFRESH"] = "1"
+
+    def test_create_app_en_tests_no_inicia_auto_refresh_de_licencia(self):
+        import database
+
+        database = importlib.reload(database)
+        database.DB_PATH = str(Path(self.temp_dir.name) / "test_tienda.db")
+        database._db_initialized = False
+        database.init_db()
+
+        import app as app_module
+
+        app_module = importlib.reload(app_module)
+        app_module.db = database
+        app = app_module.create_app()
+
+        self.assertEqual(app.extensions.get("license_auto_refresh_disabled"), "testing")
+        self.assertNotIn("license_auto_refresh_thread", app.extensions)
+        self.assertFalse(any(thread.name == "license-auto-refresh" for thread in threading.enumerate()))
+
+
+if __name__ == "__main__":
+    unittest.main()
