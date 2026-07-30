@@ -8,8 +8,12 @@ def _clean_text(value) -> str:
     return db._clean_attribute_profile_text(value)
 
 
-def _name_key(value) -> str:
+def _profile_name_key(value) -> str:
     return db._attribute_profile_key(value)
+
+
+def _attribute_name_key(value) -> str:
+    return db.normalize_attribute_name_key(value)
 
 
 def _validate_attribute_names(attribute_names):
@@ -19,7 +23,7 @@ def _validate_attribute_names(attribute_names):
         name = _clean_text(raw_name)
         if not name:
             continue
-        key = _name_key(name)
+        key = _attribute_name_key(name)
         if key in seen:
             raise ValueError("El perfil no puede asociar el mismo atributo mas de una vez.")
         seen.add(key)
@@ -96,7 +100,7 @@ def get_profile(profile_id):
 
 
 def _ensure_unique_profile_name(cursor, name, *, exclude_id=None):
-    key = _name_key(name)
+    key = _profile_name_key(name)
     if not key:
         raise ValueError("Ingresa un nombre de perfil.")
     params = [key]

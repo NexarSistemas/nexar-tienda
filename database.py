@@ -374,9 +374,13 @@ def _attribute_profile_key(value) -> str:
     return text.lower()
 
 
+def normalize_attribute_name_key(value) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
 def _ensure_profile_attribute_in_cursor(c, attribute_name):
     nombre = _clean_attribute_profile_text(attribute_name)
-    nombre_normalizado = _attribute_profile_key(nombre)
+    nombre_normalizado = normalize_attribute_name_key(nombre)
     if not nombre_normalizado:
         raise ValueError("El atributo es obligatorio.")
     row = c.execute(
@@ -390,6 +394,25 @@ def _ensure_profile_attribute_in_cursor(c, attribute_name):
         (nombre, nombre_normalizado),
     )
     return int(c.lastrowid)
+
+
+def _migrate_profile_attribute_keys(c):
+    rows = c.execute("SELECT id, nombre, nombre_normalizado FROM producto_atributos").fetchall()
+    for row in rows:
+        expected_key = normalize_attribute_name_key(row["nombre"])
+        current_key = row["nombre_normalizado"]
+        if not expected_key or current_key == expected_key:
+            continue
+        duplicate = c.execute(
+            "SELECT id FROM producto_atributos WHERE nombre_normalizado=? AND id<>?",
+            (expected_key, int(row["id"])),
+        ).fetchone()
+        if duplicate:
+            continue
+        c.execute(
+            "UPDATE producto_atributos SET nombre_normalizado=? WHERE id=?",
+            (expected_key, int(row["id"])),
+        )
 
 
 def _seed_attribute_profiles(c):
@@ -1604,6 +1627,7 @@ def init_db():
         )
 
     _seed_changelog(c)
+    _migrate_profile_attribute_keys(c)
     _seed_attribute_profiles(c)
 
     # â”€â”€â”€ Reparar stock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

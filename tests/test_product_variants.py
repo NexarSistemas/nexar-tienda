@@ -159,6 +159,45 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertNotEqual(color_negro["attribute_id"], talle_m["attribute_id"])
         self.assertTrue(any(item["nombre"] == "Color" for item in catalogo))
 
+    def test_crear_y_editar_variante_con_atributo_acentuado_reutiliza_catalogo(self):
+        producto_id = self._crear_producto(descripcion="Zapatilla numerada")
+        variante_id = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Número", "value_name": "40"}],
+            sku="NUM-40",
+            stock_actual=1,
+            stock_minimo=0,
+            stock_maximo=5,
+        )
+        atributo = self.database.q(
+            "SELECT id, nombre_normalizado FROM producto_atributos WHERE nombre=?",
+            ("Número",),
+            fetchone=True,
+        )
+
+        self.assertEqual(atributo["nombre_normalizado"], self.database.normalize_attribute_name_key("Número"))
+
+        self.product_variants.update_variant(
+            producto_id,
+            variante_id,
+            attributes=[{"attribute_name": "Número", "value_name": "41"}],
+            sku="NUM-41",
+            stock_actual=2,
+            stock_minimo=0,
+            stock_maximo=5,
+        )
+
+        self.assertEqual(
+            self.database.q(
+                "SELECT COUNT(*) AS total FROM producto_atributos WHERE nombre_normalizado=?",
+                (self.database.normalize_attribute_name_key("Número"),),
+                fetchone=True,
+            )["total"],
+            1,
+        )
+        variante = self.product_variants.list_product_variants(producto_id)[0]
+        self.assertEqual(variante["resumen_atributos"], "Número: 41")
+
     def test_crea_variantes_combinadas(self):
         producto_id = self._crear_producto(descripcion="Remera")
 

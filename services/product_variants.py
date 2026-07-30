@@ -12,7 +12,7 @@ DEFAULT_COMBINATION_KEY = "__default__"
 
 
 def _normalize_text(value) -> str:
-    return " ".join(str(value or "").strip().lower().split())
+    return db.normalize_attribute_name_key(value)
 
 
 def _clean_text(value) -> str:

@@ -97,6 +97,13 @@ class AttributeProfileTests(unittest.TestCase):
                 return profile
         return None
 
+    def _attribute_by_key(self, name):
+        return self.database.q(
+            "SELECT id, nombre, nombre_normalizado FROM producto_atributos WHERE nombre_normalizado=?",
+            (self.database.normalize_attribute_name_key(name),),
+            fetchone=True,
+        )
+
     def test_perfiles_iniciales_configurables_e_idempotentes(self):
         perfiles = {profile["nombre"]: profile for profile in self.attribute_profiles.list_profiles()}
 
@@ -193,6 +200,98 @@ class AttributeProfileTests(unittest.TestCase):
 
         profile = self.attribute_profiles.get_profile(profile_id)
         self.assertIsNone(profile["seed_key"])
+
+    def test_calzado_numero_usa_normalizacion_de_variantes_sin_duplicar(self):
+        calzado = self._profile_by_name("Calzado")
+        numero_attr = next(attr for attr in calzado["atributos"] if attr["nombre"] == "Número")
+        expected_key = self.database.normalize_attribute_name_key("Número")
+
+        self.assertEqual(numero_attr["nombre_normalizado"], expected_key)
+        self.assertEqual(expected_key, "número")
+        self.assertEqual(int(self._attribute_by_key("Número")["id"]), numero_attr["id"])
+        self.assertEqual(
+            self.database.q(
+                "SELECT COUNT(*) AS total FROM producto_atributos WHERE nombre=?",
+                ("Número",),
+                fetchone=True,
+            )["total"],
+            1,
+        )
+
+        self.database._db_initialized = False
+        self.database.init_db()
+
+        self.assertEqual(
+            self.database.q(
+                "SELECT COUNT(*) AS total FROM producto_atributos WHERE nombre_normalizado=?",
+                (expected_key,),
+                fetchone=True,
+            )["total"],
+            1,
+        )
+
+    def test_variante_con_numero_reutiliza_atributo_sugerido_por_calzado(self):
+        calzado = self._profile_by_name("Calzado")
+        self.attribute_profiles.set_rubro_profile("tienda", calzado["id"])
+        suggested_attr = next(attr for attr in calzado["atributos"] if attr["nombre"] == "Número")
+        producto_id = self._crear_producto_simple("Zapato con número")
+
+        self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Número", "value_name": "40"}],
+            sku="ZAP-40",
+            stock_actual=1,
+            stock_minimo=0,
+            stock_maximo=5,
+        )
+
+        variant_attr = self.database.q(
+            """
+            SELECT a.id
+            FROM producto_variante_valores vv
+            JOIN producto_atributo_valores v ON v.id = vv.valor_id
+            JOIN producto_atributos a ON a.id = v.atributo_id
+            WHERE vv.variante_id = (
+                SELECT id FROM producto_variantes WHERE producto_id=? LIMIT 1
+            )
+            """,
+            (producto_id,),
+            fetchone=True,
+        )
+        self.assertEqual(int(variant_attr["id"]), suggested_attr["id"])
+        self.assertEqual(
+            self.database.q(
+                "SELECT COUNT(*) AS total FROM producto_atributos WHERE nombre_normalizado=?",
+                (self.database.normalize_attribute_name_key("Número"),),
+                fetchone=True,
+            )["total"],
+            1,
+        )
+
+    def test_gestion_variantes_muestra_badge_sugerido_para_numero(self):
+        calzado = self._profile_by_name("Calzado")
+        self.attribute_profiles.set_rubro_profile("tienda", calzado["id"])
+        producto_id = self._crear_producto_simple("Zapato UI")
+
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.get(f"/productos/{producto_id}/variantes")
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn('data-attribute-name="Número"', html)
+        self.assertIn("Sugerido", html)
+
+    def test_perfiles_con_nombres_acentuados_conservan_normalizacion_independiente(self):
+        profile_id = self.attribute_profiles.create_profile(
+            "Decoración",
+            descripcion="Perfil con acento",
+            attribute_names=["Número"],
+        )
+
+        profile = self.attribute_profiles.get_profile(profile_id)
+        self.assertEqual(profile["nombre_normalizado"], "decoracion")
+        self.assertEqual(profile["atributos"][0]["nombre_normalizado"], "número")
 
     def test_init_db_no_restaura_asociaciones_quitadas_de_perfil_existente(self):
         profile = self._profile_by_name("Indumentaria")
