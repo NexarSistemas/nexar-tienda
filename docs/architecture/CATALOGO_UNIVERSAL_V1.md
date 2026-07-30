@@ -257,9 +257,35 @@ interna ni definir por sí mismos la fuente de verdad.
 
 ## 8. Extensibilidad por rubro
 
-Los perfiles de rubro son configuración que selecciona atributos reutilizables.
+Los perfiles de atributos por rubro son datos persistidos que sugieren un
+conjunto reutilizable de atributos para una operación concreta. Un perfil tiene
+nombre, descripción, estado y orden; se asocia a atributos del catálogo mediante
+relaciones configurables y puede activarse manualmente para un rubro del
+negocio.
+
+La separación de responsabilidades es:
+
+- perfil: agrupación reusable y editable de atributos sugeridos;
+- rubro: contexto operativo seleccionado para el negocio;
+- capacidades del negocio: reglas transversales como unidades, fraccionamiento
+  o módulos activos;
+- atributos: dimensiones configurables (`producto_atributos`) reutilizables por
+  productos y variantes;
+- variantes: combinaciones explícitas de valores de atributos para un producto.
+
+Activar un perfil no crea variantes ni cambia el modo de stock del producto. El
+perfil solo facilita atributos disponibles; no bloquea atributos adicionales ni
+combinaciones válidas. Desactivar o editar un perfil no elimina atributos,
+valores ni variantes ya usados.
+
+La gestión de variantes puede consumir el perfil activo como sugerencia visual
+para acelerar la carga manual. Esa sugerencia no copia atributos al producto, no
+genera combinaciones, no cambia `stock_modo` y no reemplaza el catálogo global
+de atributos reutilizables.
+
 Agregar o modificar un perfil no debe requerir cambiar Python, esquema ni este
-contrato. Un rubro sin perfil puede crear atributos manualmente.
+contrato. Un rubro sin perfil puede crear atributos manualmente y mantiene un
+comportamiento neutro.
 
 Ejemplos de atributos pertenecen a datos iniciales o documentación de usuario,
 nunca a enums, columnas dedicadas o ramas condicionales del dominio.

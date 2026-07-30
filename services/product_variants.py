@@ -12,7 +12,7 @@ DEFAULT_COMBINATION_KEY = "__default__"
 
 
 def _normalize_text(value) -> str:
-    return " ".join(str(value or "").strip().lower().split())
+    return db.normalize_attribute_name_key(value)
 
 
 def _clean_text(value) -> str:
@@ -284,6 +284,7 @@ def list_attributes_catalog() -> list[dict]:
         """
         SELECT a.id AS atributo_id,
                a.nombre AS atributo_nombre,
+               a.nombre_normalizado AS atributo_nombre_normalizado,
                a.activo AS atributo_activo,
                v.id AS valor_id,
                v.valor AS valor_nombre,
@@ -301,6 +302,7 @@ def list_attributes_catalog() -> list[dict]:
             {
                 "id": attr_id,
                 "nombre": row["atributo_nombre"],
+                "nombre_normalizado": row["atributo_nombre_normalizado"],
                 "activo": int(row["atributo_activo"] or 0),
                 "valores": [],
             },

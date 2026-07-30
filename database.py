@@ -261,6 +261,29 @@ DEFAULT_GASTO_CATEGORIAS = [
 GASTO_CLASIFICACIONES = ("Operativo", "Impuesto", "Financiero", "Otro")
 RUBRO_CONFIG_KEY = "rubro_negocio"
 RUBRO_CONFIRMADO_CONFIG_KEY = "rubro_negocio_confirmado"
+DEFAULT_ATTRIBUTE_PROFILES = (
+    {
+        "seed_key": "indumentaria",
+        "nombre": "Indumentaria",
+        "descripcion": "Atributos habituales para productos de indumentaria.",
+        "orden": 10,
+        "atributos": ("Talle", "Color"),
+    },
+    {
+        "seed_key": "calzado",
+        "nombre": "Calzado",
+        "descripcion": "Atributos habituales para productos de calzado.",
+        "orden": 20,
+        "atributos": ("Número", "Color"),
+    },
+    {
+        "seed_key": "ferreteria",
+        "nombre": "Ferreteria",
+        "descripcion": "Atributos habituales para productos de ferreteria.",
+        "orden": 30,
+        "atributos": ("Medida", "Material"),
+    },
+)
 
 # â”€â”€â”€ RUTA DE LA BASE DE DATOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -336,6 +359,102 @@ def _ensure_table_columns(c, table_name: str, columns: dict[str, str]) -> None:
     for column_name, definition in columns.items():
         if column_name not in existing_columns:
             c.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def _clean_attribute_profile_text(value) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
+def _attribute_profile_key(value) -> str:
+    text = _clean_attribute_profile_text(value)
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return text.lower()
+
+
+def normalize_attribute_name_key(value) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _ensure_profile_attribute_in_cursor(c, attribute_name):
+    nombre = _clean_attribute_profile_text(attribute_name)
+    nombre_normalizado = normalize_attribute_name_key(nombre)
+    if not nombre_normalizado:
+        raise ValueError("El atributo es obligatorio.")
+    row = c.execute(
+        "SELECT id FROM producto_atributos WHERE nombre_normalizado=?",
+        (nombre_normalizado,),
+    ).fetchone()
+    if row:
+        return int(row["id"])
+    c.execute(
+        "INSERT INTO producto_atributos (nombre, nombre_normalizado, activo) VALUES (?, ?, 1)",
+        (nombre, nombre_normalizado),
+    )
+    return int(c.lastrowid)
+
+
+def _migrate_profile_attribute_keys(c):
+    rows = c.execute("SELECT id, nombre, nombre_normalizado FROM producto_atributos").fetchall()
+    for row in rows:
+        expected_key = normalize_attribute_name_key(row["nombre"])
+        current_key = row["nombre_normalizado"]
+        if not expected_key or current_key == expected_key:
+            continue
+        duplicate = c.execute(
+            "SELECT id FROM producto_atributos WHERE nombre_normalizado=? AND id<>?",
+            (expected_key, int(row["id"])),
+        ).fetchone()
+        if duplicate:
+            continue
+        c.execute(
+            "UPDATE producto_atributos SET nombre_normalizado=? WHERE id=?",
+            (expected_key, int(row["id"])),
+        )
+
+
+def _seed_attribute_profiles(c):
+    for profile in DEFAULT_ATTRIBUTE_PROFILES:
+        seed_key = _attribute_profile_key(profile["seed_key"])
+        nombre = _clean_attribute_profile_text(profile["nombre"])
+        key = _attribute_profile_key(nombre)
+        if not seed_key or not key:
+            continue
+        existente = c.execute(
+            "SELECT id FROM atributo_perfiles WHERE seed_key=?",
+            (seed_key,),
+        ).fetchone()
+        if existente:
+            continue
+        existente = c.execute(
+            "SELECT id FROM atributo_perfiles WHERE seed_key IS NULL AND nombre_normalizado=?",
+            (key,),
+        ).fetchone()
+        if existente:
+            c.execute(
+                "UPDATE atributo_perfiles SET seed_key=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (seed_key, int(existente["id"])),
+            )
+            continue
+        c.execute(
+            """
+            INSERT INTO atributo_perfiles (seed_key, nombre, nombre_normalizado, descripcion, activo, orden)
+            VALUES (?, ?, ?, ?, 1, ?)
+            """,
+            (seed_key, nombre, key, profile["descripcion"], int(profile["orden"])),
+        )
+        perfil_id = int(c.lastrowid)
+        for idx, attribute_name in enumerate(profile["atributos"], start=1):
+            atributo_id = _ensure_profile_attribute_in_cursor(c, attribute_name)
+            c.execute(
+                """
+                INSERT OR IGNORE INTO atributo_perfil_atributos (perfil_id, atributo_id, orden)
+                VALUES (?, ?, ?)
+                """,
+                (perfil_id, atributo_id, idx),
+            )
 
 
 def _ensure_arca_directories() -> None:
@@ -673,6 +792,31 @@ def init_db():
             UNIQUE (atributo_id, valor_normalizado)
         );
 
+        CREATE TABLE IF NOT EXISTS atributo_perfiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seed_key TEXT UNIQUE,
+            nombre TEXT NOT NULL,
+            nombre_normalizado TEXT NOT NULL UNIQUE,
+            descripcion TEXT DEFAULT '',
+            activo INTEGER DEFAULT 1,
+            orden INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS atributo_perfil_atributos (
+            perfil_id INTEGER NOT NULL REFERENCES atributo_perfiles(id) ON DELETE CASCADE,
+            atributo_id INTEGER NOT NULL REFERENCES producto_atributos(id) ON DELETE RESTRICT,
+            orden INTEGER DEFAULT 0,
+            PRIMARY KEY (perfil_id, atributo_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS rubro_atributo_perfiles (
+            rubro TEXT PRIMARY KEY,
+            perfil_id INTEGER REFERENCES atributo_perfiles(id) ON DELETE SET NULL,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS producto_variantes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
@@ -971,6 +1115,14 @@ def init_db():
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
     """)
+    _ensure_table_columns(c, "atributo_perfiles", {"seed_key": "TEXT"})
+    c.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_atributo_perfiles_seed_key
+        ON atributo_perfiles(seed_key)
+        WHERE seed_key IS NOT NULL
+        """
+    )
 
     # â”€â”€â”€ MIGRACIONES MANUALES (Para bases de datos existentes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Verificar y agregar columna 'venta_id' en 'cc_clientes_mov'
@@ -1475,6 +1627,8 @@ def init_db():
         )
 
     _seed_changelog(c)
+    _migrate_profile_attribute_keys(c)
+    _seed_attribute_profiles(c)
 
     # â”€â”€â”€ Reparar stock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     c.execute("""
