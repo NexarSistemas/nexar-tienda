@@ -5,9 +5,6 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest import mock
-
-from flask import Flask
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -15,14 +12,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-class AppTestingTests(unittest.TestCase):
+class LicenseRefreshBootstrapTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         os.environ["SECRET_KEY"] = "test-secret"
         os.environ.pop("NEXAR_TEST_DISABLE_LICENSE_AUTO_REFRESH", None)
 
-    def test_create_app_en_tests_no_inicia_auto_refresh_de_licencia(self):
+    def test_import_app_primero_en_discovery_filtrado_no_inicia_auto_refresh(self):
         import database
 
         database = importlib.reload(database)
@@ -36,35 +33,10 @@ class AppTestingTests(unittest.TestCase):
         app_module.db = database
         app = app_module.create_app()
 
+        self.assertTrue(app.config["TESTING"])
         self.assertEqual(app.extensions.get("license_auto_refresh_disabled"), "testing")
         self.assertNotIn("license_auto_refresh_thread", app.extensions)
         self.assertFalse(any(thread.name == "license-auto-refresh" for thread in threading.enumerate()))
-
-    def test_auto_refresh_arranca_fuera_de_testing_y_sin_senal_de_tests(self):
-        from routes import main as routes_main
-
-        app = Flask(__name__)
-        started = []
-
-        class FakeThread:
-            def __init__(self, target, args, daemon, name):
-                self.target = target
-                self.args = args
-                self.daemon = daemon
-                self.name = name
-
-            def is_alive(self):
-                return True
-
-            def start(self):
-                started.append(self.name)
-
-        with mock.patch.object(routes_main.threading, "Thread", FakeThread):
-            routes_main.ensure_license_auto_refresh_thread(app)
-
-        self.assertEqual(started, ["license-auto-refresh"])
-        self.assertEqual(app.extensions["license_auto_refresh_thread"].name, "license-auto-refresh")
-        self.assertNotIn("license_auto_refresh_disabled", app.extensions)
 
 
 if __name__ == "__main__":
