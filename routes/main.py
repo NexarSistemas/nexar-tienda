@@ -5610,7 +5610,7 @@ def config_atributo_perfil_crear():
         attribute_profiles.create_profile(
             request.form.get("nombre", ""),
             descripcion=request.form.get("descripcion", ""),
-            activo=_as_bool(request.form.get("activo", "1")),
+            activo="activo" in request.form,
             orden=request.form.get("orden", 0),
             attribute_names=_attribute_names_from_config_form(),
         )
@@ -5628,7 +5628,7 @@ def config_atributo_perfil_editar(profile_id):
             profile_id,
             request.form.get("nombre", ""),
             descripcion=request.form.get("descripcion", ""),
-            activo=_as_bool(request.form.get("activo", "1")),
+            activo="activo" in request.form,
             orden=request.form.get("orden", 0),
             attribute_names=_attribute_names_from_config_form(),
         )

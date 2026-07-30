@@ -100,6 +100,9 @@ class AttributeProfileTests(unittest.TestCase):
     def test_perfiles_iniciales_configurables_e_idempotentes(self):
         perfiles = {profile["nombre"]: profile for profile in self.attribute_profiles.list_profiles()}
 
+        self.assertEqual(perfiles["Indumentaria"]["seed_key"], "indumentaria")
+        self.assertEqual(perfiles["Calzado"]["seed_key"], "calzado")
+        self.assertEqual(perfiles["Ferreteria"]["seed_key"], "ferreteria")
         self.assertEqual(
             [attr["nombre"] for attr in perfiles["Indumentaria"]["atributos"]],
             ["Talle", "Color"],
@@ -124,6 +127,72 @@ class AttributeProfileTests(unittest.TestCase):
             self.database.q("SELECT COUNT(*) AS total FROM atributo_perfil_atributos", fetchone=True)["total"],
             6,
         )
+
+    def test_seed_renombrada_conserva_identidad_y_no_se_duplica_en_init_db(self):
+        profile = self._profile_by_name("Indumentaria")
+        self.attribute_profiles.update_profile(
+            profile["id"],
+            "Ropa",
+            descripcion="Nombre editado",
+            activo=False,
+            orden=99,
+            attribute_names=["Talle"],
+        )
+
+        self.database._db_initialized = False
+        self.database.init_db()
+
+        row = self.database.q(
+            "SELECT id, seed_key, nombre, descripcion, activo, orden FROM atributo_perfiles WHERE seed_key=?",
+            ("indumentaria",),
+            fetchone=True,
+        )
+        self.assertEqual(int(row["id"]), profile["id"])
+        self.assertEqual(row["nombre"], "Ropa")
+        self.assertEqual(row["descripcion"], "Nombre editado")
+        self.assertEqual(int(row["activo"]), 0)
+        self.assertEqual(int(row["orden"]), 99)
+        self.assertIsNone(self._profile_by_name("Indumentaria"))
+        self.assertEqual(
+            self.database.q("SELECT COUNT(*) AS total FROM atributo_perfiles", fetchone=True)["total"],
+            3,
+        )
+
+    def test_base_legacy_sin_seed_key_se_migra_idempotentemente(self):
+        profile = self._profile_by_name("Indumentaria")
+        self.database.q(
+            "UPDATE atributo_perfiles SET seed_key=NULL WHERE id=?",
+            (profile["id"],),
+            commit=True,
+        )
+
+        self.database._db_initialized = False
+        self.database.init_db()
+        self.database._db_initialized = False
+        self.database.init_db()
+
+        row = self.database.q(
+            "SELECT id, seed_key FROM atributo_perfiles WHERE nombre_normalizado=?",
+            (self.database._attribute_profile_key("Indumentaria"),),
+            fetchone=True,
+        )
+        self.assertEqual(int(row["id"]), profile["id"])
+        self.assertEqual(row["seed_key"], "indumentaria")
+        self.assertEqual(
+            self.database.q("SELECT COUNT(*) AS total FROM atributo_perfiles WHERE seed_key='indumentaria'", fetchone=True)["total"],
+            1,
+        )
+
+    def test_perfiles_personalizados_no_reciben_seed_key(self):
+        profile_id = self.attribute_profiles.create_profile(
+            "Mascotas",
+            descripcion="Personalizado",
+            activo=True,
+            attribute_names=["Tamaño"],
+        )
+
+        profile = self.attribute_profiles.get_profile(profile_id)
+        self.assertIsNone(profile["seed_key"])
 
     def test_init_db_no_restaura_asociaciones_quitadas_de_perfil_existente(self):
         profile = self._profile_by_name("Indumentaria")
@@ -388,6 +457,79 @@ class AttributeProfileTests(unittest.TestCase):
             self.database.q("SELECT COUNT(*) AS total FROM atributo_perfiles", fetchone=True)["total"],
             3,
         )
+
+    def test_ui_config_crear_perfil_sin_activo_guarda_inactivo(self):
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.post(
+                "/config/atributo-perfil",
+                data={
+                    "csrf_token": "test-token",
+                    "nombre": "Inactivo UI",
+                    "descripcion": "Sin checkbox",
+                    "atributos": "Color",
+                    "orden": "51",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(self._profile_by_name("Inactivo UI")["activo"])
+
+    def test_ui_config_editar_perfil_sin_activo_guarda_inactivo(self):
+        profile_id = self.attribute_profiles.create_profile("Editable UI", activo=True, attribute_names=["Color"])
+
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.post(
+                f"/config/atributo-perfil/{profile_id}/editar",
+                data={
+                    "csrf_token": "test-token",
+                    "nombre": "Editable UI",
+                    "descripcion": "Sin checkbox",
+                    "atributos": "Color",
+                    "orden": "52",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(self.attribute_profiles.get_profile(profile_id)["activo"])
+
+    def test_ui_config_crear_y_editar_con_activo_guarda_activo(self):
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.post(
+                "/config/atributo-perfil",
+                data={
+                    "csrf_token": "test-token",
+                    "nombre": "Activo UI",
+                    "descripcion": "Con checkbox",
+                    "atributos": "Color",
+                    "activo": "1",
+                    "orden": "53",
+                },
+                follow_redirects=False,
+            )
+            self.assertEqual(response.status_code, 302)
+            profile = self._profile_by_name("Activo UI")
+            self.assertTrue(profile["activo"])
+
+            response = client.post(
+                f"/config/atributo-perfil/{profile['id']}/editar",
+                data={
+                    "csrf_token": "test-token",
+                    "nombre": "Activo UI",
+                    "descripcion": "Con checkbox editado",
+                    "atributos": "Color",
+                    "activo": "1",
+                    "orden": "54",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(self.attribute_profiles.get_profile(profile["id"])["activo"])
 
     def test_no_hay_condicionales_fijos_por_nombre_de_rubro(self):
         patrones = ("if rubro", "if normalizar_rubro", "elif rubro")

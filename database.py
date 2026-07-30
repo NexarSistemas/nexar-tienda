@@ -263,18 +263,21 @@ RUBRO_CONFIG_KEY = "rubro_negocio"
 RUBRO_CONFIRMADO_CONFIG_KEY = "rubro_negocio_confirmado"
 DEFAULT_ATTRIBUTE_PROFILES = (
     {
+        "seed_key": "indumentaria",
         "nombre": "Indumentaria",
         "descripcion": "Atributos habituales para productos de indumentaria.",
         "orden": 10,
         "atributos": ("Talle", "Color"),
     },
     {
+        "seed_key": "calzado",
         "nombre": "Calzado",
         "descripcion": "Atributos habituales para productos de calzado.",
         "orden": 20,
         "atributos": ("Número", "Color"),
     },
     {
+        "seed_key": "ferreteria",
         "nombre": "Ferreteria",
         "descripcion": "Atributos habituales para productos de ferreteria.",
         "orden": 30,
@@ -391,22 +394,33 @@ def _ensure_profile_attribute_in_cursor(c, attribute_name):
 
 def _seed_attribute_profiles(c):
     for profile in DEFAULT_ATTRIBUTE_PROFILES:
+        seed_key = _attribute_profile_key(profile["seed_key"])
         nombre = _clean_attribute_profile_text(profile["nombre"])
         key = _attribute_profile_key(nombre)
-        if not key:
+        if not seed_key or not key:
             continue
         existente = c.execute(
-            "SELECT id FROM atributo_perfiles WHERE nombre_normalizado=?",
-            (key,),
+            "SELECT id FROM atributo_perfiles WHERE seed_key=?",
+            (seed_key,),
         ).fetchone()
         if existente:
             continue
+        existente = c.execute(
+            "SELECT id FROM atributo_perfiles WHERE seed_key IS NULL AND nombre_normalizado=?",
+            (key,),
+        ).fetchone()
+        if existente:
+            c.execute(
+                "UPDATE atributo_perfiles SET seed_key=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (seed_key, int(existente["id"])),
+            )
+            continue
         c.execute(
             """
-            INSERT INTO atributo_perfiles (nombre, nombre_normalizado, descripcion, activo, orden)
-            VALUES (?, ?, ?, 1, ?)
+            INSERT INTO atributo_perfiles (seed_key, nombre, nombre_normalizado, descripcion, activo, orden)
+            VALUES (?, ?, ?, ?, 1, ?)
             """,
-            (nombre, key, profile["descripcion"], int(profile["orden"])),
+            (seed_key, nombre, key, profile["descripcion"], int(profile["orden"])),
         )
         perfil_id = int(c.lastrowid)
         for idx, attribute_name in enumerate(profile["atributos"], start=1):
@@ -757,6 +771,7 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS atributo_perfiles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seed_key TEXT UNIQUE,
             nombre TEXT NOT NULL,
             nombre_normalizado TEXT NOT NULL UNIQUE,
             descripcion TEXT DEFAULT '',
@@ -1077,6 +1092,14 @@ def init_db():
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
     """)
+    _ensure_table_columns(c, "atributo_perfiles", {"seed_key": "TEXT"})
+    c.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_atributo_perfiles_seed_key
+        ON atributo_perfiles(seed_key)
+        WHERE seed_key IS NOT NULL
+        """
+    )
 
     # â”€â”€â”€ MIGRACIONES MANUALES (Para bases de datos existentes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Verificar y agregar columna 'venta_id' en 'cc_clientes_mov'

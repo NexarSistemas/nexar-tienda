@@ -62,7 +62,7 @@ def _attributes_for_profile_ids(profile_ids):
 def list_profiles():
     rows = db.q(
         """
-        SELECT id, nombre, nombre_normalizado, descripcion, activo, orden, created_at, updated_at
+        SELECT id, seed_key, nombre, nombre_normalizado, descripcion, activo, orden, created_at, updated_at
         FROM atributo_perfiles
         ORDER BY orden, nombre
         """
@@ -79,7 +79,7 @@ def list_profiles():
 def get_profile(profile_id):
     row = db.q(
         """
-        SELECT id, nombre, nombre_normalizado, descripcion, activo, orden, created_at, updated_at
+        SELECT id, seed_key, nombre, nombre_normalizado, descripcion, activo, orden, created_at, updated_at
         FROM atributo_perfiles
         WHERE id=?
         """,
