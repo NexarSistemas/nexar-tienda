@@ -2,6 +2,7 @@ import os
 import hmac
 import logging
 import secrets
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,16 @@ APP_DISPLAY_NAME = "Nexar Comercio"
 APP_INTERNAL_PRODUCT = "nexar-tienda"
 
 
+def _is_test_process() -> bool:
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return True
+    if "pytest" in sys.modules:
+        return True
+
+    argv = " ".join(str(arg).lower() for arg in sys.argv)
+    return "unittest" in argv or "pytest" in argv
+
+
 def create_app() -> Flask:
     path_layout = get_path_layout()
     logging.info("Ruta de datos activa: %s", path_layout.active_root)
@@ -39,6 +50,8 @@ def create_app() -> Flask:
     if path_layout.migration_error:
         logging.error("Error de migracion de datos: %s", path_layout.migration_error)
     app = Flask(__name__)
+    if _is_test_process():
+        app.config["TESTING"] = True
     db.init_db()
     secret_key = os.getenv("SECRET_KEY", "").strip()
     if not secret_key:
