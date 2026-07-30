@@ -1494,6 +1494,10 @@ def _license_auto_refresh_loop(app) -> None:
 
 
 def ensure_license_auto_refresh_thread(app) -> None:
+    if app.config.get("TESTING") or os.getenv("NEXAR_TEST_DISABLE_LICENSE_AUTO_REFRESH") == "1":
+        app.extensions["license_auto_refresh_disabled"] = "testing"
+        return
+
     with _LICENSE_REFRESH_THREAD_LOCK:
         thread = app.extensions.get("license_auto_refresh_thread")
         if thread and thread.is_alive():
