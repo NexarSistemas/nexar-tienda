@@ -125,6 +125,21 @@ class AttributeProfileTests(unittest.TestCase):
             6,
         )
 
+    def test_init_db_no_restaura_asociaciones_quitadas_de_perfil_existente(self):
+        profile = self._profile_by_name("Indumentaria")
+        attr = next(item for item in profile["atributos"] if item["nombre"] == "Color")
+        self.database.q(
+            "DELETE FROM atributo_perfil_atributos WHERE perfil_id=? AND atributo_id=?",
+            (profile["id"], attr["id"]),
+            commit=True,
+        )
+
+        self.database._db_initialized = False
+        self.database.init_db()
+
+        updated = self.attribute_profiles.get_profile(profile["id"])
+        self.assertEqual([item["nombre"] for item in updated["atributos"]], ["Talle"])
+
     def test_creacion_edicion_y_asociacion_de_atributos(self):
         profile_id = self.attribute_profiles.create_profile(
             "Decoracion",
@@ -184,6 +199,24 @@ class AttributeProfileTests(unittest.TestCase):
         self.attribute_profiles.set_rubro_profile("tienda", "")
         self.assertIsNone(self.attribute_profiles.get_rubro_profile("tienda"))
 
+    def test_perfil_activo_devuelve_atributos_sugeridos_en_orden(self):
+        profile = self._profile_by_name("Indumentaria")
+        self.attribute_profiles.set_rubro_profile("tienda", profile["id"])
+
+        sugeridos = self.attribute_profiles.get_effective_suggested_attributes("tienda")
+
+        self.assertEqual([attr["nombre"] for attr in sugeridos], ["Talle", "Color"])
+
+    def test_perfil_inactivo_no_genera_sugerencias(self):
+        profile = self._profile_by_name("Indumentaria")
+        self.attribute_profiles.set_rubro_profile("tienda", profile["id"])
+        self.attribute_profiles.set_profile_active(profile["id"], False)
+
+        self.assertEqual(self.attribute_profiles.get_effective_suggested_attributes("tienda"), [])
+
+    def test_rubro_sin_perfil_devuelve_sugerencias_vacias(self):
+        self.assertEqual(self.attribute_profiles.get_effective_suggested_attributes("almacen"), [])
+
     def test_rubro_sin_perfil_y_producto_simple_siguen_neutros(self):
         self.assertIsNone(self.attribute_profiles.get_rubro_profile("almacen"))
         producto_id = self._crear_producto_simple()
@@ -223,6 +256,104 @@ class AttributeProfileTests(unittest.TestCase):
                 WHERE a.nombre_normalizado=? AND v.valor_normalizado=?
                 """,
                 (self.database._attribute_profile_key("Color"), self.database._attribute_profile_key("Rojo")),
+                fetchone=True,
+            )
+        )
+
+    def test_gestion_variantes_muestra_sugerencias_del_perfil_activo(self):
+        profile = self._profile_by_name("Indumentaria")
+        self.attribute_profiles.set_rubro_profile("tienda", profile["id"])
+        producto_id = self._crear_producto_simple("Remera UI")
+
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.get(f"/productos/{producto_id}/variantes")
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("Atributos sugeridos por el perfil activo", html)
+        self.assertIn('data-attribute-name="Talle"', html)
+        self.assertIn('data-attribute-name="Color"', html)
+        self.assertIn("Sugerido", html)
+        self.assertEqual(
+            self.database.q("SELECT COUNT(*) AS total FROM producto_variantes", fetchone=True)["total"],
+            0,
+        )
+        self.assertEqual(self.database.get_producto(producto_id)["stock_modo"], "legacy")
+
+    def test_atributo_adicional_no_perteneciente_al_perfil_sigue_permitido(self):
+        profile = self._profile_by_name("Indumentaria")
+        self.attribute_profiles.set_rubro_profile("tienda", profile["id"])
+        producto_id = self._crear_producto_simple("Producto atributo libre")
+
+        variant_id = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Textura", "value_name": "Lisa"}],
+            sku="LIBRE-1",
+            stock_actual=1,
+            stock_minimo=0,
+            stock_maximo=5,
+        )
+
+        variante = self.product_variants.list_product_variants(producto_id)[0]
+        self.assertEqual(variante["id"], variant_id)
+        self.assertEqual(variante["resumen_atributos"], "Textura: Lisa")
+        self.assertEqual(
+            [attr["nombre"] for attr in self.attribute_profiles.get_effective_suggested_attributes("tienda")],
+            ["Talle", "Color"],
+        )
+
+    def test_cambiar_perfil_actualiza_sugerencias_sin_modificar_variantes(self):
+        indumentaria = self._profile_by_name("Indumentaria")
+        calzado = self._profile_by_name("Calzado")
+        producto_id = self._crear_producto_simple("Producto cambia perfil")
+        variant_id = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Negro"}],
+            sku="CAMBIO-1",
+            stock_actual=1,
+            stock_minimo=0,
+            stock_maximo=5,
+        )
+
+        self.attribute_profiles.set_rubro_profile("tienda", indumentaria["id"])
+        self.assertEqual(
+            [attr["nombre"] for attr in self.attribute_profiles.get_effective_suggested_attributes("tienda")],
+            ["Talle", "Color"],
+        )
+        self.attribute_profiles.set_rubro_profile("tienda", calzado["id"])
+
+        self.assertEqual(
+            [attr["nombre"] for attr in self.attribute_profiles.get_effective_suggested_attributes("tienda")],
+            ["Número", "Color"],
+        )
+        variante = self.product_variants.list_product_variants(producto_id)[0]
+        self.assertEqual(variante["id"], variant_id)
+        self.assertEqual(variante["resumen_atributos"], "Color: Negro")
+
+    def test_desactivar_perfil_quita_sugerencia_no_datos(self):
+        profile = self._profile_by_name("Indumentaria")
+        self.attribute_profiles.set_rubro_profile("tienda", profile["id"])
+        producto_id = self._crear_producto_simple("Producto sin sugerencia")
+        variant_id = self.product_variants.create_variant(
+            producto_id,
+            attributes=[{"attribute_name": "Talle", "value_name": "M"}],
+            sku="SUG-1",
+            stock_actual=1,
+            stock_minimo=0,
+            stock_maximo=5,
+        )
+
+        self.attribute_profiles.set_profile_active(profile["id"], False)
+
+        self.assertEqual(self.attribute_profiles.get_effective_suggested_attributes("tienda"), [])
+        self.assertIsNotNone(
+            self.database.q("SELECT id FROM producto_variantes WHERE id=?", (variant_id,), fetchone=True)
+        )
+        self.assertIsNotNone(
+            self.database.q(
+                "SELECT id FROM producto_atributos WHERE nombre_normalizado=?",
+                (self.database._attribute_profile_key("Talle"),),
                 fetchone=True,
             )
         )

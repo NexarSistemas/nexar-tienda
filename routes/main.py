@@ -3269,6 +3269,8 @@ def _render_product_variant_management(producto, *, editing_variant_id=None, edi
     stock = db.q("SELECT * FROM stock WHERE producto_id=?", (product_id,), fetchone=True)
     variantes = product_variants.list_product_variants(product_id)
     stock_modo = (producto["stock_modo"] if "stock_modo" in producto.keys() else "legacy") or "legacy"
+    rubro_actual = get_rubro_actual(db.get_config())
+    atributos_sugeridos = attribute_profiles.get_effective_suggested_attributes(rubro_actual)
     return render_template(
         "producto_variantes.html",
         producto=producto,
@@ -3281,6 +3283,8 @@ def _render_product_variant_management(producto, *, editing_variant_id=None, edi
             if int(variante.get("activo") or 0) == 1
         ),
         atributos_catalogo=product_variants.list_attributes_catalog(),
+        atributos_sugeridos=atributos_sugeridos,
+        atributos_sugeridos_keys={atributo["nombre_normalizado"] for atributo in atributos_sugeridos},
         editing_variant_id=editing_variant_id,
         edit_form_data=edit_form_data or {},
     )

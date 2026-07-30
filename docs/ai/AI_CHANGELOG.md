@@ -18,6 +18,9 @@ rubro, sin condicionales fijos por nombre de rubro.
   existentes.
 - La pantalla de configuracion permite administrar perfiles, asociar atributos
   existentes o nuevos y seleccionar el perfil del rubro actual.
+- La gestion de variantes consume el perfil activo del rubro como sugerencias
+  visuales de atributos, sin imponerlas ni ocultar atributos globales
+  adicionales.
 - La documentacion del catalogo universal explicita la separacion entre perfil,
   rubro, capacidades del negocio, atributos y variantes.
 

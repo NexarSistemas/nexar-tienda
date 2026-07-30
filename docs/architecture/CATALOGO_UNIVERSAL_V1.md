@@ -278,6 +278,11 @@ perfil solo facilita atributos disponibles; no bloquea atributos adicionales ni
 combinaciones válidas. Desactivar o editar un perfil no elimina atributos,
 valores ni variantes ya usados.
 
+La gestión de variantes puede consumir el perfil activo como sugerencia visual
+para acelerar la carga manual. Esa sugerencia no copia atributos al producto, no
+genera combinaciones, no cambia `stock_modo` y no reemplaza el catálogo global
+de atributos reutilizables.
+
 Agregar o modificar un perfil no debe requerir cambiar Python, esquema ni este
 contrato. Un rubro sin perfil puede crear atributos manualmente y mantiene un
 comportamiento neutro.

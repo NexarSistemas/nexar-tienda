@@ -225,6 +225,13 @@ def get_rubro_profile(rubro):
     return get_profile(row["perfil_id"])
 
 
+def get_effective_suggested_attributes(rubro):
+    profile = get_rubro_profile(rubro)
+    if not profile or not profile["activo"]:
+        return []
+    return [attr for attr in profile["atributos"] if attr["activo"]]
+
+
 def get_config_context(rubro):
     selected_profile = get_rubro_profile(rubro)
     active_profile = selected_profile if selected_profile and selected_profile["activo"] else None

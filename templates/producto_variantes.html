@@ -56,6 +56,24 @@
                 <div class="card-body">
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {% if atributos_sugeridos %}
+                        <div class="mb-3">
+                            <div class="small text-muted mb-2">Atributos sugeridos por el perfil activo</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                {% for atributo in atributos_sugeridos %}
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-outline-primary js-use-suggested-attribute"
+                                    data-target="attributeRows"
+                                    data-attribute-name="{{ atributo.nombre }}"
+                                >
+                                    <i class="fas fa-tag me-1"></i>{{ atributo.nombre }}
+                                </button>
+                                {% endfor %}
+                            </div>
+                            <div class="form-text">Son sugerencias: podés escribir o seleccionar cualquier otro atributo válido.</div>
+                        </div>
+                        {% endif %}
                         <div id="attributeRows">
                             <div class="row g-2 mb-2 attribute-row">
                                 <div class="col-6">
@@ -146,6 +164,9 @@
                     {% for atributo in atributos_catalogo %}
                     <div class="mb-2">
                         <strong>{{ atributo.nombre }}</strong>
+                        {% if atributo.nombre_normalizado in atributos_sugeridos_keys %}
+                        <span class="badge bg-primary-subtle text-primary ms-1">Sugerido</span>
+                        {% endif %}
                         {% if atributo.valores %}
                         <div class="text-muted">
                             {{ atributo.valores | map(attribute='valor') | join(', ') }}
@@ -369,6 +390,34 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.addEventListener('click', function (event) {
+        const suggestedButton = event.target.closest('.js-use-suggested-attribute');
+        if (suggestedButton) {
+            const rowsContainer = document.getElementById(suggestedButton.dataset.target);
+            if (!rowsContainer) {
+                return;
+            }
+            const inputs = rowsContainer.querySelectorAll('input[name="attribute_name[]"]');
+            let targetInput = null;
+            inputs.forEach(function (input) {
+                if (!targetInput && !input.value.trim()) {
+                    targetInput = input;
+                }
+            });
+            if (!targetInput) {
+                const addButton = document.querySelector('.js-add-attribute-row[data-target="' + suggestedButton.dataset.target + '"]');
+                if (addButton) {
+                    addButton.click();
+                    const updatedInputs = rowsContainer.querySelectorAll('input[name="attribute_name[]"]');
+                    targetInput = updatedInputs[updatedInputs.length - 1];
+                }
+            }
+            if (targetInput) {
+                targetInput.value = suggestedButton.dataset.attributeName || '';
+                targetInput.focus();
+            }
+            return;
+        }
+
         const button = event.target.closest('.js-remove-row');
         if (!button) {
             return;
