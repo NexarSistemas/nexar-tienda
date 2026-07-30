@@ -22,6 +22,31 @@ class AppTestingTests(unittest.TestCase):
         os.environ["SECRET_KEY"] = "test-secret"
         os.environ.pop("NEXAR_TEST_DISABLE_LICENSE_AUTO_REFRESH", None)
 
+    def test_detector_reconoce_unittest(self):
+        import app as app_module
+
+        with mock.patch.object(sys, "argv", ["python.exe -m unittest", "discover"]):
+            self.assertTrue(app_module._is_test_process())
+
+    def test_detector_reconoce_pytest_aunque_argv0_sea_main_py(self):
+        import app as app_module
+
+        with mock.patch.object(sys, "argv", ["__main__.py", "tests/test_app_testing.py"]):
+            with mock.patch.dict(sys.modules, {"pytest": object()}):
+                self.assertTrue(app_module._is_test_process())
+
+    def test_detector_no_marca_testing_en_proceso_normal(self):
+        import app as app_module
+
+        pytest_module = sys.modules.pop("pytest", None)
+        try:
+            with mock.patch.dict(os.environ, {"PYTEST_CURRENT_TEST": ""}):
+                with mock.patch.object(sys, "argv", ["python.exe", "app.py"]):
+                    self.assertFalse(app_module._is_test_process())
+        finally:
+            if pytest_module is not None:
+                sys.modules["pytest"] = pytest_module
+
     def test_create_app_en_tests_no_inicia_auto_refresh_de_licencia(self):
         import database
 

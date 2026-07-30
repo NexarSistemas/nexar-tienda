@@ -5,6 +5,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -20,6 +21,14 @@ class LicenseRefreshBootstrapTests(unittest.TestCase):
         os.environ.pop("NEXAR_TEST_DISABLE_LICENSE_AUTO_REFRESH", None)
 
     def test_import_app_primero_en_discovery_filtrado_no_inicia_auto_refresh(self):
+        self._assert_create_app_no_inicia_auto_refresh()
+
+    def test_create_app_bajo_pytest_no_inicia_auto_refresh_aunque_argv0_sea_main_py(self):
+        with mock.patch.object(sys, "argv", ["__main__.py", "tests/test_license_refresh_bootstrap.py"]):
+            with mock.patch.dict(sys.modules, {"pytest": object()}):
+                self._assert_create_app_no_inicia_auto_refresh()
+
+    def _assert_create_app_no_inicia_auto_refresh(self):
         import database
 
         database = importlib.reload(database)

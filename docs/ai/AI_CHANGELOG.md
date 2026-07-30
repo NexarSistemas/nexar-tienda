@@ -13,6 +13,9 @@ auto-refresh de licencias.
 - `app.create_app()` marca `TESTING=True` de forma deterministica cuando el
   proceso fue invocado como `python -m unittest`, antes de llamar a
   `ensure_license_auto_refresh_thread()`.
+- Correccion post-review: la deteccion ahora cubre unittest y pytest sin
+  depender solo de `sys.argv[0]`, incluyendo `pytest` cargado en `sys.modules`
+  y `PYTEST_CURRENT_TEST`.
 - `tests/__init__.py` deja de ser responsable de definir
   `NEXAR_TEST_DISABLE_LICENSE_AUTO_REFRESH`.
 - Se agrego una regresion aislada que importa `app` primero bajo discovery
@@ -35,6 +38,13 @@ auto-refresh de licencias.
 - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_pos_variants` - 19 OK
 - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests` - 428 OK
 - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests` - 428 OK
+- Validacion post-review P2 pytest:
+  - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m py_compile app.py tests\test_app_testing.py tests\test_license_refresh_bootstrap.py`
+  - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest tests.test_app_testing` - 5 OK
+  - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests -p test_license_refresh_bootstrap.py` - 2 OK
+  - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m pytest tests\test_app_testing.py tests\test_license_refresh_bootstrap.py` - 7 OK, 2 warnings de cache `.pytest_cache` sin permisos
+  - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests` - 432 OK
+  - `PYTHON_DOTENV_DISABLED=1 .\.venv\Scripts\python.exe -m unittest discover -s tests` - 432 OK
 
 ## 2026-07-29 - Codex - fix/issue-147-pos-variants-followup
 

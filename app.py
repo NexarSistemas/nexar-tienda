@@ -29,8 +29,14 @@ APP_DISPLAY_NAME = "Nexar Comercio"
 APP_INTERNAL_PRODUCT = "nexar-tienda"
 
 
-def _is_unittest_process() -> bool:
-    return "unittest" in Path(sys.argv[0]).name.lower()
+def _is_test_process() -> bool:
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return True
+    if "pytest" in sys.modules:
+        return True
+
+    argv = " ".join(str(arg).lower() for arg in sys.argv)
+    return "unittest" in argv or "pytest" in argv
 
 
 def create_app() -> Flask:
@@ -44,7 +50,7 @@ def create_app() -> Flask:
     if path_layout.migration_error:
         logging.error("Error de migracion de datos: %s", path_layout.migration_error)
     app = Flask(__name__)
-    if _is_unittest_process():
+    if _is_test_process():
         app.config["TESTING"] = True
     db.init_db()
     secret_key = os.getenv("SECRET_KEY", "").strip()
