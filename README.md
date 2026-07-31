@@ -10,8 +10,11 @@ Estado actual:
 - Estado del repositorio: activo
 - Version actual: `1.36.7`
 - Contexto central del ecosistema: repo externo `nexar-ai-context`, archivo `CONTEXTO_NEXAR.md`
+- Nombre comercial visible: `Nexar Comercio`.
+- Identificador tecnico vigente del repositorio y del producto: `nexar-tienda`.
 - Relacion con `nexar-comercio`: repo legacy/no activo dentro del ecosistema vigente; no usarlo como reemplazo operativo de `nexar-tienda`.
 - Relacion con `nexar-almacen`: si aparece como repo separado, tratarlo tambien como legacy/no activo.
+- En configuracion activa, `LICENSE_PRODUCT` sigue tomando el valor `nexar-tienda` y `NEXAR_RUBRO` se usa para el rubro operativo actual del negocio (`tienda`).
 
 Release comercial estable `v1.36.7`:
 
