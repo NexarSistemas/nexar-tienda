@@ -283,6 +283,13 @@ para acelerar la carga manual. Esa sugerencia no copia atributos al producto, no
 genera combinaciones, no cambia `stock_modo` y no reemplaza el catálogo global
 de atributos reutilizables.
 
+La generación de combinaciones es un caso de uso explícito sobre atributos y
+valores ya existentes. El servicio calcula el producto cartesiano de los valores
+seleccionados por atributo, ordena de forma determinista por identidad
+normalizada, compara mediante `combination_key` y solo crea combinaciones nuevas
+confirmadas por el usuario. La operación de creación del lote es atómica y no
+genera SKU ni códigos de barras automáticamente.
+
 Agregar o modificar un perfil no debe requerir cambiar Python, esquema ni este
 contrato. Un rubro sin perfil puede crear atributos manualmente y mantiene un
 comportamiento neutro.
@@ -299,7 +306,7 @@ nunca a enums, columnas dedicadas o ramas condicionales del dominio.
 - #146: selección y costo de variante en compras.
 - #147: resolución de ítem vendible en POS, lector, ventas y reversión.
 - #148: persistencia y activación de perfiles configurables por rubro.
-- #149: generación atómica de combinaciones.
+- #149: generación atómica de combinaciones desde atributos seleccionados.
 - #150: adaptador de importación CSV.
 - #151: adaptador de exportación CSV.
 - #152: asociación multicanal y adaptador API.

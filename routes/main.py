@@ -3264,7 +3264,29 @@ def _variant_form_snapshot():
     }
 
 
-def _render_product_variant_management(producto, *, editing_variant_id=None, edit_form_data=None):
+def _variant_generation_selections_from_form():
+    selections = []
+    for key in request.form.keys():
+        if not key.startswith("batch_value_") or not key.endswith("[]"):
+            continue
+        raw_attribute_id = key[len("batch_value_") : -2]
+        selections.append(
+            {
+                "attribute_id": raw_attribute_id,
+                "value_ids": request.form.getlist(key),
+            }
+        )
+    return selections
+
+
+def _render_product_variant_management(
+    producto,
+    *,
+    editing_variant_id=None,
+    edit_form_data=None,
+    generation_plan=None,
+    generation_selections=None,
+):
     product_id = int(producto["id"])
     stock = db.q("SELECT * FROM stock WHERE producto_id=?", (product_id,), fetchone=True)
     variantes = product_variants.list_product_variants(product_id)
@@ -3287,7 +3309,73 @@ def _render_product_variant_management(producto, *, editing_variant_id=None, edi
         atributos_sugeridos_keys={atributo["nombre_normalizado"] for atributo in atributos_sugeridos},
         editing_variant_id=editing_variant_id,
         edit_form_data=edit_form_data or {},
+        generation_plan=generation_plan,
+        generation_selected_value_ids={
+            int(value_id)
+            for selection in generation_selections or []
+            for value_id in selection.get("value_ids", [])
+            if str(value_id or "").isdigit()
+        },
     )
+
+
+@main_bp.route("/productos/<int:pid>/variantes/generar/previsualizar", methods=["POST"])
+@vendedor_forbidden
+def producto_variantes_generar_previsualizar(pid):
+    producto = db.get_producto(pid)
+    if not producto:
+        flash("Producto inexistente.", "danger")
+        return redirect(url_for("productos"))
+    selections = _variant_generation_selections_from_form()
+    try:
+        generation_plan = product_variants.preview_variant_combinations(pid, selections)
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("producto_variantes_gestion", pid=pid))
+    if not generation_plan["combinations"]:
+        flash("Seleccioná al menos un valor activo para cada atributo participante.", "warning")
+    elif generation_plan["new_count"] == 0:
+        flash("No hay combinaciones nuevas para crear con la selección actual.", "warning")
+    return _render_product_variant_management(
+        producto,
+        generation_plan=generation_plan,
+        generation_selections=selections,
+    )
+
+
+@main_bp.route("/productos/<int:pid>/variantes/generar/confirmar", methods=["POST"])
+@vendedor_forbidden
+def producto_variantes_generar_confirmar(pid):
+    producto = db.get_producto(pid)
+    if not producto:
+        flash("Producto inexistente.", "danger")
+        return redirect(url_for("productos"))
+    selections = _variant_generation_selections_from_form()
+    selected_keys = request.form.getlist("combination_key[]")
+    try:
+        result = product_variants.create_variants_from_combinations(
+            pid,
+            selections,
+            selected_keys,
+            motivo_stock="Generacion masiva de variantes",
+            usuario=(session.get("user") or {}).get("username", ""),
+            rol=(session.get("user") or {}).get("rol", ""),
+        )
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("producto_variantes_gestion", pid=pid))
+    created_count = int(result["created_count"] or 0)
+    if created_count <= 0:
+        flash("No se crearon variantes: no había combinaciones seleccionadas.", "warning")
+        return redirect(url_for("producto_variantes_gestion", pid=pid))
+    _auditar_accion(
+        "ALTA_MASIVA_VARIANTES_PRODUCTO",
+        "producto",
+        pid,
+        detalle=f"{producto['descripcion'] or 'Producto'} - {created_count} variantes",
+    )
+    flash(f"Se crearon {created_count} variantes.", "success")
+    return redirect(url_for("producto_variantes_gestion", pid=pid))
 
 
 @main_bp.route("/productos/<int:pid>/variantes/activar-stock", methods=["POST"])

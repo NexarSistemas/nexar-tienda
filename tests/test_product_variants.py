@@ -136,6 +136,21 @@ class ProductVariantsTests(unittest.TestCase):
         variantes = {item["id"]: item for item in self.product_variants.list_product_variants(producto_id)}
         return variantes[variante_id]
 
+    def _crear_valores_atributo(self, attribute_name, value_names):
+        return [
+            self.product_variants.ensure_attribute_value(attribute_name, value_name)
+            for value_name in value_names
+        ]
+
+    def _generation_selections(self, *attribute_values):
+        return [
+            {
+                "attribute_id": values[0]["attribute_id"],
+                "value_ids": [item["value_id"] for item in values],
+            }
+            for values in attribute_values
+        ]
+
     def test_creacion_producto_comun_permanece_compatible(self):
         producto_id = self._crear_producto(descripcion="Producto comun", stock=8, costo=50, precio=90)
 
@@ -232,6 +247,200 @@ class ProductVariantsTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "combinacion de atributos ya existe"):
             self.product_variants.create_variant(producto_id, attributes=list(reversed(payload)), sku="ZAP-NEG-40")
+
+    def test_generacion_cartesiana_dos_atributos_y_orden_determinista(self):
+        producto_id = self._crear_producto(descripcion="Remera combinable")
+        colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
+        talles = self._crear_valores_atributo("Talle", ["S", "M", "L"])
+
+        plan = self.product_variants.preview_variant_combinations(
+            producto_id,
+            self._generation_selections(talles, colores),
+        )
+
+        self.assertEqual(plan["total"], 6)
+        self.assertEqual(plan["new_count"], 6)
+        self.assertEqual(
+            [item["resumen_atributos"] for item in plan["combinations"]],
+            [
+                "Color: Blanco, Talle: L",
+                "Color: Blanco, Talle: M",
+                "Color: Blanco, Talle: S",
+                "Color: Negro, Talle: L",
+                "Color: Negro, Talle: M",
+                "Color: Negro, Talle: S",
+            ],
+        )
+
+    def test_generacion_cartesiana_un_solo_atributo(self):
+        producto_id = self._crear_producto(descripcion="Gorra combinable")
+        colores = self._crear_valores_atributo("Color", ["Rojo", "Azul"])
+
+        plan = self.product_variants.preview_variant_combinations(
+            producto_id,
+            self._generation_selections(colores),
+        )
+
+        self.assertEqual(plan["total"], 2)
+        self.assertEqual([item["resumen_atributos"] for item in plan["combinations"]], ["Color: Azul", "Color: Rojo"])
+
+    def test_generacion_atributo_sin_valores_y_lote_vacio_no_fallan(self):
+        producto_id = self._crear_producto(descripcion="Producto lote vacio")
+        colores = self._crear_valores_atributo("Color", ["Negro"])
+        talles = self._crear_valores_atributo("Talle", ["M"])
+        plan = self.product_variants.preview_variant_combinations(
+            producto_id,
+            [
+                {"attribute_id": colores[0]["attribute_id"], "value_ids": [colores[0]["value_id"]]},
+                {"attribute_id": talles[0]["attribute_id"], "value_ids": []},
+            ],
+        )
+        result = self.product_variants.create_variants_from_combinations(
+            producto_id,
+            self._generation_selections(colores, talles),
+            [],
+        )
+
+        self.assertEqual(plan["combinations"], [])
+        self.assertEqual(result["created_count"], 0)
+        self.assertEqual(self.product_variants.list_product_variants(producto_id), [])
+
+    def test_generacion_marca_existentes_y_previene_duplicados_por_orden(self):
+        producto_id = self._crear_producto(descripcion="Producto existentes")
+        colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
+        talles = self._crear_valores_atributo("Talle", ["S", "M"])
+        self.product_variants.create_variant(
+            producto_id,
+            attributes=[
+                {"attribute_name": "Talle", "value_name": "S"},
+                {"attribute_name": "Color", "value_name": "Negro"},
+            ],
+            sku="EXISTENTE-NEG-S",
+        )
+
+        plan = self.product_variants.preview_variant_combinations(
+            producto_id,
+            self._generation_selections(colores, talles),
+        )
+        existing = [item for item in plan["combinations"] if item["exists"]]
+
+        self.assertEqual(plan["total"], 4)
+        self.assertEqual(plan["new_count"], 3)
+        self.assertEqual(len(existing), 1)
+        self.assertEqual(existing[0]["resumen_atributos"], "Color: Negro, Talle: S")
+        with self.assertRaisesRegex(ValueError, "ya existen"):
+            self.product_variants.create_variants_from_combinations(
+                producto_id,
+                self._generation_selections(talles, colores),
+                [existing[0]["combination_key"]],
+            )
+
+    def test_generacion_crea_seleccion_parcial_con_valores_iniciales_seguros(self):
+        producto_id = self._crear_producto(descripcion="Producto parcial", costo=80, precio=120)
+        colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
+        talles = self._crear_valores_atributo("Talle", ["S", "M"])
+        plan = self.product_variants.preview_variant_combinations(
+            producto_id,
+            self._generation_selections(colores, talles),
+        )
+        selected_keys = [item["combination_key"] for item in plan["combinations"][:2]]
+
+        result = self.product_variants.create_variants_from_combinations(
+            producto_id,
+            self._generation_selections(talles, colores),
+            selected_keys,
+        )
+
+        self.assertEqual(result["created_count"], 2)
+        variantes = self.product_variants.list_product_variants(producto_id)
+        self.assertEqual(len(variantes), 2)
+        self.assertTrue(all(item["sku"] == "" and item["codigo_barras"] == "" for item in variantes))
+        self.assertTrue(all(item["costo_propio"] is None and item["precio_propio"] is None for item in variantes))
+        self.assertTrue(all(item["stock_actual"] == 0.0 and item["stock_minimo"] == 0.0 for item in variantes))
+
+    def test_generacion_rollback_si_falla_variante_intermedia(self):
+        producto_id = self._crear_producto(descripcion="Producto rollback lote")
+        colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
+        plan = self.product_variants.preview_variant_combinations(producto_id, self._generation_selections(colores))
+        call_count = {"value": 0}
+
+        def fail_on_second(*args, **kwargs):
+            call_count["value"] += 1
+            if call_count["value"] == 2:
+                raise RuntimeError("fallo-lote-intermedio")
+            return original_insert_stock(*args, **kwargs)
+
+        original_insert_stock = self.product_variants._insert_variant_stock
+        with mock.patch.object(self.product_variants, "_insert_variant_stock", side_effect=fail_on_second):
+            with self.assertRaisesRegex(RuntimeError, "fallo-lote-intermedio"):
+                self.product_variants.create_variants_from_combinations(
+                    producto_id,
+                    self._generation_selections(colores),
+                    [item["combination_key"] for item in plan["combinations"]],
+                )
+
+        self._assert_variant_tables_empty()
+
+    def test_generacion_rechaza_sku_duplicado_en_lote_y_contra_base(self):
+        producto_id = self._crear_producto(descripcion="Producto SKU lote")
+        otro_producto = self._crear_producto(descripcion="Producto SKU existente")
+        self._crear_variante(otro_producto, sku="SKU-EXISTENTE")
+        colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
+        plan = self.product_variants.preview_variant_combinations(producto_id, self._generation_selections(colores))
+        keys = [item["combination_key"] for item in plan["combinations"]]
+
+        with self.assertRaisesRegex(ValueError, "SKUs duplicados"):
+            self.product_variants.create_variants_from_combinations(
+                producto_id,
+                self._generation_selections(colores),
+                keys,
+                details_by_key={keys[0]: {"sku": "SKU-DUP"}, keys[1]: {"sku": "SKU-DUP"}},
+            )
+        with self.assertRaisesRegex(ValueError, "SKU de la variante ya existe"):
+            self.product_variants.create_variants_from_combinations(
+                producto_id,
+                self._generation_selections(colores),
+                [keys[0]],
+                details_by_key={keys[0]: {"sku": "SKU-EXISTENTE"}},
+            )
+        self.assertEqual(self.product_variants.list_product_variants(producto_id), [])
+        self.assertEqual(len(self.product_variants.list_product_variants(otro_producto)), 1)
+
+    def test_generacion_rechaza_codigo_barras_duplicado_en_lote_y_contra_base(self):
+        producto_id = self._crear_producto(descripcion="Producto barras lote")
+        self._crear_producto(descripcion="Producto barra existente", codigo_barras="779123")
+        colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
+        plan = self.product_variants.preview_variant_combinations(producto_id, self._generation_selections(colores))
+        keys = [item["combination_key"] for item in plan["combinations"]]
+
+        with self.assertRaisesRegex(ValueError, "codigos de barras duplicados"):
+            self.product_variants.create_variants_from_combinations(
+                producto_id,
+                self._generation_selections(colores),
+                keys,
+                details_by_key={keys[0]: {"codigo_barras": "779999"}, keys[1]: {"codigo_barras": "779999"}},
+            )
+        with self.assertRaisesRegex(ValueError, "producto legacy con ese codigo de barras"):
+            self.product_variants.create_variants_from_combinations(
+                producto_id,
+                self._generation_selections(colores),
+                [keys[0]],
+                details_by_key={keys[0]: {"codigo_barras": "779123"}},
+            )
+        self._assert_variant_tables_empty()
+
+    def test_generacion_funciona_con_rubro_sin_perfil_y_atributos_arbitrarios(self):
+        self.database.set_rubro_configurado("almacen")
+        producto_id = self._crear_producto(descripcion="Producto arbitrario")
+        terminaciones = self._crear_valores_atributo("Terminación visible", ["Mate", "Brillante"])
+        medidas = self._crear_valores_atributo("Paso interno", ["10", "20"])
+        plan = self.product_variants.preview_variant_combinations(
+            producto_id,
+            self._generation_selections(medidas, terminaciones),
+        )
+
+        self.assertEqual(plan["total"], 4)
+        self.assertIn("Paso interno: 10, Terminación visible: Brillante", [item["resumen_atributos"] for item in plan["combinations"]])
 
     def test_guarda_sku_y_codigo_barras_por_variante(self):
         producto_id = self._crear_producto(descripcion="Martillo")
@@ -678,6 +887,8 @@ class ProductVariantsTests(unittest.TestCase):
         producto_id = self._crear_producto(descripcion="Producto CSRF gestion")
         variante_id = self._crear_variante(producto_id)
         paths = (
+            (f"/productos/{producto_id}/variantes/generar/previsualizar", {}),
+            (f"/productos/{producto_id}/variantes/generar/confirmar", {}),
             (f"/productos/{producto_id}/variantes/{variante_id}/editar", {}),
             (f"/productos/{producto_id}/variantes/{variante_id}/estado", {"activo": "0"}),
             (f"/productos/{producto_id}/variantes/{variante_id}/eliminar", {}),
@@ -693,6 +904,44 @@ class ProductVariantsTests(unittest.TestCase):
             self.database.q("SELECT id FROM producto_variantes WHERE id=?", (variante_id,), fetchone=True)
         )
 
+    def test_rutas_generacion_previsualizan_y_confirman_con_csrf(self):
+        producto_id = self._crear_producto(descripcion="Producto ruta generacion")
+        colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
+        talles = self._crear_valores_atributo("Talle", ["S", "M"])
+        plan = self.product_variants.preview_variant_combinations(
+            producto_id,
+            self._generation_selections(colores, talles),
+        )
+        selected_key = plan["combinations"][0]["combination_key"]
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            preview_response = client.post(
+                f"/productos/{producto_id}/variantes/generar/previsualizar",
+                data={
+                    "csrf_token": "test-token",
+                    f"batch_value_{colores[0]['attribute_id']}[]": [colores[0]["value_id"], colores[1]["value_id"]],
+                    f"batch_value_{talles[0]['attribute_id']}[]": [talles[0]["value_id"], talles[1]["value_id"]],
+                },
+                follow_redirects=False,
+            )
+            confirm_response = client.post(
+                f"/productos/{producto_id}/variantes/generar/confirmar",
+                data={
+                    "csrf_token": "test-token",
+                    f"batch_value_{colores[0]['attribute_id']}[]": [colores[0]["value_id"], colores[1]["value_id"]],
+                    f"batch_value_{talles[0]['attribute_id']}[]": [talles[0]["value_id"], talles[1]["value_id"]],
+                    "combination_key[]": [selected_key],
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(preview_response.status_code, 200)
+        html = preview_response.get_data(as_text=True)
+        self.assertIn("Crear seleccionadas", html)
+        self.assertIn("Color: Blanco, Talle: M", html)
+        self.assertEqual(confirm_response.status_code, 302)
+        self.assertEqual(len(self.product_variants.list_product_variants(producto_id)), 1)
+
     def test_gestion_renderiza_controles_accesibles(self):
         producto_id = self._crear_producto(descripcion="Producto UI")
         variante_id = self._crear_variante(producto_id, sku="UI-VAR")
@@ -705,6 +954,7 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertIn(f'id="editarVariante{variante_id}"', html)
         self.assertIn("Guardar cambios", html)
         self.assertIn("Desactivar", html)
+        self.assertIn("Generar combinaciones", html)
         self.assertIn(f'aria-label="Eliminar variante Color: Negro"', html)
 
     def test_ruta_edicion_invalida_conserva_datos_ingresados_sin_persistir(self):
@@ -753,6 +1003,8 @@ class ProductVariantsTests(unittest.TestCase):
             fetchone=True,
         )
         paths = (
+            (f"/productos/{producto_id}/variantes/generar/previsualizar", {}),
+            (f"/productos/{producto_id}/variantes/generar/confirmar", {}),
             (f"/productos/{producto_id}/variantes/{variante_id}/editar", {}),
             (f"/productos/{producto_id}/variantes/{variante_id}/estado", {"activo": "0"}),
             (f"/productos/{producto_id}/variantes/{variante_id}/eliminar", {}),

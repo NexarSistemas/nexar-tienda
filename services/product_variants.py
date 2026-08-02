@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import sqlite3
 from collections import defaultdict
+from itertools import product
 
 import database as db
 from services import inventory
@@ -76,6 +77,10 @@ def _build_variant_name(attribute_pairs: list[dict]) -> str:
     if not attribute_pairs:
         return "Variante predeterminada"
     return " / ".join(f"{item['attribute_name']}: {item['value_name']}" for item in attribute_pairs)
+
+
+def _variant_summary(attribute_pairs: list[dict]) -> str:
+    return ", ".join(f"{item['attribute_name']}: {item['value_name']}" for item in attribute_pairs) or "Variante predeterminada"
 
 
 def _ensure_attribute_value_in_cursor(cursor, attribute_name: str, value_name: str) -> dict:
@@ -178,6 +183,164 @@ def _validate_variant_sku(cursor, sku: str, *, exclude_variant_id=None) -> str |
     if cursor.execute(sql, tuple(params)).fetchone() is not None:
         raise ValueError("El SKU de la variante ya existe.")
     return sku_clean
+
+
+def _validate_batch_codes(cursor, details_by_key: dict[str, dict]) -> dict[str, dict]:
+    normalized_details: dict[str, dict] = {}
+    seen_skus: dict[str, str] = {}
+    seen_barcodes: dict[str, str] = {}
+    for combination_key, detail in details_by_key.items():
+        sku_clean = _clean_text(detail.get("sku", "")) or None
+        barcode_clean = db.normalize_codigo_barras(detail.get("codigo_barras", ""))
+        if sku_clean:
+            other_key = seen_skus.get(sku_clean)
+            if other_key and other_key != combination_key:
+                raise ValueError("El lote contiene SKUs duplicados.")
+            seen_skus[sku_clean] = combination_key
+        if barcode_clean:
+            other_key = seen_barcodes.get(barcode_clean)
+            if other_key and other_key != combination_key:
+                raise ValueError("El lote contiene codigos de barras duplicados.")
+            seen_barcodes[barcode_clean] = combination_key
+        normalized_details[combination_key] = {
+            **detail,
+            "sku": sku_clean,
+            "codigo_barras": barcode_clean,
+        }
+
+    for detail in normalized_details.values():
+        if detail["sku"]:
+            _validate_variant_sku(cursor, detail["sku"])
+        if detail["codigo_barras"]:
+            _validate_variant_barcode(cursor, detail["codigo_barras"])
+    return normalized_details
+
+
+def _existing_combination_keys(cursor, product_id: int) -> set[str]:
+    rows = cursor.execute(
+        """
+        SELECT combination_key
+        FROM producto_variantes
+        WHERE producto_id=?
+        """,
+        (int(product_id),),
+    ).fetchall()
+    return {str(row["combination_key"] or "") for row in rows}
+
+
+def _selected_catalog_values_in_cursor(cursor, selections: list[dict] | None) -> list[dict]:
+    selected_by_attribute: dict[int, set[int]] = {}
+    for raw_selection in selections or []:
+        try:
+            attribute_id = int(raw_selection.get("attribute_id") or 0)
+        except (TypeError, ValueError):
+            attribute_id = 0
+        if attribute_id <= 0:
+            continue
+        value_ids: set[int] = set()
+        for raw_value_id in raw_selection.get("value_ids", []) or []:
+            try:
+                value_id = int(raw_value_id or 0)
+            except (TypeError, ValueError):
+                continue
+            if value_id > 0:
+                value_ids.add(value_id)
+        selected_by_attribute[attribute_id] = value_ids
+
+    if not selected_by_attribute:
+        return []
+    if any(not value_ids for value_ids in selected_by_attribute.values()):
+        return []
+
+    placeholders_attr = ",".join("?" for _ in selected_by_attribute)
+    all_value_ids = sorted({value_id for value_ids in selected_by_attribute.values() for value_id in value_ids})
+    if not all_value_ids:
+        return []
+    placeholders_values = ",".join("?" for _ in all_value_ids)
+    rows = cursor.execute(
+        f"""
+        SELECT a.id AS attribute_id,
+               a.nombre AS attribute_name,
+               a.nombre_normalizado AS attribute_name_normalized,
+               av.id AS value_id,
+               av.valor AS value_name,
+               av.valor_normalizado AS value_name_normalized
+        FROM producto_atributos a
+        JOIN producto_atributo_valores av ON av.atributo_id = a.id
+        WHERE a.activo=1
+          AND av.activo=1
+          AND a.id IN ({placeholders_attr})
+          AND av.id IN ({placeholders_values})
+        ORDER BY a.nombre_normalizado, av.valor_normalizado, a.id, av.id
+        """,
+        [*selected_by_attribute.keys(), *all_value_ids],
+    ).fetchall()
+
+    values_by_attribute: dict[int, dict] = {}
+    for row in rows:
+        attribute_id = int(row["attribute_id"])
+        value_id = int(row["value_id"])
+        if value_id not in selected_by_attribute.get(attribute_id, set()):
+            continue
+        entry = values_by_attribute.setdefault(
+            attribute_id,
+            {
+                "attribute_id": attribute_id,
+                "attribute_name": row["attribute_name"],
+                "attribute_name_normalized": row["attribute_name_normalized"],
+                "values": [],
+            },
+        )
+        entry["values"].append(
+            {
+                "attribute_id": attribute_id,
+                "attribute_name": row["attribute_name"],
+                "value_id": value_id,
+                "value_name": row["value_name"],
+            }
+        )
+
+    if len(values_by_attribute) != len(selected_by_attribute):
+        return []
+
+    selected_attributes = []
+    for attribute in sorted(
+        values_by_attribute.values(),
+        key=lambda item: (str(item["attribute_name_normalized"]), int(item["attribute_id"])),
+    ):
+        if not attribute["values"]:
+            return []
+        selected_attributes.append(attribute)
+    return selected_attributes
+
+
+def _build_generation_plan_in_cursor(cursor, product_id: int, selections: list[dict] | None) -> dict[str, object]:
+    selected_attributes = _selected_catalog_values_in_cursor(cursor, selections)
+    existing_keys = _existing_combination_keys(cursor, product_id)
+    combinations = []
+    if selected_attributes:
+        value_groups = [attribute["values"] for attribute in selected_attributes]
+        for attribute_pairs_tuple in product(*value_groups):
+            attribute_pairs = [dict(item) for item in attribute_pairs_tuple]
+            combination_key = _build_combination_key(attribute_pairs)
+            exists = combination_key in existing_keys
+            combinations.append(
+                {
+                    "combination_key": combination_key,
+                    "nombre": _build_variant_name(attribute_pairs),
+                    "resumen_atributos": _variant_summary(attribute_pairs),
+                    "attributes": attribute_pairs,
+                    "exists": exists,
+                    "can_create": not exists,
+                }
+            )
+    return {
+        "selected_attributes": selected_attributes,
+        "combinations": combinations,
+        "total": len(combinations),
+        "new_count": sum(1 for item in combinations if item["can_create"]),
+        "existing_count": sum(1 for item in combinations if item["exists"]),
+    }
 
 
 def _get_variant_for_product_in_cursor(cursor, product_id: int, variant_id: int):
@@ -429,6 +592,122 @@ def create_variant(
             )
         conn.commit()
         return variant_id
+    except sqlite3.IntegrityError as exc:
+        conn.rollback()
+        _raise_variant_integrity_error(exc)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def preview_variant_combinations(product_id: int, selections: list[dict] | None) -> dict[str, object]:
+    product_row = db.get_producto(int(product_id or 0))
+    if not product_row:
+        raise ValueError("El producto indicado no existe.")
+    conn = db.get_conn()
+    try:
+        cursor = conn.cursor()
+        return _build_generation_plan_in_cursor(cursor, int(product_id), selections)
+    finally:
+        conn.close()
+
+
+def create_variants_from_combinations(
+    product_id: int,
+    selections: list[dict] | None,
+    selected_combination_keys: list[str] | None,
+    *,
+    details_by_key: dict[str, dict] | None = None,
+    activo: bool = True,
+    motivo_stock: str = "",
+    usuario: str = "",
+    rol: str = "",
+) -> dict[str, object]:
+    product_row = db.get_producto(int(product_id or 0))
+    if not product_row:
+        raise ValueError("El producto indicado no existe.")
+
+    selected_keys = {str(key or "").strip() for key in selected_combination_keys or [] if str(key or "").strip()}
+    if not selected_keys:
+        return {"created_ids": [], "created_count": 0, "skipped_count": 0, "plan": None}
+
+    stock_actual, stock_minimo, stock_maximo = _validate_variant_stock(0, 0, 0)
+    raw_details = details_by_key or {}
+
+    conn = db.get_conn()
+    try:
+        cursor = conn.cursor()
+        plan = _build_generation_plan_in_cursor(cursor, int(product_id), selections)
+        combinations_by_key = {item["combination_key"]: item for item in plan["combinations"]}
+        invalid_keys = sorted(key for key in selected_keys if key not in combinations_by_key)
+        if invalid_keys:
+            raise ValueError("La seleccion contiene combinaciones invalidas.")
+        duplicate_keys = sorted(key for key in selected_keys if not combinations_by_key[key]["can_create"])
+        if duplicate_keys:
+            raise ValueError("La seleccion contiene combinaciones que ya existen.")
+
+        selected_details = {
+            key: raw_details.get(key, {})
+            for key in sorted(selected_keys)
+        }
+        normalized_details = _validate_batch_codes(cursor, selected_details)
+        created_ids: list[int] = []
+        for combination in plan["combinations"]:
+            combination_key = combination["combination_key"]
+            if combination_key not in selected_keys:
+                continue
+            detail = normalized_details.get(combination_key, {})
+            variant_id = _insert_variant_row(
+                cursor,
+                {
+                    "product_id": int(product_id),
+                    "combination_key": combination_key,
+                    "variant_name": combination["nombre"],
+                    "sku": detail.get("sku"),
+                    "codigo_barras": detail.get("codigo_barras", ""),
+                    "costo": _validate_optional_money(detail.get("costo"), "El costo"),
+                    "precio": _validate_optional_money(detail.get("precio"), "El precio"),
+                    "precio_promocional": _validate_optional_money(
+                        detail.get("precio_promocional"),
+                        "El precio promocional",
+                    ),
+                    "activo": 1 if activo else 0,
+                    "external_id": _clean_text(detail.get("external_id", "")),
+                },
+            )
+            _insert_variant_attribute_values(cursor, variant_id, combination["attributes"])
+            if _product_uses_variant_stock(product_row) and activo:
+                inventory.adjust_inventory_item_in_cursor(
+                    cursor,
+                    int(product_id),
+                    variant_id=variant_id,
+                    stock_actual=stock_actual,
+                    stock_minimo=stock_minimo,
+                    stock_maximo=stock_maximo,
+                    motivo=motivo_stock or "Generacion masiva de variantes",
+                    usuario=usuario,
+                    rol=rol,
+                    values_already_validated=True,
+                )
+            else:
+                _insert_variant_stock(
+                    cursor,
+                    variant_id,
+                    stock_actual=stock_actual,
+                    stock_minimo=stock_minimo,
+                    stock_maximo=stock_maximo,
+                )
+            created_ids.append(variant_id)
+
+        conn.commit()
+        return {
+            "created_ids": created_ids,
+            "created_count": len(created_ids),
+            "skipped_count": len(plan["combinations"]) - len(created_ids),
+            "plan": plan,
+        }
     except sqlite3.IntegrityError as exc:
         conn.rollback()
         _raise_variant_integrity_error(exc)
