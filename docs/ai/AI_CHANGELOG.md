@@ -2,6 +2,42 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-08-02 - Codex - feature/issue-149-variantes-atributos
+
+### Tarea
+Implementar Issue #149: generacion automatica y generica de combinaciones de
+variantes desde atributos y valores configurados.
+
+### Que se cambio
+- Se limita la generacion a 500 combinaciones por operacion antes de
+  materializar el producto cartesiano, para proteger la vista previa y la
+  confirmacion ante selecciones excesivas.
+- Se agrego un planificador de combinaciones en `services/product_variants.py`
+  que calcula el producto cartesiano de atributos activos y valores activos,
+  ordena de forma deterministica y compara variantes existentes con
+  `combination_key`.
+- La administracion existente de variantes permite seleccionar valores,
+  previsualizar combinaciones, distinguir existentes de nuevas, desmarcar
+  combinaciones nuevas y confirmar la creacion por POST con CSRF.
+- La creacion masiva es atomica, reutiliza los inserts y stock existentes, no
+  genera SKU ni codigo de barras y deja costo/precio heredados para completar o
+  editar despues.
+- Se validan duplicados de combinacion, SKU y codigo de barras dentro del lote y
+  contra la base antes de persistir.
+- El contrato tecnico de catalogo documenta la generacion atomica desde
+  atributos seleccionados.
+
+### Alcance protegido
+- No se modificaron POS, compras, inventario operativo, Tiendanube,
+  sincronizacion, builds ni instaladores.
+- La creacion manual de variantes conserva el flujo existente.
+
+### Que se probo
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m py_compile app.py routes/main.py services/product_variants.py tests/test_product_variants.py`
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_product_variants` - 83 OK
+- `git diff --check`
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 474 OK
+
 ## 2026-07-30 - Codex - feature/issue-148-attribute-profiles
 
 ### Tarea
