@@ -305,6 +305,34 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertEqual(result["created_count"], 0)
         self.assertEqual(self.product_variants.list_product_variants(producto_id), [])
 
+    def test_generacion_permite_cardinal_igual_al_limite(self):
+        producto_id = self._crear_producto(descripcion="Producto limite exacto")
+        colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
+        talles = self._crear_valores_atributo("Talle", ["S", "M"])
+
+        with mock.patch.object(self.product_variants, "MAX_VARIANT_GENERATION_COMBINATIONS", 4):
+            plan = self.product_variants.preview_variant_combinations(
+                producto_id,
+                self._generation_selections(colores, talles),
+            )
+
+        self.assertEqual(plan["total"], 4)
+
+    def test_generacion_rechaza_cardinal_superior_antes_del_producto(self):
+        producto_id = self._crear_producto(descripcion="Producto limite excedido")
+        colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
+        talles = self._crear_valores_atributo("Talle", ["S", "M", "L"])
+
+        with mock.patch.object(self.product_variants, "MAX_VARIANT_GENERATION_COMBINATIONS", 4):
+            with mock.patch.object(self.product_variants, "product") as product_mock:
+                with self.assertRaisesRegex(ValueError, "demasiadas combinaciones"):
+                    self.product_variants.preview_variant_combinations(
+                        producto_id,
+                        self._generation_selections(colores, talles),
+                    )
+
+        product_mock.assert_not_called()
+
     def test_generacion_marca_existentes_y_previene_duplicados_por_orden(self):
         producto_id = self._crear_producto(descripcion="Producto existentes")
         colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
@@ -941,6 +969,39 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertIn("Color: Blanco, Talle: M", html)
         self.assertEqual(confirm_response.status_code, 302)
         self.assertEqual(len(self.product_variants.list_product_variants(producto_id)), 1)
+
+    def test_rutas_generacion_rechazan_limite_sin_persistir(self):
+        producto_id = self._crear_producto(descripcion="Producto limite rutas")
+        colores = self._crear_valores_atributo("Color", ["Negro", "Blanco"])
+        form_data = {
+            "csrf_token": "test-token",
+            f"batch_value_{colores[0]['attribute_id']}[]": [colores[0]["value_id"], colores[1]["value_id"]],
+        }
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            with mock.patch.object(self.product_variants, "MAX_VARIANT_GENERATION_COMBINATIONS", 1):
+                preview_response = client.post(
+                    f"/productos/{producto_id}/variantes/generar/previsualizar",
+                    data=form_data,
+                    follow_redirects=True,
+                )
+                confirm_response = client.post(
+                    f"/productos/{producto_id}/variantes/generar/confirmar",
+                    data={**form_data, "combination_key[]": ["clave-manipulada"]},
+                    follow_redirects=True,
+                )
+
+        for response in (preview_response, confirm_response):
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("La seleccion genera demasiadas combinaciones", response.get_data(as_text=True))
+        self._assert_variant_tables_empty()
+        self.assertIsNone(
+            self.database.q(
+                "SELECT id FROM stock_movimientos WHERE producto_id=?",
+                (producto_id,),
+                fetchone=True,
+            )
+        )
 
     def test_gestion_renderiza_controles_accesibles(self):
         producto_id = self._crear_producto(descripcion="Producto UI")

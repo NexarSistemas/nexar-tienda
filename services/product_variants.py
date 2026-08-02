@@ -10,6 +10,8 @@ from services import inventory
 
 
 DEFAULT_COMBINATION_KEY = "__default__"
+# La vista administrativa materializa cada combinacion para permitir su seleccion.
+MAX_VARIANT_GENERATION_COMBINATIONS = 500
 
 
 def _normalize_text(value) -> str:
@@ -314,8 +316,24 @@ def _selected_catalog_values_in_cursor(cursor, selections: list[dict] | None) ->
     return selected_attributes
 
 
+def _validate_generation_cardinality(selected_attributes: list[dict]) -> int:
+    if not selected_attributes:
+        return 0
+
+    cardinality = 1
+    for attribute in selected_attributes:
+        cardinality *= len(attribute["values"])
+        if cardinality > MAX_VARIANT_GENERATION_COMBINATIONS:
+            raise ValueError(
+                "La seleccion genera demasiadas combinaciones. "
+                "Reduci los atributos o valores seleccionados."
+            )
+    return cardinality
+
+
 def _build_generation_plan_in_cursor(cursor, product_id: int, selections: list[dict] | None) -> dict[str, object]:
     selected_attributes = _selected_catalog_values_in_cursor(cursor, selections)
+    _validate_generation_cardinality(selected_attributes)
     existing_keys = _existing_combination_keys(cursor, product_id)
     combinations = []
     if selected_attributes:

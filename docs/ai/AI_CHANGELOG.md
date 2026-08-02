@@ -9,6 +9,9 @@ Implementar Issue #149: generacion automatica y generica de combinaciones de
 variantes desde atributos y valores configurados.
 
 ### Que se cambio
+- Se limita la generacion a 500 combinaciones por operacion antes de
+  materializar el producto cartesiano, para proteger la vista previa y la
+  confirmacion ante selecciones excesivas.
 - Se agrego un planificador de combinaciones en `services/product_variants.py`
   que calcula el producto cartesiano de atributos activos y valores activos,
   ordena de forma deterministica y compara variantes existentes con
@@ -31,9 +34,9 @@ variantes desde atributos y valores configurados.
 
 ### Que se probo
 - `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m py_compile app.py routes/main.py services/product_variants.py tests/test_product_variants.py`
-- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_product_variants` - 80 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest tests.test_product_variants` - 83 OK
 - `git diff --check`
-- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 471 OK
+- `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m unittest discover -s tests` - 474 OK
 
 ## 2026-07-30 - Codex - feature/issue-148-attribute-profiles
 
