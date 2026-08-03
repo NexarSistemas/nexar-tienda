@@ -739,6 +739,26 @@ class ProductVariantsTests(unittest.TestCase):
                 stock_maximo=5,
             )
 
+    def test_validate_variant_sku_detects_legacy_spacing_and_excludes_own_variant(self):
+        producto_id = self._crear_producto(descripcion="Producto SKU legacy")
+        primera_id = self._crear_variante(producto_id, sku="ABC")
+        conn = self._direct_conn()
+        self.addCleanup(conn.close)
+        conn.execute("UPDATE producto_variantes SET sku=' ABC ' WHERE id=?", (primera_id,))
+        conn.commit()
+        with self.assertRaisesRegex(ValueError, "SKU de la variante ya existe"):
+            self._crear_variante(producto_id, attributes=[{"attribute_name": "Color", "value_name": "Azul"}], sku="abc")
+        self.product_variants.update_variant(
+            producto_id,
+            primera_id,
+            attributes=[{"attribute_name": "Color", "value_name": "Negro"}],
+            sku="abc",
+            stock_actual=2,
+            stock_minimo=1,
+            stock_maximo=5,
+        )
+        self.assertEqual(self._variante_por_id(producto_id, primera_id)["sku"], "abc")
+
     def test_update_variant_rechaza_codigo_barras_duplicado(self):
         producto_id = self._crear_producto(descripcion="Producto barras")
         self._crear_variante(producto_id, sku="BAR-UNO", codigo_barras="779000002002")

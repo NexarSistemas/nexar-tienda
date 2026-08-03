@@ -26,6 +26,22 @@ def _normalize_variant_sku_for_matching(value) -> str:
     return _clean_text(value).lower()
 
 
+def _normalized_variant_skus_excluding_in_cursor(cursor, *, exclude_variant_ids=()) -> set[str]:
+    excluded_ids = tuple(sorted({int(variant_id) for variant_id in exclude_variant_ids if variant_id is not None}))
+    sql = "SELECT id, sku FROM producto_variantes WHERE sku IS NOT NULL"
+    params = []
+    if excluded_ids:
+        marks = ",".join("?" for _ in excluded_ids)
+        sql += f" AND id NOT IN ({marks})"
+        params.extend(excluded_ids)
+    normalized_skus = set()
+    for row in cursor.execute(sql, tuple(params)).fetchall():
+        normalized = _normalize_variant_sku_for_matching(row["sku"])
+        if normalized:
+            normalized_skus.add(normalized)
+    return normalized_skus
+
+
 def _validate_stock_value(value, label: str) -> float:
     if value is None or (isinstance(value, str) and not value.strip()):
         value = 0
@@ -181,12 +197,7 @@ def _validate_variant_sku(cursor, sku: str, *, exclude_variant_id=None) -> str |
     sku_clean = _clean_text(sku) or None
     if not sku_clean:
         return None
-    sql = "SELECT id FROM producto_variantes WHERE lower(sku)=?"
-    params = [_normalize_variant_sku_for_matching(sku_clean)]
-    if exclude_variant_id is not None:
-        sql += " AND id <> ?"
-        params.append(int(exclude_variant_id))
-    if cursor.execute(sql, tuple(params)).fetchone() is not None:
+    if _normalize_variant_sku_for_matching(sku_clean) in _normalized_variant_skus_excluding_in_cursor(cursor, exclude_variant_ids=(exclude_variant_id,)):
         raise ValueError("El SKU de la variante ya existe.")
     return sku_clean
 
