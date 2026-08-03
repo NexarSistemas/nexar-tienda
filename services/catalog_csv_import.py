@@ -284,6 +284,7 @@ def _check_product_limit_in_cursor(cursor, plan: dict) -> None:
 
 def _prepare_variant_commercial_updates_in_cursor(cursor, plan: dict) -> dict[int, dict]:
     updates = {}
+    planned_creates = []
     for item in plan["products"]:
         if item["action"] != "update" or not item["has_variants"]:
             continue
@@ -296,6 +297,10 @@ def _prepare_variant_commercial_updates_in_cursor(cursor, plan: dict) -> dict[in
             if action == "create":
                 if cursor.execute("SELECT id FROM producto_variantes WHERE producto_id=? AND combination_key=?", (item["product_id"], key)).fetchone():
                     raise ValueError("La combinacion planificada para crear ya existe. Genera una nueva vista previa.")
+                planned_creates.append({
+                    "sku": product_variants._clean_text(row["sku"]) or None,
+                    "codigo_barras": db.normalize_codigo_barras(row["barcode"]) if product_variants._clean_text(row["barcode"]) else None,
+                })
                 continue
             if row.get("expected_combination_key") != key:
                 raise ValueError("La variante planificada para actualizar ya no existe. Genera una nueva vista previa.")
@@ -310,28 +315,34 @@ def _prepare_variant_commercial_updates_in_cursor(cursor, plan: dict) -> dict[in
                 "costo": row["cost"] if row["cost"] is not None else variant["costo"],
                 "precio": row["price"] if row["price"] is not None else variant["precio"],
             }
-    if not updates:
+    if not updates and not planned_creates:
         return updates
     ids = tuple(updates)
+    final_identifiers = [*updates.values(), *planned_creates]
     external_skus = product_variants._normalized_variant_skus_excluding_in_cursor(cursor, exclude_variant_ids=ids)
     for field, label in (("sku", "SKU"), ("codigo_barras", "codigo de barras")):
-        values = [str(update[field] or "") for update in updates.values() if update[field]]
+        values = [str(item[field] or "") for item in final_identifiers if item[field]]
         normalized_values = [product_variants._normalize_variant_sku_for_matching(value) for value in values] if field == "sku" else values
         if len(normalized_values) != len(set(normalized_values)):
             raise ValueError(f"El lote termina con {label}s duplicados.")
         for value, normalized_value in zip(values, normalized_values):
-            marks = ",".join("?" for _ in ids)
             if field == "sku" and normalized_value in external_skus:
                 raise ValueError("El SKU de la variante ya existe.")
-            row = cursor.execute(f"SELECT id FROM producto_variantes WHERE {field}=? AND id NOT IN ({marks}) LIMIT 1", (value, *ids)).fetchone()
-            if row:
+            sql = f"SELECT id FROM producto_variantes WHERE {field}=?"
+            params = [value]
+            if ids:
+                marks = ",".join("?" for _ in ids)
+                sql += f" AND id NOT IN ({marks})"
+                params.extend(ids)
+            if cursor.execute(sql + " LIMIT 1", tuple(params)).fetchone():
                 raise ValueError("El SKU de la variante ya existe." if field == "sku" else "Ya existe otra variante con ese codigo de barras.")
         if field == "codigo_barras":
             for value in values:
                 if cursor.execute("SELECT id FROM productos WHERE TRIM(COALESCE(codigo_barras, ''))=? LIMIT 1", (value,)).fetchone():
                     raise ValueError("Ya existe un producto legacy con ese codigo de barras.")
-    marks = ",".join("?" for _ in ids)
-    cursor.execute(f"UPDATE producto_variantes SET sku=NULL, codigo_barras=NULL WHERE id IN ({marks})", ids)
+    if ids:
+        marks = ",".join("?" for _ in ids)
+        cursor.execute(f"UPDATE producto_variantes SET sku=NULL, codigo_barras=NULL WHERE id IN ({marks})", ids)
     return updates
 
 
