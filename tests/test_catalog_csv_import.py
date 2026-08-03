@@ -185,6 +185,103 @@ class CatalogImportPersistenceTests(unittest.TestCase):
             conn.rollback()
             conn.close()
 
+    def test_existing_variant_updates_commercial_fields_without_changing_attributes(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,10,REM-OLD,7790000010101,SI\n")
+        variant = self.db.q("SELECT * FROM producto_variantes WHERE sku='REM-OLD'", fetchone=True)
+        self._import("Identificador de URL,Nombre,Nombre de propiedad 1,Valor de propiedad 1,SKU\nremera,Remera,Color,Negro,REM-OLD\n")
+        original_values = self.db.q("SELECT costo, precio FROM producto_variantes WHERE id=?", (variant["id"],), fetchone=True)
+        self.assertEqual(tuple(original_values), (40.0, 100.0))
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,0,0,,REM-NEW,7790000010101,\n")
+        updated = self.db.q("SELECT * FROM producto_variantes WHERE id=?", (variant["id"],), fetchone=True)
+        self.assertEqual((updated["sku"], updated["codigo_barras"], updated["costo"], updated["precio"], updated["activo"]), ("REM-NEW", "7790000010101", 0.0, 0.0, 1))
+        self.assertEqual((updated["producto_id"], updated["combination_key"], updated["nombre"]), (variant["producto_id"], variant["combination_key"], variant["nombre"]))
+        self._import("Identificador de URL,Nombre,Nombre de propiedad 1,Valor de propiedad 1,SKU\nremera,Remera,Color,Negro,REM-NEW\n")
+        preserved = self.db.q("SELECT sku, codigo_barras, costo, precio FROM producto_variantes WHERE id=?", (variant["id"],), fetchone=True)
+        self.assertEqual(tuple(preserved), ("REM-NEW", "7790000010101", 0.0, 0.0))
+
+    def test_variant_commercial_collision_rechecks_in_catalog_transaction(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,REM-ONE,7790000010102,SI\n")
+        self._import(HEADER + "pantalon,Pantalon,Ropa,Talle,M,100,40,1,PAN-ONE,7790000010103,SI\n")
+        product = self.db.q("SELECT producto_id FROM producto_variantes WHERE sku='REM-ONE'", fetchone=True)
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv(HEADER.encode() + b"remera,Remera,Ropa,Color,Negro,100,40,1,REM-ONE,7790000010102,SI\n"))
+        plan["products"][0]["rows"][0]["sku"] = "PAN-ONE"
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        with self.assertRaisesRegex(ValueError, "SKU de la variante ya existe"):
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+        self.assertEqual(self.db.q("SELECT sku FROM producto_variantes WHERE producto_id=?", (product["producto_id"],), fetchone=True)["sku"], "REM-ONE")
+
+    def test_confirmation_projects_active_product_limit(self):
+        self.db.set_config({
+            "license_plan": "BASICA", "license_plan_original": "BASICA", "license_effective_plan": "BASICA",
+            "license_tier": "BASICA", "license_status": "activa", "basica_activada": "1",
+        })
+        for index in range(202):
+            self.db.add_producto({"descripcion": f"Local {index}", "marca": "", "categoria": "General", "tipo_unidad": "unidad", "unidad": "unidad", "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 1, "costo": 1, "precio_venta": 1, "codigo_barras": f"77900001{index:04d}"})
+        barcodes = [row["codigo_barras"] for row in self.db.q("SELECT codigo_barras FROM productos ORDER BY id")]
+        active_barcode, inactive_barcode = barcodes[0], barcodes[-1]
+
+        def reset_active(count):
+            self.db.q("UPDATE productos SET activo=0", fetchall=False, commit=True)
+            self.db.q("UPDATE productos SET activo=1 WHERE id IN (SELECT id FROM productos ORDER BY id LIMIT ?)", (count,), fetchall=False, commit=True)
+
+        def apply(content):
+            plan = self.service.build_plan(self.service.parse_tiendanube_csv(content.encode()))
+            self.assertFalse(plan["errors"], plan["errors"])
+            plan_id, token = self.service.store_plan(plan, self.owner)
+            return self.service.apply_stored_plan(plan_id, token, self.owner)
+
+        def simple(url, name, barcode, visible=""):
+            return f"{url},{name},General,,,1,1,,,{barcode},{visible}\n"
+
+        reset_active(200)
+        with self.assertRaisesRegex(ValueError, r"Limite de productos \(200\) excedido"):
+            apply(HEADER + simple("reactivar", "Reactivar", inactive_barcode, "SI"))
+        self.assertEqual(self.db.q("SELECT activo FROM productos WHERE codigo_barras=?", (inactive_barcode,), fetchone=True)["activo"], 0)
+
+        reset_active(199)
+        apply(HEADER + simple("reactivar", "Reactivar", inactive_barcode, "SI"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+
+        reset_active(199)
+        apply(HEADER + simple("alta-al-limite", "Alta al limite", "7790000099900", "SI"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+
+        reset_active(200)
+        with self.assertRaisesRegex(ValueError, r"Limite de productos \(200\) excedido"):
+            apply(HEADER + simple("alta-excedida", "Alta excedida", "7790000099899", "SI"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE codigo_barras='7790000099899'", fetchone=True)["total"], 0)
+
+        reset_active(200)
+        apply(HEADER + simple("activo-si", "Activo", active_barcode, "SI"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+        absent_header = "Identificador de URL,Nombre,Codigo de barras\n"
+        apply(absent_header + f"activo-ausente,Activo,{active_barcode}\n")
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+
+        apply(HEADER + simple("desactivar", "Desactivar", active_barcode, "NO"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 199)
+
+        reset_active(200)
+        apply(HEADER + simple("desactivar", "Desactivar", active_barcode, "NO") + simple("alta-neta", "Alta neta", "7790000099901", "SI"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+
+        reset_active(200)
+        with self.assertRaisesRegex(ValueError, r"Limite de productos \(200\) excedido"):
+            apply(HEADER + simple("desactivar", "No aplicar", active_barcode, "NO") + simple("alta-uno", "Alta uno", "7790000099902", "SI") + simple("alta-dos", "Alta dos", "7790000099903", "SI"))
+        self.assertEqual(self.db.q("SELECT activo FROM productos WHERE codigo_barras=?", (active_barcode,), fetchone=True)["activo"], 1)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE codigo_barras IN (?,?)", ("7790000099902", "7790000099903"), fetchone=True)["total"], 0)
+
+        apply(HEADER + simple("alta-inactiva", "Alta inactiva", "7790000099904", "NO"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+        self.assertEqual(self.db.q("SELECT activo FROM productos WHERE codigo_barras='7790000099904'", fetchone=True)["activo"], 0)
+
+        reset_active(199)
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + simple("reactivar-preview", "Reactivar", inactive_barcode, "SI")).encode()))
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        self.db.q("UPDATE productos SET activo=1 WHERE codigo_barras=?", (barcodes[-2],), fetchall=False, commit=True)
+        with self.assertRaisesRegex(ValueError, r"Limite de productos \(200\) excedido"):
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+
 
 class CatalogImportHttpTests(unittest.TestCase):
     def setUp(self):
@@ -286,6 +383,13 @@ class CatalogImportHttpTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Seleccion\u00e1 un archivo con extensi\u00f3n .csv.", response.get_data(as_text=True))
         self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM catalog_import_plans", fetchone=True)["total"], 0)
+
+    def test_product_list_keeps_both_csv_import_routes(self):
+        response = self._client().get("/productos")
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('href="/productos/importar"', body)
+        self.assertIn('href="/productos/importar/tiendanube"', body)
 
     def test_new_preview_invalidates_old_and_catalog_rollback_stays_consumed(self):
         client = self._client()

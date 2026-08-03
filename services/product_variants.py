@@ -187,6 +187,37 @@ def _validate_variant_sku(cursor, sku: str, *, exclude_variant_id=None) -> str |
     return sku_clean
 
 
+def _update_variant_commercial_fields_in_cursor(
+    cursor,
+    product_id: int,
+    variant_id: int,
+    *,
+    sku: str = "",
+    codigo_barras: str = "",
+    costo=None,
+    precio=None,
+) -> None:
+    """Update only the CSV-represented commercial fields of an existing variant."""
+    _get_variant_for_product_in_cursor(cursor, product_id, variant_id)
+    fields, params = [], []
+    if _clean_text(sku):
+        fields.append("sku=?")
+        params.append(_validate_variant_sku(cursor, sku, exclude_variant_id=variant_id))
+    if _clean_text(codigo_barras):
+        fields.append("codigo_barras=?")
+        params.append(_validate_variant_barcode(cursor, codigo_barras, exclude_variant_id=variant_id))
+    for column, value, label in (("costo", costo, "El costo"), ("precio", precio, "El precio")):
+        if value is not None:
+            fields.append(f"{column}=?")
+            params.append(_validate_optional_money(value, label))
+    if fields:
+        params.extend((int(variant_id), int(product_id)))
+        cursor.execute(
+            f"UPDATE producto_variantes SET {', '.join(fields)}, updated_at=CURRENT_TIMESTAMP WHERE id=? AND producto_id=?",
+            tuple(params),
+        )
+
+
 def _validate_batch_codes(cursor, details_by_key: dict[str, dict]) -> dict[str, dict]:
     normalized_details: dict[str, dict] = {}
     seen_skus: dict[str, str] = {}

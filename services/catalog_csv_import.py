@@ -244,7 +244,29 @@ def _adjust_stock_if_changed(cursor, product_id: int, target: float, *, variant_
         inventory.adjust_inventory_item_in_cursor(cursor, product_id, variant_id=variant_id, stock_actual=target, stock_minimo=float(current[1] or 0) if current else 0, stock_maximo=float(current[2] or 0) if current else 0, motivo="Importacion CSV de catalogo", allow_inactive_variant=allow_inactive_variant)
 
 
+def _project_active_product_count_in_cursor(cursor, plan: dict) -> int:
+    current = int(cursor.execute("SELECT COUNT(*) FROM productos WHERE activo=1").fetchone()[0] or 0)
+    delta = 0
+    for item in plan["products"]:
+        first = item["rows"][0]
+        if item["action"] == "create":
+            delta += int(first["visible"] is not False)
+        elif not item["has_variants"] and first["visible"] is not None:
+            active = cursor.execute("SELECT activo FROM productos WHERE id=?", (item["product_id"],)).fetchone()
+            if active:
+                delta += int(bool(first["visible"])) - int(bool(active[0]))
+    return current + delta
+
+
+def _check_product_limit_in_cursor(cursor, plan: dict) -> None:
+    projected = _project_active_product_count_in_cursor(cursor, plan)
+    check = db.check_license_limits("productos", projected)
+    if not check["ok"]:
+        raise ValueError(check["message"])
+
+
 def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
+    _check_product_limit_in_cursor(cursor, plan)
     created = updated = 0
     for item in plan["products"]:
             rows, first = item["rows"], item["rows"][0]
@@ -264,10 +286,19 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
                     existing = cursor.execute("SELECT id FROM producto_variantes WHERE producto_id=? AND combination_key=?", (product_id, key)).fetchone()
                     if existing:
                         variant_id = int(existing[0])
+                        product_variants._update_variant_commercial_fields_in_cursor(
+                            cursor,
+                            product_id,
+                            variant_id,
+                            sku=row["sku"],
+                            codigo_barras=row["barcode"],
+                            costo=row["cost"],
+                            precio=row["price"],
+                        )
                         if row["visible"] is not None:
                             (enable_variants if row["visible"] else disable_variants).append(variant_id)
                     else:
-                        variant_id = product_variants._insert_variant_row(cursor, {"product_id": product_id, "combination_key": key, "variant_name": product_variants._build_variant_name(pairs), "sku": row["sku"] or None, "codigo_barras": row["barcode"], "costo": row["cost"], "precio": row["price"], "precio_promocional": None, "activo": int(row["visible"] if row["visible"] is not None else True), "external_id": ""})
+                        variant_id = product_variants._insert_variant_row(cursor, {"product_id": product_id, "combination_key": key, "variant_name": product_variants._build_variant_name(pairs), "sku": product_variants._validate_variant_sku(cursor, row["sku"]), "codigo_barras": product_variants._validate_variant_barcode(cursor, row["barcode"]), "costo": row["cost"], "precio": row["price"], "precio_promocional": None, "activo": int(row["visible"] if row["visible"] is not None else True), "external_id": ""})
                         product_variants._insert_variant_attribute_values(cursor, variant_id, pairs)
                         # New variants without source stock still need their safe
                         # zero-valued inventory configuration.

@@ -354,6 +354,8 @@ def create_app() -> Flask:
         "dashboard",
         "productos",
         "productos_importar",
+        "productos_importar_tiendanube",
+        "productos_importar_tiendanube_confirmar",
         "productos_importar_plantilla",
         "productos_importar_generar_plantilla",
         "productos_importar_abrir_carpeta",
