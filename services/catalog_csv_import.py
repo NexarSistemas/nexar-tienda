@@ -244,12 +244,23 @@ def _adjust_stock_if_changed(cursor, product_id: int, target: float, *, variant_
         inventory.adjust_inventory_item_in_cursor(cursor, product_id, variant_id=variant_id, stock_actual=target, stock_minimo=float(current[1] or 0) if current else 0, stock_maximo=float(current[2] or 0) if current else 0, motivo="Importacion CSV de catalogo", allow_inactive_variant=allow_inactive_variant)
 
 
-def _check_product_limit_in_cursor(cursor, plan: dict) -> None:
-    created = sum(1 for item in plan["products"] if item["action"] == "create")
-    if not created:
-        return
+def _project_active_product_count_in_cursor(cursor, plan: dict) -> int:
     current = int(cursor.execute("SELECT COUNT(*) FROM productos WHERE activo=1").fetchone()[0] or 0)
-    check = db.check_license_limits("productos", current + created)
+    delta = 0
+    for item in plan["products"]:
+        first = item["rows"][0]
+        if item["action"] == "create":
+            delta += int(first["visible"] is not False)
+        elif not item["has_variants"] and first["visible"] is not None:
+            active = cursor.execute("SELECT activo FROM productos WHERE id=?", (item["product_id"],)).fetchone()
+            if active:
+                delta += int(bool(first["visible"])) - int(bool(active[0]))
+    return current + delta
+
+
+def _check_product_limit_in_cursor(cursor, plan: dict) -> None:
+    projected = _project_active_product_count_in_cursor(cursor, plan)
+    check = db.check_license_limits("productos", projected)
     if not check["ok"]:
         raise ValueError(check["message"])
 

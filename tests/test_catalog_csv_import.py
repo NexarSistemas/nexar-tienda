@@ -210,33 +210,77 @@ class CatalogImportPersistenceTests(unittest.TestCase):
             self.service.apply_stored_plan(plan_id, token, self.owner)
         self.assertEqual(self.db.q("SELECT sku FROM producto_variantes WHERE producto_id=?", (product["producto_id"],), fetchone=True)["sku"], "REM-ONE")
 
-    def test_confirmation_enforces_basic_product_limit_for_creations_only(self):
+    def test_confirmation_projects_active_product_limit(self):
         self.db.set_config({
             "license_plan": "BASICA", "license_plan_original": "BASICA", "license_effective_plan": "BASICA",
             "license_tier": "BASICA", "license_status": "activa", "basica_activada": "1",
         })
-        for index in range(199):
+        for index in range(202):
             self.db.add_producto({"descripcion": f"Local {index}", "marca": "", "categoria": "General", "tipo_unidad": "unidad", "unidad": "unidad", "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 1, "costo": 1, "precio_venta": 1, "codigo_barras": f"77900001{index:04d}"})
-        existing = self.db.q("SELECT codigo_barras FROM productos ORDER BY id LIMIT 1", fetchone=True)["codigo_barras"]
-        content = HEADER + f"existente,Actualizado,General,,,1,1,,,{existing},SI\nnuevo,Nuevo,General,,,1,1,1,,7790000099999,SI\n"
-        plan = self.service.build_plan(self.service.parse_tiendanube_csv(content.encode()))
-        self.db.add_producto({"descripcion": "Creado tras preview", "marca": "", "categoria": "General", "tipo_unidad": "unidad", "unidad": "unidad", "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 1, "costo": 1, "precio_venta": 1, "codigo_barras": "779000019999"})
+        barcodes = [row["codigo_barras"] for row in self.db.q("SELECT codigo_barras FROM productos ORDER BY id")]
+        active_barcode, inactive_barcode = barcodes[0], barcodes[-1]
+
+        def reset_active(count):
+            self.db.q("UPDATE productos SET activo=0", fetchall=False, commit=True)
+            self.db.q("UPDATE productos SET activo=1 WHERE id IN (SELECT id FROM productos ORDER BY id LIMIT ?)", (count,), fetchall=False, commit=True)
+
+        def apply(content):
+            plan = self.service.build_plan(self.service.parse_tiendanube_csv(content.encode()))
+            self.assertFalse(plan["errors"], plan["errors"])
+            plan_id, token = self.service.store_plan(plan, self.owner)
+            return self.service.apply_stored_plan(plan_id, token, self.owner)
+
+        def simple(url, name, barcode, visible=""):
+            return f"{url},{name},General,,,1,1,,,{barcode},{visible}\n"
+
+        reset_active(200)
+        with self.assertRaisesRegex(ValueError, r"Limite de productos \(200\) excedido"):
+            apply(HEADER + simple("reactivar", "Reactivar", inactive_barcode, "SI"))
+        self.assertEqual(self.db.q("SELECT activo FROM productos WHERE codigo_barras=?", (inactive_barcode,), fetchone=True)["activo"], 0)
+
+        reset_active(199)
+        apply(HEADER + simple("reactivar", "Reactivar", inactive_barcode, "SI"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+
+        reset_active(199)
+        apply(HEADER + simple("alta-al-limite", "Alta al limite", "7790000099900", "SI"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+
+        reset_active(200)
+        with self.assertRaisesRegex(ValueError, r"Limite de productos \(200\) excedido"):
+            apply(HEADER + simple("alta-excedida", "Alta excedida", "7790000099899", "SI"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE codigo_barras='7790000099899'", fetchone=True)["total"], 0)
+
+        reset_active(200)
+        apply(HEADER + simple("activo-si", "Activo", active_barcode, "SI"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+        absent_header = "Identificador de URL,Nombre,Codigo de barras\n"
+        apply(absent_header + f"activo-ausente,Activo,{active_barcode}\n")
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+
+        apply(HEADER + simple("desactivar", "Desactivar", active_barcode, "NO"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 199)
+
+        reset_active(200)
+        apply(HEADER + simple("desactivar", "Desactivar", active_barcode, "NO") + simple("alta-neta", "Alta neta", "7790000099901", "SI"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+
+        reset_active(200)
+        with self.assertRaisesRegex(ValueError, r"Limite de productos \(200\) excedido"):
+            apply(HEADER + simple("desactivar", "No aplicar", active_barcode, "NO") + simple("alta-uno", "Alta uno", "7790000099902", "SI") + simple("alta-dos", "Alta dos", "7790000099903", "SI"))
+        self.assertEqual(self.db.q("SELECT activo FROM productos WHERE codigo_barras=?", (active_barcode,), fetchone=True)["activo"], 1)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE codigo_barras IN (?,?)", ("7790000099902", "7790000099903"), fetchone=True)["total"], 0)
+
+        apply(HEADER + simple("alta-inactiva", "Alta inactiva", "7790000099904", "NO"))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+        self.assertEqual(self.db.q("SELECT activo FROM productos WHERE codigo_barras='7790000099904'", fetchone=True)["activo"], 0)
+
+        reset_active(199)
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + simple("reactivar-preview", "Reactivar", inactive_barcode, "SI")).encode()))
         plan_id, token = self.service.store_plan(plan, self.owner)
+        self.db.q("UPDATE productos SET activo=1 WHERE codigo_barras=?", (barcodes[-2],), fetchall=False, commit=True)
         with self.assertRaisesRegex(ValueError, r"Limite de productos \(200\) excedido"):
             self.service.apply_stored_plan(plan_id, token, self.owner)
-        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos", fetchone=True)["total"], 200)
-        self.assertNotEqual(self.db.q("SELECT descripcion FROM productos WHERE codigo_barras=?", (existing,), fetchone=True)["descripcion"], "Actualizado")
-        self.db.q("UPDATE productos SET activo=0 WHERE codigo_barras=?", (existing,), fetchall=False, commit=True)
-        plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + "nuevo,Nuevo,General,,,1,1,1,,7790000099999,SI\n").encode()))
-        plan_id, token = self.service.store_plan(plan, self.owner)
-        self.service.apply_stored_plan(plan_id, token, self.owner)
-        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
-        active_barcode = self.db.q("SELECT codigo_barras FROM productos WHERE activo=1 ORDER BY id LIMIT 1", fetchone=True)["codigo_barras"]
-        update_only = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + f"existente,Solo actualizado,General,,,1,1,,,{active_barcode},SI\n").encode()))
-        update_id, update_token = self.service.store_plan(update_only, self.owner)
-        with mock.patch.object(self.db, "check_license_limits", wraps=self.db.check_license_limits) as check_limits:
-            self.service.apply_stored_plan(update_id, update_token, self.owner)
-        check_limits.assert_not_called()
 
 
 class CatalogImportHttpTests(unittest.TestCase):
