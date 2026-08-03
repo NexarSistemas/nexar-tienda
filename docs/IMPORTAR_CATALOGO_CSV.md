@@ -5,6 +5,11 @@ conserva temporalmente en SQLite, asociado al usuario, durante 15 minutos y se
 consume una sola vez. Los productos simples requieren código de barras para
 mantener identidad persistente; un SKU simple aislado se rechaza. La
 importación fija el stock objetivo y solo registra movimiento cuando cambia.
+Cada preview invalida la anterior del mismo usuario. Todo intento de
+confirmación consume el plan antes de persistir; si el lote falla, debe crearse
+una preview nueva. En simples, los campos comerciales informados actualizan el
+producto; los campos vacíos se conservan y el cero numérico actualiza a cero.
+La importación conserva mínimos y máximos locales de stock.
 
 Nexar Comercio admite el CSV exportado por Tiendanube. El adaptador reconoce
 `Identificador de URL`, `Nombre`, categorías, hasta tres pares de propiedad y

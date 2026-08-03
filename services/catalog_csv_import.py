@@ -74,7 +74,7 @@ def store_plan(plan: dict, owner_user_id: int) -> tuple[str, str]:
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM catalog_import_plans WHERE expires_at <= ? OR consumed_at IS NOT NULL", (now.isoformat(),))
-        cursor.execute("DELETE FROM catalog_import_plans WHERE id IN (SELECT id FROM catalog_import_plans WHERE owner_user_id=? ORDER BY created_at DESC LIMIT -1 OFFSET ?)", (int(owner_user_id), MAX_STORED_PLANS_PER_USER - 1))
+        cursor.execute("DELETE FROM catalog_import_plans WHERE owner_user_id=? AND consumed_at IS NULL", (int(owner_user_id),))
         cursor.execute("INSERT INTO catalog_import_plans (id, owner_user_id, token_hash, payload, created_at, expires_at) VALUES (?,?,?,?,?,?)", (plan_id, int(owner_user_id), hashlib.sha256(token.encode()).hexdigest(), json.dumps(plan, separators=(",", ":")), now.isoformat(), expires.isoformat()))
         conn.commit()
         return plan_id, token
@@ -227,10 +227,10 @@ def build_plan(rows: list[dict]) -> dict:
 
 def _adjust_stock_if_changed(cursor, product_id: int, target: float, *, variant_id=None):
     table, where, key = ("stock_variantes", "variante_id", variant_id) if variant_id is not None else ("stock", "producto_id", product_id)
-    current = cursor.execute(f"SELECT stock_actual FROM {table} WHERE {where}=?", (key,)).fetchone()
+    current = cursor.execute(f"SELECT stock_actual, stock_minimo, stock_maximo FROM {table} WHERE {where}=?", (key,)).fetchone()
     current_value = float(current[0] or 0) if current else 0.0
     if round(current_value, 6) != round(float(target), 6):
-        inventory.adjust_inventory_item_in_cursor(cursor, product_id, variant_id=variant_id, stock_actual=target, stock_minimo=0, stock_maximo=0, motivo="Importacion CSV de catalogo")
+        inventory.adjust_inventory_item_in_cursor(cursor, product_id, variant_id=variant_id, stock_actual=target, stock_minimo=float(current[1] or 0) if current else 0, stock_maximo=float(current[2] or 0) if current else 0, motivo="Importacion CSV de catalogo")
 
 
 def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
@@ -258,12 +258,23 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
                 for allocation in allocations:
                     _adjust_stock_if_changed(cursor, product_id, allocation["stock_actual"], variant_id=allocation["variant_id"])
             else:
-                row = first; cursor.execute("UPDATE productos SET codigo_barras=? WHERE id=?", (row["barcode"], product_id))
+                row = first
+                fields, params = ["codigo_barras=?", "activo=?"], [row["barcode"], int(row["visible"])]
+                for column, source in (("descripcion", "name"), ("marca", "brand"), ("categoria", "category")):
+                    if row[source]:
+                        fields.append(f"{column}=?"); params.append(row[source].split(",")[0].strip() if column == "categoria" else row[source])
+                for column, source in (("costo", "cost"), ("precio_venta", "price")):
+                    if row[source] is not None:
+                        fields.append(f"{column}=?"); params.append(row[source])
+                params.append(product_id)
+                cursor.execute(f"UPDATE productos SET {', '.join(fields)} WHERE id=?", tuple(params))
                 _adjust_stock_if_changed(cursor, product_id, row["stock"] or 0)
     return {"created": created, "updated": updated}
 
 
 def apply_stored_plan(plan_id: str, token: str, owner_user_id: int) -> dict:
+    # Consume first in its own committed transaction: a later catalog rollback
+    # must never make this preview confirmable again.
     conn = db.get_conn()
     try:
         cursor = conn.cursor(); cursor.execute("BEGIN IMMEDIATE")
@@ -273,7 +284,18 @@ def apply_stored_plan(plan_id: str, token: str, owner_user_id: int) -> dict:
         plan = json.loads(row["payload"])
         if plan.get("errors"):
             raise ValueError("El plan de importacion contiene conflictos")
-        cursor.execute("UPDATE catalog_import_plans SET consumed_at=? WHERE id=?", (_now().isoformat(), plan_id))
+        cursor.execute("UPDATE catalog_import_plans SET consumed_at=? WHERE id=? AND consumed_at IS NULL", (_now().isoformat(), plan_id))
+        if cursor.rowcount != 1:
+            raise ValueError("El plan de importacion ya fue utilizado")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    conn = db.get_conn()
+    try:
+        cursor = conn.cursor(); cursor.execute("BEGIN IMMEDIATE")
         result = _apply_plan_in_cursor(cursor, plan)
         conn.commit()
         return result

@@ -82,6 +82,25 @@ class CatalogImportPersistenceTests(unittest.TestCase):
         movement = self.db.q("SELECT stock_anterior, stock_nuevo FROM stock_movimientos ORDER BY id DESC LIMIT 1", fetchone=True)
         self.assertEqual((movement["stock_anterior"], movement["stock_nuevo"]), (3.0, 7.0))
 
+    def test_new_preview_invalidates_previous_plan(self):
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + "uno,Uno,,,,1,1,1,,7790000000002,SI\n").encode()))
+        old_id, old_token = self.service.store_plan(plan, self.owner)
+        new_id, new_token = self.service.store_plan(plan, self.owner)
+        with self.assertRaisesRegex(ValueError, "no existe"):
+            self.service.apply_stored_plan(old_id, old_token, self.owner)
+        self.service.apply_stored_plan(new_id, new_token, self.owner)
+
+    def test_simple_update_preserves_limits_and_updates_commercial_fields(self):
+        product_id = self.db.add_producto({"descripcion": "Anterior", "marca": "", "categoria": "General", "tipo_unidad": "unidad", "unidad": "unidad", "stock_actual": 10, "stock_minimo": 2, "stock_maximo": 20, "costo": 1, "precio_venta": 2, "codigo_barras": "7790000000003"})
+        content = HEADER + "nuevo,Nuevo,Accesorios,,,0,0,7,,7790000000003,NO\n"
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv(content.encode()))
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        self.service.apply_stored_plan(plan_id, token, self.owner)
+        product = self.db.get_producto(product_id)
+        stock = self.db.q("SELECT stock_actual, stock_minimo, stock_maximo FROM stock WHERE producto_id=?", (product_id,), fetchone=True)
+        self.assertEqual((product["descripcion"], product["costo"], product["precio_venta"], product["activo"]), ("Nuevo", 0.0, 0.0, 0))
+        self.assertEqual((stock["stock_actual"], stock["stock_minimo"], stock["stock_maximo"]), (7.0, 2.0, 20.0))
+
 
 if __name__ == "__main__":
     unittest.main()
