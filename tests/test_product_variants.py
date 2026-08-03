@@ -424,6 +424,14 @@ class ProductVariantsTests(unittest.TestCase):
                 keys,
                 details_by_key={keys[0]: {"sku": "SKU-DUP"}, keys[1]: {"sku": "SKU-DUP"}},
             )
+        for first_sku, second_sku in (("ABC", "abc"), (" ABC ", "abc"), ("A  BC", "a bc")):
+            with self.assertRaisesRegex(ValueError, "SKUs duplicados"):
+                self.product_variants.create_variants_from_combinations(
+                    producto_id,
+                    self._generation_selections(colores),
+                    keys,
+                    details_by_key={keys[0]: {"sku": first_sku}, keys[1]: {"sku": second_sku}},
+                )
         with self.assertRaisesRegex(ValueError, "SKU de la variante ya existe"):
             self.product_variants.create_variants_from_combinations(
                 producto_id,

@@ -213,16 +213,21 @@ def build_plan(rows: list[dict]) -> dict:
             if not has_variants and not canonical["barcode"]:
                 errors.append({"rows": [r["row"] for r in group_rows], "field": "codigo de barras", "cause": "un producto simple requiere codigo de barras para importar de forma idempotente"}); continue
             matches = set()
+            ambiguous_sku_rows = []
             for row in group_rows:
                 if row["sku"]:
-                    found = conn.execute("SELECT producto_id FROM producto_variantes WHERE lower(sku)=lower(?)", (row["sku"],)).fetchall()
-                    matches.update(int(x[0]) for x in found)
+                    found = product_variants._find_variant_matches_by_normalized_sku_in_cursor(conn.cursor(), row["sku"])
+                    if len(found) > 1:
+                        ambiguous_sku_rows.append(row["row"])
+                    matches.update(int(x["producto_id"]) for x in found)
                 if row["barcode"]:
                     found = conn.execute("SELECT producto_id FROM producto_variantes WHERE codigo_barras=?", (row["barcode"],)).fetchall()
                     matches.update(int(x[0]) for x in found)
                     legacy = conn.execute("SELECT id FROM productos WHERE codigo_barras=?", (row["barcode"],)).fetchall()
                     if has_variants and legacy: errors.append({"rows": [row["row"]], "field": "codigo de barras", "cause": "coincide con un producto legacy; requiere tratamiento manual"})
                     if not has_variants: matches.update(int(x[0]) for x in legacy)
+            if ambiguous_sku_rows:
+                errors.append({"rows": ambiguous_sku_rows, "field": "identificacion", "cause": "coincidencia ambigua por SKU"}); continue
             if len(matches) > 1:
                 errors.append({"rows": [r["row"] for r in group_rows], "field": "identificacion", "cause": "coincidencia ambigua"}); continue
             if matches:

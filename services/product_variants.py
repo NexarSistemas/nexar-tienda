@@ -42,6 +42,17 @@ def _normalized_variant_skus_excluding_in_cursor(cursor, *, exclude_variant_ids=
     return normalized_skus
 
 
+def _find_variant_matches_by_normalized_sku_in_cursor(cursor, sku) -> list:
+    normalized_sku = _normalize_variant_sku_for_matching(sku)
+    if not normalized_sku:
+        return []
+    return [
+        row
+        for row in cursor.execute("SELECT id, producto_id, sku FROM producto_variantes WHERE sku IS NOT NULL").fetchall()
+        if _normalize_variant_sku_for_matching(row["sku"]) == normalized_sku
+    ]
+
+
 def _validate_stock_value(value, label: str) -> float:
     if value is None or (isinstance(value, str) and not value.strip()):
         value = 0
@@ -250,10 +261,11 @@ def _validate_batch_codes(cursor, details_by_key: dict[str, dict]) -> dict[str, 
         sku_clean = _clean_text(detail.get("sku", "")) or None
         barcode_clean = db.normalize_codigo_barras(detail.get("codigo_barras", ""))
         if sku_clean:
-            other_key = seen_skus.get(sku_clean)
+            sku_key = _normalize_variant_sku_for_matching(sku_clean)
+            other_key = seen_skus.get(sku_key)
             if other_key and other_key != combination_key:
                 raise ValueError("El lote contiene SKUs duplicados.")
-            seen_skus[sku_clean] = combination_key
+            seen_skus[sku_key] = combination_key
         if barcode_clean:
             other_key = seen_barcodes.get(barcode_clean)
             if other_key and other_key != combination_key:

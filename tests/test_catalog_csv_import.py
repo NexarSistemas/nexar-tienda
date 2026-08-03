@@ -258,6 +258,27 @@ class CatalogImportPersistenceTests(unittest.TestCase):
         self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,4,abc,7790000010407,SI\n")
         self.assertEqual(self.db.q("SELECT sku FROM producto_variantes WHERE producto_id=? AND codigo_barras=?", (product_id, "7790000010407"), fetchone=True)["sku"], "abc")
 
+    def test_preview_matches_legacy_sku_spacing_and_rejects_ambiguous_matches(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,4,ABC,,SI\n")
+        variant = self.db.q("SELECT id, producto_id FROM producto_variantes WHERE sku='ABC'", fetchone=True)
+        for legacy_sku, imported_sku in ((" ABC ", "abc"), ("A  BC", "a bc")):
+            self.db.q("UPDATE producto_variantes SET sku=? WHERE id=?", (legacy_sku, variant["id"]), fetchall=False, commit=True)
+            plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + f"remera,Remera,Ropa,Color,Negro,100,40,7,{imported_sku},,SI\n").encode()))
+            self.assertFalse(plan["errors"])
+            self.assertEqual(plan["products"][0]["action"], "update")
+            self.assertEqual(plan["products"][0]["rows"][0]["variant_id"], variant["id"])
+            plan_id, token = self.service.store_plan(plan, self.owner)
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+            self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos", fetchone=True)["total"], 1)
+            self.assertEqual(self.db.q("SELECT id FROM producto_variantes", fetchone=True)["id"], variant["id"])
+
+        self.db.q("UPDATE producto_variantes SET sku='ABC' WHERE id=?", (variant["id"],), fetchall=False, commit=True)
+        self.service.product_variants.create_variant(variant["producto_id"], attributes=[{"attribute_name": "Color", "value_name": "Blanco"}], sku="XYZ", costo=40, precio=100, stock_actual=0, stock_minimo=0, stock_maximo=0)
+        self.db.q("UPDATE producto_variantes SET sku=' ABC ' WHERE producto_id=? AND sku='XYZ'", (variant["producto_id"],), fetchall=False, commit=True)
+        ambiguous = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + "remera,Remera,Ropa,Color,Negro,100,40,7,abc,,SI\n").encode()))
+        self.assertTrue(any(error["field"] == "identificacion" for error in ambiguous["errors"]))
+        self.assertEqual(ambiguous["products"], [])
+
     def test_variant_sku_swap_remains_valid_when_normalized_final_state_is_unique(self):
         self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,ABC,7790000010405,SI\nremera,,,Color,Blanco,110,45,2,DEF,7790000010406,SI\n")
         self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,def,7790000010405,SI\nremera,,,Color,Blanco,110,45,2,abc,7790000010406,SI\n")
