@@ -1,0 +1,4 @@
+Identificador de URL,Nombre,Categorías,Nombre de propiedad 1,Valor de propiedad 1,Precio,Costo,Stock,SKU,Código de barras,Mostrar en tienda
+remera-basica,Remera básica,Ropa,Material,Algodón,12000,5000,3,REM-ALG-01,7790000000011,SI
+remera-basica,,,Material,Lino,13500,5500,2,REM-LIN-02,7790000000012,SI
+mate-acero,Mate acero,Accesorios,,,9500,4100,4,,,SI

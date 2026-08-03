@@ -364,12 +364,18 @@ def adjust_inventory_item_in_cursor(
     usuario: str = "",
     rol: str = "",
     values_already_validated: bool = False,
+    allow_inactive_variant: bool = False,
 ) -> dict:
     if values_already_validated:
         nuevo, minimo, maximo = float(stock_actual), float(stock_minimo), float(stock_maximo)
     else:
         nuevo, minimo, maximo = _validate_limits(stock_actual, stock_minimo, stock_maximo)
-    item = _resolve_inventory_item_in_cursor(cursor, product_id, variant_id)
+    item = _resolve_inventory_item_in_cursor(
+        cursor,
+        product_id,
+        variant_id,
+        allow_inactive_variant=allow_inactive_variant,
+    )
     anterior = float(item["stock_actual"] or 0)
     if item["fuente"] == SOURCE_LEGACY:
         cursor.execute(

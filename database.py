@@ -1114,6 +1114,18 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS catalog_import_plans (
+            id TEXT PRIMARY KEY,
+            owner_user_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            token_hash TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            consumed_at TEXT DEFAULT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_catalog_import_plans_owner
+            ON catalog_import_plans(owner_user_id, expires_at, consumed_at);
     """)
     _ensure_table_columns(c, "atributo_perfiles", {"seed_key": "TEXT"})
     c.execute(
@@ -2417,10 +2429,8 @@ def check_license_limits(limit_key: str, current_count: int = None) -> dict:
 
 # â”€â”€â”€ CÃ“DIGOS AUTOMÃTICOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def next_codigo():
+def _next_codigo_in_cursor(c):
     """Genera next cÃ³digo de producto Ãºnico."""
-    conn = get_conn()
-    c = conn.cursor()
     row = c.execute(
         "SELECT MAX(CAST(SUBSTR(codigo_interno,5) AS INTEGER)) as mx FROM productos WHERE codigo_interno LIKE 'PRD-%'"
     ).fetchone()
@@ -2429,9 +2439,17 @@ def next_codigo():
     n = max(max_n, cfg_n)
     new_code = f"PRD-{n:04d}"
     c.execute("INSERT OR REPLACE INTO config VALUES ('siguiente_codigo', ?)", (str(n + 1),))
-    conn.commit()
-    conn.close()
     return new_code
+
+
+def next_codigo():
+    conn = get_conn()
+    try:
+        new_code = _next_codigo_in_cursor(conn.cursor())
+        conn.commit()
+        return new_code
+    finally:
+        conn.close()
 
 
 def _codigo_barras_flag_enabled(value) -> bool:

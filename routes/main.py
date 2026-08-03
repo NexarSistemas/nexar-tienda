@@ -60,6 +60,7 @@ from services import pricing_resolver
 from services import product_variants
 from services import attribute_profiles
 from services import inventory
+from services import catalog_csv_import
 from services.license_sdk import (
     get_current_hwid,
     get_license_debug_state,
@@ -2997,6 +2998,42 @@ def productos_importar():
         template_destino=request.form.get("destino", "app") if request.method == "POST" else "app",
         generar_codigo_barras_interno=generar_codigo_barras_interno,
     )
+
+
+@main_bp.route("/productos/importar/tiendanube", methods=["GET", "POST"])
+@vendedor_forbidden
+def productos_importar_tiendanube():
+    preview = None
+    if request.method == "POST":
+        archivo = request.files.get("archivo_csv")
+        if not archivo or not str(archivo.filename or "").lower().endswith(".csv"):
+            flash("Seleccioná un archivo con extensión .csv.", "warning")
+        else:
+            try:
+                plan = catalog_csv_import.build_plan(catalog_csv_import.parse_tiendanube_csv(archivo.read()))
+                plan_id, token = catalog_csv_import.store_plan(plan, int((session.get("user") or {}).get("id") or 0))
+                session["catalog_csv_import_plan_id"] = plan_id
+                preview = {**plan, "token": token}
+            except ValueError as exc:
+                flash(str(exc), "warning")
+    return render_template("productos_importar_tiendanube.html", preview=preview, limits=catalog_csv_import)
+
+
+@main_bp.route("/productos/importar/tiendanube/confirmar", methods=["POST"])
+@vendedor_forbidden
+def productos_importar_tiendanube_confirmar():
+    plan_id = session.pop("catalog_csv_import_plan_id", "")
+    try:
+        result = catalog_csv_import.apply_stored_plan(plan_id, request.form.get("plan_token", ""), int((session.get("user") or {}).get("id") or 0))
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("productos_importar_tiendanube"))
+    except Exception:
+        logger.exception("Falló la confirmación de importación de catálogo")
+        flash("No se importó ningún producto; se revirtió el lote completo.", "danger")
+        return redirect(url_for("productos_importar_tiendanube"))
+    flash(f"Importación completada: {result['created']} creados y {result['updated']} actualizados.", "success")
+    return redirect(url_for("productos"))
 
 
 @main_bp.route("/productos/importar/plantilla", methods=["POST"])
