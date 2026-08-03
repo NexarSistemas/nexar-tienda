@@ -310,11 +310,13 @@ def _prepare_variant_commercial_updates_in_cursor(cursor, plan: dict) -> dict[in
     ids = tuple(updates)
     for field, label in (("sku", "SKU"), ("codigo_barras", "codigo de barras")):
         values = [str(update[field] or "") for update in updates.values() if update[field]]
-        if len(values) != len(set(values)):
+        normalized_values = [product_variants._normalize_variant_sku_for_matching(value) for value in values] if field == "sku" else values
+        if len(normalized_values) != len(set(normalized_values)):
             raise ValueError(f"El lote termina con {label}s duplicados.")
-        for value in values:
+        for value, normalized_value in zip(values, normalized_values):
             marks = ",".join("?" for _ in ids)
-            row = cursor.execute(f"SELECT id FROM producto_variantes WHERE {field}=? AND id NOT IN ({marks}) LIMIT 1", (value, *ids)).fetchone()
+            predicate, lookup = ("lower(sku)=?", normalized_value) if field == "sku" else (f"{field}=?", value)
+            row = cursor.execute(f"SELECT id FROM producto_variantes WHERE {predicate} AND id NOT IN ({marks}) LIMIT 1", (lookup, *ids)).fetchone()
             if row:
                 raise ValueError("El SKU de la variante ya existe." if field == "sku" else "Ya existe otra variante con ese codigo de barras.")
         if field == "codigo_barras":

@@ -22,6 +22,10 @@ def _clean_text(value) -> str:
     return " ".join(str(value or "").strip().split())
 
 
+def _normalize_variant_sku_for_matching(value) -> str:
+    return _clean_text(value).lower()
+
+
 def _validate_stock_value(value, label: str) -> float:
     if value is None or (isinstance(value, str) and not value.strip()):
         value = 0
@@ -177,8 +181,8 @@ def _validate_variant_sku(cursor, sku: str, *, exclude_variant_id=None) -> str |
     sku_clean = _clean_text(sku) or None
     if not sku_clean:
         return None
-    sql = "SELECT id FROM producto_variantes WHERE sku=?"
-    params = [sku_clean]
+    sql = "SELECT id FROM producto_variantes WHERE lower(sku)=?"
+    params = [_normalize_variant_sku_for_matching(sku_clean)]
     if exclude_variant_id is not None:
         sql += " AND id <> ?"
         params.append(int(exclude_variant_id))
