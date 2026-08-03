@@ -229,6 +229,15 @@ def build_plan(rows: list[dict]) -> dict:
                 mode = conn.execute("SELECT COALESCE(stock_modo, 'legacy') FROM productos WHERE id=?", (next(iter(matches)),)).fetchone()
                 if not mode or (has_variants and str(mode[0]).lower() != "variantes") or (not has_variants and str(mode[0]).lower() == "variantes"):
                     errors.append({"rows": [r["row"] for r in group_rows], "field": "stock_modo", "cause": "el producto existente no opera por variantes"}); continue
+            if has_variants and matches:
+                product_id = next(iter(matches))
+                for row in group_rows:
+                    pairs = product_variants._resolve_attribute_pairs(conn.cursor(), [{"attribute_name": x["name"], "value_name": x["value"]} for x in row["attributes"]])
+                    key = product_variants._build_combination_key(pairs)
+                    variant = conn.execute("SELECT id FROM producto_variantes WHERE producto_id=? AND combination_key=?", (product_id, key)).fetchone()
+                    row["variant_action"] = "update" if variant else "create"
+                    row["variant_id"] = int(variant[0]) if variant else None
+                    row["expected_combination_key"] = key
             planned.append({"action": "update" if matches else "create", "product_id": next(iter(matches), None), "rows": group_rows, "has_variants": has_variants})
     finally: conn.close()
     payload = {"products": planned, "errors": errors, "warnings": warnings}
@@ -276,9 +285,18 @@ def _prepare_variant_commercial_updates_in_cursor(cursor, plan: dict) -> dict[in
         for row in item["rows"]:
             pairs = product_variants._resolve_attribute_pairs(cursor, [{"attribute_name": x["name"], "value_name": x["value"]} for x in row["attributes"]])
             key = product_variants._build_combination_key(pairs)
-            variant = cursor.execute("SELECT id, sku, codigo_barras, costo, precio FROM producto_variantes WHERE producto_id=? AND combination_key=?", (item["product_id"], key)).fetchone()
-            if not variant:
+            action = row.get("variant_action")
+            if action not in {"create", "update"}:
+                raise ValueError("El plan de importacion requiere una nueva vista previa.")
+            if action == "create":
+                if cursor.execute("SELECT id FROM producto_variantes WHERE producto_id=? AND combination_key=?", (item["product_id"], key)).fetchone():
+                    raise ValueError("La combinacion planificada para crear ya existe. Genera una nueva vista previa.")
                 continue
+            if row.get("expected_combination_key") != key:
+                raise ValueError("La variante planificada para actualizar ya no existe. Genera una nueva vista previa.")
+            variant = cursor.execute("SELECT id, sku, codigo_barras, costo, precio FROM producto_variantes WHERE id=? AND producto_id=? AND combination_key=?", (row.get("variant_id"), item["product_id"], row.get("expected_combination_key"))).fetchone()
+            if not variant:
+                raise ValueError("La variante planificada para actualizar ya no existe. Genera una nueva vista previa.")
             variant_id = int(variant["id"])
             updates[variant_id] = {
                 "product_id": int(item["product_id"]),
@@ -327,7 +345,14 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
                 for row in rows:
                     pairs = product_variants._resolve_attribute_pairs(cursor, [{"attribute_name": x["name"], "value_name": x["value"]} for x in row["attributes"]])
                     key = product_variants._build_combination_key(pairs)
-                    existing = cursor.execute("SELECT id FROM producto_variantes WHERE producto_id=? AND combination_key=?", (product_id, key)).fetchone()
+                    if row.get("variant_action") == "update":
+                        existing = cursor.execute("SELECT id FROM producto_variantes WHERE id=? AND producto_id=? AND combination_key=?", (row.get("variant_id"), product_id, row.get("expected_combination_key"))).fetchone()
+                        if not existing:
+                            raise ValueError("La variante planificada para actualizar ya no existe. Genera una nueva vista previa.")
+                    else:
+                        existing = cursor.execute("SELECT id FROM producto_variantes WHERE producto_id=? AND combination_key=?", (product_id, key)).fetchone()
+                        if row.get("variant_action") == "create" and existing:
+                            raise ValueError("La combinacion planificada para crear ya existe. Genera una nueva vista previa.")
                     if existing:
                         variant_id = int(existing[0])
                         prepared = prepared_variant_updates.get(variant_id)
