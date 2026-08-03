@@ -210,6 +210,12 @@ class CatalogImportPersistenceTests(unittest.TestCase):
             self.service.apply_stored_plan(plan_id, token, self.owner)
         self.assertEqual(self.db.q("SELECT sku FROM producto_variantes WHERE producto_id=?", (product["producto_id"],), fetchone=True)["sku"], "REM-ONE")
 
+    def test_existing_variants_can_swap_skus_and_barcodes_atomically(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,REM-A,7790000010201,SI\nremera,,,Color,Blanco,110,45,2,REM-B,7790000010202,SI\n")
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,0,0,,REM-B,7790000010202,SI\nremera,,,Color,Blanco,0,0,,REM-A,7790000010201,SI\n")
+        rows = self.db.q("SELECT nombre, sku, codigo_barras, costo, precio FROM producto_variantes ORDER BY nombre")
+        self.assertEqual([(row["nombre"], row["sku"], row["codigo_barras"], row["costo"], row["precio"]) for row in rows], [("Color: Blanco", "REM-A", "7790000010201", 0.0, 0.0), ("Color: Negro", "REM-B", "7790000010202", 0.0, 0.0)])
+
     def test_confirmation_projects_active_product_limit(self):
         self.db.set_config({
             "license_plan": "BASICA", "license_plan_original": "BASICA", "license_effective_plan": "BASICA",

@@ -259,14 +259,58 @@ def _project_active_product_count_in_cursor(cursor, plan: dict) -> int:
 
 
 def _check_product_limit_in_cursor(cursor, plan: dict) -> None:
+    current = int(cursor.execute("SELECT COUNT(*) FROM productos WHERE activo=1").fetchone()[0] or 0)
     projected = _project_active_product_count_in_cursor(cursor, plan)
+    if projected <= current:
+        return
     check = db.check_license_limits("productos", projected)
     if not check["ok"]:
         raise ValueError(check["message"])
 
 
+def _prepare_variant_commercial_updates_in_cursor(cursor, plan: dict) -> dict[int, dict]:
+    updates = {}
+    for item in plan["products"]:
+        if item["action"] != "update" or not item["has_variants"]:
+            continue
+        for row in item["rows"]:
+            pairs = product_variants._resolve_attribute_pairs(cursor, [{"attribute_name": x["name"], "value_name": x["value"]} for x in row["attributes"]])
+            key = product_variants._build_combination_key(pairs)
+            variant = cursor.execute("SELECT id, sku, codigo_barras, costo, precio FROM producto_variantes WHERE producto_id=? AND combination_key=?", (item["product_id"], key)).fetchone()
+            if not variant:
+                continue
+            variant_id = int(variant["id"])
+            updates[variant_id] = {
+                "product_id": int(item["product_id"]),
+                "sku": product_variants._clean_text(row["sku"]) or variant["sku"],
+                "codigo_barras": db.normalize_codigo_barras(row["barcode"]) if product_variants._clean_text(row["barcode"]) else variant["codigo_barras"],
+                "costo": row["cost"] if row["cost"] is not None else variant["costo"],
+                "precio": row["price"] if row["price"] is not None else variant["precio"],
+            }
+    if not updates:
+        return updates
+    ids = tuple(updates)
+    for field, label in (("sku", "SKU"), ("codigo_barras", "codigo de barras")):
+        values = [str(update[field] or "") for update in updates.values() if update[field]]
+        if len(values) != len(set(values)):
+            raise ValueError(f"El lote termina con {label}s duplicados.")
+        for value in values:
+            marks = ",".join("?" for _ in ids)
+            row = cursor.execute(f"SELECT id FROM producto_variantes WHERE {field}=? AND id NOT IN ({marks}) LIMIT 1", (value, *ids)).fetchone()
+            if row:
+                raise ValueError("El SKU de la variante ya existe." if field == "sku" else "Ya existe otra variante con ese codigo de barras.")
+        if field == "codigo_barras":
+            for value in values:
+                if cursor.execute("SELECT id FROM productos WHERE TRIM(COALESCE(codigo_barras, ''))=? LIMIT 1", (value,)).fetchone():
+                    raise ValueError("Ya existe un producto legacy con ese codigo de barras.")
+    marks = ",".join("?" for _ in ids)
+    cursor.execute(f"UPDATE producto_variantes SET sku=NULL, codigo_barras=NULL WHERE id IN ({marks})", ids)
+    return updates
+
+
 def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
     _check_product_limit_in_cursor(cursor, plan)
+    prepared_variant_updates = _prepare_variant_commercial_updates_in_cursor(cursor, plan)
     created = updated = 0
     for item in plan["products"]:
             rows, first = item["rows"], item["rows"][0]
@@ -286,15 +330,11 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
                     existing = cursor.execute("SELECT id FROM producto_variantes WHERE producto_id=? AND combination_key=?", (product_id, key)).fetchone()
                     if existing:
                         variant_id = int(existing[0])
-                        product_variants._update_variant_commercial_fields_in_cursor(
-                            cursor,
-                            product_id,
-                            variant_id,
-                            sku=row["sku"],
-                            codigo_barras=row["barcode"],
-                            costo=row["cost"],
-                            precio=row["price"],
-                        )
+                        prepared = prepared_variant_updates.get(variant_id)
+                        if prepared:
+                            product_variants._apply_prevalidated_variant_commercial_fields_in_cursor(cursor, product_id, variant_id, **{key: prepared[key] for key in ("sku", "codigo_barras", "costo", "precio")})
+                        else:
+                            product_variants._update_variant_commercial_fields_in_cursor(cursor, product_id, variant_id, sku=row["sku"], codigo_barras=row["barcode"], costo=row["cost"], precio=row["price"])
                         if row["visible"] is not None:
                             (enable_variants if row["visible"] else disable_variants).append(variant_id)
                     else:

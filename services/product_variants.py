@@ -218,6 +218,15 @@ def _update_variant_commercial_fields_in_cursor(
         )
 
 
+def _apply_prevalidated_variant_commercial_fields_in_cursor(cursor, product_id: int, variant_id: int, *, sku, codigo_barras, costo, precio) -> None:
+    """Persist a batch-validated commercial state without rechecking old identifiers."""
+    _get_variant_for_product_in_cursor(cursor, product_id, variant_id)
+    cursor.execute(
+        "UPDATE producto_variantes SET sku=?, codigo_barras=?, costo=?, precio=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND producto_id=?",
+        (sku, codigo_barras, costo, precio, int(variant_id), int(product_id)),
+    )
+
+
 def _validate_batch_codes(cursor, details_by_key: dict[str, dict]) -> dict[str, dict]:
     normalized_details: dict[str, dict] = {}
     seen_skus: dict[str, str] = {}
