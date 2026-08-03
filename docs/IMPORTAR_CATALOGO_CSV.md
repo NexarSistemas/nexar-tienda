@@ -1,5 +1,11 @@
 # Importar catálogo CSV
 
+Corrección operativa: la cookie guarda solo un identificador opaco; el plan se
+conserva temporalmente en SQLite, asociado al usuario, durante 15 minutos y se
+consume una sola vez. Los productos simples requieren código de barras para
+mantener identidad persistente; un SKU simple aislado se rechaza. La
+importación fija el stock objetivo y solo registra movimiento cuando cambia.
+
 Nexar Comercio admite el CSV exportado por Tiendanube. El adaptador reconoce
 `Identificador de URL`, `Nombre`, categorías, hasta tres pares de propiedad y
 valor, precio, costo, stock, SKU, código de barras y visibilidad. Esos nombres

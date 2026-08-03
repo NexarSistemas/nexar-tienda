@@ -3077,4 +3077,5 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
 
 - Se agregó una importación CSV de Tiendanube con adaptador separado, vista previa y confirmación atómica.
 - El flujo agrupa variantes por identificador de URL sin filtrar conceptos de proveedor al dominio interno.
+- Correccion post-revision: planes de un solo uso en SQLite, reserva de codigo dentro de la transaccion y stock absoluto auditado correctamente.
 - Se documentaron límites, conflictos y estrategia conservadora de coincidencia.

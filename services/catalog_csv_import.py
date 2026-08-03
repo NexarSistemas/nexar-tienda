@@ -9,7 +9,9 @@ import csv
 import hashlib
 import json
 import math
+import secrets
 import unicodedata
+from datetime import datetime, timedelta, timezone
 from io import StringIO
 
 import database as db
@@ -21,6 +23,8 @@ MAX_PRODUCTS = 500
 MAX_VARIANTS = 2_000
 MAX_VARIANTS_PER_PRODUCT = 100
 MAX_FIELD_LENGTH = 2_000
+PLAN_TTL_MINUTES = 15
+MAX_STORED_PLANS_PER_USER = 3
 
 
 def _key(value: str) -> str:
@@ -52,6 +56,30 @@ def _number(value, field: str, *, required=False):
     if not math.isfinite(result) or result < 0:
         raise ValueError(f"{field}: debe ser un numero finito no negativo")
     return result
+
+
+def _combination_identity(attributes: list[dict]) -> tuple[tuple[str, str], ...]:
+    return tuple(sorted((_key(item["name"]), _key(item["value"])) for item in attributes))
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def store_plan(plan: dict, owner_user_id: int) -> tuple[str, str]:
+    """Persist a one-use preview; the cookie keeps only its opaque identifier."""
+    plan_id, token = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+    now, expires = _now(), _now() + timedelta(minutes=PLAN_TTL_MINUTES)
+    conn = db.get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM catalog_import_plans WHERE expires_at <= ? OR consumed_at IS NOT NULL", (now.isoformat(),))
+        cursor.execute("DELETE FROM catalog_import_plans WHERE id IN (SELECT id FROM catalog_import_plans WHERE owner_user_id=? ORDER BY created_at DESC LIMIT -1 OFFSET ?)", (int(owner_user_id), MAX_STORED_PLANS_PER_USER - 1))
+        cursor.execute("INSERT INTO catalog_import_plans (id, owner_user_id, token_hash, payload, created_at, expires_at) VALUES (?,?,?,?,?,?)", (plan_id, int(owner_user_id), hashlib.sha256(token.encode()).hexdigest(), json.dumps(plan, separators=(",", ":")), now.isoformat(), expires.isoformat()))
+        conn.commit()
+        return plan_id, token
+    finally:
+        conn.close()
 
 
 HEADER_ALIASES = {
@@ -164,6 +192,15 @@ def build_plan(rows: list[dict]) -> dict:
             has_variants = any(row["attributes"] for row in group_rows)
             if has_variants and (not all(row["attributes"] for row in group_rows) or len(group_rows) > MAX_VARIANTS_PER_PRODUCT):
                 errors.append({"rows": [r["row"] for r in group_rows], "field": "variantes", "cause": "grupo de variantes incompleto o excesivo"}); continue
+            if has_variants:
+                combinations = {}
+                for row in group_rows:
+                    combinations.setdefault(_combination_identity(row["attributes"]), []).append(row["row"])
+                repeated = [numbers for numbers in combinations.values() if len(numbers) > 1]
+                if repeated:
+                    errors.append({"rows": [number for numbers in repeated for number in numbers], "field": "combinacion", "cause": "combinacion de atributos duplicada"}); continue
+            if not has_variants and not canonical["barcode"]:
+                errors.append({"rows": [r["row"] for r in group_rows], "field": "codigo de barras", "cause": "un producto simple requiere codigo de barras para importar de forma idempotente"}); continue
             matches = set()
             for row in group_rows:
                 if row["sku"]:
@@ -173,14 +210,13 @@ def build_plan(rows: list[dict]) -> dict:
                     found = conn.execute("SELECT producto_id FROM producto_variantes WHERE codigo_barras=?", (row["barcode"],)).fetchall()
                     matches.update(int(x[0]) for x in found)
                     legacy = conn.execute("SELECT id FROM productos WHERE codigo_barras=?", (row["barcode"],)).fetchall()
-                    if legacy: errors.append({"rows": [row["row"]], "field": "codigo de barras", "cause": "coincide con un producto legacy; requiere tratamiento manual"})
+                    if has_variants and legacy: errors.append({"rows": [row["row"]], "field": "codigo de barras", "cause": "coincide con un producto legacy; requiere tratamiento manual"})
+                    if not has_variants: matches.update(int(x[0]) for x in legacy)
             if len(matches) > 1:
                 errors.append({"rows": [r["row"] for r in group_rows], "field": "identificacion", "cause": "coincidencia ambigua"}); continue
-            if matches and not has_variants:
-                errors.append({"rows": [r["row"] for r in group_rows], "field": "identificacion", "cause": "un producto simple no actualiza variantes automaticamente"}); continue
             if matches:
                 mode = conn.execute("SELECT COALESCE(stock_modo, 'legacy') FROM productos WHERE id=?", (next(iter(matches)),)).fetchone()
-                if not mode or str(mode[0]).lower() != "variantes":
+                if not mode or (has_variants and str(mode[0]).lower() != "variantes") or (not has_variants and str(mode[0]).lower() == "variantes"):
                     errors.append({"rows": [r["row"] for r in group_rows], "field": "stock_modo", "cause": "el producto existente no opera por variantes"}); continue
             planned.append({"action": "update" if matches else "create", "product_id": next(iter(matches), None), "rows": group_rows, "has_variants": has_variants})
     finally: conn.close()
@@ -189,20 +225,23 @@ def build_plan(rows: list[dict]) -> dict:
     return payload
 
 
-def apply_plan(plan: dict, token: str) -> dict:
-    if token != plan.get("token") or plan.get("errors"):
-        raise ValueError("El plan de importacion ya no es valido")
-    conn = db.get_conn()
-    try:
-        cursor = conn.cursor(); cursor.execute("BEGIN IMMEDIATE")
-        created = updated = 0
-        for item in plan["products"]:
+def _adjust_stock_if_changed(cursor, product_id: int, target: float, *, variant_id=None):
+    table, where, key = ("stock_variantes", "variante_id", variant_id) if variant_id is not None else ("stock", "producto_id", product_id)
+    current = cursor.execute(f"SELECT stock_actual FROM {table} WHERE {where}=?", (key,)).fetchone()
+    current_value = float(current[0] or 0) if current else 0.0
+    if round(current_value, 6) != round(float(target), 6):
+        inventory.adjust_inventory_item_in_cursor(cursor, product_id, variant_id=variant_id, stock_actual=target, stock_minimo=0, stock_maximo=0, motivo="Importacion CSV de catalogo")
+
+
+def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
+    created = updated = 0
+    for item in plan["products"]:
             rows, first = item["rows"], item["rows"][0]
             if item["action"] == "update":
                 product_id = item["product_id"]; updated += 1
             else:
                 cursor.execute("INSERT INTO productos (codigo_interno,descripcion,marca,categoria,costo,precio_venta,activo,stock_modo) VALUES (?,?,?,?,?,?,?,'legacy')",
-                    (db.next_codigo(), first["name"], first["brand"], first["category"].split(",")[0].strip(), first["cost"] or 0, first["price"] or 0, int(first["visible"])))
+                    (db._next_codigo_in_cursor(cursor), first["name"], first["brand"], first["category"].split(",")[0].strip(), first["cost"] or 0, first["price"] or 0, int(first["visible"])))
                 product_id = int(cursor.lastrowid); cursor.execute("INSERT INTO stock (producto_id,stock_actual,stock_minimo,stock_maximo,proveedor_habitual) VALUES (?,?,?,?,?)", (product_id, 0, 0, 0, "")); created += 1
             if item["has_variants"]:
                 allocations = []
@@ -214,18 +253,32 @@ def apply_plan(plan: dict, token: str) -> dict:
                     else:
                         variant_id = product_variants._insert_variant_row(cursor, {"product_id": product_id, "combination_key": key, "variant_name": product_variants._build_variant_name(pairs), "sku": row["sku"] or None, "codigo_barras": row["barcode"], "costo": row["cost"], "precio": row["price"], "precio_promocional": None, "activo": int(row["visible"]), "external_id": ""})
                         product_variants._insert_variant_attribute_values(cursor, variant_id, pairs)
-                    product_variants._persist_variant_stock_config(cursor, variant_id, stock_actual=0, stock_minimo=0, stock_maximo=0)
                     allocations.append({"variant_id": variant_id, "stock_actual": row["stock"] or 0, "stock_minimo": 0, "stock_maximo": 0})
                 cursor.execute("UPDATE productos SET stock_modo='variantes' WHERE id=?", (product_id,))
                 for allocation in allocations:
-                    inventory.adjust_inventory_item_in_cursor(cursor, product_id, variant_id=allocation["variant_id"],
-                        stock_actual=allocation["stock_actual"], stock_minimo=0, stock_maximo=0,
-                        motivo="Importacion CSV de catalogo")
+                    _adjust_stock_if_changed(cursor, product_id, allocation["stock_actual"], variant_id=allocation["variant_id"])
             else:
                 row = first; cursor.execute("UPDATE productos SET codigo_barras=? WHERE id=?", (row["barcode"], product_id))
-                inventory.adjust_inventory_item_in_cursor(cursor, product_id, stock_actual=row["stock"] or 0, stock_minimo=0, stock_maximo=0,
-                    motivo="Importacion CSV de catalogo")
-        conn.commit(); return {"created": created, "updated": updated}
+                _adjust_stock_if_changed(cursor, product_id, row["stock"] or 0)
+    return {"created": created, "updated": updated}
+
+
+def apply_stored_plan(plan_id: str, token: str, owner_user_id: int) -> dict:
+    conn = db.get_conn()
+    try:
+        cursor = conn.cursor(); cursor.execute("BEGIN IMMEDIATE")
+        row = cursor.execute("SELECT payload, token_hash FROM catalog_import_plans WHERE id=? AND owner_user_id=? AND consumed_at IS NULL AND expires_at > ?", (plan_id, int(owner_user_id), _now().isoformat())).fetchone()
+        if not row or not secrets.compare_digest(str(row["token_hash"]), hashlib.sha256(str(token).encode()).hexdigest()):
+            raise ValueError("El plan de importacion no existe, vencio o ya fue utilizado")
+        plan = json.loads(row["payload"])
+        if plan.get("errors"):
+            raise ValueError("El plan de importacion contiene conflictos")
+        cursor.execute("UPDATE catalog_import_plans SET consumed_at=? WHERE id=?", (_now().isoformat(), plan_id))
+        result = _apply_plan_in_cursor(cursor, plan)
+        conn.commit()
+        return result
     except Exception:
-        conn.rollback(); raise
-    finally: conn.close()
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

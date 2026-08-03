@@ -3011,8 +3011,9 @@ def productos_importar_tiendanube():
         else:
             try:
                 plan = catalog_csv_import.build_plan(catalog_csv_import.parse_tiendanube_csv(archivo.read()))
-                session["catalog_csv_import_plan"] = plan
-                preview = plan
+                plan_id, token = catalog_csv_import.store_plan(plan, int((session.get("user") or {}).get("id") or 0))
+                session["catalog_csv_import_plan_id"] = plan_id
+                preview = {**plan, "token": token}
             except ValueError as exc:
                 flash(str(exc), "warning")
     return render_template("productos_importar_tiendanube.html", preview=preview, limits=catalog_csv_import)
@@ -3021,9 +3022,9 @@ def productos_importar_tiendanube():
 @main_bp.route("/productos/importar/tiendanube/confirmar", methods=["POST"])
 @vendedor_forbidden
 def productos_importar_tiendanube_confirmar():
-    plan = session.get("catalog_csv_import_plan")
+    plan_id = session.pop("catalog_csv_import_plan_id", "")
     try:
-        result = catalog_csv_import.apply_plan(plan or {}, request.form.get("plan_token", ""))
+        result = catalog_csv_import.apply_stored_plan(plan_id, request.form.get("plan_token", ""), int((session.get("user") or {}).get("id") or 0))
     except ValueError as exc:
         flash(str(exc), "warning")
         return redirect(url_for("productos_importar_tiendanube"))
@@ -3031,7 +3032,6 @@ def productos_importar_tiendanube_confirmar():
         logger.exception("Falló la confirmación de importación de catálogo")
         flash("No se importó ningún producto; se revirtió el lote completo.", "danger")
         return redirect(url_for("productos_importar_tiendanube"))
-    session.pop("catalog_csv_import_plan", None)
     flash(f"Importación completada: {result['created']} creados y {result['updated']} actualizados.", "success")
     return redirect(url_for("productos"))
 
