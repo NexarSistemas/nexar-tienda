@@ -257,8 +257,13 @@ class CatalogImportHttpTests(unittest.TestCase):
         with client.session_transaction() as session:
             session["catalog_csv_import_plan_id"] = plan_id
         movements_before = self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"]
-        self.assertEqual(client.post("/productos/importar/tiendanube/confirmar", data={"csrf_token": "catalog-csrf", "plan_token": token}).status_code, 302)
+        variants_before = self.db.q("SELECT COUNT(*) AS total FROM producto_variantes", fetchone=True)["total"]
+        retry = client.post("/productos/importar/tiendanube/confirmar", data={"csrf_token": "catalog-csrf", "plan_token": token})
+        self.assertEqual(retry.status_code, 302)
+        with client.session_transaction() as session:
+            self.assertTrue(any("ya fue utilizado" in message for _, message in session.get("_flashes", [])))
         self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE codigo_barras=?", ("7790000010001",), fetchone=True)["total"], 1)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM producto_variantes", fetchone=True)["total"], variants_before)
         self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"], movements_before)
         with self._client("vendedor", "Vendedor") as seller:
             self.assertEqual(seller.get("/productos/importar/tiendanube").status_code, 302)
