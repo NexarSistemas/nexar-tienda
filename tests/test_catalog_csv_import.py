@@ -185,6 +185,59 @@ class CatalogImportPersistenceTests(unittest.TestCase):
             conn.rollback()
             conn.close()
 
+    def test_existing_variant_updates_commercial_fields_without_changing_attributes(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,10,REM-OLD,7790000010101,SI\n")
+        variant = self.db.q("SELECT * FROM producto_variantes WHERE sku='REM-OLD'", fetchone=True)
+        self._import("Identificador de URL,Nombre,Nombre de propiedad 1,Valor de propiedad 1,SKU\nremera,Remera,Color,Negro,REM-OLD\n")
+        original_values = self.db.q("SELECT costo, precio FROM producto_variantes WHERE id=?", (variant["id"],), fetchone=True)
+        self.assertEqual(tuple(original_values), (40.0, 100.0))
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,0,0,,REM-NEW,7790000010101,\n")
+        updated = self.db.q("SELECT * FROM producto_variantes WHERE id=?", (variant["id"],), fetchone=True)
+        self.assertEqual((updated["sku"], updated["codigo_barras"], updated["costo"], updated["precio"], updated["activo"]), ("REM-NEW", "7790000010101", 0.0, 0.0, 1))
+        self.assertEqual((updated["producto_id"], updated["combination_key"], updated["nombre"]), (variant["producto_id"], variant["combination_key"], variant["nombre"]))
+        self._import("Identificador de URL,Nombre,Nombre de propiedad 1,Valor de propiedad 1,SKU\nremera,Remera,Color,Negro,REM-NEW\n")
+        preserved = self.db.q("SELECT sku, codigo_barras, costo, precio FROM producto_variantes WHERE id=?", (variant["id"],), fetchone=True)
+        self.assertEqual(tuple(preserved), ("REM-NEW", "7790000010101", 0.0, 0.0))
+
+    def test_variant_commercial_collision_rechecks_in_catalog_transaction(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,REM-ONE,7790000010102,SI\n")
+        self._import(HEADER + "pantalon,Pantalon,Ropa,Talle,M,100,40,1,PAN-ONE,7790000010103,SI\n")
+        product = self.db.q("SELECT producto_id FROM producto_variantes WHERE sku='REM-ONE'", fetchone=True)
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv(HEADER.encode() + b"remera,Remera,Ropa,Color,Negro,100,40,1,REM-ONE,7790000010102,SI\n"))
+        plan["products"][0]["rows"][0]["sku"] = "PAN-ONE"
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        with self.assertRaisesRegex(ValueError, "SKU de la variante ya existe"):
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+        self.assertEqual(self.db.q("SELECT sku FROM producto_variantes WHERE producto_id=?", (product["producto_id"],), fetchone=True)["sku"], "REM-ONE")
+
+    def test_confirmation_enforces_basic_product_limit_for_creations_only(self):
+        self.db.set_config({
+            "license_plan": "BASICA", "license_plan_original": "BASICA", "license_effective_plan": "BASICA",
+            "license_tier": "BASICA", "license_status": "activa", "basica_activada": "1",
+        })
+        for index in range(199):
+            self.db.add_producto({"descripcion": f"Local {index}", "marca": "", "categoria": "General", "tipo_unidad": "unidad", "unidad": "unidad", "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 1, "costo": 1, "precio_venta": 1, "codigo_barras": f"77900001{index:04d}"})
+        existing = self.db.q("SELECT codigo_barras FROM productos ORDER BY id LIMIT 1", fetchone=True)["codigo_barras"]
+        content = HEADER + f"existente,Actualizado,General,,,1,1,,,{existing},SI\nnuevo,Nuevo,General,,,1,1,1,,7790000099999,SI\n"
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv(content.encode()))
+        self.db.add_producto({"descripcion": "Creado tras preview", "marca": "", "categoria": "General", "tipo_unidad": "unidad", "unidad": "unidad", "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 1, "costo": 1, "precio_venta": 1, "codigo_barras": "779000019999"})
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        with self.assertRaisesRegex(ValueError, r"Limite de productos \(200\) excedido"):
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos", fetchone=True)["total"], 200)
+        self.assertNotEqual(self.db.q("SELECT descripcion FROM productos WHERE codigo_barras=?", (existing,), fetchone=True)["descripcion"], "Actualizado")
+        self.db.q("UPDATE productos SET activo=0 WHERE codigo_barras=?", (existing,), fetchall=False, commit=True)
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + "nuevo,Nuevo,General,,,1,1,1,,7790000099999,SI\n").encode()))
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        self.service.apply_stored_plan(plan_id, token, self.owner)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE activo=1", fetchone=True)["total"], 200)
+        active_barcode = self.db.q("SELECT codigo_barras FROM productos WHERE activo=1 ORDER BY id LIMIT 1", fetchone=True)["codigo_barras"]
+        update_only = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + f"existente,Solo actualizado,General,,,1,1,,,{active_barcode},SI\n").encode()))
+        update_id, update_token = self.service.store_plan(update_only, self.owner)
+        with mock.patch.object(self.db, "check_license_limits", wraps=self.db.check_license_limits) as check_limits:
+            self.service.apply_stored_plan(update_id, update_token, self.owner)
+        check_limits.assert_not_called()
+
 
 class CatalogImportHttpTests(unittest.TestCase):
     def setUp(self):
@@ -286,6 +339,13 @@ class CatalogImportHttpTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Seleccion\u00e1 un archivo con extensi\u00f3n .csv.", response.get_data(as_text=True))
         self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM catalog_import_plans", fetchone=True)["total"], 0)
+
+    def test_product_list_keeps_both_csv_import_routes(self):
+        response = self._client().get("/productos")
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('href="/productos/importar"', body)
+        self.assertIn('href="/productos/importar/tiendanube"', body)
 
     def test_new_preview_invalidates_old_and_catalog_rollback_stays_consumed(self):
         client = self._client()
