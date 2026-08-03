@@ -5,13 +5,13 @@
 <div class="container-fluid"><div class="row justify-content-center"><div class="col-lg-10">
   <div class="card mb-4"><div class="card-body">
     <h5>Archivo exportado de Tiendanube</h5><p class="text-muted mb-3">Se procesa una vista previa antes de escribir. El archivo no se conserva y la confirmación revierte el lote completo ante cualquier fallo.</p>
-    <form method="post" enctype="multipart/form-data" class="row g-3"><div class="col-md-8"><input class="form-control" type="file" name="archivo_csv" accept=".csv,text/csv" required></div><div class="col-md-4"><button class="btn btn-primary w-100">Procesar vista previa</button></div></form>
+    <form method="post" enctype="multipart/form-data" class="row g-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="col-md-8"><input class="form-control" type="file" name="archivo_csv" accept=".csv,text/csv" required></div><div class="col-md-4"><button class="btn btn-primary w-100">Procesar vista previa</button></div></form>
     <p class="small text-muted mt-3 mb-0">Límites: {{ limits.MAX_BYTES // (1024 * 1024) }} MB, {{ limits.MAX_ROWS }} filas, {{ limits.MAX_PRODUCTS }} productos y {{ limits.MAX_VARIANTS }} variantes.</p>
   </div></div>
   {% if preview %}<div class="card"><div class="card-header bg-white"><h5 class="mb-0">Vista previa validada</h5></div><div class="card-body">
     <div class="row text-center mb-3"><div class="col"><strong>{{ preview.products|length }}</strong><br><small>productos</small></div><div class="col"><strong>{{ preview.products|selectattr('has_variants')|list|length }}</strong><br><small>con variantes</small></div><div class="col"><strong>{{ preview.products|selectattr('action', 'equalto', 'create')|list|length }}</strong><br><small>altas</small></div><div class="col"><strong>{{ preview.products|selectattr('action', 'equalto', 'update')|list|length }}</strong><br><small>actualizaciones</small></div></div>
     {% if preview.errors %}<div class="alert alert-warning"><strong>Conflictos: no se puede confirmar.</strong><ul class="mb-0">{% for error in preview.errors %}<li>Filas {{ error.rows|join(', ') or 'generales' }} — {{ error.field }}: {{ error.cause }}</li>{% endfor %}</ul></div>{% else %}
-    <form method="post" action="{{ url_for('productos_importar_tiendanube_confirmar') }}"><input type="hidden" name="plan_token" value="{{ preview.token }}"><button class="btn btn-success">Confirmar importación</button> <a href="{{ url_for('productos') }}" class="btn btn-outline-secondary">Cancelar</a></form>{% endif %}
+    <form method="post" action="{{ url_for('productos_importar_tiendanube_confirmar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="plan_token" value="{{ preview.token }}"><button class="btn btn-success">Confirmar importación</button> <a href="{{ url_for('productos') }}" class="btn btn-outline-secondary">Cancelar</a></form>{% endif %}
   </div></div>{% endif %}
 </div></div></div>
 {% endblock %}

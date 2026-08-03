@@ -256,19 +256,31 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
                 product_id = int(cursor.lastrowid); cursor.execute("INSERT INTO stock (producto_id,stock_actual,stock_minimo,stock_maximo,proveedor_habitual) VALUES (?,?,?,?,?)", (product_id, 0, 0, 0, "")); created += 1
             if item["has_variants"]:
                 allocations = []
+                enable_variants = []
+                disable_variants = []
                 for row in rows:
                     pairs = product_variants._resolve_attribute_pairs(cursor, [{"attribute_name": x["name"], "value_name": x["value"]} for x in row["attributes"]])
                     key = product_variants._build_combination_key(pairs)
                     existing = cursor.execute("SELECT id FROM producto_variantes WHERE producto_id=? AND combination_key=?", (product_id, key)).fetchone()
-                    if existing: variant_id = int(existing[0])
+                    if existing:
+                        variant_id = int(existing[0])
+                        if row["visible"] is not None:
+                            (enable_variants if row["visible"] else disable_variants).append(variant_id)
                     else:
                         variant_id = product_variants._insert_variant_row(cursor, {"product_id": product_id, "combination_key": key, "variant_name": product_variants._build_variant_name(pairs), "sku": row["sku"] or None, "codigo_barras": row["barcode"], "costo": row["cost"], "precio": row["price"], "precio_promocional": None, "activo": int(row["visible"] if row["visible"] is not None else True), "external_id": ""})
                         product_variants._insert_variant_attribute_values(cursor, variant_id, pairs)
-                    allocations.append({"variant_id": variant_id, "stock_actual": row["stock"] or 0, "stock_minimo": 0, "stock_maximo": 0})
+                        # New variants without source stock still need their safe
+                        # zero-valued inventory configuration.
+                        product_variants._insert_variant_stock(cursor, variant_id, stock_actual=0, stock_minimo=0, stock_maximo=0)
+                    allocations.append({"variant_id": variant_id, "stock_actual": row["stock"], "stock_minimo": 0, "stock_maximo": 0})
                 cursor.execute("UPDATE productos SET stock_modo='variantes' WHERE id=?", (product_id,))
+                for variant_id in enable_variants:
+                    cursor.execute("UPDATE producto_variantes SET activo=1, updated_at=CURRENT_TIMESTAMP WHERE id=?", (variant_id,))
                 for allocation in allocations:
                     if allocation["stock_actual"] is not None:
                         _adjust_stock_if_changed(cursor, product_id, allocation["stock_actual"], variant_id=allocation["variant_id"])
+                for variant_id in disable_variants:
+                    cursor.execute("UPDATE producto_variantes SET activo=0, updated_at=CURRENT_TIMESTAMP WHERE id=?", (variant_id,))
             else:
                 row = first
                 fields, params = ["codigo_barras=?"], [row["barcode"]]
