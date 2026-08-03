@@ -22,6 +22,37 @@ def _clean_text(value) -> str:
     return " ".join(str(value or "").strip().split())
 
 
+def _normalize_variant_sku_for_matching(value) -> str:
+    return _clean_text(value).lower()
+
+
+def _normalized_variant_skus_excluding_in_cursor(cursor, *, exclude_variant_ids=()) -> set[str]:
+    excluded_ids = tuple(sorted({int(variant_id) for variant_id in exclude_variant_ids if variant_id is not None}))
+    sql = "SELECT id, sku FROM producto_variantes WHERE sku IS NOT NULL"
+    params = []
+    if excluded_ids:
+        marks = ",".join("?" for _ in excluded_ids)
+        sql += f" AND id NOT IN ({marks})"
+        params.extend(excluded_ids)
+    normalized_skus = set()
+    for row in cursor.execute(sql, tuple(params)).fetchall():
+        normalized = _normalize_variant_sku_for_matching(row["sku"])
+        if normalized:
+            normalized_skus.add(normalized)
+    return normalized_skus
+
+
+def _find_variant_matches_by_normalized_sku_in_cursor(cursor, sku) -> list:
+    normalized_sku = _normalize_variant_sku_for_matching(sku)
+    if not normalized_sku:
+        return []
+    return [
+        row
+        for row in cursor.execute("SELECT id, producto_id, sku FROM producto_variantes WHERE sku IS NOT NULL").fetchall()
+        if _normalize_variant_sku_for_matching(row["sku"]) == normalized_sku
+    ]
+
+
 def _validate_stock_value(value, label: str) -> float:
     if value is None or (isinstance(value, str) and not value.strip()):
         value = 0
@@ -177,12 +208,7 @@ def _validate_variant_sku(cursor, sku: str, *, exclude_variant_id=None) -> str |
     sku_clean = _clean_text(sku) or None
     if not sku_clean:
         return None
-    sql = "SELECT id FROM producto_variantes WHERE sku=?"
-    params = [sku_clean]
-    if exclude_variant_id is not None:
-        sql += " AND id <> ?"
-        params.append(int(exclude_variant_id))
-    if cursor.execute(sql, tuple(params)).fetchone() is not None:
+    if _normalize_variant_sku_for_matching(sku_clean) in _normalized_variant_skus_excluding_in_cursor(cursor, exclude_variant_ids=(exclude_variant_id,)):
         raise ValueError("El SKU de la variante ya existe.")
     return sku_clean
 
@@ -218,6 +244,15 @@ def _update_variant_commercial_fields_in_cursor(
         )
 
 
+def _apply_prevalidated_variant_commercial_fields_in_cursor(cursor, product_id: int, variant_id: int, *, sku, codigo_barras, costo, precio) -> None:
+    """Persist a batch-validated commercial state without rechecking old identifiers."""
+    _get_variant_for_product_in_cursor(cursor, product_id, variant_id)
+    cursor.execute(
+        "UPDATE producto_variantes SET sku=?, codigo_barras=?, costo=?, precio=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND producto_id=?",
+        (sku, codigo_barras, costo, precio, int(variant_id), int(product_id)),
+    )
+
+
 def _validate_batch_codes(cursor, details_by_key: dict[str, dict]) -> dict[str, dict]:
     normalized_details: dict[str, dict] = {}
     seen_skus: dict[str, str] = {}
@@ -226,10 +261,11 @@ def _validate_batch_codes(cursor, details_by_key: dict[str, dict]) -> dict[str, 
         sku_clean = _clean_text(detail.get("sku", "")) or None
         barcode_clean = db.normalize_codigo_barras(detail.get("codigo_barras", ""))
         if sku_clean:
-            other_key = seen_skus.get(sku_clean)
+            sku_key = _normalize_variant_sku_for_matching(sku_clean)
+            other_key = seen_skus.get(sku_key)
             if other_key and other_key != combination_key:
                 raise ValueError("El lote contiene SKUs duplicados.")
-            seen_skus[sku_clean] = combination_key
+            seen_skus[sku_key] = combination_key
         if barcode_clean:
             other_key = seen_barcodes.get(barcode_clean)
             if other_key and other_key != combination_key:

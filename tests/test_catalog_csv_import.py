@@ -210,6 +210,115 @@ class CatalogImportPersistenceTests(unittest.TestCase):
             self.service.apply_stored_plan(plan_id, token, self.owner)
         self.assertEqual(self.db.q("SELECT sku FROM producto_variantes WHERE producto_id=?", (product["producto_id"],), fetchone=True)["sku"], "REM-ONE")
 
+    def test_existing_variants_can_swap_skus_and_barcodes_atomically(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,REM-A,7790000010201,SI\nremera,,,Color,Blanco,110,45,2,REM-B,7790000010202,SI\n")
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,0,0,,REM-B,7790000010202,SI\nremera,,,Color,Blanco,0,0,,REM-A,7790000010201,SI\n")
+        rows = self.db.q("SELECT nombre, sku, codigo_barras, costo, precio FROM producto_variantes ORDER BY nombre")
+        self.assertEqual([(row["nombre"], row["sku"], row["codigo_barras"], row["costo"], row["precio"]) for row in rows], [("Color: Blanco", "REM-A", "7790000010201", 0.0, 0.0), ("Color: Negro", "REM-B", "7790000010202", 0.0, 0.0)])
+
+    def test_variant_final_sku_validation_is_case_insensitive_and_rolls_back(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,4,ABC,7790000010401,SI\nremera,,,Color,Blanco,110,45,6,DEF,7790000010402,SI\n")
+        product_id = self.db.q("SELECT producto_id FROM producto_variantes WHERE sku='ABC'", fetchone=True)["producto_id"]
+        before = self.db.q("SELECT sku, codigo_barras, costo, precio FROM producto_variantes WHERE producto_id=? ORDER BY sku", (product_id,))
+        movements_before = self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"]
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + "remera,Remera,Ropa,Color,Negro,100,40,3,,7790000010401,SI\nremera,,,Color,Blanco,110,45,7,abc,7790000010402,SI\n").encode()))
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        with self.assertRaisesRegex(ValueError, "SKUs duplicados"):
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+        after = self.db.q("SELECT sku, codigo_barras, costo, precio FROM producto_variantes WHERE producto_id=? ORDER BY sku", (product_id,))
+        self.assertEqual([tuple(row) for row in after], [tuple(row) for row in before])
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"], movements_before)
+
+    def test_variant_sku_case_insensitive_external_collision_and_self_update(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,ABC,7790000010403,SI\nremera,,,Color,Blanco,110,45,2,DEF,7790000010404,SI\n")
+        product_id = self.db.q("SELECT producto_id FROM producto_variantes WHERE sku='ABC'", fetchone=True)["producto_id"]
+        collision = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + "remera,Remera,Ropa,Color,Blanco,110,45,2,abc,7790000010404,SI\n").encode()))
+        plan_id, token = self.service.store_plan(collision, self.owner)
+        with self.assertRaisesRegex(ValueError, "SKU de la variante ya existe"):
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+        self.assertEqual(self.db.q("SELECT sku FROM producto_variantes WHERE producto_id=? AND codigo_barras=?", (product_id, "7790000010404"), fetchone=True)["sku"], "DEF")
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,abc,7790000010403,SI\nremera,,,Color,Blanco,110,45,2,DEF,7790000010404,SI\n")
+        self.assertEqual(self.db.q("SELECT sku FROM producto_variantes WHERE producto_id=? AND codigo_barras=?", (product_id, "7790000010403"), fetchone=True)["sku"], "abc")
+
+    def test_variant_sku_external_legacy_spacing_uses_canonical_normalization(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,4,ABC,7790000010407,SI\nremera,,,Color,Blanco,110,45,6,DEF,7790000010408,SI\n")
+        product_id = self.db.q("SELECT producto_id FROM producto_variantes WHERE sku='ABC'", fetchone=True)["producto_id"]
+        for legacy_sku, requested_sku in ((" ABC ", "abc"), ("A  BC", "a bc")):
+            self.db.q("UPDATE producto_variantes SET sku=? WHERE producto_id=? AND codigo_barras=?", (legacy_sku, product_id, "7790000010407"), fetchall=False, commit=True)
+            before = self.db.q("SELECT sku, codigo_barras, costo, precio FROM producto_variantes WHERE producto_id=? ORDER BY codigo_barras", (product_id,))
+            movements_before = self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"]
+            plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + f"remera,Remera,Ropa,Color,Blanco,110,45,7,{requested_sku},7790000010408,SI\n").encode()))
+            plan_id, token = self.service.store_plan(plan, self.owner)
+            with self.assertRaisesRegex(ValueError, "SKU de la variante ya existe"):
+                self.service.apply_stored_plan(plan_id, token, self.owner)
+            after = self.db.q("SELECT sku, codigo_barras, costo, precio FROM producto_variantes WHERE producto_id=? ORDER BY codigo_barras", (product_id,))
+            self.assertEqual([tuple(row) for row in after], [tuple(row) for row in before])
+            self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"], movements_before)
+
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,4,abc,7790000010407,SI\n")
+        self.assertEqual(self.db.q("SELECT sku FROM producto_variantes WHERE producto_id=? AND codigo_barras=?", (product_id, "7790000010407"), fetchone=True)["sku"], "abc")
+
+    def test_preview_matches_legacy_sku_spacing_and_rejects_ambiguous_matches(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,4,ABC,,SI\n")
+        variant = self.db.q("SELECT id, producto_id FROM producto_variantes WHERE sku='ABC'", fetchone=True)
+        for legacy_sku, imported_sku in ((" ABC ", "abc"), ("A  BC", "a bc")):
+            self.db.q("UPDATE producto_variantes SET sku=? WHERE id=?", (legacy_sku, variant["id"]), fetchall=False, commit=True)
+            plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + f"remera,Remera,Ropa,Color,Negro,100,40,7,{imported_sku},,SI\n").encode()))
+            self.assertFalse(plan["errors"])
+            self.assertEqual(plan["products"][0]["action"], "update")
+            self.assertEqual(plan["products"][0]["rows"][0]["variant_id"], variant["id"])
+            plan_id, token = self.service.store_plan(plan, self.owner)
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+            self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos", fetchone=True)["total"], 1)
+            self.assertEqual(self.db.q("SELECT id FROM producto_variantes", fetchone=True)["id"], variant["id"])
+
+        self.db.q("UPDATE producto_variantes SET sku='ABC' WHERE id=?", (variant["id"],), fetchall=False, commit=True)
+        self.service.product_variants.create_variant(variant["producto_id"], attributes=[{"attribute_name": "Color", "value_name": "Blanco"}], sku="XYZ", costo=40, precio=100, stock_actual=0, stock_minimo=0, stock_maximo=0)
+        self.db.q("UPDATE producto_variantes SET sku=' ABC ' WHERE producto_id=? AND sku='XYZ'", (variant["producto_id"],), fetchall=False, commit=True)
+        ambiguous = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + "remera,Remera,Ropa,Color,Negro,100,40,7,abc,,SI\n").encode()))
+        self.assertTrue(any(error["field"] == "identificacion" for error in ambiguous["errors"]))
+        self.assertEqual(ambiguous["products"], [])
+
+    def test_variant_sku_swap_remains_valid_when_normalized_final_state_is_unique(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,ABC,7790000010405,SI\nremera,,,Color,Blanco,110,45,2,DEF,7790000010406,SI\n")
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,def,7790000010405,SI\nremera,,,Color,Blanco,110,45,2,abc,7790000010406,SI\n")
+        rows = self.db.q("SELECT sku FROM producto_variantes ORDER BY codigo_barras")
+        self.assertEqual([row["sku"] for row in rows], ["def", "abc"])
+
+    def test_variant_plan_rejects_deleted_existing_variant_without_replacement(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,10,REM-NEG,7790000010301,SI\n")
+        variant = self.db.q("SELECT id FROM producto_variantes WHERE sku='REM-NEG'", fetchone=True)
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + "remera,Remera,Ropa,Color,Negro,100,40,7,REM-NEG,7790000010301,SI\n").encode()))
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        movements_before = self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"]
+        self.db.q("DELETE FROM producto_variantes WHERE id=?", (variant["id"],), fetchall=False, commit=True)
+        with self.assertRaisesRegex(ValueError, "planificada para actualizar ya no existe"):
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM producto_variantes", fetchone=True)["total"], 0)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"], movements_before)
+
+    def test_variant_plan_rejects_concurrently_occupied_new_combination_before_release(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,REM-NEG,7790000010302,SI\n")
+        product_id = self.db.q("SELECT producto_id FROM producto_variantes WHERE sku='REM-NEG'", fetchone=True)["producto_id"]
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,REM-NEG,7790000010302,SI\nremera,,,Color,Blanco,110,45,2,REM-BLA,,SI\n").encode()))
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        self.service.product_variants.create_variant(product_id, attributes=[{"attribute_name": "Color", "value_name": "Blanco"}], sku="REM-BLA-CONC", costo=45, precio=110, stock_actual=2, stock_minimo=0, stock_maximo=0)
+        with self.assertRaisesRegex(ValueError, "planificada para crear ya existe"):
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+        rows = self.db.q("SELECT sku FROM producto_variantes ORDER BY sku")
+        self.assertEqual([row["sku"] for row in rows], ["REM-BLA-CONC", "REM-NEG"])
+
+    def test_old_variant_plan_without_identity_metadata_is_rejected(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,REM-NEG,7790000010303,SI\n")
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv((HEADER + "remera,Remera,Ropa,Color,Negro,100,40,1,REM-NEG,7790000010303,SI\n").encode()))
+        row = plan["products"][0]["rows"][0]
+        for field in ("variant_action", "variant_id", "expected_combination_key"):
+            row.pop(field, None)
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        with self.assertRaisesRegex(ValueError, "requiere una nueva vista previa"):
+            self.service.apply_stored_plan(plan_id, token, self.owner)
+        self.assertEqual(self.db.q("SELECT sku FROM producto_variantes", fetchone=True)["sku"], "REM-NEG")
+
     def test_confirmation_projects_active_product_limit(self):
         self.db.set_config({
             "license_plan": "BASICA", "license_plan_original": "BASICA", "license_effective_plan": "BASICA",
