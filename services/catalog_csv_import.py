@@ -236,12 +236,12 @@ def build_plan(rows: list[dict]) -> dict:
     return payload
 
 
-def _adjust_stock_if_changed(cursor, product_id: int, target: float, *, variant_id=None):
+def _adjust_stock_if_changed(cursor, product_id: int, target: float, *, variant_id=None, allow_inactive_variant=False):
     table, where, key = ("stock_variantes", "variante_id", variant_id) if variant_id is not None else ("stock", "producto_id", product_id)
     current = cursor.execute(f"SELECT stock_actual, stock_minimo, stock_maximo FROM {table} WHERE {where}=?", (key,)).fetchone()
     current_value = float(current[0] or 0) if current else 0.0
     if round(current_value, 6) != round(float(target), 6):
-        inventory.adjust_inventory_item_in_cursor(cursor, product_id, variant_id=variant_id, stock_actual=target, stock_minimo=float(current[1] or 0) if current else 0, stock_maximo=float(current[2] or 0) if current else 0, motivo="Importacion CSV de catalogo")
+        inventory.adjust_inventory_item_in_cursor(cursor, product_id, variant_id=variant_id, stock_actual=target, stock_minimo=float(current[1] or 0) if current else 0, stock_maximo=float(current[2] or 0) if current else 0, motivo="Importacion CSV de catalogo", allow_inactive_variant=allow_inactive_variant)
 
 
 def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
@@ -278,7 +278,7 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
                     cursor.execute("UPDATE producto_variantes SET activo=1, updated_at=CURRENT_TIMESTAMP WHERE id=?", (variant_id,))
                 for allocation in allocations:
                     if allocation["stock_actual"] is not None:
-                        _adjust_stock_if_changed(cursor, product_id, allocation["stock_actual"], variant_id=allocation["variant_id"])
+                        _adjust_stock_if_changed(cursor, product_id, allocation["stock_actual"], variant_id=allocation["variant_id"], allow_inactive_variant=True)
                 for variant_id in disable_variants:
                     cursor.execute("UPDATE producto_variantes SET activo=0, updated_at=CURRENT_TIMESTAMP WHERE id=?", (variant_id,))
             else:

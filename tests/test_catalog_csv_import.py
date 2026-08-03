@@ -156,6 +156,35 @@ class CatalogImportPersistenceTests(unittest.TestCase):
         self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,7,REM-NEG,,\n")
         self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"], movements_before + 2)
 
+    def test_inactive_variant_stock_updates_only_through_catalog_import(self):
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,10,REM-INACT,,SI\n")
+        variant = self.db.q("SELECT id, producto_id FROM producto_variantes WHERE sku='REM-INACT'", fetchone=True)
+        self.db.q("UPDATE producto_variantes SET activo=0 WHERE id=?", (variant["id"],), fetchall=False, commit=True)
+        self.db.q("UPDATE stock_variantes SET stock_minimo=2, stock_maximo=20 WHERE variante_id=?", (variant["id"],), fetchall=False, commit=True)
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,7,REM-INACT,,\n")
+        stock = self.db.q("SELECT stock_actual, stock_minimo, stock_maximo FROM stock_variantes WHERE variante_id=?", (variant["id"],), fetchone=True)
+        self.assertEqual(tuple(stock), (7.0, 2.0, 20.0))
+        self.assertEqual(self.db.q("SELECT activo FROM producto_variantes WHERE id=?", (variant["id"],), fetchone=True)["activo"], 0)
+        movement = self.db.q("SELECT stock_anterior, stock_nuevo FROM stock_movimientos ORDER BY id DESC LIMIT 1", fetchone=True)
+        self.assertEqual((movement["stock_anterior"], movement["stock_nuevo"]), (10.0, 7.0))
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,,REM-INACT,,\n")
+        self.assertEqual(self.db.q("SELECT stock_actual FROM stock_variantes WHERE variante_id=?", (variant["id"],), fetchone=True)["stock_actual"], 7.0)
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,6,REM-INACT,,SI\n")
+        self.assertEqual(self.db.q("SELECT activo FROM producto_variantes WHERE id=?", (variant["id"],), fetchone=True)["activo"], 1)
+        self._import(HEADER + "remera,Remera,Ropa,Color,Negro,100,40,5,REM-INACT,,NO\n")
+        self.assertEqual(self.db.q("SELECT activo FROM producto_variantes WHERE id=?", (variant["id"],), fetchone=True)["activo"], 0)
+        other_product = self.db.add_producto({"descripcion": "Otro", "marca": "", "categoria": "General", "tipo_unidad": "unidad", "unidad": "unidad", "stock_actual": 0, "stock_minimo": 0, "stock_maximo": 1, "costo": 1, "precio_venta": 1})
+        self.db.q("UPDATE productos SET stock_modo='variantes' WHERE id=?", (other_product,), fetchall=False, commit=True)
+        conn = self.db.get_conn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            with self.assertRaisesRegex(ValueError, "no pertenece"):
+                self.service.inventory.adjust_inventory_item_in_cursor(cursor, other_product, variant_id=variant["id"], stock_actual=1, stock_minimo=0, stock_maximo=1, allow_inactive_variant=True)
+        finally:
+            conn.rollback()
+            conn.close()
+
 
 class CatalogImportHttpTests(unittest.TestCase):
     def setUp(self):
@@ -220,10 +249,17 @@ class CatalogImportHttpTests(unittest.TestCase):
         with client.session_transaction() as session:
             self.assertNotIn("catalog_csv_import_plan_id", session)
         token = self._preview(client, content)
+        with client.session_transaction() as session:
+            plan_id = session["catalog_csv_import_plan_id"]
         confirmed = client.post("/productos/importar/tiendanube/confirmar", data={"csrf_token": "catalog-csrf", "plan_token": token})
         self.assertEqual(confirmed.status_code, 302)
         self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE codigo_barras=?", ("7790000010001",), fetchone=True)["total"], 1)
+        with client.session_transaction() as session:
+            session["catalog_csv_import_plan_id"] = plan_id
+        movements_before = self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"]
         self.assertEqual(client.post("/productos/importar/tiendanube/confirmar", data={"csrf_token": "catalog-csrf", "plan_token": token}).status_code, 302)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM productos WHERE codigo_barras=?", ("7790000010001",), fetchone=True)["total"], 1)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM stock_movimientos", fetchone=True)["total"], movements_before)
         with self._client("vendedor", "Vendedor") as seller:
             self.assertEqual(seller.get("/productos/importar/tiendanube").status_code, 302)
         foreign_plan, foreign_token = self.service.store_plan(self.service.build_plan(self.service.parse_tiendanube_csv(content.encode())), self.other)
@@ -235,6 +271,13 @@ class CatalogImportHttpTests(unittest.TestCase):
         with client.session_transaction() as session:
             session["catalog_csv_import_plan_id"] = expired
         self.assertEqual(client.post("/productos/importar/tiendanube/confirmar", data={"csrf_token": "catalog-csrf", "plan_token": expired_token}).status_code, 302)
+
+    def test_preview_without_file_is_rejected_after_valid_csrf(self):
+        client = self._client()
+        response = client.post("/productos/importar/tiendanube", data={"csrf_token": "catalog-csrf"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Seleccion\u00e1 un archivo con extensi\u00f3n .csv.", response.get_data(as_text=True))
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS total FROM catalog_import_plans", fetchone=True)["total"], 0)
 
     def test_new_preview_invalidates_old_and_catalog_rollback_stays_consumed(self):
         client = self._client()
