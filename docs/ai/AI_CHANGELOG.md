@@ -3079,4 +3079,5 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
 - El flujo agrupa variantes por identificador de URL sin filtrar conceptos de proveedor al dominio interno.
 - Correccion post-revision: planes de un solo uso en SQLite, reserva de codigo dentro de la transaccion y stock absoluto auditado correctamente.
 - Correccion final: una sola preview vigente por usuario, consumo persistente ante fallos, límites de stock preservados y actualización comercial completa de simples.
+- Correccion de presencia CSV: stock y visibilidad ausentes conservan valores locales; cero y SI/NO solo aplican cuando son explícitos.
 - Se documentaron límites, conflictos y estrategia conservadora de coincidencia.

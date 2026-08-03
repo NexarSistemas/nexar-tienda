@@ -10,6 +10,9 @@ confirmación consume el plan antes de persistir; si el lote falla, debe crearse
 una preview nueva. En simples, los campos comerciales informados actualizan el
 producto; los campos vacíos se conservan y el cero numérico actualiza a cero.
 La importación conserva mínimos y máximos locales de stock.
+Stock ausente o vacío conserva el valor local; `0` explícito establece cero.
+Visibilidad ausente o vacía conserva el estado local; `SI` activa y `NO`
+desactiva. Los valores de visibilidad no reconocidos se rechazan en preview.
 
 Nexar Comercio admite el CSV exportado por Tiendanube. El adaptador reconoce
 `Identificador de URL`, `Nombre`, categorías, hasta tres pares de propiedad y

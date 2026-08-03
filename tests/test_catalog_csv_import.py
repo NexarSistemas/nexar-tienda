@@ -17,6 +17,17 @@ class TiendanubeCsvAdapterTests(unittest.TestCase):
         self.assertEqual(rows[0]["external_group"], "mate")
         self.assertEqual(rows[0]["stock"], 3)
 
+    def test_preserves_absent_fields_and_accepts_explicit_zero(self):
+        minimal = "Identificador de URL,Nombre,Código de barras\nx,Producto,7790000000099\n"
+        row = parse_tiendanube_csv(minimal.encode())[0]
+        self.assertIsNone(row["stock"])
+        self.assertIsNone(row["visible"])
+        zero = parse_tiendanube_csv((HEADER + "x,Producto,,,,1,1,0,,7790000000099,NO\n").encode())[0]
+        self.assertEqual(zero["stock"], 0.0)
+        self.assertFalse(zero["visible"])
+        with self.assertRaisesRegex(ValueError, "Mostrar en tienda"):
+            parse_tiendanube_csv((HEADER + "x,Producto,,,,1,1,1,,7790000000099,QUIZAS\n").encode())
+
     def test_groups_multiple_variants_with_neutral_attributes(self):
         content = HEADER + "remera,Remera,Ropa,Material,Algodón,100,40,2,R-ALG,,SI\nremera,,,Material,Lino,110,45,1,R-LIN,,SI\n"
         rows = parse_tiendanube_csv(content.encode())
@@ -100,6 +111,18 @@ class CatalogImportPersistenceTests(unittest.TestCase):
         stock = self.db.q("SELECT stock_actual, stock_minimo, stock_maximo FROM stock WHERE producto_id=?", (product_id,), fetchone=True)
         self.assertEqual((product["descripcion"], product["costo"], product["precio_venta"], product["activo"]), ("Nuevo", 0.0, 0.0, 0))
         self.assertEqual((stock["stock_actual"], stock["stock_minimo"], stock["stock_maximo"]), (7.0, 2.0, 20.0))
+
+    def test_absent_stock_and_visibility_keep_local_values(self):
+        product_id = self.db.add_producto({"descripcion": "Local", "marca": "", "categoria": "General", "tipo_unidad": "unidad", "unidad": "unidad", "stock_actual": 10, "stock_minimo": 2, "stock_maximo": 20, "costo": 1, "precio_venta": 2, "codigo_barras": "7790000000004"})
+        self.db.q("UPDATE productos SET activo=0 WHERE id=?", (product_id,), fetchall=False, commit=True)
+        content = "Identificador de URL,Nombre,Código de barras\nx,Local nuevo,7790000000004\n"
+        plan = self.service.build_plan(self.service.parse_tiendanube_csv(content.encode()))
+        plan_id, token = self.service.store_plan(plan, self.owner)
+        self.service.apply_stored_plan(plan_id, token, self.owner)
+        product = self.db.get_producto(product_id)
+        stock = self.db.q("SELECT stock_actual, stock_minimo, stock_maximo FROM stock WHERE producto_id=?", (product_id,), fetchone=True)
+        self.assertEqual(product["activo"], 0)
+        self.assertEqual((stock["stock_actual"], stock["stock_minimo"], stock["stock_maximo"]), (10.0, 2.0, 20.0))
 
 
 if __name__ == "__main__":

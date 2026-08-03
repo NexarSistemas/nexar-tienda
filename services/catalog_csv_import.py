@@ -58,6 +58,17 @@ def _number(value, field: str, *, required=False):
     return result
 
 
+def _visible(value, *, present: bool):
+    if not present or not str(value or "").strip():
+        return None
+    normalized = _key(value)
+    if normalized in {"si", "true", "1", "yes"}:
+        return True
+    if normalized in {"no", "false", "0"}:
+        return False
+    raise ValueError("Mostrar en tienda: debe ser SI o NO")
+
+
 def _combination_identity(attributes: list[dict]) -> tuple[tuple[str, str], ...]:
     return tuple(sorted((_key(item["name"]), _key(item["value"])) for item in attributes))
 
@@ -153,7 +164,7 @@ def parse_tiendanube_csv(content: bytes) -> list[dict]:
                          "price": _number(get("price"), "Precio"), "cost": _number(get("cost"), "Costo"),
                          "stock": _number(get("stock"), "Stock"), "sku": _text(get("sku"), "SKU"),
                          "barcode": _text(get("barcode"), "Código de barras"), "attributes": attributes,
-                         "visible": _key(get("visible")) not in {"no", "false", "0"}})
+                         "visible": _visible(get("visible"), present="visible" in columns)})
         except ValueError as exc:
             raise ValueError(f"Fila {number}, {exc}") from exc
     if not rows: raise ValueError("El CSV no contiene filas importables")
@@ -241,7 +252,7 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
                 product_id = item["product_id"]; updated += 1
             else:
                 cursor.execute("INSERT INTO productos (codigo_interno,descripcion,marca,categoria,costo,precio_venta,activo,stock_modo) VALUES (?,?,?,?,?,?,?,'legacy')",
-                    (db._next_codigo_in_cursor(cursor), first["name"], first["brand"], first["category"].split(",")[0].strip(), first["cost"] or 0, first["price"] or 0, int(first["visible"])))
+                    (db._next_codigo_in_cursor(cursor), first["name"], first["brand"], first["category"].split(",")[0].strip(), first["cost"] or 0, first["price"] or 0, int(first["visible"] if first["visible"] is not None else True)))
                 product_id = int(cursor.lastrowid); cursor.execute("INSERT INTO stock (producto_id,stock_actual,stock_minimo,stock_maximo,proveedor_habitual) VALUES (?,?,?,?,?)", (product_id, 0, 0, 0, "")); created += 1
             if item["has_variants"]:
                 allocations = []
@@ -251,15 +262,18 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
                     existing = cursor.execute("SELECT id FROM producto_variantes WHERE producto_id=? AND combination_key=?", (product_id, key)).fetchone()
                     if existing: variant_id = int(existing[0])
                     else:
-                        variant_id = product_variants._insert_variant_row(cursor, {"product_id": product_id, "combination_key": key, "variant_name": product_variants._build_variant_name(pairs), "sku": row["sku"] or None, "codigo_barras": row["barcode"], "costo": row["cost"], "precio": row["price"], "precio_promocional": None, "activo": int(row["visible"]), "external_id": ""})
+                        variant_id = product_variants._insert_variant_row(cursor, {"product_id": product_id, "combination_key": key, "variant_name": product_variants._build_variant_name(pairs), "sku": row["sku"] or None, "codigo_barras": row["barcode"], "costo": row["cost"], "precio": row["price"], "precio_promocional": None, "activo": int(row["visible"] if row["visible"] is not None else True), "external_id": ""})
                         product_variants._insert_variant_attribute_values(cursor, variant_id, pairs)
                     allocations.append({"variant_id": variant_id, "stock_actual": row["stock"] or 0, "stock_minimo": 0, "stock_maximo": 0})
                 cursor.execute("UPDATE productos SET stock_modo='variantes' WHERE id=?", (product_id,))
                 for allocation in allocations:
-                    _adjust_stock_if_changed(cursor, product_id, allocation["stock_actual"], variant_id=allocation["variant_id"])
+                    if allocation["stock_actual"] is not None:
+                        _adjust_stock_if_changed(cursor, product_id, allocation["stock_actual"], variant_id=allocation["variant_id"])
             else:
                 row = first
-                fields, params = ["codigo_barras=?", "activo=?"], [row["barcode"], int(row["visible"])]
+                fields, params = ["codigo_barras=?"], [row["barcode"]]
+                if row["visible"] is not None:
+                    fields.append("activo=?"); params.append(int(row["visible"]))
                 for column, source in (("descripcion", "name"), ("marca", "brand"), ("categoria", "category")):
                     if row[source]:
                         fields.append(f"{column}=?"); params.append(row[source].split(",")[0].strip() if column == "categoria" else row[source])
@@ -268,7 +282,8 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
                         fields.append(f"{column}=?"); params.append(row[source])
                 params.append(product_id)
                 cursor.execute(f"UPDATE productos SET {', '.join(fields)} WHERE id=?", tuple(params))
-                _adjust_stock_if_changed(cursor, product_id, row["stock"] or 0)
+                if row["stock"] is not None:
+                    _adjust_stock_if_changed(cursor, product_id, row["stock"])
     return {"created": created, "updated": updated}
 
 
