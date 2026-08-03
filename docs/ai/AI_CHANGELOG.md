@@ -3073,3 +3073,8 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
 ### Casos dudosos / alcance
 - No se agrego un catalogo nuevo de roles para evitar refactor; el MVP se apoya en los roles ya presentes (`Administrador`, `Vendedor`, `Encargado`) y reconoce tambien `admin` por compatibilidad.
 - Se protegieron solo las acciones criticas pedidas; no se endurecieron otros permisos operativos fuera de alcance.
+# 2026-08-03 — feature/issue-150-import-catalog-csv
+
+- Se agregó una importación CSV de Tiendanube con adaptador separado, vista previa y confirmación atómica.
+- El flujo agrupa variantes por identificador de URL sin filtrar conceptos de proveedor al dominio interno.
+- Se documentaron límites, conflictos y estrategia conservadora de coincidencia.
