@@ -3116,3 +3116,6 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
 - La descarga se genera desde una única instantánea ya validada en un temporal
   con derrame a disco, y el importador conserva el precio promocional de las
   variantes en la ida y vuelta.
+- Corrección de revisión: el precio promocional se valida como decimal sin
+  conversión intermedia a `float`, y catálogo comparte una única construcción
+  pública de filtros entre lectura normal e iteración para exportar.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import sqlite3
 from collections import defaultdict
+from decimal import Decimal, InvalidOperation
 from itertools import product
 
 import database as db
@@ -82,18 +83,18 @@ def _product_uses_variant_stock(product) -> bool:
     return str(product["stock_modo"] if "stock_modo" in product.keys() else "legacy").strip().lower() == "variantes"
 
 
-def _validate_optional_money(value, label: str) -> float | None:
+def _validate_optional_money(value, label: str) -> str | None:
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     try:
-        number = float(value)
-    except (TypeError, ValueError) as exc:
+        number = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
         raise ValueError(f"{label} debe ser numerico.") from exc
-    if not math.isfinite(number):
+    if not number.is_finite():
         raise ValueError(f"{label} debe ser un numero finito.")
     if number < 0:
         raise ValueError(f"{label} no puede ser negativo.")
-    return number
+    return format(number, "f")
 
 
 def _build_combination_key(attribute_pairs: list[dict]) -> str:

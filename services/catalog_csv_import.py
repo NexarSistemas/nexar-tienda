@@ -11,6 +11,7 @@ import json
 import math
 import secrets
 import unicodedata
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 
@@ -56,6 +57,22 @@ def _number(value, field: str, *, required=False):
     if not math.isfinite(result) or result < 0:
         raise ValueError(f"{field}: debe ser un numero finito no negativo")
     return result
+
+
+def _decimal_number(value, field: str, *, required=False):
+    """Valida moneda sin reducir la precisión textual del CSV a ``float``."""
+    raw = str(value or "").strip()
+    if not raw:
+        if required:
+            raise ValueError(f"{field}: es obligatorio")
+        return None
+    try:
+        number = Decimal(raw.replace(",", "."))
+    except InvalidOperation as exc:
+        raise ValueError(f"{field}: debe ser numerico") from exc
+    if not number.is_finite() or number < 0:
+        raise ValueError(f"{field}: debe ser un numero finito no negativo")
+    return format(number, "f")
 
 
 def _visible(value, *, present: bool):
@@ -161,7 +178,7 @@ def parse_tiendanube_csv(content: bytes) -> list[dict]:
             rows.append({"row": number, "external_group": _text(get("url"), "Identificador de URL", required=True),
                          "name": _text(get("name"), "Nombre"), "category": _text(get("category"), "Categorías"),
                          "description": _text(get("description"), "Descripción"), "brand": _text(get("brand"), "Marca"),
-                         "price": _number(get("price"), "Precio"), "promotional_price": _number(get("promotional_price"), "Precio promocional"), "cost": _number(get("cost"), "Costo"),
+                         "price": _number(get("price"), "Precio"), "promotional_price": _decimal_number(get("promotional_price"), "Precio promocional"), "cost": _number(get("cost"), "Costo"),
                          "stock": _number(get("stock"), "Stock"), "sku": _text(get("sku"), "SKU"),
                          "barcode": _text(get("barcode"), "Código de barras"), "attributes": attributes,
                          "visible": _visible(get("visible"), present="visible" in columns)})

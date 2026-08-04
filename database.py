@@ -3308,13 +3308,15 @@ def get_roles():
 
 # â”€â”€â”€ PRODUCTOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def get_productos(activo_only=True, search='', rubro=None, proveedor=''):
-    """Devuelve productos filtrables."""
+def build_productos_query(activo_only=True, search='', rubro=None, proveedor='', categoria='', *, include_stock=False):
+    """Construye la consulta pública del catálogo y sus filtros compatibles."""
     sql = (
         "SELECT productos.*, COALESCE(s.proveedor_habitual, '') AS proveedor_habitual "
         "FROM productos "
         "LEFT JOIN stock s ON s.producto_id = productos.id"
     )
+    if include_stock:
+        sql = sql.replace(" AS proveedor_habitual ", " AS proveedor_habitual, COALESCE(s.stock_actual, 0) AS stock_actual ")
     conds = []
     params = []
     if activo_only:
@@ -3337,9 +3339,18 @@ def get_productos(activo_only=True, search='', rubro=None, proveedor=''):
     if proveedor:
         conds.append("LOWER(COALESCE(s.proveedor_habitual, '')) = ?")
         params.append(str(proveedor).strip().lower())
+    if categoria:
+        conds.append("LOWER(COALESCE(productos.categoria, '')) = ?")
+        params.append(str(categoria).strip().lower())
     if conds:
         sql += " WHERE " + " AND ".join(conds)
     sql += " ORDER BY productos.descripcion"
+    return sql, params
+
+
+def get_productos(activo_only=True, search='', rubro=None, proveedor=''):
+    """Devuelve productos filtrables."""
+    sql, params = build_productos_query(activo_only, search, rubro, proveedor)
     return q(sql, params)
 
 
@@ -3352,31 +3363,9 @@ def iter_productos(activo_only=True, search='', rubro=None, proveedor='', catego
     own_conn = conn is None
     conn = conn or get_conn()
     try:
-        sql = (
-            "SELECT productos.*, COALESCE(s.proveedor_habitual, '') AS proveedor_habitual, "
-            "COALESCE(s.stock_actual, 0) AS stock_actual "
-            "FROM productos LEFT JOIN stock s ON s.producto_id = productos.id"
-        )
-        conds, params = [], []
-        if activo_only:
-            conds.append("productos.activo=1")
-        if rubro is not None:
-            rubro_cond, rubro_params = _build_rubro_compatible_filter(rubro)
-            conds.append(rubro_cond)
-            params += rubro_params
-        if search:
-            conds.append("(productos.codigo_interno LIKE ? OR productos.codigo_barras LIKE ? OR productos.descripcion LIKE ? OR productos.categoria LIKE ? OR COALESCE(s.proveedor_habitual, '') LIKE ?)")
-            params += [f'%{search}%'] * 5
-        if proveedor:
-            conds.append("LOWER(COALESCE(s.proveedor_habitual, '')) = ?")
-            params.append(str(proveedor).strip().lower())
-        if categoria:
-            conds.append("LOWER(COALESCE(productos.categoria, '')) = ?")
-            params.append(str(categoria).strip().lower())
-        if conds:
-            sql += " WHERE " + " AND ".join(conds)
+        sql, params = build_productos_query(activo_only, search, rubro, proveedor, categoria, include_stock=True)
         cursor = conn.cursor()
-        cursor.execute(sql + " ORDER BY productos.descripcion, productos.id", params)
+        cursor.execute(sql, params)
         while rows := cursor.fetchmany(batch_size):
             yield rows
     finally:
