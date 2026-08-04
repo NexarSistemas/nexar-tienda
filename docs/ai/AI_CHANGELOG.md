@@ -3102,3 +3102,11 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
 - Correccion final: una sola preview vigente por usuario, consumo persistente ante fallos, límites de stock preservados y actualización comercial completa de simples.
 - Correccion de presencia CSV: stock y visibilidad ausentes conservan valores locales; cero y SI/NO solo aplican cuando son explícitos.
 - Se documentaron límites, conflictos y estrategia conservadora de coincidencia.
+# 2026-08-04 - Codex - feature/tiendanube-csv-export
+
+- Se agregó el adaptador de salida CSV de Tiendanube para productos legacy y
+  variantes, separado de la representación neutral del catálogo.
+- La descarga reutiliza los filtros de catálogo, exporta productos y variantes
+  activos, usa UTF-8 con BOM y valida datos antes de entregar el archivo.
+- Se documentó la plantilla versionada, sus límites y la ausencia de API,
+  OAuth, webhooks o sincronización automática.
