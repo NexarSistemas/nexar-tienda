@@ -178,7 +178,7 @@ def parse_tiendanube_csv(content: bytes) -> list[dict]:
             rows.append({"row": number, "external_group": _text(get("url"), "Identificador de URL", required=True),
                          "name": _text(get("name"), "Nombre"), "category": _text(get("category"), "Categorías"),
                          "description": _text(get("description"), "Descripción"), "brand": _text(get("brand"), "Marca"),
-                         "price": _number(get("price"), "Precio"), "promotional_price": _decimal_number(get("promotional_price"), "Precio promocional"), "cost": _number(get("cost"), "Costo"),
+                         "price": _decimal_number(get("price"), "Precio"), "promotional_price": _decimal_number(get("promotional_price"), "Precio promocional"), "cost": _number(get("cost"), "Costo"),
                          "stock": _number(get("stock"), "Stock"), "sku": _text(get("sku"), "SKU"),
                          "barcode": _text(get("barcode"), "Código de barras"), "attributes": attributes,
                          "visible": _visible(get("visible"), present="visible" in columns)})

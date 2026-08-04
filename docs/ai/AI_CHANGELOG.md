@@ -3121,3 +3121,5 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
   pública de filtros entre lectura normal e iteración para exportar.
 - La promoción importada se normaliza a dos decimales con `ROUND_HALF_UP`, el
   contrato monetario compatible con las columnas `REAL` existentes.
+- Precio y precio promocional comparten la misma normalización decimal de
+  importación antes de persistirse.
