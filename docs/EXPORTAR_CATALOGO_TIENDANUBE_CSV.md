@@ -43,7 +43,9 @@ atributos, más de tres atributos, atributos repetidos, números no finitos o
 precio promocional no menor al precio), la descarga se rechaza y se informa el
 motivo; no se omite silenciosamente ningún registro inválido.
 
-Los decimales se emiten con punto y sin notación científica, los valores vacíos
+Los importes monetarios se normalizan a dos decimales con redondeo explícito
+`ROUND_HALF_UP` antes de persistirse; Nexar usa columnas SQLite `REAL` y no
+promete precisión decimal arbitraria. Los decimales se emiten con punto y sin notación científica, los valores vacíos
 permanecen vacíos, las tildes y saltos de línea se codifican correctamente por
 el escritor CSV. Las categorías escapan `\\`, `,` y `>` conforme al contrato de
 Tiendanube, y los

@@ -11,7 +11,7 @@ import json
 import math
 import secrets
 import unicodedata
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 
@@ -72,7 +72,7 @@ def _decimal_number(value, field: str, *, required=False):
         raise ValueError(f"{field}: debe ser numerico") from exc
     if not number.is_finite() or number < 0:
         raise ValueError(f"{field}: debe ser un numero finito no negativo")
-    return format(number, "f")
+    return format(number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), "f")
 
 
 def _visible(value, *, present: bool):

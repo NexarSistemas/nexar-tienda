@@ -3119,3 +3119,5 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
 - Corrección de revisión: el precio promocional se valida como decimal sin
   conversión intermedia a `float`, y catálogo comparte una única construcción
   pública de filtros entre lectura normal e iteración para exportar.
+- La promoción importada se normaliza a dos decimales con `ROUND_HALF_UP`, el
+  contrato monetario compatible con las columnas `REAL` existentes.
