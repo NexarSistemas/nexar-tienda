@@ -36,7 +36,7 @@
                 {% endif %}
             </div>
             {% if stock_modo != 'variantes' and variantes %}
-            <form method="POST" action="{{ url_for('producto_variantes_activar_stock', pid=producto['id']) }}">
+            <form method="POST" action="{{ url_for('main.producto_variantes_activar_stock', pid=producto['id']) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="motivo" value="Activacion de stock por variantes">
                 <button type="submit" class="btn btn-sm btn-outline-primary">
@@ -161,7 +161,7 @@
                     <h5 class="mb-0"><i class="fas fa-object-group me-2"></i>Generar combinaciones</h5>
                 </div>
                 <div class="card-body">
-                    <form method="POST" action="{{ url_for('producto_variantes_generar_previsualizar', pid=producto['id']) }}">
+                    <form method="POST" action="{{ url_for('main.producto_variantes_generar_previsualizar', pid=producto['id']) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         {% for atributo in atributos_catalogo %}
                             {% set valores_activos = atributo.valores | selectattr('activo') | list %}
@@ -205,7 +205,7 @@
                     </div>
 
                     {% if generation_plan.combinations %}
-                    <form method="POST" action="{{ url_for('producto_variantes_generar_confirmar', pid=producto['id']) }}">
+                    <form method="POST" action="{{ url_for('main.producto_variantes_generar_confirmar', pid=producto['id']) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         {% for atributo in atributos_catalogo %}
                             {% for valor in atributo.valores %}
@@ -341,7 +341,7 @@
                                         >
                                             <i class="fas fa-edit me-1"></i>Editar
                                         </button>
-                                        <form method="POST" action="{{ url_for('producto_variante_estado', pid=producto['id'], variant_id=variante.id) }}" class="d-inline">
+                                        <form method="POST" action="{{ url_for('main.producto_variante_estado', pid=producto['id'], variant_id=variante.id) }}" class="d-inline">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <input type="hidden" name="activo" value="{{ 0 if variante.activo else 1 }}">
                                             <button type="submit" class="btn btn-sm btn-outline-secondary">
@@ -354,7 +354,7 @@
                                         </form>
                                         <form
                                             method="POST"
-                                            action="{{ url_for('producto_variante_eliminar', pid=producto['id'], variant_id=variante.id) }}"
+                                            action="{{ url_for('main.producto_variante_eliminar', pid=producto['id'], variant_id=variante.id) }}"
                                             class="d-inline"
                                             onsubmit="return confirm('¿Eliminar esta variante? Si tiene historial asociado, se desactivará.');"
                                         >
@@ -367,7 +367,7 @@
                                 </tr>
                                 <tr class="collapse{% if failed_edit %} show{% endif %}" id="editarVariante{{ variante.id }}">
                                     <td colspan="7" class="bg-light">
-                                        <form method="POST" action="{{ url_for('producto_variante_editar', pid=producto['id'], variant_id=variante.id) }}" class="p-3">
+                                        <form method="POST" action="{{ url_for('main.producto_variante_editar', pid=producto['id'], variant_id=variante.id) }}" class="p-3">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <h6 class="mb-3">Editar {{ variante.nombre }}</h6>
                                             <div id="attributeRows{{ variante.id }}">

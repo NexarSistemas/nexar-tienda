@@ -163,6 +163,93 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertEqual(float(stock_row["stock_actual"] or 0), 8.0)
         self.assertEqual(variantes, [])
 
+    def test_acceso_canonico_a_gestion_de_variantes_desde_edicion_y_catalogo(self):
+        producto_id = self._crear_producto(descripcion="Producto legacy navegable")
+        canonical_path = f"/productos/{producto_id}/variantes"
+
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            gestion = client.get(canonical_path)
+            edicion = client.get(f"/productos/{producto_id}/editar?variant_setup=1")
+            catalogo = client.get("/productos")
+            inexistente = client.get("/productos/999999/variantes", follow_redirects=False)
+
+        self.assertEqual(gestion.status_code, 200)
+        gestion_html = gestion.get_data(as_text=True)
+        self.assertIn("Nueva variante", gestion_html)
+        self.assertNotIn("/en-construccion/", gestion_html)
+        self.assertEqual(edicion.status_code, 200)
+        edicion_html = edicion.get_data(as_text=True)
+        self.assertIn(f'href="{canonical_path}"', edicion_html)
+        self.assertIn("Producto creado. Si este artículo se vende en opciones", edicion_html)
+        self.assertIn("Todavía no hay variantes explícitas", edicion_html)
+        self.assertEqual(catalogo.status_code, 200)
+        self.assertIn(f'href="{canonical_path}"', catalogo.get_data(as_text=True))
+        self.assertEqual(inexistente.status_code, 302)
+        self.assertEqual(inexistente.headers["Location"], "/productos")
+
+        canonical_rules = [
+            rule
+            for rule in self.app.url_map.iter_rules()
+            if rule.endpoint == "main.producto_variantes_gestion"
+        ]
+        self.assertEqual([rule.rule for rule in canonical_rules], ["/productos/<int:pid>/variantes"])
+        self.assertNotIn("producto_variantes_gestion", self.app.view_functions)
+
+    def test_alta_de_producto_ofrece_continuar_con_variantes_desde_edicion(self):
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.post(
+                "/productos/nuevo",
+                data={
+                    "csrf_token": "test-token",
+                    "descripcion": "Producto creado con acceso a variantes",
+                    "marca": "",
+                    "categoria": "General",
+                    "tipo_unidad": "unidad",
+                    "unidad": "unidad",
+                    "stock_actual": "0",
+                    "stock_minimo": "0",
+                    "stock_maximo": "5",
+                    "costo": "10",
+                    "precio_venta": "20",
+                    "iva": "21%",
+                    "activo": "1",
+                },
+                follow_redirects=False,
+            )
+
+        producto = self.database.q(
+            "SELECT id FROM productos WHERE descripcion=?",
+            ("Producto creado con acceso a variantes",),
+            fetchone=True,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], f"/productos/{producto['id']}/editar?variant_setup=1")
+
+    def test_gestion_de_variantes_conserva_bloqueo_para_vendedor(self):
+        producto_id = self._crear_producto(descripcion="Producto permisos gestion")
+        self.database.add_usuario(
+            "vendedor-gestion",
+            "1234",
+            "vendedor",
+            "Vendedor Gestion",
+            security_question="color",
+            security_answer="azul",
+        )
+        vendedor = self.database.q(
+            "SELECT id, username, rol FROM usuarios WHERE username='vendedor-gestion'",
+            fetchone=True,
+        )
+
+        with self.app.test_client() as client:
+            with client.session_transaction() as session:
+                session["user"] = {"id": int(vendedor["id"]), "username": vendedor["username"], "rol": vendedor["rol"]}
+            response = client.get(f"/productos/{producto_id}/variantes", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/")
+
     def test_creacion_de_atributos_y_opciones_reutilizables(self):
         color_negro = self.product_variants.ensure_attribute_value("Color", "Negro")
         color_blanco = self.product_variants.ensure_attribute_value("Color", "Blanco")

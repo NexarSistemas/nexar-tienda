@@ -179,7 +179,7 @@
                                     <a href="{{ url_for('producto_editar', pid=producto['id']) }}" class="btn btn-outline-primary" title="Editar">
                                         <i class="fas fa-edit"></i>
                                     </a>
-                                    <a href="{{ url_for('producto_variantes_gestion', pid=producto['id']) }}" class="btn btn-outline-secondary" title="Variantes">
+                                    <a href="{{ url_for('main.producto_variantes_gestion', pid=producto['id']) }}" class="btn btn-outline-secondary" title="Gestionar variantes" aria-label="Gestionar variantes de {{ producto['descripcion'] }}">
                                         <i class="fas fa-layer-group"></i>
                                     </a>
                                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmDelete" data-id="{{ producto['id'] }}" data-name="{{ producto['descripcion'] }}" title="Eliminar">
