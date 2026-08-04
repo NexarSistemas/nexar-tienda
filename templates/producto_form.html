@@ -438,9 +438,6 @@
                     </a>
                 </div>
                 <div class="card-body small">
-                    {% if request.args.get('variant_setup') %}
-                    <div class="alert alert-info py-2 mb-3" role="status">Producto creado. Si este artículo se vende en opciones, gestioná sus variantes desde acá.</div>
-                    {% endif %}
                     {% if variantes %}
                     <p class="mb-2">Este producto tiene <strong>{{ variantes|length }}</strong> variante{{ '' if variantes|length == 1 else 's' }} explícita{{ '' if variantes|length == 1 else 's' }}.</p>
                     <ul class="mb-0 ps-3">

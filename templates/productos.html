@@ -70,6 +70,12 @@
 
 {% block content %}
 <div class="productos-container">
+    {% if created_product %}
+    <div class="alert alert-info d-flex flex-wrap justify-content-between align-items-center gap-2" role="status">
+        <span><strong>{{ created_product['descripcion'] }}</strong> fue creado. Si se vende en opciones, podés configurar sus variantes.</span>
+        <a href="{{ url_for('main.producto_variantes_gestion', pid=created_product['id']) }}" class="btn btn-sm btn-outline-primary">Gestionar variantes</a>
+    </div>
+    {% endif %}
     <!-- ─── BÚSQUEDA Y FILTROS ─── -->
     <div class="alert alert-light border mb-3">
         <strong>Rubro actual:</strong> {{ rubro_actual|capitalize }}.

@@ -2698,6 +2698,8 @@ def productos():
             proveedores_map.setdefault(nombre.lower(), nombre)
     proveedores_visibles = sorted(proveedores_map.values(), key=str.lower)
     variant_counts = product_variants.count_variants_by_product([row["id"] for row in productos_rows])
+    created_product_id = request.args.get("created_product_id", type=int)
+    created_product = next((row for row in productos_rows if row["id"] == created_product_id), None)
     return render_template(
         "productos.html",
         productos=productos_rows,
@@ -2708,6 +2710,7 @@ def productos():
         proveedor_filtro=proveedor_filtro,
         rubro_actual=rubro_actual,
         variant_counts=variant_counts,
+        created_product=created_product,
     )
 
 
@@ -3108,7 +3111,7 @@ def producto_nuevo():
             flash(str(exc), "warning")
             return redirect(request.url)
         _auditar_accion("ALTA_PRODUCTO", "producto", int(nuevo_id or 0), detalle=f"{request.form.get('descripcion', '').strip() or 'Producto'}")
-        flash("Producto creado. Podés configurar variantes desde su edición cuando corresponda.", "success")
+        flash("Producto creado.", "success")
         if desde_compra:
             draft_compra["producto_id"] = str(nuevo_id)
             draft_compra["variante_id"] = ""
@@ -3121,7 +3124,7 @@ def producto_nuevo():
             if not draft_compra.get("costo_unitario"):
                 draft_compra["costo_unitario"] = request.form.get("costo", "")
             return redirect(url_for("compra_nueva", **_purchase_draft_query(draft_compra, created_product="1")))
-        return redirect(url_for("main.producto_editar", pid=nuevo_id, variant_setup="1"))
+        return redirect(url_for("main.productos", created_product_id=nuevo_id))
     cancel_url = url_for("compra_nueva", **_purchase_draft_query(draft_compra)) if desde_compra else url_for("productos")
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)

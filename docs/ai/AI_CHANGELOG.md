@@ -15,9 +15,9 @@ al alta de un producto sin duplicar su administración.
 - Catálogo y edición llevan a la misma pantalla de gestión. La edición informa
   el estado de variantes y explica que allí se configuran atributos, se generan
   combinaciones y se editan variantes.
-- Luego del alta normal se abre la edición del producto con una indicación
-  opcional para continuar a variantes. Los productos legacy siguen usando el
-  producto base hasta que el usuario decida configurarlas.
+- Luego del alta normal se mantiene el retorno al catálogo y se muestra una
+  acción opcional para continuar a variantes. Los productos legacy siguen
+  usando el producto base hasta que el usuario decida configurarlas.
 
 ### Alcance protegido
 - No se modificaron POS, compras, inventario operativo, Tiendanube,

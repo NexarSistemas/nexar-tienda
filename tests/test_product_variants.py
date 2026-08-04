@@ -170,7 +170,7 @@ class ProductVariantsTests(unittest.TestCase):
         with self.app.test_client() as client:
             self._login_admin(client)
             gestion = client.get(canonical_path)
-            edicion = client.get(f"/productos/{producto_id}/editar?variant_setup=1")
+            edicion = client.get(f"/productos/{producto_id}/editar")
             catalogo = client.get("/productos")
             inexistente = client.get("/productos/999999/variantes", follow_redirects=False)
 
@@ -181,7 +181,6 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertEqual(edicion.status_code, 200)
         edicion_html = edicion.get_data(as_text=True)
         self.assertIn(f'href="{canonical_path}"', edicion_html)
-        self.assertIn("Producto creado. Si este artículo se vende en opciones", edicion_html)
         self.assertIn("Todavía no hay variantes explícitas", edicion_html)
         self.assertEqual(catalogo.status_code, 200)
         self.assertIn(f'href="{canonical_path}"', catalogo.get_data(as_text=True))
@@ -196,7 +195,7 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertEqual([rule.rule for rule in canonical_rules], ["/productos/<int:pid>/variantes"])
         self.assertNotIn("producto_variantes_gestion", self.app.view_functions)
 
-    def test_alta_de_producto_ofrece_continuar_con_variantes_desde_edicion(self):
+    def test_alta_de_producto_conserva_catalogo_y_ofrece_gestionar_variantes(self):
         with self.app.test_client() as client:
             self._login_admin(client)
             response = client.post(
@@ -225,7 +224,16 @@ class ProductVariantsTests(unittest.TestCase):
             fetchone=True,
         )
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers["Location"], f"/productos/{producto['id']}/editar?variant_setup=1")
+        self.assertEqual(response.headers["Location"], f"/productos?created_product_id={producto['id']}")
+
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            catalogo = client.get(response.headers["Location"])
+
+        catalogo_html = catalogo.get_data(as_text=True)
+        self.assertEqual(catalogo.status_code, 200)
+        self.assertIn("podés configurar sus variantes", catalogo_html)
+        self.assertIn(f'href="/productos/{producto["id"]}/variantes"', catalogo_html)
 
     def test_gestion_de_variantes_conserva_bloqueo_para_vendedor(self):
         producto_id = self._crear_producto(descripcion="Producto permisos gestion")
