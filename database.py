@@ -3343,6 +3343,47 @@ def get_productos(activo_only=True, search='', rubro=None, proveedor=''):
     return q(sql, params)
 
 
+def iter_productos(activo_only=True, search='', rubro=None, proveedor='', categoria='', *, batch_size=100, conn=None):
+    """Itera el catálogo con los mismos filtros públicos de la pantalla Productos.
+
+    ``categoria`` representa el filtro cliente de esa pantalla.  La conexión
+    opcional permite a exportadores conservar una sola instantánea SQLite.
+    """
+    own_conn = conn is None
+    conn = conn or get_conn()
+    try:
+        sql = (
+            "SELECT productos.*, COALESCE(s.proveedor_habitual, '') AS proveedor_habitual, "
+            "COALESCE(s.stock_actual, 0) AS stock_actual "
+            "FROM productos LEFT JOIN stock s ON s.producto_id = productos.id"
+        )
+        conds, params = [], []
+        if activo_only:
+            conds.append("productos.activo=1")
+        if rubro is not None:
+            rubro_cond, rubro_params = _build_rubro_compatible_filter(rubro)
+            conds.append(rubro_cond)
+            params += rubro_params
+        if search:
+            conds.append("(productos.codigo_interno LIKE ? OR productos.codigo_barras LIKE ? OR productos.descripcion LIKE ? OR productos.categoria LIKE ? OR COALESCE(s.proveedor_habitual, '') LIKE ?)")
+            params += [f'%{search}%'] * 5
+        if proveedor:
+            conds.append("LOWER(COALESCE(s.proveedor_habitual, '')) = ?")
+            params.append(str(proveedor).strip().lower())
+        if categoria:
+            conds.append("LOWER(COALESCE(productos.categoria, '')) = ?")
+            params.append(str(categoria).strip().lower())
+        if conds:
+            sql += " WHERE " + " AND ".join(conds)
+        cursor = conn.cursor()
+        cursor.execute(sql + " ORDER BY productos.descripcion, productos.id", params)
+        while rows := cursor.fetchmany(batch_size):
+            yield rows
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def get_productos_por_proveedor_categoria(proveedor, categoria="", rubro=None):
     """Devuelve productos activos filtrados por proveedor habitual y categorÃ­a opcional."""
     proveedor_normalizado = str(proveedor or "").strip()

@@ -244,12 +244,12 @@ def _update_variant_commercial_fields_in_cursor(
         )
 
 
-def _apply_prevalidated_variant_commercial_fields_in_cursor(cursor, product_id: int, variant_id: int, *, sku, codigo_barras, costo, precio) -> None:
+def _apply_prevalidated_variant_commercial_fields_in_cursor(cursor, product_id: int, variant_id: int, *, sku, codigo_barras, costo, precio, precio_promocional) -> None:
     """Persist a batch-validated commercial state without rechecking old identifiers."""
     _get_variant_for_product_in_cursor(cursor, product_id, variant_id)
     cursor.execute(
-        "UPDATE producto_variantes SET sku=?, codigo_barras=?, costo=?, precio=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND producto_id=?",
-        (sku, codigo_barras, costo, precio, int(variant_id), int(product_id)),
+        "UPDATE producto_variantes SET sku=?, codigo_barras=?, costo=?, precio=?, precio_promocional=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND producto_id=?",
+        (sku, codigo_barras, costo, precio, precio_promocional, int(variant_id), int(product_id)),
     )
 
 
@@ -1072,6 +1072,50 @@ def list_product_variants(product_id: int) -> list[dict]:
             f"{item['attribute_name']}: {item['value_name']}" for item in entry["atributos"]
         ) or "Variante predeterminada"
     return list(variants.values())
+
+
+def list_product_variants_for_products(products: dict[int, dict], conn) -> dict[int, list[dict]]:
+    """Carga variantes de un lote de productos con la misma conexión SQLite."""
+    product_ids = sorted(int(product_id) for product_id in products)
+    if not product_ids:
+        return {}
+    marks = ",".join("?" for _ in product_ids)
+    rows = conn.execute(
+        f"""
+        SELECT v.id, v.producto_id, v.nombre, v.combination_key, v.sku,
+               v.codigo_barras, v.costo, v.precio, v.precio_promocional,
+               v.activo, v.external_id, COALESCE(sv.stock_actual, 0) AS stock_actual,
+               COALESCE(sv.stock_minimo, 5) AS stock_minimo,
+               COALESCE(sv.stock_maximo, 50) AS stock_maximo,
+               a.id AS atributo_id, a.nombre AS atributo_nombre,
+               av.id AS valor_id, av.valor AS valor_nombre
+        FROM producto_variantes v
+        LEFT JOIN stock_variantes sv ON sv.variante_id=v.id
+        LEFT JOIN producto_variante_valores vv ON vv.variante_id=v.id
+        LEFT JOIN producto_atributos a ON a.id=vv.atributo_id
+        LEFT JOIN producto_atributo_valores av ON av.id=vv.valor_id
+        WHERE v.producto_id IN ({marks})
+        ORDER BY v.producto_id, v.id, a.nombre_normalizado, av.valor_normalizado
+        """,
+        product_ids,
+    ).fetchall()
+    grouped: dict[int, dict[int, dict]] = {}
+    for row in rows:
+        product_id = int(row["producto_id"])
+        product = products[product_id]
+        variants = grouped.setdefault(product_id, {})
+        variant_id = int(row["id"])
+        entry = variants.setdefault(variant_id, {
+            "id": variant_id, "producto_id": product_id, "nombre": row["nombre"],
+            "combination_key": row["combination_key"], "sku": row["sku"] or "",
+            "codigo_barras": row["codigo_barras"] or "", "costo": row["costo"] if row["costo"] is not None else product.get("costo"),
+            "precio": row["precio"] if row["precio"] is not None else product.get("precio_venta"),
+            "precio_promocional": row["precio_promocional"], "activo": int(row["activo"] or 0),
+            "stock_actual": row["stock_actual"], "atributos": [],
+        })
+        if row["atributo_id"] is not None and row["valor_id"] is not None:
+            entry["atributos"].append({"attribute_id": int(row["atributo_id"]), "attribute_name": row["atributo_nombre"], "value_id": int(row["valor_id"]), "value_name": row["valor_nombre"]})
+    return {product_id: list(variants.values()) for product_id, variants in grouped.items()}
 
 
 def count_variants_by_product(product_ids: list[int]) -> dict[int, int]:

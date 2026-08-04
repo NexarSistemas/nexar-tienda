@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import csv
-import re
-import unicodedata
 from collections.abc import Iterator
+from decimal import Decimal
 from io import StringIO
+from tempfile import SpooledTemporaryFile
 
 from services.catalog_csv_export import CatalogExportValidationError, decimal_text, iter_catalog_products, safe_text
 
@@ -26,10 +26,13 @@ CSV_COLUMNS = (
 
 
 def _url_identifier(product: dict) -> str:
-    value = unicodedata.normalize("NFKD", str(product["name"] or ""))
-    value = "".join(ch for ch in value if not unicodedata.combining(ch)).lower()
-    value = re.sub(r"[^a-z0-9]+", "-", value).strip("-")
-    return f"nexar-{product['id']}-{value or 'producto'}"
+    """Stable external identity: product names are editable in Nexar."""
+    return f"nexar-{product['id']}"
+
+
+def _category_text(value) -> str:
+    """Escape Tiendanube's category separators without altering Unicode text."""
+    return str(value or "").replace("\\", "\\\\").replace(",", "\\,").replace(">", "\\>")
 
 
 def _label(product: dict, variant: dict | None = None) -> str:
@@ -58,7 +61,7 @@ def _commercial_values(product: dict, variant: dict | None) -> tuple[str, str, s
     stock = decimal_text(source.get("stock_actual", product.get("stock")), "stock", label)
     promotional = source.get("precio_promocional")
     promo = "" if promotional in (None, "") else decimal_text(promotional, "precio promocional", label)
-    if promo and float(promo) >= float(price):
+    if promo and Decimal(promo) >= Decimal(price):
         raise CatalogExportValidationError(f"{label}: el precio promocional debe ser menor que el precio.")
     return price, promo, cost, stock, safe_text(source.get("sku"))
 
@@ -102,7 +105,7 @@ def _row(product: dict, variant: dict | None, *, first_for_product: bool) -> lis
     values = {
         "Identificador de URL": _url_identifier(product),
         "Nombre": product["name"] if first_for_product else "",
-        "Categorías": product["category"] if first_for_product else "",
+        "Categorías": _category_text(product["category"]) if first_for_product else "",
         "Precio": price,
         "Precio promocional": promo,
         "Stock": stock,
@@ -110,7 +113,7 @@ def _row(product: dict, variant: dict | None, *, first_for_product: bool) -> lis
         "Código de barras": safe_text((variant or product).get("codigo_barras") or (variant or product).get("barcode")),
         "Mostrar en tienda": "SI" if first_for_product else "",
         "Marca": product["brand"] if first_for_product else "",
-        "Producto físico": "SI" if first_for_product else "",
+        "Producto físico": "",
         "Costo": cost,
     }
     for index, (name, value) in enumerate(attributes, start=1):
@@ -140,6 +143,31 @@ def iter_csv(**filters) -> Iterator[str]:
     yield "\ufeff"
     yield _serialize_row(list(CSV_COLUMNS))
     yield from (_serialize_row(row) for row in iter_rows(**filters))
+
+
+def build_csv_file(**filters):
+    """Create the whole validated download before HTTP begins streaming it.
+
+    The spooled file keeps small exports in memory and transparently spills
+    larger catalogs to disk, while the catalog iterator holds one read snapshot.
+    """
+    output = SpooledTemporaryFile(max_size=1024 * 1024, mode="w+t", encoding="utf-8", newline="")
+    try:
+        output.write("\ufeff")
+        output.write(_serialize_row(list(CSV_COLUMNS)))
+        for product in iter_catalog_products(**filters):
+            _validate_product(product)
+            variants = product["variants"]
+            if variants:
+                for index, variant in enumerate(variants):
+                    output.write(_serialize_row(_row(product, variant, first_for_product=index == 0)))
+            else:
+                output.write(_serialize_row(_row(product, None, first_for_product=True)))
+        output.seek(0)
+        return output
+    except Exception:
+        output.close()
+        raise
 
 
 def download_name(today) -> str:

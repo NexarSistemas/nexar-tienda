@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 class CatalogCsvExportTests(unittest.TestCase):
@@ -50,7 +51,15 @@ class CatalogCsvExportTests(unittest.TestCase):
         self.assertEqual(parsed["Costo"], "600.25")
         self.assertEqual(parsed["Stock"], "3")
         self.assertEqual(parsed["Mostrar en tienda"], "SI")
-        self.assertIn(f"nexar-{product_id}-mate-clasico", parsed["Identificador de URL"])
+        self.assertEqual(parsed["Identificador de URL"], f"nexar-{product_id}")
+        self.assertEqual(parsed["Producto físico"], "")
+
+    def test_url_identifier_does_not_change_when_product_is_renamed(self):
+        product_id = self._product("Nombre inicial", barcode="7790000000009")
+        before = dict(zip(self.adapter.CSV_COLUMNS, self._rows()[0]))["Identificador de URL"]
+        self.db.q("UPDATE productos SET descripcion=? WHERE id=?", ("Nombre completamente nuevo", product_id), fetchall=False, commit=True)
+        after = dict(zip(self.adapter.CSV_COLUMNS, self._rows()[0]))["Identificador de URL"]
+        self.assertEqual((before, after), (f"nexar-{product_id}", f"nexar-{product_id}"))
 
     def test_modern_variants_are_unique_and_keep_attributes_commercial_data(self):
         product_id = self._product("Remera", category="Ropa", price=100, cost=40)
@@ -64,6 +73,7 @@ class CatalogCsvExportTests(unittest.TestCase):
             sku="REM-RO-M", codigo_barras="7790000000012", precio=120, costo=55,
             stock_actual=5, stock_minimo=0, stock_maximo=20,
         )
+        self.db.q("UPDATE productos SET stock_modo='variantes' WHERE id=?", (product_id,), fetchall=False, commit=True)
         rows = self._rows()
         self.assertEqual(len(rows), 2)
         parsed = [dict(zip(self.adapter.CSV_COLUMNS, row)) for row in rows]
@@ -87,6 +97,7 @@ class CatalogCsvExportTests(unittest.TestCase):
             sku="BUZO-XL", codigo_barras="7790000000020", precio=90, costo=40,
             stock_actual=7, stock_minimo=0, stock_maximo=20, activo=False,
         )
+        self.db.q("UPDATE productos SET stock_modo='variantes' WHERE id=?", (product_id,), fetchall=False, commit=True)
         rows = [dict(zip(self.adapter.CSV_COLUMNS, row)) for row in self._rows()]
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["SKU"], "BUZO-L")
@@ -106,6 +117,38 @@ class CatalogCsvExportTests(unittest.TestCase):
         plan = self.importer.build_plan(imported)
         self.assertFalse(plan["errors"], plan["errors"])
 
+    def test_categories_escape_tiendanube_separators_without_losing_accents(self):
+        self._product("Mate", category=r"Hogar\\mate, regalos > edición", barcode="7790000000022")
+        parsed = dict(zip(self.adapter.CSV_COLUMNS, self._rows()[0]))
+        self.assertEqual(parsed["Categorías"], r"Hogar\\\\mate\, regalos \> edición")
+
+    def test_legacy_product_with_configured_variants_uses_legacy_stock(self):
+        product_id = self._product("Combo legacy", barcode="7790000000023", price=25, cost=10, stock=7)
+        self.variants.create_variant(product_id, attributes=[{"attribute_name": "Color", "value_name": "Azul"}], sku="COM-AZ", precio=99, costo=30, stock_actual=2, stock_minimo=0, stock_maximo=5)
+        self.db.q("UPDATE productos SET stock_modo='legacy' WHERE id=?", (product_id,), fetchall=False, commit=True)
+        parsed = dict(zip(self.adapter.CSV_COLUMNS, self._rows()[0]))
+        self.assertEqual((parsed["Stock"], parsed["Precio"], parsed["SKU"]), ("7", "25", ""))
+
+    def test_decimal_formatter_has_no_scientific_notation_or_precision_cutoff(self):
+        self.assertEqual(self.export.decimal_text("0.000000000000000000123", "precio", "Producto 1"), "0.000000000000000000123")
+        self.assertEqual(self.export.decimal_text("12345678901234567890.123456789", "precio", "Producto 1"), "12345678901234567890.123456789")
+        for invalid in ("NaN", "Infinity", "-1"):
+            with self.assertRaises(self.export.CatalogExportValidationError):
+                self.export.decimal_text(invalid, "precio", "Producto 1")
+
+    def test_export_import_preserves_variant_promotional_price(self):
+        product_id = self._product("Remera promo", barcode="7790000000024")
+        variant_id = self.variants.create_variant(product_id, attributes=[{"attribute_name": "Color", "value_name": "Verde"}], sku="REM-VER", precio=120, costo=50, precio_promocional=90, stock_actual=4, stock_minimo=0, stock_maximo=10)
+        self.db.q("UPDATE productos SET stock_modo='variantes' WHERE id=?", (product_id,), fetchall=False, commit=True)
+        content = "".join(self.adapter.iter_csv(rubro="tienda"))
+        plan = self.importer.build_plan(self.importer.parse_tiendanube_csv(content.encode("utf-8")))
+        self.assertFalse(plan["errors"], plan["errors"])
+        self.db.add_usuario("exportador", "1234", "Administrador", "Exportador", security_question="color", security_answer="azul")
+        owner = self.db.get_usuario_by_username("exportador")["id"]
+        plan_id, token = self.importer.store_plan(plan, owner)
+        self.importer.apply_stored_plan(plan_id, token, owner)
+        self.assertEqual(self.db.q("SELECT precio_promocional FROM producto_variantes WHERE id=?", (variant_id,), fetchone=True)["precio_promocional"], 90.0)
+
     def test_filters_and_inactive_policy(self):
         keep = self._product("Mate", category="Accesorios", barcode="7790000000031")
         excluded = self._product("Remera", category="Ropa", barcode="7790000000032")
@@ -121,6 +164,7 @@ class CatalogCsvExportTests(unittest.TestCase):
             product_id, attributes=[{"attribute_name": "Color", "value_name": "Negro"}],
             sku="CAMP-NEG", precio=100, costo=50, stock_actual=1, stock_minimo=0, stock_maximo=2,
         )
+        self.db.q("UPDATE productos SET stock_modo='variantes' WHERE id=?", (product_id,), fetchall=False, commit=True)
         self.db.q("UPDATE producto_variantes SET precio_promocional=100 WHERE id=?", (variant_id,), fetchall=False, commit=True)
         with self.assertRaisesRegex(self.export.CatalogExportValidationError, "precio promocional"):
             self.adapter.validate_catalog(rubro="tienda")
@@ -150,6 +194,7 @@ class CatalogCsvExportHttpTests(unittest.TestCase):
         routes_main.db = self.db
         routes_main.catalog_csv_export = importlib.reload(catalog_csv_export)
         routes_main.tiendanube_csv_export = importlib.reload(tiendanube_csv_export)
+        self.routes_main = routes_main
         self.app_module = importlib.reload(app_module)
         self.app_module.db = self.db
         self.app = self.app_module.create_app()
@@ -164,12 +209,14 @@ class CatalogCsvExportHttpTests(unittest.TestCase):
 
     def test_download_headers_encoding_filters_and_permissions(self):
         self.assertEqual(self._client("vendedor", "Vendedor").get("/productos/exportar/tiendanube").status_code, 302)
-        response = self._client("admin", "Administrador").get("/productos/exportar/tiendanube?categoria=Accesorios")
+        with mock.patch.object(self.routes_main, "require_modulo"):
+            response = self._client("admin", "Administrador").get("/productos/exportar/tiendanube?categoria=Accesorios")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, "text/csv")
         self.assertIn("attachment; filename=catalogo_tiendanube_", response.headers["Content-Disposition"])
         self.assertTrue(response.data.startswith(b"\xef\xbb\xbf"))
         self.assertIn("Mate exportable", response.data.decode("utf-8-sig"))
+        response.close()
 
 
 if __name__ == "__main__":

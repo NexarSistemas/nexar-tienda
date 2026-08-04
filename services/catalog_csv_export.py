@@ -5,7 +5,7 @@ records. Provider column names and file rules intentionally live in adapters.
 """
 from __future__ import annotations
 
-import math
+from decimal import Decimal, InvalidOperation
 import unicodedata
 from collections.abc import Iterator
 
@@ -26,32 +26,13 @@ def _clean_text(value) -> str:
 
 def decimal_text(value, field: str, label: str) -> str:
     try:
-        number = float(value or 0)
-    except (TypeError, ValueError) as exc:
+        number = Decimal(str(value if value not in (None, "") else 0))
+    except (InvalidOperation, TypeError, ValueError) as exc:
         raise CatalogExportValidationError(f"{label}: {field} debe ser numérico.") from exc
-    if not math.isfinite(number) or number < 0:
+    if not number.is_finite() or number < 0:
         raise CatalogExportValidationError(f"{label}: {field} debe ser un número finito no negativo.")
-    return format(number, ".15g")
-
-
-def _catalog_query(search: str, category: str, provider: str, rubro: str):
-    rubro_sql, rubro_params = db._build_rubro_compatible_filter_sql("p", rubro)
-    conditions, params = ["p.activo=1", rubro_sql], list(rubro_params)
-    if search:
-        conditions.append("(p.codigo_interno LIKE ? OR p.codigo_barras LIKE ? OR p.descripcion LIKE ? OR p.categoria LIKE ? OR COALESCE(s.proveedor_habitual, '') LIKE ?)")
-        params.extend([f"%{search}%"] * 5)
-    if category:
-        conditions.append("LOWER(COALESCE(p.categoria, '')) = ?")
-        params.append(category.lower())
-    if provider:
-        conditions.append("LOWER(COALESCE(s.proveedor_habitual, '')) = ?")
-        params.append(provider.lower())
-    return (
-        "SELECT p.*, COALESCE(s.stock_actual, 0) AS stock_actual "
-        "FROM productos p LEFT JOIN stock s ON s.producto_id=p.id "
-        "WHERE " + " AND ".join(conditions) + " ORDER BY p.descripcion, p.id",
-        params,
-    )
+    text = format(number, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
 
 def iter_catalog_products(*, search="", category="", provider="", rubro="") -> Iterator[dict]:
@@ -61,20 +42,19 @@ def iter_catalog_products(*, search="", category="", provider="", rubro="") -> I
     supplier and compatible-rubro visibility. Variants are loaded only for the
     product currently being serialized, not for the whole catalog.
     """
-    sql, params = _catalog_query(
-        str(search or "").strip(),
-        str(category or "").strip(),
-        str(provider or "").strip(),
-        str(rubro or "").strip(),
-    )
     conn = db.get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute(sql, params)
-        while rows := cursor.fetchmany(100):
+        conn.execute("BEGIN")
+        for rows in db.iter_productos(search=str(search or "").strip(), categoria=str(category or "").strip(), proveedor=str(provider or "").strip(), rubro=str(rubro or "").strip(), conn=conn):
+            products = {int(row["id"]): dict(row) for row in rows}
+            modern_products = {product_id: product for product_id, product in products.items() if str(product.get("stock_modo") or "legacy").strip().lower() == "variantes"}
+            variants_by_product = product_variants.list_product_variants_for_products(modern_products, conn)
             for row in rows:
                 product = dict(row)
-                all_variants = product_variants.list_product_variants(int(product["id"]))
+                stock_mode = str(product.get("stock_modo") or "legacy").strip().lower()
+                if stock_mode not in {"legacy", "variantes"}:
+                    raise CatalogExportValidationError(f"Producto {product['id']}: stock_modo desconocido ({stock_mode}).")
+                all_variants = variants_by_product.get(int(product["id"]), []) if stock_mode == "variantes" else []
                 yield {
                     "id": int(product["id"]),
                     "name": _clean_text(product.get("descripcion")),
@@ -84,7 +64,8 @@ def iter_catalog_products(*, search="", category="", provider="", rubro="") -> I
                     "price": product.get("precio_venta"),
                     "cost": product.get("costo"),
                     "stock": product.get("stock_actual"),
-                    "has_variants": bool(all_variants),
+                    "stock_modo": stock_mode,
+                    "has_variants": stock_mode == "variantes",
                     "variants": [item for item in all_variants if int(item.get("activo") or 0) == 1],
                 }
     finally:

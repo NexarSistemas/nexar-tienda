@@ -96,7 +96,7 @@ def store_plan(plan: dict, owner_user_id: int) -> tuple[str, str]:
 HEADER_ALIASES = {
     "url": {"identificador de url"}, "name": {"nombre"},
     "category": {"categorias", "categorías"}, "description": {"descripcion", "descripción"},
-    "brand": {"marca"}, "price": {"precio"}, "cost": {"costo"}, "stock": {"stock"},
+    "brand": {"marca"}, "price": {"precio"}, "promotional_price": {"precio promocional"}, "cost": {"costo"}, "stock": {"stock"},
     "sku": {"sku"}, "barcode": {"codigo de barras", "código de barras"},
     "visible": {"mostrar en tienda"},
 }
@@ -161,7 +161,7 @@ def parse_tiendanube_csv(content: bytes) -> list[dict]:
             rows.append({"row": number, "external_group": _text(get("url"), "Identificador de URL", required=True),
                          "name": _text(get("name"), "Nombre"), "category": _text(get("category"), "Categorías"),
                          "description": _text(get("description"), "Descripción"), "brand": _text(get("brand"), "Marca"),
-                         "price": _number(get("price"), "Precio"), "cost": _number(get("cost"), "Costo"),
+                         "price": _number(get("price"), "Precio"), "promotional_price": _number(get("promotional_price"), "Precio promocional"), "cost": _number(get("cost"), "Costo"),
                          "stock": _number(get("stock"), "Stock"), "sku": _text(get("sku"), "SKU"),
                          "barcode": _text(get("barcode"), "Código de barras"), "attributes": attributes,
                          "visible": _visible(get("visible"), present="visible" in columns)})
@@ -304,7 +304,7 @@ def _prepare_variant_commercial_updates_in_cursor(cursor, plan: dict) -> dict[in
                 continue
             if row.get("expected_combination_key") != key:
                 raise ValueError("La variante planificada para actualizar ya no existe. Genera una nueva vista previa.")
-            variant = cursor.execute("SELECT id, sku, codigo_barras, costo, precio FROM producto_variantes WHERE id=? AND producto_id=? AND combination_key=?", (row.get("variant_id"), item["product_id"], row.get("expected_combination_key"))).fetchone()
+            variant = cursor.execute("SELECT id, sku, codigo_barras, costo, precio, precio_promocional FROM producto_variantes WHERE id=? AND producto_id=? AND combination_key=?", (row.get("variant_id"), item["product_id"], row.get("expected_combination_key"))).fetchone()
             if not variant:
                 raise ValueError("La variante planificada para actualizar ya no existe. Genera una nueva vista previa.")
             variant_id = int(variant["id"])
@@ -314,6 +314,7 @@ def _prepare_variant_commercial_updates_in_cursor(cursor, plan: dict) -> dict[in
                 "codigo_barras": db.normalize_codigo_barras(row["barcode"]) if product_variants._clean_text(row["barcode"]) else variant["codigo_barras"],
                 "costo": row["cost"] if row["cost"] is not None else variant["costo"],
                 "precio": row["price"] if row["price"] is not None else variant["precio"],
+                "precio_promocional": row["promotional_price"] if row["promotional_price"] is not None else variant["precio_promocional"],
             }
     if not updates and not planned_creates:
         return updates
@@ -377,13 +378,13 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
                         variant_id = int(existing[0])
                         prepared = prepared_variant_updates.get(variant_id)
                         if prepared:
-                            product_variants._apply_prevalidated_variant_commercial_fields_in_cursor(cursor, product_id, variant_id, **{key: prepared[key] for key in ("sku", "codigo_barras", "costo", "precio")})
+                            product_variants._apply_prevalidated_variant_commercial_fields_in_cursor(cursor, product_id, variant_id, **{key: prepared[key] for key in ("sku", "codigo_barras", "costo", "precio", "precio_promocional")})
                         else:
                             product_variants._update_variant_commercial_fields_in_cursor(cursor, product_id, variant_id, sku=row["sku"], codigo_barras=row["barcode"], costo=row["cost"], precio=row["price"])
                         if row["visible"] is not None:
                             (enable_variants if row["visible"] else disable_variants).append(variant_id)
                     else:
-                        variant_id = product_variants._insert_variant_row(cursor, {"product_id": product_id, "combination_key": key, "variant_name": product_variants._build_variant_name(pairs), "sku": product_variants._validate_variant_sku(cursor, row["sku"]), "codigo_barras": product_variants._validate_variant_barcode(cursor, row["barcode"]), "costo": row["cost"], "precio": row["price"], "precio_promocional": None, "activo": int(row["visible"] if row["visible"] is not None else True), "external_id": ""})
+                        variant_id = product_variants._insert_variant_row(cursor, {"product_id": product_id, "combination_key": key, "variant_name": product_variants._build_variant_name(pairs), "sku": product_variants._validate_variant_sku(cursor, row["sku"]), "codigo_barras": product_variants._validate_variant_barcode(cursor, row["barcode"]), "costo": row["cost"], "precio": row["price"], "precio_promocional": row["promotional_price"], "activo": int(row["visible"] if row["visible"] is not None else True), "external_id": ""})
                         product_variants._insert_variant_attribute_values(cursor, variant_id, pairs)
                         # New variants without source stock still need their safe
                         # zero-valued inventory configuration.

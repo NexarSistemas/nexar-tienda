@@ -3110,3 +3110,9 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
   activos, usa UTF-8 con BOM y valida datos antes de entregar el archivo.
 - Se documentó la plantilla versionada, sus límites y la ausencia de API,
   OAuth, webhooks o sincronización automática.
+- Corrección post-revisión: el identificador de URL ahora es inmutable
+  (`nexar-{id_producto}`), las variantes solo son operativas con
+  `stock_modo='variantes'`, y categorías/decimales respetan el contrato CSV.
+- La descarga se genera desde una única instantánea ya validada en un temporal
+  con derrame a disco, y el importador conserva el precio promocional de las
+  variantes en la ida y vuelta.
