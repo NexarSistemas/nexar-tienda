@@ -2,6 +2,27 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-08-04 - Codex - fix/issue-161-variant-access-ux
+
+### Tarea
+Corregir el acceso a la gestión de variantes y guiar el paso opcional posterior
+al alta de un producto sin duplicar su administración.
+
+### Qué se cambió
+- Los enlaces y redirecciones de variantes usan el endpoint canónico del
+  blueprint `main.producto_variantes_gestion`; se eliminó la dependencia de
+  aliases internos sin prefijo para estas rutas.
+- Catálogo y edición llevan a la misma pantalla de gestión. La edición informa
+  el estado de variantes y explica que allí se configuran atributos, se generan
+  combinaciones y se editan variantes.
+- Luego del alta normal se mantiene el retorno al catálogo y se muestra una
+  acción opcional para continuar a variantes. Los productos legacy siguen
+  usando el producto base hasta que el usuario decida configurarlas.
+
+### Alcance protegido
+- No se modificaron POS, compras, inventario operativo, Tiendanube,
+  sincronización, modelo de datos ni la generación cartesiana.
+
 ## 2026-08-02 - Codex - feature/issue-149-variantes-atributos
 
 ### Tarea

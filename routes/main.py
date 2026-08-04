@@ -2698,6 +2698,8 @@ def productos():
             proveedores_map.setdefault(nombre.lower(), nombre)
     proveedores_visibles = sorted(proveedores_map.values(), key=str.lower)
     variant_counts = product_variants.count_variants_by_product([row["id"] for row in productos_rows])
+    created_product_id = request.args.get("created_product_id", type=int)
+    created_product = next((row for row in productos_rows if row["id"] == created_product_id), None)
     return render_template(
         "productos.html",
         productos=productos_rows,
@@ -2708,6 +2710,7 @@ def productos():
         proveedor_filtro=proveedor_filtro,
         rubro_actual=rubro_actual,
         variant_counts=variant_counts,
+        created_product=created_product,
     )
 
 
@@ -3121,7 +3124,7 @@ def producto_nuevo():
             if not draft_compra.get("costo_unitario"):
                 draft_compra["costo_unitario"] = request.form.get("costo", "")
             return redirect(url_for("compra_nueva", **_purchase_draft_query(draft_compra, created_product="1")))
-        return redirect(url_for("productos"))
+        return redirect(url_for("main.productos", created_product_id=nuevo_id))
     cancel_url = url_for("compra_nueva", **_purchase_draft_query(draft_compra)) if desde_compra else url_for("productos")
     cfg = db.get_config()
     rubro_actual = get_rubro_actual(cfg)
@@ -3368,7 +3371,7 @@ def producto_variantes_generar_previsualizar(pid):
         generation_plan = product_variants.preview_variant_combinations(pid, selections)
     except ValueError as exc:
         flash(str(exc), "warning")
-        return redirect(url_for("producto_variantes_gestion", pid=pid))
+        return redirect(url_for("main.producto_variantes_gestion", pid=pid))
     if not generation_plan["combinations"]:
         flash("Seleccioná al menos un valor activo para cada atributo participante.", "warning")
     elif generation_plan["new_count"] == 0:
@@ -3400,11 +3403,11 @@ def producto_variantes_generar_confirmar(pid):
         )
     except ValueError as exc:
         flash(str(exc), "warning")
-        return redirect(url_for("producto_variantes_gestion", pid=pid))
+        return redirect(url_for("main.producto_variantes_gestion", pid=pid))
     created_count = int(result["created_count"] or 0)
     if created_count <= 0:
         flash("No se crearon variantes: no había combinaciones seleccionadas.", "warning")
-        return redirect(url_for("producto_variantes_gestion", pid=pid))
+        return redirect(url_for("main.producto_variantes_gestion", pid=pid))
     _auditar_accion(
         "ALTA_MASIVA_VARIANTES_PRODUCTO",
         "producto",
@@ -3412,7 +3415,7 @@ def producto_variantes_generar_confirmar(pid):
         detalle=f"{producto['descripcion'] or 'Producto'} - {created_count} variantes",
     )
     flash(f"Se crearon {created_count} variantes.", "success")
-    return redirect(url_for("producto_variantes_gestion", pid=pid))
+    return redirect(url_for("main.producto_variantes_gestion", pid=pid))
 
 
 @main_bp.route("/productos/<int:pid>/variantes/activar-stock", methods=["POST"])
@@ -3443,9 +3446,9 @@ def producto_variantes_activar_stock(pid):
         )
     except ValueError as exc:
         flash(str(exc), "warning")
-        return redirect(url_for("producto_variantes_gestion", pid=pid))
+        return redirect(url_for("main.producto_variantes_gestion", pid=pid))
     flash("Stock por variantes activado.", "success")
-    return redirect(url_for("producto_variantes_gestion", pid=pid))
+    return redirect(url_for("main.producto_variantes_gestion", pid=pid))
 
 
 @main_bp.route("/productos/<int:pid>/variantes/<int:variant_id>/editar", methods=["POST"])
@@ -3489,7 +3492,7 @@ def producto_variante_editar(pid, variant_id):
         detalle=f"{producto['descripcion'] or 'Producto'}",
     )
     flash("Variante actualizada.", "success")
-    return redirect(url_for("producto_variantes_gestion", pid=pid, _anchor=f"variante-{variant_id}"))
+    return redirect(url_for("main.producto_variantes_gestion", pid=pid, _anchor=f"variante-{variant_id}"))
 
 
 @main_bp.route("/productos/<int:pid>/variantes/<int:variant_id>/estado", methods=["POST"])
@@ -3504,7 +3507,7 @@ def producto_variante_estado(pid, variant_id):
         product_variants.set_variant_active(pid, variant_id, active)
     except ValueError as exc:
         flash(str(exc), "warning")
-        return redirect(url_for("producto_variantes_gestion", pid=pid))
+        return redirect(url_for("main.producto_variantes_gestion", pid=pid))
     accion = "ACTIVACION_VARIANTE_PRODUCTO" if active else "DESACTIVACION_VARIANTE_PRODUCTO"
     _auditar_accion(
         accion,
@@ -3513,7 +3516,7 @@ def producto_variante_estado(pid, variant_id):
         detalle=f"{producto['descripcion'] or 'Producto'}",
     )
     flash("Variante activada." if active else "Variante desactivada.", "success")
-    return redirect(url_for("producto_variantes_gestion", pid=pid, _anchor=f"variante-{variant_id}"))
+    return redirect(url_for("main.producto_variantes_gestion", pid=pid, _anchor=f"variante-{variant_id}"))
 
 
 @main_bp.route("/productos/<int:pid>/variantes/<int:variant_id>/eliminar", methods=["POST"])
@@ -3534,7 +3537,7 @@ def producto_variante_eliminar(pid, variant_id):
             motivo=str(exc),
         )
         flash(str(exc), "warning")
-        return redirect(url_for("producto_variantes_gestion", pid=pid))
+        return redirect(url_for("main.producto_variantes_gestion", pid=pid))
 
     if result["deleted"]:
         _auditar_accion(
@@ -3554,7 +3557,7 @@ def producto_variante_eliminar(pid, variant_id):
             motivo=f"Referencias existentes: {reference_names}",
         )
         flash("La variante tiene historial asociado y fue desactivada en lugar de eliminarse.", "warning")
-    return redirect(url_for("producto_variantes_gestion", pid=pid))
+    return redirect(url_for("main.producto_variantes_gestion", pid=pid))
 
 
 @main_bp.route("/productos/<int:pid>/eliminar", methods=["POST"])
