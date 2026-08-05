@@ -2,6 +2,22 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-08-04 - Codex - fix/tiendanube-export-endpoint
+
+### Tarea
+Corregir el enlace de exportación CSV de Tiendanube que usaba un endpoint sin
+el prefijo del blueprint `main`.
+
+### Qué se cambió
+- Las referencias Jinja y JavaScript de `productos.html` usan el endpoint
+  canónico `main.productos_exportar_tiendanube`.
+- Se agregó una regresión HTTP que renderiza `/productos` con exportación
+  habilitada y verifica el enlace de descarga.
+
+### Alcance protegido
+- No se modificó el exportador CSV ni los flujos de importación, inventario,
+  POS, licencias, builds o instaladores.
+
 ## 2026-08-04 - Codex - fix/issue-161-variant-access-ux
 
 ### Tarea

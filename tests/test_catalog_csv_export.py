@@ -218,6 +218,12 @@ class CatalogCsvExportHttpTests(unittest.TestCase):
         self.assertIn("Mate exportable", response.data.decode("utf-8-sig"))
         response.close()
 
+    def test_product_list_renders_tiendanube_export_link_when_export_is_enabled(self):
+        with mock.patch.object(self.app_module, "modulo_activo", return_value=True):
+            response = self._client("admin", "Administrador").get("/productos")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/productos/exportar/tiendanube?', response.get_data(as_text=True))
+
 
 if __name__ == "__main__":
     unittest.main()
