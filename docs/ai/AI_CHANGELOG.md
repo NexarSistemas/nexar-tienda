@@ -3102,3 +3102,24 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
 - Correccion final: una sola preview vigente por usuario, consumo persistente ante fallos, límites de stock preservados y actualización comercial completa de simples.
 - Correccion de presencia CSV: stock y visibilidad ausentes conservan valores locales; cero y SI/NO solo aplican cuando son explícitos.
 - Se documentaron límites, conflictos y estrategia conservadora de coincidencia.
+# 2026-08-04 - Codex - feature/tiendanube-csv-export
+
+- Se agregó el adaptador de salida CSV de Tiendanube para productos legacy y
+  variantes, separado de la representación neutral del catálogo.
+- La descarga reutiliza los filtros de catálogo, exporta productos y variantes
+  activos, usa UTF-8 con BOM y valida datos antes de entregar el archivo.
+- Se documentó la plantilla versionada, sus límites y la ausencia de API,
+  OAuth, webhooks o sincronización automática.
+- Corrección post-revisión: el identificador de URL ahora es inmutable
+  (`nexar-{id_producto}`), las variantes solo son operativas con
+  `stock_modo='variantes'`, y categorías/decimales respetan el contrato CSV.
+- La descarga se genera desde una única instantánea ya validada en un temporal
+  con derrame a disco, y el importador conserva el precio promocional de las
+  variantes en la ida y vuelta.
+- Corrección de revisión: el precio promocional se valida como decimal sin
+  conversión intermedia a `float`, y catálogo comparte una única construcción
+  pública de filtros entre lectura normal e iteración para exportar.
+- La promoción importada se normaliza a dos decimales con `ROUND_HALF_UP`, el
+  contrato monetario compatible con las columnas `REAL` existentes.
+- Precio y precio promocional comparten la misma normalización decimal de
+  importación antes de persistirse.

@@ -14,6 +14,16 @@ HEADER = "Identificador de URL,Nombre,Categorías,Nombre de propiedad 1,Valor de
 
 
 class TiendanubeCsvAdapterTests(unittest.TestCase):
+    def test_promotional_price_keeps_decimal_precision_without_float(self):
+        content = "Identificador de URL,Nombre,Precio,Precio promocional\nremera,Remera,1.235,0.125\n"
+        row = parse_tiendanube_csv(content.encode())[0]
+        self.assertEqual((row["price"], row["promotional_price"]), ("1.24", "0.13"))
+        for invalid in ("NaN", "Infinity", "-1"):
+            for column in ("Precio", "Precio promocional"):
+                values = (invalid, "0.13") if column == "Precio" else ("1.24", invalid)
+                with self.assertRaisesRegex(ValueError, column):
+                    parse_tiendanube_csv((f"Identificador de URL,Nombre,Precio,Precio promocional\nremera,Remera,{values[0]},{values[1]}\n").encode())
+
     def test_utf8_bom_simple_product(self):
         rows = parse_tiendanube_csv(("\ufeff" + HEADER + "mate,Maté,Accesorios,,,1200,600,3,,7790000000001,SI\n").encode())
         self.assertEqual(rows[0]["external_group"], "mate")
@@ -83,6 +93,15 @@ class CatalogImportPersistenceTests(unittest.TestCase):
         self.assertIsNotNone(product)
         with self.assertRaisesRegex(ValueError, "ya fue utilizado"):
             self.service.apply_stored_plan(plan_id, token, self.owner)
+
+    def test_promotional_price_rounds_to_cents_through_persistence_and_export(self):
+        content = "Identificador de URL,Nombre,Nombre de propiedad 1,Valor de propiedad 1,Precio,Precio promocional,Costo,Stock,SKU,Código de barras,Mostrar en tienda\nremera,Remera,Color,Azul,1.235,0.125,1,2,REM-AZ,,SI\n"
+        self._import(content)
+        variant = self.db.q("SELECT precio, precio_promocional FROM producto_variantes WHERE sku='REM-AZ'", fetchone=True)
+        self.assertEqual((variant["precio"], variant["precio_promocional"]), (1.24, 0.13))
+        from services import tiendanube_csv_export
+        exported = "".join(tiendanube_csv_export.iter_csv(rubro="tienda"))
+        self.assertIn(",1.24,0.13,", exported)
 
     def test_reimport_simple_barcode_updates_absolute_stock_without_duplicate(self):
         content = HEADER + "mate,Mate,Accesorios,,,1200,600,3,,7790000000001,SI\n"

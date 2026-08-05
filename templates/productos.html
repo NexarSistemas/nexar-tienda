@@ -49,6 +49,11 @@
                     <i class="fas fa-file-pdf me-2 text-danger"></i> Lista de precios (PDF)
                 </a>
             </li>
+            <li>
+                <a class="dropdown-item" id="tiendanube-export-link" href="{{ url_for('productos_exportar_tiendanube', q=buscar, categoria=categoria_filtro, proveedor=proveedor_filtro) }}">
+                    <i class="fas fa-file-csv me-2 text-primary"></i> CSV para Tiendanube
+                </a>
+            </li>
         </ul>
     </div>
     {% endif %}
@@ -359,10 +364,21 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    searchInput.addEventListener('keyup', filterRows);
-    categoriaFilter.addEventListener('change', filterRows);
-    proveedorFilter.addEventListener('change', filterRows);
+    function updateTiendanubeExportLink() {
+        const link = document.getElementById('tiendanube-export-link');
+        if (!link) return;
+        const params = new URLSearchParams();
+        if (searchInput.value.trim()) params.set('q', searchInput.value.trim());
+        if (categoriaFilter.value.trim()) params.set('categoria', categoriaFilter.value.trim());
+        if (proveedorFilter.value.trim()) params.set('proveedor', proveedorFilter.value.trim());
+        link.href = '{{ url_for("productos_exportar_tiendanube") }}' + (params.toString() ? '?' + params.toString() : '');
+    }
+
+    searchInput.addEventListener('keyup', function () { filterRows(); updateTiendanubeExportLink(); });
+    categoriaFilter.addEventListener('change', function () { filterRows(); updateTiendanubeExportLink(); });
+    proveedorFilter.addEventListener('change', function () { filterRows(); updateTiendanubeExportLink(); });
     filterRows();
+    updateTiendanubeExportLink();
 });
 </script>
 {% endblock %}

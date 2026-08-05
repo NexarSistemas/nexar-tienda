@@ -61,6 +61,7 @@ from services import product_variants
 from services import attribute_profiles
 from services import inventory
 from services import catalog_csv_import
+from services import catalog_csv_export, tiendanube_csv_export
 from services.license_sdk import (
     get_current_hwid,
     get_license_debug_state,
@@ -3037,6 +3038,31 @@ def productos_importar_tiendanube_confirmar():
         return redirect(url_for("productos_importar_tiendanube"))
     flash(f"Importación completada: {result['created']} creados y {result['updated']} actualizados.", "success")
     return redirect(url_for("productos"))
+
+
+@main_bp.route("/productos/exportar/tiendanube")
+@admin_required
+def productos_exportar_tiendanube():
+    """Download the active catalog through the external Tiendanube adapter."""
+    require_modulo("export")
+    filters = {
+        "search": request.args.get("q", ""),
+        "category": request.args.get("categoria", ""),
+        "provider": request.args.get("proveedor", ""),
+        "rubro": get_rubro_actual(db.get_config()),
+    }
+    try:
+        export_file = tiendanube_csv_export.build_csv_file(**filters)
+    except catalog_csv_export.CatalogExportValidationError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("productos", q=filters["search"], categoria=filters["category"], proveedor=filters["provider"]))
+    response = Response(
+        export_file,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={tiendanube_csv_export.download_name(datetime.now())}"},
+    )
+    response.call_on_close(export_file.close)
+    return response
 
 
 @main_bp.route("/productos/importar/plantilla", methods=["POST"])
