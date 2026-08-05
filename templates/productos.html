@@ -50,7 +50,7 @@
                 </a>
             </li>
             <li>
-                <a class="dropdown-item" id="tiendanube-export-link" href="{{ url_for('productos_exportar_tiendanube', q=buscar, categoria=categoria_filtro, proveedor=proveedor_filtro) }}">
+                <a class="dropdown-item" id="tiendanube-export-link" href="{{ url_for('main.productos_exportar_tiendanube', q=buscar, categoria=categoria_filtro, proveedor=proveedor_filtro) }}">
                     <i class="fas fa-file-csv me-2 text-primary"></i> CSV para Tiendanube
                 </a>
             </li>
@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (searchInput.value.trim()) params.set('q', searchInput.value.trim());
         if (categoriaFilter.value.trim()) params.set('categoria', categoriaFilter.value.trim());
         if (proveedorFilter.value.trim()) params.set('proveedor', proveedorFilter.value.trim());
-        link.href = '{{ url_for("productos_exportar_tiendanube") }}' + (params.toString() ? '?' + params.toString() : '');
+        link.href = '{{ url_for("main.productos_exportar_tiendanube") }}' + (params.toString() ? '?' + params.toString() : '');
     }
 
     searchInput.addEventListener('keyup', function () { filterRows(); updateTiendanubeExportLink(); });
