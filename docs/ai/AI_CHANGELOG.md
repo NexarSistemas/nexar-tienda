@@ -2,6 +2,23 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-08-05 - Codex - fix/cryptography-50-dependabot
+
+### Tarea
+Actualizar `cryptography` por seguridad para resolver las tres alertas abiertas
+de Dependabot.
+
+### Qué se cambió
+- `cryptography` pasa de `>=46.0.6,<47` a `>=50.0.0,<51`.
+- Se usa 50.x porque dos alertas se corrigen en 49.0.0, pero la tercera exige
+  50.0.0.
+
+### Validación
+- Con `cryptography 50.0.0`, la suite focalizada ARCA de certificados,
+  diagnóstico y firma CMS/PKCS#7 ejecutó 8 tests correctos.
+- Los builds PyInstaller Linux y Windows conservan el hidden import explícito
+  de `cryptography` y deben validarse en CI.
+
 ## 2026-08-04 - Codex - fix/tiendanube-export-endpoint
 
 ### Tarea
