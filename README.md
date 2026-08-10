@@ -64,15 +64,15 @@ maximizada para uso diario.
 ### Instalacion Linux (.deb)
 
 ```bash
-sudo apt install ./nexar-tienda_VERSION_amd64.deb
+sudo apt install ./Nexar_Comercio_Linux_amd64.deb
 ```
 
 Si `apt` no puede leer el archivo desde `Descargas`, copiarlo antes a `/tmp`:
 
 ```bash
-cp ~/Descargas/nexar-tienda_VERSION_amd64.deb /tmp/
-chmod 0644 /tmp/nexar-tienda_VERSION_amd64.deb
-sudo apt install /tmp/nexar-tienda_VERSION_amd64.deb
+cp ~/Descargas/Nexar_Comercio_Linux_amd64.deb /tmp/
+chmod 0644 /tmp/Nexar_Comercio_Linux_amd64.deb
+sudo apt install /tmp/Nexar_Comercio_Linux_amd64.deb
 ```
 
 Si se uso `dpkg -i` y quedaron dependencias pendientes:
@@ -84,8 +84,20 @@ sudo apt --fix-broken install
 Tambien se puede usar el helper del repo:
 
 ```bash
-./install_deb.sh ./nexar-tienda_VERSION_amd64.deb
+./install_deb.sh ./Nexar_Comercio_Linux_amd64.deb
 ```
+
+### Instaladores oficiales y actualizaciones
+
+Las futuras Releases publican instaladores con nombres estables, mientras que la
+versión oficial se obtiene siempre desde el tag de la Release. Los enlaces
+permanentes previstos son:
+
+- Windows: `https://github.com/NexarSistemas/nexar-tienda/releases/latest/download/Nexar_Comercio_Windows_Setup.exe`
+- Linux: `https://github.com/NexarSistemas/nexar-tienda/releases/latest/download/Nexar_Comercio_Linux_amd64.deb`
+
+Estos enlaces serán válidos desde la primera Release que publique los nuevos
+assets estables. La Release vigente `v1.36.7` conserva los nombres legacy.
 
 ## Modulos Principales
 
@@ -406,6 +418,14 @@ Secrets y variables esperados en CI:
 
 No se debe incluir `SUPABASE_SERVICE_ROLE_KEY` en instaladores, specs ni binarios
 de cliente.
+
+Los assets públicos de una Release son exclusivamente
+`Nexar_Comercio_Windows_Setup.exe`, `Nexar_Comercio_Linux_amd64.deb`,
+`SHA256SUMS.txt` y sus firmas `.sig`. Los builds de PR y los pushes normales a
+`main` pueden generar Artifacts internos, pero nunca crean ni modifican una
+GitHub Release. La publicación se habilita únicamente en un push del tag
+`vX.Y.Z` que coincida con `VERSION`; los hashes y firmas se generan sobre los
+nombres finales estables.
 
 ## Soporte y Contacto
 

@@ -1,16 +1,28 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import requests
 
 DEFAULT_REPO = "NexarSistemas/nexar-tienda"
 CHECK_INTERVAL_SECONDS = 6 * 60 * 60
 REQUEST_TIMEOUT = 2.5
+
+WINDOWS_INSTALLER = "Nexar_Comercio_Windows_Setup.exe"
+LINUX_INSTALLER = "Nexar_Comercio_Linux_amd64.deb"
+
+
+def normalize_release_version(version: str) -> str:
+    match = re.fullmatch(r"[vV]?(\d+)\.(\d+)\.(\d+)", (version or "").strip())
+    if not match:
+        return ""
+    return ".".join(str(int(part)) for part in match.groups())
 
 
 def _parse_version(version: str) -> tuple[int, int, int]:
@@ -34,13 +46,28 @@ def _is_windows() -> bool:
 
 
 def _asset_matches_platform(name: str) -> bool:
-    normalized = name.lower()
     if _is_windows():
-        return (
-            normalized.startswith("nexartienda_")
-            or normalized.startswith("nexarcomercio_")
-        ) and normalized.endswith("_setup.exe")
-    return normalized.startswith("nexar-tienda_") and normalized.endswith("_amd64.deb")
+        return name == WINDOWS_INSTALLER or bool(
+            re.fullmatch(r"(?:NexarTienda|NexarComercio)_\d+(?:\.\d+){1,2}_Setup\.exe", name)
+        )
+    return name == LINUX_INSTALLER or bool(
+        re.fullmatch(r"nexar-tienda_\d+(?:\.\d+){1,2}_amd64\.deb", name)
+    )
+
+
+def _stable_installer_for_current_platform() -> str:
+    return WINDOWS_INSTALLER if _is_windows() else LINUX_INSTALLER
+
+
+def _select_installer_asset(assets: list[dict[str, Any]]) -> dict[str, Any] | None:
+    stable_name = _stable_installer_for_current_platform()
+    for asset in assets:
+        if str(asset.get("name") or "") == stable_name:
+            return asset
+    return next(
+        (asset for asset in assets if _asset_matches_platform(str(asset.get("name") or ""))),
+        None,
+    )
 
 
 def _installer_kind(asset_name: str) -> str:
@@ -62,19 +89,13 @@ def check_latest_release(current_version: str) -> dict[str, Any]:
     )
     response.raise_for_status()
     release = response.json()
-    latest = (release.get("tag_name") or "").strip().lstrip("vV")
+    latest = normalize_release_version(str(release.get("tag_name") or ""))
     if not latest:
         return {"available": False}
 
     available = _parse_version(latest) > _parse_version(current_version)
     assets = release.get("assets") or []
-    installer_asset = next(
-        (
-            asset for asset in assets
-            if _asset_matches_platform(str(asset.get("name") or ""))
-        ),
-        None,
-    )
+    installer_asset = _select_installer_asset(assets)
     asset_name = installer_asset.get("name") if installer_asset else ""
     return {
         "available": available,
@@ -103,17 +124,35 @@ def get_cached_update_info(app, current_version: str) -> dict[str, Any]:
     return data
 
 
-def download_release_asset(asset_url: str, destination_dir: Path) -> Path:
-    if not asset_url or not asset_url.startswith("https://"):
+def download_release_asset(asset_url: str, destination_dir: Path, version: str = "") -> Path:
+    parsed_url = urlsplit(asset_url or "")
+    if parsed_url.scheme != "https" or not parsed_url.netloc:
         raise ValueError("No hay un instalador descargable para esta version.")
 
-    destination_dir.mkdir(parents=True, exist_ok=True)
-    filename = Path(asset_url.split("?", 1)[0]).name
-    if not _asset_matches_platform(filename) or "/" in filename:
+    decoded_path = unquote(parsed_url.path)
+    path_parts = decoded_path.split("/")
+    filename = path_parts[-1] if path_parts else ""
+    if (
+        not filename
+        or ".." in path_parts
+        or "/" in filename
+        or "\\" in filename
+        or Path(filename).name != filename
+        or not _asset_matches_platform(filename)
+    ):
         raise ValueError("El instalador de actualizacion no es valido.")
 
-    target = destination_dir / filename
-    partial = destination_dir / f"{filename}.part"
+    normalized_version = normalize_release_version(version)
+    if version and not normalized_version:
+        raise ValueError("La version de la actualizacion no es valida.")
+
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination_root = destination_dir.resolve()
+    target = (destination_root / filename).resolve()
+    partial = (destination_root / f"{filename}.part").resolve()
+    if target.parent != destination_root or partial.parent != destination_root:
+        raise ValueError("El instalador de actualizacion no es valido.")
+
     with requests.get(asset_url, stream=True, timeout=30) as response:
         response.raise_for_status()
         with partial.open("wb") as fh:
@@ -121,4 +160,9 @@ def download_release_asset(asset_url: str, destination_dir: Path) -> Path:
                 if chunk:
                     fh.write(chunk)
     partial.replace(target)
+    version_file = destination_root / f"{filename}.version"
+    if normalized_version:
+        version_file.write_text(normalized_version, encoding="utf-8")
+    elif version_file.exists():
+        version_file.unlink()
     return target

@@ -1,13 +1,15 @@
 name: Build & Release Nexar Tienda
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ['v*.*.*']
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -32,10 +34,19 @@ jobs:
       - name: Obtener y validar versión
         id: ver
         run: |
-          VERSION=$(tr -d '[:space:]' < VERSION)
+          set -euo pipefail
+          VERSION=$(tr -d '\r\n' < VERSION)
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ VERSION debe tener formato SemVer X.Y.Z (recibido: '$VERSION')."
+            exit 1
+          fi
           CHANGELOG_VERSION=$(grep -m1 -oP '\[\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md)
           if [ "$VERSION" != "$CHANGELOG_VERSION" ]; then
             echo "❌ VERSION ($VERSION) no coincide con la última entrada de CHANGELOG ($CHANGELOG_VERSION)."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "❌ El tag '$GITHUB_REF_NAME' no coincide con VERSION='$VERSION' (esperado: 'v$VERSION')."
             exit 1
           fi
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
@@ -47,6 +58,7 @@ jobs:
   build-linux:
     needs: check
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
 
     steps:
       - uses: actions/checkout@v4
@@ -182,6 +194,7 @@ jobs:
   build-windows:
     needs: check
     runs-on: windows-2022
+    if: github.event_name != 'pull_request'
 
     steps:
       - uses: actions/checkout@v4
@@ -318,32 +331,61 @@ jobs:
   package:
     needs: [check, build-linux, build-windows]
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
 
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts/
 
-      - name: Unificar artefactos
+      - name: Reunir y validar solo instaladores públicos
         run: |
-          mkdir final
-          find artifacts -type f -exec cp {} final/ \;
-          echo "📂 Artefactos unificados:"
-          ls -lh final/
-
-      - name: Limpiar SHA256 previos
-        run: |
-          rm -f final/SHA256SUMS*.txt
-          rm -f final/*.sha256
+          set -euo pipefail
+          mkdir -p final
+          while IFS= read -r -d '' file; do
+            cp "$file" final/
+          done < <(
+            find artifacts -mindepth 2 -maxdepth 2 -type f \
+              \( -name '*.deb' -o -name '*.exe' \) -print0
+          )
+          expected_assets=(
+            Nexar_Comercio_Windows_Setup.exe
+            Nexar_Comercio_Linux_amd64.deb
+          )
+          actual_assets=(final/*.exe final/*.deb)
+          (( ${#actual_assets[@]} == ${#expected_assets[@]} )) || {
+            echo "❌ Cantidad inesperada de instaladores públicos."
+            exit 1
+          }
+          for asset in "${actual_assets[@]}"; do
+            case "$(basename "$asset")" in
+              Nexar_Comercio_Windows_Setup.exe|Nexar_Comercio_Linux_amd64.deb) ;;
+              *)
+                echo "❌ Instalador público inesperado: $(basename "$asset")"
+                exit 1
+                ;;
+            esac
+          done
+          for expected in "${expected_assets[@]}"; do
+            test -f "final/$expected" || { echo "❌ Falta $expected"; exit 1; }
+          done
+          if find final -maxdepth 1 -type f \
+              \( -name 'base_library.zip' -o -name 'python*.zip' \) -print -quit | grep -q .; then
+            echo "❌ Se encontró un archivo interno del bundle en el artifact final."
+            exit 1
+          fi
 
       - name: Generar SHA256 único
+        working-directory: final
         run: |
-          cd final
-          sha256sum * > SHA256SUMS.txt
+          sha256sum \
+            Nexar_Comercio_Windows_Setup.exe \
+            Nexar_Comercio_Linux_amd64.deb > SHA256SUMS.txt
           echo "🔒 Checksums generados:"
           cat SHA256SUMS.txt
 
       - name: Configurar GPG
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: |
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
@@ -352,18 +394,51 @@ jobs:
           gpgconf --kill gpg-agent
 
       - name: Importar clave GPG
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
           echo "✅ Clave GPG importada"
 
       - name: Firmar archivos
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           find final -type f ! -name "*.sig" -exec \
-          gpg --batch --yes \
+            gpg --batch --yes \
               --pinentry-mode loopback \
-              --passphrase "${{ secrets.GPG_PASSPHRASE }}" \
+              --passphrase "$GPG_PASSPHRASE" \
               --detach-sign {} \;
           echo "✅ Archivos firmados"
+
+      - name: Verificar SHA256 final
+        run: |
+          set -euo pipefail
+          for asset in \
+            Nexar_Comercio_Windows_Setup.exe \
+            Nexar_Comercio_Linux_amd64.deb \
+            SHA256SUMS.txt; do
+            test -f "final/$asset"
+          done
+          grep -F "Nexar_Comercio_Windows_Setup.exe" final/SHA256SUMS.txt
+          grep -F "Nexar_Comercio_Linux_amd64.deb" final/SHA256SUMS.txt
+          if grep -E 'NexarComercio_|NexarTienda_|nexar-tienda_' final/SHA256SUMS.txt; then
+            echo "❌ SHA256SUMS contiene nombres públicos legacy."
+            exit 1
+          fi
+
+      - name: Verificar firmas finales
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          for asset in \
+            Nexar_Comercio_Windows_Setup.exe \
+            Nexar_Comercio_Linux_amd64.deb \
+            SHA256SUMS.txt; do
+            test -f "final/$asset.sig"
+          done
 
       - uses: actions/upload-artifact@v4
         with:
@@ -377,6 +452,7 @@ jobs:
   release:
     needs: [check, package]
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     env:
