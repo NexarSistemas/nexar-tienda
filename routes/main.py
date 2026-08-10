@@ -2104,7 +2104,7 @@ def _installer_version(filename: str, downloaded_version: str = "") -> str:
     for pattern in patterns:
         match = re.match(pattern, filename or "")
         if match:
-            return normalize_release_version(match.group("version"))
+            return ".".join(str(int(part)) for part in match.group("version").split("."))
     return ""
 
 

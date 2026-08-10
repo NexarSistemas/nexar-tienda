@@ -3,6 +3,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
+from flask import Flask
+from werkzeug.exceptions import NotFound
+
+import routes.main as routes_main
 from services import update_checker
 
 
@@ -146,6 +150,65 @@ class UpdateCheckerTests(unittest.TestCase):
                     update_checker.download_release_asset(asset_url, destination)
 
             self.assertFalse(destination.exists())
+
+
+class UpdateRouteInstallerTests(unittest.TestCase):
+    LEGACY_INSTALLERS = (
+        ("NexarTienda_1.37_Setup.exe", "1.37"),
+        ("NexarComercio_1.37_Setup.exe", "1.37"),
+        ("NexarComercio_1.37.2_Setup.exe", "1.37.2"),
+        ("nexar-tienda_1.37_amd64.deb", "1.37"),
+        ("nexar-tienda_1.37.2_amd64.deb", "1.37.2"),
+    )
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.app = Flask(__name__)
+        self.app.config["APP_VERSION"] = "1.36.9"
+        self.update_dir = Path(self.temp_dir.name)
+        self.update_dir_patch = patch.object(routes_main, "UPDATE_DIR", self.update_dir)
+        self.update_dir_patch.start()
+        self.addCleanup(self.update_dir_patch.stop)
+
+    def test_legacy_installers_are_accepted_parsed_and_listed(self):
+        for filename, expected_version in self.LEGACY_INSTALLERS:
+            with self.subTest(filename=filename):
+                installer = self.update_dir / filename
+                installer.write_bytes(b"installer")
+
+                platform_name = "win32" if filename.endswith(".exe") else "linux"
+                with patch.object(update_checker.sys, "platform", platform_name):
+                    self.assertTrue(update_checker._asset_matches_platform(filename))
+                self.assertTrue(routes_main._is_valid_update_installer_name(filename))
+                self.assertEqual(routes_main._installer_version(filename), expected_version)
+                self.assertGreater(
+                    routes_main._version_tuple(expected_version),
+                    routes_main._version_tuple(self.app.config["APP_VERSION"]),
+                )
+                with self.app.app_context():
+                    updates = routes_main._update_list()
+                self.assertIn(filename, [update["nombre"] for update in updates])
+                with self.app.test_request_context():
+                    self.assertEqual(routes_main._update_file(filename), installer.resolve())
+                installer.unlink()
+
+    def test_stable_installers_require_a_strict_sidecar_version(self):
+        installer = self.update_dir / update_checker.WINDOWS_INSTALLER
+        installer.write_bytes(b"installer")
+
+        self.assertTrue(routes_main._is_valid_update_installer_name(installer.name))
+        self.assertEqual(routes_main._installer_version(installer.name, "1.37"), "")
+        with self.app.app_context():
+            self.assertEqual(routes_main._update_list(), [])
+        with self.app.test_request_context(), self.assertRaises(NotFound):
+            routes_main._update_file(installer.name)
+
+        (self.update_dir / f"{installer.name}.version").write_text("1.37.2", encoding="utf-8")
+        with self.app.app_context():
+            self.assertEqual(routes_main._update_list()[0]["version"], "1.37.2")
+        with self.app.test_request_context():
+            self.assertEqual(routes_main._update_file(installer.name), installer.resolve())
 
 
 if __name__ == "__main__":
