@@ -3166,3 +3166,13 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
   asocia la versión descargada al `tag_name` de la Release.
 - El workflow valida los dos assets finales, sus SHA256 y firmas, y publica
   GitHub Releases solamente en pushes de tags `vX.Y.Z` coincidentes con VERSION.
+
+# 2026-08-10 — fix/sincroniza-metadata-version
+
+- Se registró la publicación correcta de `v1.36.8` con instaladores estables,
+  SHA256 y firmas finales.
+- Se sincronizaron la versión vigente visible en README y el fallback manual de
+  Inno Setup con `VERSION=1.36.8`.
+- Los enlaces permanentes `releases/latest/download` se documentaron como
+  activos desde `v1.36.8`; `v1.36.7` queda referenciada solo por sus assets
+  legacy históricos.
