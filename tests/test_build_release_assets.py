@@ -26,6 +26,35 @@ class BuildReleaseAssetTests(unittest.TestCase):
         self.assertIn("Version: ${VERSION}", deb_builder)
         self.assertIn("Nexar_Comercio_Linux_${ARCH}.deb", deb_builder)
 
+    def test_release_metadata_uses_the_current_version_consistently(self):
+        version = Path("VERSION").read_text(encoding="utf-8").strip()
+        readme = Path("README.md").read_text(encoding="utf-8")
+        iss = Path("build/nexar_tienda.iss").read_text(encoding="utf-8")
+
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+        self.assertIn(f"# Nexar Comercio v{version}", readme)
+        self.assertIn(f"- Version actual: `{version}`", readme)
+        self.assertIn(f"Release comercial estable `v{version}`:", readme)
+        self.assertRegex(
+            iss,
+            rf'#ifndef AppVersion\s+#define AppVersion "{re.escape(version)}"\s+#endif',
+        )
+
+    def test_permanent_download_links_keep_their_historical_introduction_version(self):
+        readme = Path("README.md").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "https://github.com/NexarSistemas/nexar-tienda/releases/latest/download/"
+            "Nexar_Comercio_Windows_Setup.exe",
+            readme,
+        )
+        self.assertIn(
+            "https://github.com/NexarSistemas/nexar-tienda/releases/latest/download/"
+            "Nexar_Comercio_Linux_amd64.deb",
+            readme,
+        )
+        self.assertIn("activos desde `v1.36.8`", readme)
+
     def test_release_workflow_accepts_only_expected_final_assets_and_tags(self):
         workflow = Path(".github/workflows/build.yml").read_text(encoding="utf-8")
         jobs = self._job_blocks(workflow)

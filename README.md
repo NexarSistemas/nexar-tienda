@@ -1,4 +1,4 @@
-# Nexar Comercio v1.36.7
+# Nexar Comercio v1.36.8
 
 Sistema integral de gestion comercial para tiendas y comercios minoristas.
 `Nexar Comercio` es la marca visible del producto. `nexar-tienda` se mantiene
@@ -8,7 +8,7 @@ y artefactos existentes.
 Estado actual:
 
 - Estado del repositorio: activo
-- Version actual: `1.36.7`
+- Version actual: `1.36.8`
 - Contexto central del ecosistema: repo externo `nexar-ai-context`, archivo `CONTEXTO_NEXAR.md`
 - Nombre comercial visible: `Nexar Comercio`.
 - Identificador tecnico vigente del repositorio y del producto: `nexar-tienda`.
@@ -16,13 +16,12 @@ Estado actual:
 - Relacion con `nexar-almacen`: si aparece como repo separado, tratarlo tambien como legacy/no activo.
 - En configuracion activa, `LICENSE_PRODUCT` sigue tomando el valor `nexar-tienda` y `NEXAR_RUBRO` se usa para el rubro operativo actual del negocio (`tienda`).
 
-Release comercial estable `v1.36.7`:
+Release comercial estable `v1.36.8`:
 
-- Se elimina el aviso duplicado de vencimiento proximo en `Mi Plan` y se conserva una unica alerta preventiva junto con la renovacion manual.
-- Una licencia FULL activa ya no muestra un falso error cuando solo corresponde ofrecer renovacion.
-- Cada render de `Mi Plan` reutiliza una unica resolucion remota de precios y mantiene el producto alineado con el checkout.
-- La cache runtime de precios conserva cobertura valida ante respuestas parciales de Supabase.
-- Versionado sincronizado entre app, documentacion e instaladores.
+- Los instaladores públicos usan nombres estables y enlaces permanentes de descarga.
+- El updater prioriza assets estables y conserva compatibilidad con instaladores legacy.
+- El workflow publica Releases únicamente desde tags coincidentes con `VERSION`.
+- Las validaciones de pull requests se ejecutan sin secretos de release ni acceso al SDK privado.
 
 Desarrollado por Nexar Sistemas - 2026
 
@@ -89,15 +88,15 @@ Tambien se puede usar el helper del repo:
 
 ### Instaladores oficiales y actualizaciones
 
-Las futuras Releases publican instaladores con nombres estables, mientras que la
-versión oficial se obtiene siempre desde el tag de la Release. Los enlaces
-permanentes previstos son:
+Las Releases publican instaladores con nombres estables, mientras que la versión
+oficial se obtiene siempre desde el tag de la Release. Los enlaces permanentes
+activos desde `v1.36.8` son:
 
 - Windows: `https://github.com/NexarSistemas/nexar-tienda/releases/latest/download/Nexar_Comercio_Windows_Setup.exe`
 - Linux: `https://github.com/NexarSistemas/nexar-tienda/releases/latest/download/Nexar_Comercio_Linux_amd64.deb`
 
-Estos enlaces serán válidos desde la primera Release que publique los nuevos
-assets estables. La Release vigente `v1.36.7` conserva los nombres legacy.
+Estos enlaces siempre apuntan a la Release estable más reciente. La Release
+histórica `v1.36.7` conserva sus assets legacy por compatibilidad.
 
 ## Modulos Principales
 
