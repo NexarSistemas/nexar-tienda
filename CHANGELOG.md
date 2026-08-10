@@ -4,6 +4,19 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.36.8] - 2026-08-10
+
+### Changed
+
+- Las Releases publican los instaladores estables `Nexar_Comercio_Windows_Setup.exe` y `Nexar_Comercio_Linux_amd64.deb`, compatibles con enlaces permanentes `/releases/latest/download/...`.
+- El updater prioriza los assets estables y mantiene compatibilidad con instaladores legacy de Windows y Linux en versiones `X.Y` y `X.Y.Z`.
+- La descarga de actualizaciones conserva la validación de plataforma, nombres permitidos y protección contra path traversal.
+- El workflow genera SHA256 y firmas sobre los assets finales, y publica Releases exclusivamente desde tags `vX.Y.Z` coincidentes con `VERSION`.
+
+### Fixed
+
+- Las validaciones de pull requests no reciben secretos de release, firma ni acceso al SDK privado.
+
 ## [1.36.7] - 2026-07-20
 
 ### Fixed
