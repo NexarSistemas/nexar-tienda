@@ -375,12 +375,13 @@ jobs:
           fi
 
       - name: Generar SHA256 único
+        working-directory: final
         run: |
           sha256sum \
             Nexar_Comercio_Windows_Setup.exe \
-            Nexar_Comercio_Linux_amd64.deb > final/SHA256SUMS.txt
+            Nexar_Comercio_Linux_amd64.deb > SHA256SUMS.txt
           echo "🔒 Checksums generados:"
-          cat final/SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Configurar GPG
         run: |

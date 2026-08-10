@@ -27,6 +27,13 @@ class BuildReleaseAssetTests(unittest.TestCase):
         self.assertIn("SHA256SUMS contiene nombres públicos legacy", workflow)
         self.assertIn("Verificar hashes y firmas finales", workflow)
 
+        checksum_step = workflow.split("      - name: Generar SHA256 único", 1)[1].split(
+            "\n\n      - name:", 1
+        )[0]
+        self.assertIn("working-directory: final", checksum_step)
+        self.assertIn("Nexar_Comercio_Linux_amd64.deb > SHA256SUMS.txt", checksum_step)
+        self.assertNotIn("> final/SHA256SUMS.txt", checksum_step)
+
 
 if __name__ == "__main__":
     unittest.main()
