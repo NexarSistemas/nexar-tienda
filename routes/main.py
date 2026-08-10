@@ -102,7 +102,13 @@ from services.supabase_license_api import (
     is_configured as supabase_configured,
     update_license_vendor_code,
 )
-from services.update_checker import download_release_asset, get_cached_update_info
+from services.update_checker import (
+    LINUX_INSTALLER,
+    WINDOWS_INSTALLER,
+    download_release_asset,
+    get_cached_update_info,
+    normalize_release_version,
+)
 
 main_bp = Blueprint("main", __name__)
 logger = logging.getLogger(__name__)
@@ -2019,13 +2025,15 @@ def _update_list() -> list[dict]:
     update_dir.mkdir(parents=True, exist_ok=True)
     items = []
     candidates = [
+        update_dir / LINUX_INSTALLER,
+        update_dir / WINDOWS_INSTALLER,
         *update_dir.glob("nexar-tienda_*_amd64.deb"),
         *update_dir.glob("NexarTienda_*_Setup.exe"),
         *update_dir.glob("NexarComercio_*_Setup.exe"),
     ]
-    for path in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
-        installer_version = _installer_version(path.name)
-        if installer_version and _version_tuple(installer_version) <= _version_tuple(current_version):
+    for path in sorted((path for path in candidates if path.exists()), key=lambda p: p.stat().st_mtime, reverse=True):
+        installer_version = _installer_version(path.name, _downloaded_installer_version(path))
+        if not installer_version or _version_tuple(installer_version) <= _version_tuple(current_version):
             continue
         stat = path.stat()
         is_windows_installer = path.suffix.lower() == ".exe"
@@ -2042,16 +2050,20 @@ def _update_list() -> list[dict]:
 
 
 def _update_file(nombre: str) -> Path:
-    safe_name = Path(nombre or "").name
-    valid_linux = safe_name.startswith("nexar-tienda_") and safe_name.endswith("_amd64.deb")
-    valid_windows = (
-        safe_name.startswith("NexarTienda_") or safe_name.startswith("NexarComercio_")
-    ) and safe_name.endswith("_Setup.exe")
-    if safe_name != nombre or not (valid_linux or valid_windows):
+    requested_name = str(nombre or "")
+    safe_name = Path(requested_name).name
+    if (
+        safe_name != requested_name
+        or "/" in requested_name
+        or "\\" in requested_name
+        or not _is_valid_update_installer_name(safe_name)
+    ):
         abort(404)
     update_dir = _update_dir()
     path = (update_dir / safe_name).resolve()
     if path.parent != update_dir.resolve() or not path.exists():
+        abort(404)
+    if safe_name in {WINDOWS_INSTALLER, LINUX_INSTALLER} and not _downloaded_installer_version(path):
         abort(404)
     return path
 
@@ -2065,7 +2077,25 @@ def _version_tuple(version: str) -> tuple[int, int, int]:
     return tuple(parts)
 
 
-def _installer_version(filename: str) -> str:
+def _is_valid_update_installer_name(filename: str) -> bool:
+    return bool(re.fullmatch(
+        r"(?:nexar-tienda_\d+(?:\.\d+){1,2}_amd64\.deb|"
+        r"NexarTienda_\d+(?:\.\d+){1,2}_Setup\.exe|"
+        r"NexarComercio_\d+(?:\.\d+){1,2}_Setup\.exe)",
+        filename or "",
+    )) or filename in {WINDOWS_INSTALLER, LINUX_INSTALLER}
+
+
+def _downloaded_installer_version(installer: Path) -> str:
+    try:
+        return normalize_release_version(installer.with_name(f"{installer.name}.version").read_text(encoding="utf-8"))
+    except OSError:
+        return ""
+
+
+def _installer_version(filename: str, downloaded_version: str = "") -> str:
+    if filename in {WINDOWS_INSTALLER, LINUX_INSTALLER}:
+        return normalize_release_version(downloaded_version)
     patterns = (
         r"^nexar-tienda_(?P<version>[0-9]+(?:\.[0-9]+){1,2})_amd64\.deb$",
         r"^NexarTienda_(?P<version>[0-9]+(?:\.[0-9]+){1,2})_Setup\.exe$",
@@ -2074,7 +2104,7 @@ def _installer_version(filename: str) -> str:
     for pattern in patterns:
         match = re.match(pattern, filename or "")
         if match:
-            return match.group("version")
+            return normalize_release_version(match.group("version"))
     return ""
 
 
@@ -6148,7 +6178,11 @@ def actualizacion_descargar():
 
     backup_path = _make_backup()
     try:
-        target = download_release_asset(update_info["asset_url"], _update_dir())
+        target = download_release_asset(
+            update_info["asset_url"],
+            _update_dir(),
+            version=update_info.get("latest", ""),
+        )
     except Exception as exc:
         flash(f"No se pudo descargar la actualizacion: {exc}", "danger")
         return redirect(url_for("respaldo"))
@@ -6178,7 +6212,7 @@ def actualizacion_instalar(nombre):
         return redirect(url_for("respaldo"))
 
     installer = _update_file(nombre)
-    target_version = _installer_version(installer.name)
+    target_version = _installer_version(installer.name, _downloaded_installer_version(installer))
     if not target_version:
         flash("No se pudo identificar la version del instalador.", "warning")
         return redirect(url_for("respaldo"))

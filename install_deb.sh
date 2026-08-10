@@ -8,12 +8,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [[ $# -gt 0 ]]; then
   DEB_PATH="$1"
 else
-  DEB_PATH="$(find "${SCRIPT_DIR}" -maxdepth 1 -name 'nexar-tienda_*_amd64.deb' -type f -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 {print $2}')"
+  if [[ -f "${SCRIPT_DIR}/Nexar_Comercio_Linux_amd64.deb" ]]; then
+    DEB_PATH="${SCRIPT_DIR}/Nexar_Comercio_Linux_amd64.deb"
+  else
+    DEB_PATH="$(find "${SCRIPT_DIR}" -maxdepth 1 -name 'nexar-tienda_*_amd64.deb' -type f -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 {print $2}')"
+  fi
 fi
 
 if [[ -z "${DEB_PATH:-}" || ! -f "${DEB_PATH}" ]]; then
-  echo "No se encontro un paquete nexar-tienda_*_amd64.deb."
-  echo "Uso: ./install_deb.sh ./nexar-tienda_VERSION_amd64.deb"
+  echo "No se encontro un paquete Nexar_Comercio_Linux_amd64.deb ni uno legacy compatible."
+  echo "Uso: ./install_deb.sh ./Nexar_Comercio_Linux_amd64.deb"
   exit 1
 fi
 

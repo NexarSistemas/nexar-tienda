@@ -32,7 +32,7 @@ DefaultGroupName={#AppName}
 AllowNoIcons=yes
 
 OutputDir=..\dist\installer
-OutputBaseFilename=NexarComercio_{#AppVersion}_Setup
+OutputBaseFilename=Nexar_Comercio_Windows_Setup
 
 SetupIconFile=..\static\icons\nexar_tienda.ico
 

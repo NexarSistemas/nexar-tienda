@@ -3156,3 +3156,13 @@ Implementar un MVP de permisos basicos admin/empleado con diff minimo, reutiliza
   contrato monetario compatible con las columnas `REAL` existentes.
 - Precio y precio promocional comparten la misma normalización decimal de
   importación antes de persistirse.
+# 2026-08-10 â€” chore/unifica-nombres-release
+
+- Los instaladores pÃºblicos de Windows y Linux pasan a usar nombres estables
+  compatibles con enlaces `releases/latest/download`, sin cambiar la versiÃ³n
+  interna de los paquetes ni los nombres legacy consumidos por actualizaciones
+  anteriores.
+- El updater prioriza los assets estables, conserva las allowlists legacy y
+  asocia la versiÃ³n descargada al `tag_name` de la Release.
+- El workflow valida los dos assets finales, sus SHA256 y firmas, y publica
+  GitHub Releases solamente en pushes de tags `vX.Y.Z` coincidentes con VERSION.

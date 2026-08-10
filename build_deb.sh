@@ -187,8 +187,8 @@ echo "-> Construyendo paquete .deb..."
 DEB_FILE="${BUILD_DIR}/${PACKAGE}_${VERSION}_${ARCH}.deb"
 dpkg-deb --build --root-owner-group "${PKG_DIR}" "${DEB_FILE}"
 
-mv "${DEB_FILE}" "${SCRIPT_DIR}/"
-FINAL_DEB="${SCRIPT_DIR}/${PACKAGE}_${VERSION}_${ARCH}.deb"
+FINAL_DEB="${SCRIPT_DIR}/Nexar_Comercio_Linux_${ARCH}.deb"
+mv "${DEB_FILE}" "${FINAL_DEB}"
 
 echo ""
 echo "============================================"
