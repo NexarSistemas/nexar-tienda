@@ -1083,6 +1083,7 @@ def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
         cfg.get("license_marketing_pending_cleanup_emails", ""),
         cfg.get("license_marketing_pending_cleanup_email", ""),
     )
+    current_email_cleanup = not marketing_opt_in and previous_email in pending
     if previous_opt_in and previous_email and (not marketing_opt_in or previous_email != email):
         if previous_email not in pending:
             pending.append(previous_email)
@@ -1098,7 +1099,6 @@ def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
 
     activation_id, _details = _get_stable_activation_id()
     producto = get_license_product()
-    delivered_cleanup = False
     remaining = list(pending)
     for cleanup_email in pending:
         if sync_marketing_preference(
@@ -1108,7 +1108,6 @@ def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
             activation_id=activation_id,
         ):
             remaining.remove(cleanup_email)
-            delivered_cleanup = True
             continue
         break
 
@@ -1137,7 +1136,10 @@ def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
     if remaining:
         db.set_config({"license_marketing_sync_status": "error"})
         return "error"
-    if delivered_cleanup or (not marketing_opt_in and previous_opt_in):
+    current_preference_opt_out = not marketing_opt_in and (
+        previous_opt_in or current_email_cleanup
+    )
+    if current_preference_opt_out:
         db.set_config({
             "license_marketing_synced_email": "",
             "license_marketing_synced_opt_in": "0",

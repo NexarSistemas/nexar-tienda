@@ -140,6 +140,37 @@ class MarketingConsentTests(unittest.TestCase):
         self.assertEqual(result, "saved")
         sync.assert_not_called()
 
+    def test_delivered_previous_cleanup_preserves_current_subscription(self):
+        self.db.set_config({
+            "license_owner_email": "old@example.com",
+            "license_marketing_opt_in": "1",
+        })
+
+        first_result, first_sync = self._save("new@example.com", True, [False, True])
+
+        self.assertEqual(first_result, "error")
+        self.assertEqual(
+            json.loads(self.db.get_config()["license_marketing_pending_cleanup_emails"]),
+            ["old@example.com"],
+        )
+        self.assertEqual(self.db.get_config()["license_marketing_synced_email"], "new@example.com")
+        self.assertEqual(self.db.get_config()["license_marketing_synced_opt_in"], "1")
+        self.assertEqual(
+            [(call.kwargs["email"], call.kwargs["marketing_opt_in"]) for call in first_sync.call_args_list],
+            [("old@example.com", False), ("new@example.com", True)],
+        )
+
+        second_result, second_sync = self._save("new@example.com", True, [True])
+
+        self.assertEqual(second_result, "saved")
+        self.assertEqual(self.db.get_config()["license_marketing_pending_cleanup_emails"], "[]")
+        self.assertEqual(self.db.get_config()["license_marketing_synced_email"], "new@example.com")
+        self.assertEqual(self.db.get_config()["license_marketing_synced_opt_in"], "1")
+        self.assertEqual(
+            [(call.kwargs["email"], call.kwargs["marketing_opt_in"]) for call in second_sync.call_args_list],
+            [("old@example.com", False)],
+        )
+
 
 class MarketingConsentSupabaseTests(unittest.TestCase):
     @mock.patch.dict(os.environ, {"SUPABASE_URL": "https://example.supabase.co/rest/v1", "SUPABASE_ANON_KEY": "anon-key"}, clear=True)
