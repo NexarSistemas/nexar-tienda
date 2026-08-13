@@ -100,6 +100,7 @@ from services.supabase_license_api import (
     generate_activation_id,
     get_supabase_debug_state,
     is_configured as supabase_configured,
+    sync_marketing_preference,
     update_license_vendor_code,
 )
 from services.update_checker import (
@@ -1032,6 +1033,129 @@ def _get_activation_customer_profile(
         "terms_accepted": str(cfg.get("license_terms_accepted_at", "") or "").strip() != "",
         "marketing_opt_in": _as_bool(data.get("marketing_opt_in", cfg.get("license_marketing_opt_in", "0"))),
     }
+
+
+_MARKETING_EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+
+def _normalize_marketing_pending_cleanup_emails(*raw_values: object) -> list[str]:
+    emails: list[str] = []
+    for raw_value in raw_values:
+        if not raw_value:
+            continue
+        try:
+            values = json.loads(str(raw_value))
+        except (TypeError, ValueError):
+            values = [raw_value]
+        if not isinstance(values, list):
+            values = [raw_value]
+        for value in values:
+            email = str(value or "").strip().lower()
+            if (
+                email
+                and len(email) <= 254
+                and _MARKETING_EMAIL_PATTERN.fullmatch(email)
+                and email not in emails
+            ):
+                emails.append(email)
+    return emails
+
+
+def _marketing_email_error(email: str, marketing_opt_in: bool) -> str:
+    if not marketing_opt_in:
+        return ""
+    if not _MARKETING_EMAIL_PATTERN.fullmatch((email or "").strip()):
+        return "Ingresá un email válido para recibir ofertas y novedades."
+    return ""
+
+
+def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
+    """Persiste y entrega la preferencia sin acoplarla a licencias o pagos."""
+    cfg = db.get_config()
+    email = (email or "").strip().lower()
+    error = _marketing_email_error(email, marketing_opt_in)
+    if error:
+        return "invalid"
+
+    previous_email = str(cfg.get("license_owner_email", "") or "").strip().lower()
+    previous_opt_in = _as_bool(cfg.get("license_marketing_opt_in", "0"))
+    pending = _normalize_marketing_pending_cleanup_emails(
+        cfg.get("license_marketing_pending_cleanup_emails", ""),
+        cfg.get("license_marketing_pending_cleanup_email", ""),
+    )
+    if previous_opt_in and previous_email and (not marketing_opt_in or previous_email != email):
+        if previous_email not in pending:
+            pending.append(previous_email)
+    if marketing_opt_in:
+        pending = [item for item in pending if item != email]
+
+    db.set_config({
+        "license_owner_email": email,
+        "license_marketing_opt_in": "1" if marketing_opt_in else "0",
+        "license_marketing_pending_cleanup_emails": json.dumps(pending),
+        "license_marketing_pending_cleanup_email": "",
+    })
+
+    activation_id, _details = _get_stable_activation_id()
+    producto = get_license_product()
+    delivered_cleanup = False
+    remaining = list(pending)
+    for cleanup_email in pending:
+        if sync_marketing_preference(
+            email=cleanup_email,
+            marketing_opt_in=False,
+            producto=producto,
+            activation_id=activation_id,
+        ):
+            remaining.remove(cleanup_email)
+            delivered_cleanup = True
+            continue
+        break
+
+    db.set_config({
+        "license_marketing_pending_cleanup_emails": json.dumps(remaining),
+        "license_marketing_pending_cleanup_email": "",
+    })
+
+    synced_email = str(cfg.get("license_marketing_synced_email", "") or "").strip().lower()
+    synced_opt_in = _as_bool(cfg.get("license_marketing_synced_opt_in", "0"))
+    if marketing_opt_in and (synced_email != email or not synced_opt_in):
+        if sync_marketing_preference(
+            email=email,
+            marketing_opt_in=True,
+            producto=producto,
+            activation_id=activation_id,
+        ):
+            db.set_config({
+                "license_marketing_synced_email": email,
+                "license_marketing_synced_opt_in": "1",
+                "license_marketing_sync_status": "error" if remaining else "pending_confirmation",
+            })
+            return "error" if remaining else "pending_opt_in"
+        db.set_config({"license_marketing_sync_status": "error"})
+        return "error"
+    if remaining:
+        db.set_config({"license_marketing_sync_status": "error"})
+        return "error"
+    if delivered_cleanup or (not marketing_opt_in and previous_opt_in):
+        db.set_config({
+            "license_marketing_synced_email": "",
+            "license_marketing_synced_opt_in": "0",
+            "license_marketing_sync_status": "pending_confirmation",
+        })
+        return "pending_opt_out"
+    db.set_config({"license_marketing_sync_status": "saved"})
+    return "saved"
+
+
+def _flash_marketing_preference_result(result: str) -> None:
+    messages = {
+        "pending_opt_in": ("Preferencia guardada. Revisá tu email para confirmar la suscripción a novedades.", "success"),
+        "pending_opt_out": ("Preferencia guardada. Revisá tu email para confirmar la baja de novedades.", "success"),
+        "error": ("Preferencia guardada localmente, pero no pudo sincronizarse. Reintentaremos las bajas pendientes al guardar nuevamente.", "warning"),
+    }
+    if result in messages:
+        flash(*messages[result])
 
 
 def _normalize_vendor_code(value: str | None) -> str:
@@ -5197,6 +5321,11 @@ def mi_plan():
         license_holder=license_holder,
         checkout_enabled=bool(available_checkout_plans),
         checkout_pending=checkout_pending,
+        marketing_preference={
+            "email": str(db.get_config_valor("license_owner_email", "") or "").strip().lower(),
+            "opt_in": _as_bool(db.get_config_valor("license_marketing_opt_in", "0")),
+            "sync_status": str(db.get_config_valor("license_marketing_sync_status", "saved") or "saved"),
+        },
     )
 
 
@@ -5292,6 +5421,13 @@ def mi_plan_guardar_titular():
         flash(msg_profile, "warning")
         return redirect(url_for("main.mi_plan"))
 
+    if _as_bool(db.get_config_valor("license_marketing_opt_in", "0")):
+        result = _save_marketing_preference(holder_profile["email"], True)
+        if result == "invalid":
+            flash("Ingresá un email válido para conservar la suscripción a novedades.", "warning")
+            return redirect(url_for("main.mi_plan"))
+        _flash_marketing_preference_result(result)
+
     db.set_config({
         "license_owner_name": holder_profile["nombre"],
         "license_owner_email": holder_profile["email"],
@@ -5299,6 +5435,23 @@ def mi_plan_guardar_titular():
         "license_recovery_word": holder_profile["palabra_recuperacion"],
     })
     flash("Datos del titular actualizados.", "success")
+    return redirect(url_for("main.mi_plan"))
+
+
+@main_bp.route("/mi-plan/novedades", methods=["POST"])
+@admin_required
+def mi_plan_guardar_novedades():
+    marketing_opt_in = _as_bool(request.form.get("marketing_opt_in", "0"))
+    result = _save_marketing_preference(
+        request.form.get("marketing_email", ""),
+        marketing_opt_in,
+    )
+    if result == "invalid":
+        flash("Ingresá un email válido para recibir ofertas y novedades.", "warning")
+    else:
+        _flash_marketing_preference_result(result)
+        if result == "saved":
+            flash("Preferencia de novedades guardada localmente.", "success")
     return redirect(url_for("main.mi_plan"))
 
 
@@ -5505,7 +5658,12 @@ def activacion_inicial():
         ok_profile, msg_profile = _validate_activation_customer_profile(profile)
         if not ok_profile:
             flash(msg_profile, "warning")
-        elif selected_plan == "DEMO":
+        else:
+            marketing_result = _save_marketing_preference(
+                profile["email"], bool(profile["marketing_opt_in"])
+            )
+            _flash_marketing_preference_result(marketing_result)
+        if ok_profile and selected_plan == "DEMO":
             demo_context = _get_demo_identity_context(profile)
             activation_id = str(demo_context["activation_id"])
             hardware_id = str(demo_context["hardware_id"])
@@ -5695,7 +5853,7 @@ def activacion_inicial():
                 checkout_pending=_get_checkout_pending_context(),
                 demo_access=_get_initial_demo_access_context(),
             )
-        else:
+        elif ok_profile:
             _persist_activation_customer_profile(profile, completed=False, selected_plan=selected_plan)
             init_point, _checkout_context, error_response = _create_checkout_init_point()
             if error_response:

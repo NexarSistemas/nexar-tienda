@@ -253,6 +253,38 @@
 
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-white">
+                    <h5 class="mb-0">Novedades Nexar</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('main.mi_plan_guardar_novedades') }}" class="row g-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="col-md-8">
+                            <label class="form-label" for="marketing-email">Email para novedades</label>
+                            <input type="email" class="form-control" id="marketing-email" name="marketing_email" value="{{ marketing_preference.email }}">
+                            <div class="form-text">Solo se requiere si elegís recibir novedades.</div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="marketing-opt-in" name="marketing_opt_in" value="1" {% if marketing_preference.opt_in %}checked{% endif %}>
+                                <label class="form-check-label" for="marketing-opt-in">Quiero recibir ofertas y novedades.</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-outline-primary" type="submit">Guardar preferencia</button>
+                        </div>
+                    </form>
+                    {% if marketing_preference.sync_status == 'pending_confirmation' %}
+                    <div class="alert alert-info small mt-3 mb-0">Email de confirmación enviado. La preferencia se aplicará al confirmarlo.</div>
+                    {% elif marketing_preference.sync_status == 'error' %}
+                    <div class="alert alert-warning small mt-3 mb-0">Preferencia guardada localmente. Quedó una sincronización pendiente.</div>
+                    {% else %}
+                    <div class="small text-muted mt-3">Preferencia guardada localmente.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
                     <h5 class="mb-0">Código de vendedor</h5>
                 </div>
                 <div class="card-body">
