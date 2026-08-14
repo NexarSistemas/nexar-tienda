@@ -2,6 +2,27 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-08-13 - Codex - feature/issue-189-novedades-nexar
+
+### Tarea
+Integrar el consentimiento comercial opcional existente del onboarding con el
+backend centralizado de Novedades Nexar, sin acoplarlo a DEMO, licencias ni
+checkout.
+
+### Qué se cambió
+- El checkbox ya existente de ofertas y novedades se sincroniza mediante
+  `newsletter-preference`; Términos y Condiciones continúa siendo obligatorio
+  e independiente.
+- Mi Plan permite editar la preferencia, cambiar el email o desactivarla.
+- Se persisten email, opt-in y una cola deduplicada de bajas pendientes, con
+  lectura de compatibilidad de la key legacy singular.
+- Las solicitudes aceptadas con confirmación pendiente se retiran de la cola;
+  ante red caída se conserva solo lo que el backend aún no recibió.
+
+### Alcance protegido
+- No se modificaron Resend, Edge Functions, segmentos, automatizaciones,
+  DEMO, solicitudes de licencia, planes ni checkout.
+
 ## 2026-08-05 - Codex - fix/cryptography-50-dependabot
 
 ### Tarea

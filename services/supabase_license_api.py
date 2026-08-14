@@ -120,6 +120,67 @@ def is_configured() -> bool:
     return bool(_has_validation_url() and _anon_key())
 
 
+def sync_marketing_preference(
+    *,
+    email: str,
+    marketing_opt_in: bool,
+    producto: str,
+    activation_id: str = "",
+) -> bool:
+    """Entrega una preferencia de novedades al backend centralizado.
+
+    Un ``True`` confirma que el backend aceptó la solicitud y envió el correo
+    de confirmación; la alta o baja efectiva requiere la acción humana desde
+    ese correo.
+    """
+    email = (email or "").strip().lower()
+    producto = (producto or "").strip().lower()
+    activation_id = build_machine_id(activation_id)
+    if (
+        not isinstance(marketing_opt_in, bool)
+        or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
+        or len(email) > 254
+        or not producto
+        or len(producto) > 40
+        or not is_configured()
+    ):
+        return False
+
+    raw_base = (
+        os.getenv("NEXAR_LICENSES_VALIDATION_URL", "")
+        or os.getenv("SUPABASE_URL", "")
+        or ""
+    ).strip()
+    base = _clean_base_url(raw_base)
+    if base.lower().endswith("/rest/v1"):
+        base = _clean_base_url(base[:-8])
+    payload: dict[str, Any] = {
+        "email": email,
+        "marketing_opt_in": marketing_opt_in,
+        "producto": producto,
+    }
+    if activation_id:
+        payload["activation_id"] = activation_id
+
+    try:
+        response = requests.post(
+            f"{base}/functions/v1/newsletter-preference",
+            headers=_headers(),
+            json=payload,
+            timeout=8,
+        )
+        if response.status_code >= 300:
+            return False
+        result = response.json()
+    except Exception:
+        return False
+    return bool(
+        isinstance(result, dict)
+        and result.get("ok") is True
+        and result.get("pending_confirmation") is True
+    )
+
+
 def _set_supabase_debug(**values: Any) -> None:
     _LAST_SUPABASE_DEBUG.update(values)
     _LAST_SUPABASE_DEBUG["configured"] = is_configured()
