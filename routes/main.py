@@ -5762,7 +5762,7 @@ def activacion_inicial():
                 flash("Encontramos una DEMO vigente para este equipo. Ya podés continuar.", "success")
                 return redirect(url_for("dashboard"))
             if result.state != DEMO_ELIGIBLE:
-                _persist_activation_customer_profile(profile, completed=False, selected_plan=selected_plan)
+                _persist_activation_customer_profile(profile, completed=True, selected_plan=selected_plan)
                 _persist_unverified_demo_without_permissions(result)
                 flash(result.message, "warning")
                 return render_template(
@@ -5837,7 +5837,7 @@ def activacion_inicial():
                     flash("Tu prueba gratuita fue activada correctamente.", "success")
                     return redirect(url_for("dashboard"))
                 if retry_result.state != DEMO_ELIGIBLE:
-                    _persist_activation_customer_profile(profile, completed=False, selected_plan=selected_plan)
+                    _persist_activation_customer_profile(profile, completed=True, selected_plan=selected_plan)
                     _persist_unverified_demo_without_permissions(retry_result)
                     flash(retry_result.message, "warning")
                     return render_template(
@@ -5856,6 +5856,11 @@ def activacion_inicial():
                 state=DEMO_OFFLINE_UNVERIFIED,
                 message="No pudimos verificar si este equipo ya utilizó la prueba gratuita. Conectate a Internet para iniciar la DEMO o elegí un plan pago.",
             )
+            if retry_lookup_ok:
+                result = DemoEligibilityResult(
+                    state=DEMO_ERROR,
+                    message="No pudimos registrar la prueba gratuita. Intentá nuevamente o elegí un plan pago.",
+                )
             _persist_activation_customer_profile(profile, completed=False, selected_plan=selected_plan)
             _persist_unverified_demo_without_permissions(result)
             logger.warning(

@@ -3274,7 +3274,7 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Este equipo ya utiliz".encode("utf-8"), response.data)
         cfg = self.database.get_config()
-        self.assertEqual(cfg["activation_initial_completed"], "0")
+        self.assertEqual(cfg["activation_initial_completed"], "1")
         self.assertEqual(cfg["activation_demo_eligibility_state"], "expired")
         create_demo_request_mock.assert_not_called()
 
@@ -3676,13 +3676,13 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertEqual(result.state, "expired")
         self.assertEqual(result.expires_at, "2026-01-15")
 
-    def test_find_demo_requests_for_identity_consulta_solicitudes_demo_por_identidad(self):
+    def test_find_demo_requests_for_identity_prioriza_activation_id_dedicado(self):
         import services.supabase_license_api as supabase_api
 
         os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
         os.environ["SUPABASE_KEY"] = "service-key"
-        response = mock.Mock(status_code=200, text="[]")
-        response.json.return_value = []
+        response = mock.Mock(status_code=200, text='[{"id": 1}]')
+        response.json.return_value = [{"id": 1, "activation_id": "NXID-DEMO-001"}]
 
         with mock.patch.object(supabase_api.requests, "get", return_value=response) as get_mock:
             ok, message, rows = supabase_api.find_demo_requests_for_identity(
@@ -3693,11 +3693,76 @@ class LicenseIntegrationTests(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertIn("completada", message.lower())
-        self.assertEqual(rows, [])
+        self.assertEqual(rows, [{"id": 1, "activation_id": "NXID-DEMO-001"}])
         params = get_mock.call_args.kwargs["params"]
         self.assertEqual(params["producto"], "eq.nexar-tienda")
-        self.assertIn("mensaje.ilike.*NXID-DEMO-001*", params["or"])
-        self.assertIn("mensaje.ilike.*HWID-001*", params["or"])
+        self.assertIn("activation_id.eq.NXID-DEMO-001", params["or"])
+        self.assertIn("hardware_id_hash.eq.", params["or"])
+        self.assertNotIn("mensaje.ilike", params["or"])
+        self.assertEqual(get_mock.call_count, 1)
+
+    def test_find_demo_requests_for_identity_prioriza_machine_id_hash_dedicado(self):
+        import services.supabase_license_api as supabase_api
+        from services.demo_eligibility import hash_identifier
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ["SUPABASE_KEY"] = "service-key"
+        response = mock.Mock(status_code=200, text='[{"id": 3}]')
+        response.json.return_value = [{"id": 3, "machine_id_hash": hash_identifier("nexar-tienda", "machine-001")}]
+
+        with mock.patch.object(supabase_api.requests, "get", return_value=response) as get_mock:
+            ok, _message, rows = supabase_api.find_demo_requests_for_identity(
+                producto="nexar-tienda", machine_id="machine-001"
+            )
+
+        self.assertTrue(ok)
+        self.assertEqual(rows[0]["id"], 3)
+        self.assertIn(
+            f"machine_id_hash.eq.{hash_identifier('nexar-tienda', 'machine-001')}",
+            get_mock.call_args.kwargs["params"]["or"],
+        )
+        self.assertNotIn("mensaje.ilike", get_mock.call_args.kwargs["params"]["or"])
+
+    def test_find_demo_requests_for_identity_prioriza_hardware_id_hash_dedicado(self):
+        import services.supabase_license_api as supabase_api
+        from services.demo_eligibility import hash_identifier
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ["SUPABASE_KEY"] = "service-key"
+        response = mock.Mock(status_code=200, text='[{"id": 2}]')
+        response.json.return_value = [{"id": 2, "hardware_id_hash": hash_identifier("nexar-tienda", "HWID-001")}]
+
+        with mock.patch.object(supabase_api.requests, "get", return_value=response) as get_mock:
+            ok, _message, rows = supabase_api.find_demo_requests_for_identity(
+                producto="nexar-tienda", hardware_id="HWID-001"
+            )
+
+        self.assertTrue(ok)
+        self.assertEqual(rows[0]["id"], 2)
+        self.assertIn(
+            f"hardware_id_hash.eq.{hash_identifier('nexar-tienda', 'HWID-001')}",
+            get_mock.call_args.kwargs["params"]["or"],
+        )
+
+    def test_find_demo_requests_for_identity_conserva_fallback_legacy_en_mensaje(self):
+        import services.supabase_license_api as supabase_api
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ["SUPABASE_KEY"] = "service-key"
+        dedicated_response = mock.Mock(status_code=200, text="[]")
+        dedicated_response.json.return_value = []
+        legacy_response = mock.Mock(status_code=200, text='[{"id": 4}]')
+        legacy_response.json.return_value = [{"id": 4, "mensaje": '{"activation_id":"NXID-LEGACY"}'}]
+
+        with mock.patch.object(supabase_api.requests, "get", side_effect=[dedicated_response, legacy_response]) as get_mock:
+            ok, _message, rows = supabase_api.find_demo_requests_for_identity(
+                producto="nexar-tienda", activation_id="NXID-LEGACY"
+            )
+
+        self.assertTrue(ok)
+        self.assertEqual(rows[0]["id"], 4)
+        self.assertIn("activation_id.eq.NXID-LEGACY", get_mock.call_args_list[0].kwargs["params"]["or"])
+        self.assertIn("mensaje.ilike.*NXID-LEGACY*", get_mock.call_args_list[1].kwargs["params"]["or"])
 
     def test_create_demo_request_reintenta_solo_por_incompatibilidad_de_esquema(self):
         import services.supabase_license_api as supabase_api
@@ -3932,6 +3997,8 @@ class LicenseIntegrationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Este equipo ya utiliz".encode("utf-8"), response.data)
+        self.assertNotIn("Conectate a Internet".encode("utf-8"), response.data)
+        self.assertEqual(self.database.get_config()["activation_initial_completed"], "1")
         self.assertEqual(self.database.get_config()["activation_demo_eligibility_state"], "expired")
 
     def test_activacion_inicial_demo_conflicto_reconsulta_y_bloquea_si_hay_estado_administrativo(self):
