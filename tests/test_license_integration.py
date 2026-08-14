@@ -3764,6 +3764,71 @@ class LicenseIntegrationTests(unittest.TestCase):
         self.assertIn("activation_id.eq.NXID-LEGACY", get_mock.call_args_list[0].kwargs["params"]["or"])
         self.assertIn("mensaje.ilike.*NXID-LEGACY*", get_mock.call_args_list[1].kwargs["params"]["or"])
 
+    def test_find_demo_requests_for_identity_sin_coincidencias_devuelve_lista_vacia(self):
+        import services.supabase_license_api as supabase_api
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ["SUPABASE_KEY"] = "service-key"
+        responses = [mock.Mock(status_code=200, text="[]") for _ in range(3)]
+        for response in responses:
+            response.json.return_value = []
+
+        with mock.patch.object(supabase_api.requests, "get", side_effect=responses) as get_mock:
+            ok, _message, rows = supabase_api.find_demo_requests_for_identity(
+                producto="nexar-tienda",
+                activation_id="NXID-NUEVO",
+                email="nuevo@comercio.com",
+            )
+
+        self.assertTrue(ok)
+        self.assertEqual(rows, [])
+        self.assertEqual(get_mock.call_count, 3)
+        self.assertIn("activation_id.eq.NXID-NUEVO", get_mock.call_args_list[0].kwargs["params"]["or"])
+        self.assertIn("mensaje.ilike.*NXID-NUEVO*", get_mock.call_args_list[1].kwargs["params"]["or"])
+        self.assertEqual(get_mock.call_args_list[2].kwargs["params"]["email"], "eq.nuevo@comercio.com")
+
+    def test_find_demo_requests_for_identity_usa_fallback_legacy_si_faltan_columnas(self):
+        import services.supabase_license_api as supabase_api
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ["SUPABASE_KEY"] = "service-key"
+        schema_error = mock.Mock(
+            status_code=400,
+            text='{"message":"column hardware_id_hash does not exist","code":"PGRST204"}',
+        )
+        schema_error.json.return_value = {
+            "message": "column hardware_id_hash does not exist",
+            "code": "PGRST204",
+        }
+        legacy_response = mock.Mock(status_code=200, text='[{"id": 5}]')
+        legacy_response.json.return_value = [{"id": 5, "mensaje": '{"activation_id":"NXID-LEGACY"}'}]
+
+        with mock.patch.object(supabase_api.requests, "get", side_effect=[schema_error, legacy_response]) as get_mock:
+            ok, _message, rows = supabase_api.find_demo_requests_for_identity(
+                producto="nexar-tienda", activation_id="NXID-LEGACY"
+            )
+
+        self.assertTrue(ok)
+        self.assertEqual(rows, [{"id": 5, "mensaje": '{"activation_id":"NXID-LEGACY"}'}])
+        self.assertIn("mensaje.ilike.*NXID-LEGACY*", get_mock.call_args_list[1].kwargs["params"]["or"])
+
+    def test_find_demo_requests_for_identity_no_oculta_error_http_ajeno_al_schema(self):
+        import services.supabase_license_api as supabase_api
+
+        os.environ["SUPABASE_URL"] = "https://demo.supabase.co"
+        os.environ["SUPABASE_KEY"] = "service-key"
+        error_response = mock.Mock(status_code=403, text='{"message":"forbidden"}')
+        error_response.json.return_value = {"message": "forbidden"}
+
+        with mock.patch.object(supabase_api.requests, "get", return_value=error_response) as get_mock:
+            ok, _message, rows = supabase_api.find_demo_requests_for_identity(
+                producto="nexar-tienda", activation_id="NXID-ERROR"
+            )
+
+        self.assertFalse(ok)
+        self.assertEqual(rows, [])
+        self.assertEqual(get_mock.call_count, 1)
+
     def test_create_demo_request_reintenta_solo_por_incompatibilidad_de_esquema(self):
         import services.supabase_license_api as supabase_api
 

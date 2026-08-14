@@ -633,7 +633,14 @@ def find_demo_requests_for_identity(
         "order": "created_at.desc",
         "limit": str(max(1, min(int(limit or 25), 100))),
     }
-    def fetch_rows(params: dict[str, str]) -> tuple[bool, str, list[dict[str, Any]]]:
+    last_status_code: int | None = None
+
+    def fetch_rows(
+        params: dict[str, str],
+        *,
+        allow_schema_fallback: bool = False,
+    ) -> tuple[bool, str, list[dict[str, Any]]]:
+        nonlocal last_status_code
         try:
             resp = requests.get(request_url, headers=_headers(), params=params, timeout=_request_timeout())
         except requests.RequestException as exc:
@@ -642,7 +649,11 @@ def find_demo_requests_for_identity(
             _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error", url=request_url)
             return False, message, []
 
+        last_status_code = resp.status_code
         if resp.status_code >= 300:
+            if allow_schema_fallback and _extract_schema_incompatible_fields(resp):
+                logger.info("Columnas de identidad DEMO no disponibles; usando fallback legacy.")
+                return True, "Fallback legacy DEMO habilitado.", []
             _log_supabase_http_error(operation, request_url, resp)
             message, error = _response_error_message(operation, resp)
             _set_supabase_debug(operation=operation, status="http_error", status_code=resp.status_code, last_error=(resp.text or "").strip()[:240] or error, url=request_url)
@@ -667,7 +678,10 @@ def find_demo_requests_for_identity(
         dedicated_conditions.append(f"machine_id_hash.eq.{hash_identifier(producto, machine_id)}")
 
     if dedicated_conditions:
-        ok, message, rows = fetch_rows({**base_params, "or": "(" + ",".join(dedicated_conditions) + ")"})
+        ok, message, rows = fetch_rows(
+            {**base_params, "or": "(" + ",".join(dedicated_conditions) + ")"},
+            allow_schema_fallback=True,
+        )
         if not ok or rows:
             return ok, message, rows
 
@@ -685,7 +699,7 @@ def find_demo_requests_for_identity(
     _set_supabase_debug(
         operation=operation,
         status="ok",
-        status_code=resp.status_code,
+        status_code=last_status_code,
         last_error="",
         url=request_url,
     )
