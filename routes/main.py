@@ -951,6 +951,22 @@ def _get_persisted_activation_customer_profile(
     }
 
 
+def _migrate_legacy_marketing_email(config: dict[str, object] | None = None) -> dict[str, object]:
+    """Recupera una preferencia legacy sin volver a acoplarla al titular."""
+    cfg = config or db.get_config()
+    marketing_email = str(cfg.get("license_marketing_email", "") or "").strip().lower()
+    owner_email = str(cfg.get("license_owner_email", "") or "").strip().lower()
+    if (
+        not marketing_email
+        and _as_bool(cfg.get("license_marketing_opt_in", "0"))
+        and _MARKETING_EMAIL_PATTERN.fullmatch(owner_email)
+    ):
+        db.set_config({"license_marketing_email": owner_email})
+        cfg = dict(cfg)
+        cfg["license_marketing_email"] = owner_email
+    return cfg
+
+
 def _get_current_user_contact_profile() -> dict[str, str]:
     if not has_request_context():
         return {}
@@ -982,7 +998,7 @@ def _get_activation_customer_profile(
     license_info: dict[str, object] | None = None,
     form_data: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    cfg = db.get_config()
+    cfg = _migrate_legacy_marketing_email()
     license_info = license_info or {}
     data = form_data or {}
     persisted_profile = _get_persisted_activation_customer_profile(cfg, license_info)
@@ -1075,7 +1091,7 @@ def _marketing_email_error(email: str, marketing_opt_in: bool) -> str:
 
 def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
     """Persiste y entrega la preferencia sin acoplarla a licencias o pagos."""
-    cfg = db.get_config()
+    cfg = _migrate_legacy_marketing_email()
     email = (email or "").strip().lower()
     error = _marketing_email_error(email, marketing_opt_in)
     if error:
@@ -1101,9 +1117,12 @@ def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
         "license_marketing_pending_cleanup_email": "",
     })
 
+    synced_email = str(cfg.get("license_marketing_synced_email", "") or "").strip().lower()
+    synced_opt_in = _as_bool(cfg.get("license_marketing_synced_opt_in", "0"))
     activation_id, _details = _get_stable_activation_id()
     producto = get_license_product()
     remaining = list(pending)
+    delivered_synced_opt_out = False
     for cleanup_email in pending:
         if sync_marketing_preference(
             email=cleanup_email,
@@ -1112,6 +1131,8 @@ def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
             activation_id=activation_id,
         ):
             remaining.remove(cleanup_email)
+            if not marketing_opt_in and synced_opt_in and cleanup_email == synced_email:
+                delivered_synced_opt_out = True
             continue
         break
 
@@ -1120,8 +1141,6 @@ def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
         "license_marketing_pending_cleanup_email": "",
     })
 
-    synced_email = str(cfg.get("license_marketing_synced_email", "") or "").strip().lower()
-    synced_opt_in = _as_bool(cfg.get("license_marketing_synced_opt_in", "0"))
     if marketing_opt_in and (synced_email != email or not synced_opt_in):
         if sync_marketing_preference(
             email=email,
@@ -1141,7 +1160,9 @@ def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
         db.set_config({"license_marketing_sync_status": "error"})
         return "error"
     current_preference_opt_out = not marketing_opt_in and (
-        previous_opt_in or current_email_cleanup
+        delivered_synced_opt_out
+        or (previous_opt_in and (not synced_email or previous_email == synced_email))
+        or (current_email_cleanup and not synced_email)
     )
     if current_preference_opt_out:
         db.set_config({
@@ -5270,6 +5291,7 @@ def config():
 @main_bp.route("/mi-plan")
 @login_required
 def mi_plan():
+    _migrate_legacy_marketing_email()
     refresh_ok, refresh_msg, refreshed_info = refresh_saved_license_online(debug=False)
     modulos_activos = sorted(get_modulos_activos())
     todos_los_modulos = sorted(set().union(*PLANES.values()))

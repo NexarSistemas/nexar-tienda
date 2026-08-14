@@ -233,6 +233,78 @@ class MarketingConsentTests(unittest.TestCase):
             [("old@example.com", False)],
         )
 
+    def test_opt_out_retry_clears_synced_email_and_reactivation_resubscribes(self):
+        self.db.set_config({
+            "license_marketing_email": "old@example.com",
+            "license_marketing_opt_in": "1",
+            "license_marketing_synced_email": "old@example.com",
+            "license_marketing_synced_opt_in": "1",
+        })
+
+        first_result, first_sync = self._save("", False, [False])
+
+        self.assertEqual(first_result, "error")
+        self.assertEqual(self.db.get_config()["license_marketing_email"], "")
+        self.assertEqual(json.loads(self.db.get_config()["license_marketing_pending_cleanup_emails"]), ["old@example.com"])
+        self.assertEqual(self.db.get_config()["license_marketing_synced_email"], "old@example.com")
+        self.assertEqual(self.db.get_config()["license_marketing_synced_opt_in"], "1")
+        self.assertFalse(first_sync.call_args.kwargs["marketing_opt_in"])
+
+        retry_result, retry_sync = self._save("", False, [True])
+
+        self.assertEqual(retry_result, "pending_opt_out")
+        self.assertEqual(self.db.get_config()["license_marketing_pending_cleanup_emails"], "[]")
+        self.assertEqual(self.db.get_config()["license_marketing_synced_email"], "")
+        self.assertEqual(self.db.get_config()["license_marketing_synced_opt_in"], "0")
+        self.assertFalse(retry_sync.call_args.kwargs["marketing_opt_in"])
+
+        reactivation_result, reactivation_sync = self._save("old@example.com", True, [True])
+
+        self.assertEqual(reactivation_result, "pending_opt_in")
+        self.assertEqual(
+            [(call.kwargs["email"], call.kwargs["marketing_opt_in"]) for call in reactivation_sync.call_args_list],
+            [("old@example.com", True)],
+        )
+
+    def test_migrates_legacy_marketing_email_once_without_resending_synced_opt_in(self):
+        self.db.set_config({
+            "license_owner_email": "owner@example.com",
+            "license_marketing_opt_in": "1",
+            "license_marketing_synced_email": "owner@example.com",
+            "license_marketing_synced_opt_in": "1",
+        })
+
+        result, sync = self._save("owner@example.com", True)
+
+        self.assertEqual(result, "saved")
+        sync.assert_not_called()
+        self.assertEqual(self.db.get_config()["license_marketing_email"], "owner@example.com")
+
+    def test_legacy_migration_does_not_overwrite_existing_marketing_email(self):
+        self.db.set_config({
+            "license_owner_email": "owner@example.com",
+            "license_marketing_email": "marketing@example.com",
+            "license_marketing_opt_in": "1",
+        })
+
+        self.routes._migrate_legacy_marketing_email()
+
+        self.assertEqual(self.db.get_config()["license_marketing_email"], "marketing@example.com")
+
+    def test_legacy_migration_requires_opt_in_and_stays_independent_from_owner(self):
+        self.db.set_config({
+            "license_owner_email": "owner@example.com",
+            "license_marketing_opt_in": "0",
+        })
+
+        self.routes._migrate_legacy_marketing_email()
+
+        self.assertEqual(self.db.get_config().get("license_marketing_email", ""), "")
+        self.db.set_config({"license_marketing_opt_in": "1"})
+        self.routes._migrate_legacy_marketing_email()
+        self.db.set_config({"license_owner_email": "changed-owner@example.com"})
+        self.assertEqual(self.db.get_config()["license_marketing_email"], "owner@example.com")
+
 
 class MarketingConsentSupabaseTests(unittest.TestCase):
     @mock.patch.dict(os.environ, {"SUPABASE_URL": "https://example.supabase.co/rest/v1", "SUPABASE_ANON_KEY": "anon-key"}, clear=True)
