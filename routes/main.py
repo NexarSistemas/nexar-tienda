@@ -1031,7 +1031,11 @@ def _get_activation_customer_profile(
         "palabra_recuperacion": persisted_profile["palabra_recuperacion"],
         "rubro": rubro,
         "terms_accepted": str(cfg.get("license_terms_accepted_at", "") or "").strip() != "",
-        "marketing_opt_in": _as_bool(data.get("marketing_opt_in", cfg.get("license_marketing_opt_in", "0"))),
+        "marketing_opt_in": (
+            _as_bool(data.get("marketing_opt_in", "0"))
+            if form_data is not None
+            else _as_bool(cfg.get("license_marketing_opt_in", "0"))
+        ),
     }
 
 
@@ -1077,7 +1081,7 @@ def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
     if error:
         return "invalid"
 
-    previous_email = str(cfg.get("license_owner_email", "") or "").strip().lower()
+    previous_email = str(cfg.get("license_marketing_email", "") or "").strip().lower()
     previous_opt_in = _as_bool(cfg.get("license_marketing_opt_in", "0"))
     pending = _normalize_marketing_pending_cleanup_emails(
         cfg.get("license_marketing_pending_cleanup_emails", ""),
@@ -1091,7 +1095,7 @@ def _save_marketing_preference(email: str, marketing_opt_in: bool) -> str:
         pending = [item for item in pending if item != email]
 
     db.set_config({
-        "license_owner_email": email,
+        "license_marketing_email": email,
         "license_marketing_opt_in": "1" if marketing_opt_in else "0",
         "license_marketing_pending_cleanup_emails": json.dumps(pending),
         "license_marketing_pending_cleanup_email": "",
@@ -1302,7 +1306,6 @@ def _persist_activation_customer_profile(profile: dict[str, str], *, completed: 
         "license_owner_email": profile["email"],
         "license_owner_phone": profile["telefono"],
         "license_vendor_code": profile["codigo_vendedor"],
-        "license_marketing_opt_in": "1" if profile["marketing_opt_in"] else "0",
         "license_terms_accepted_at": datetime.now().isoformat(),
         "activation_initial_completed": "1" if completed else "0",
         "activation_initial_plan": normalized_plan,
@@ -5324,7 +5327,7 @@ def mi_plan():
         checkout_enabled=bool(available_checkout_plans),
         checkout_pending=checkout_pending,
         marketing_preference={
-            "email": str(db.get_config_valor("license_owner_email", "") or "").strip().lower(),
+            "email": str(db.get_config_valor("license_marketing_email", "") or "").strip().lower(),
             "opt_in": _as_bool(db.get_config_valor("license_marketing_opt_in", "0")),
             "sync_status": str(db.get_config_valor("license_marketing_sync_status", "saved") or "saved"),
         },
@@ -5422,13 +5425,6 @@ def mi_plan_guardar_titular():
     if not ok_profile:
         flash(msg_profile, "warning")
         return redirect(url_for("main.mi_plan"))
-
-    if _as_bool(db.get_config_valor("license_marketing_opt_in", "0")):
-        result = _save_marketing_preference(holder_profile["email"], True)
-        if result == "invalid":
-            flash("Ingresá un email válido para conservar la suscripción a novedades.", "warning")
-            return redirect(url_for("main.mi_plan"))
-        _flash_marketing_preference_result(result)
 
     db.set_config({
         "license_owner_name": holder_profile["nombre"],
@@ -5661,8 +5657,11 @@ def activacion_inicial():
         if not ok_profile:
             flash(msg_profile, "warning")
         else:
+            marketing_email = profile["email"] if profile["marketing_opt_in"] else str(
+                db.get_config_valor("license_marketing_email", "") or ""
+            )
             marketing_result = _save_marketing_preference(
-                profile["email"], bool(profile["marketing_opt_in"])
+                marketing_email, bool(profile["marketing_opt_in"])
             )
             _flash_marketing_preference_result(marketing_result)
         if ok_profile and selected_plan == "DEMO":

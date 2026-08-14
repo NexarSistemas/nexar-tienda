@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from flask import Flask
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -46,7 +48,8 @@ class MarketingConsentTests(unittest.TestCase):
         license_request.assert_not_called()
         checkout.assert_not_called()
         cfg = self.db.get_config()
-        self.assertEqual(cfg["license_owner_email"], "owner@example.com")
+        self.assertEqual(cfg["license_owner_email"], "")
+        self.assertEqual(cfg["license_marketing_email"], "owner@example.com")
         self.assertEqual(cfg["license_marketing_opt_in"], "0")
 
     def test_onboarding_checked_valid_email_sends_confirmation_and_persists(self):
@@ -55,12 +58,66 @@ class MarketingConsentTests(unittest.TestCase):
         self.assertEqual(sync.call_args.kwargs["email"], "owner@example.com")
         self.assertTrue(sync.call_args.kwargs["marketing_opt_in"])
         self.assertEqual(self.db.get_config()["license_marketing_opt_in"], "1")
+        self.assertEqual(self.db.get_config()["license_marketing_email"], "owner@example.com")
 
     def test_checked_invalid_email_is_rejected(self):
         result, sync = self._save("not-an-email", True)
         self.assertEqual(result, "invalid")
         sync.assert_not_called()
         self.assertEqual(self.db.get_config()["license_marketing_opt_in"], "0")
+
+    def test_onboarding_post_without_checkbox_ignores_persisted_opt_in(self):
+        self.db.set_config({
+            "license_marketing_email": "marketing@example.com",
+            "license_marketing_opt_in": "1",
+            "license_marketing_synced_email": "marketing@example.com",
+            "license_marketing_synced_opt_in": "1",
+        })
+
+        profile = self.routes._get_activation_customer_profile(
+            form_data={"email": "owner@example.com"},
+        )
+        result, sync = self._save("marketing@example.com", profile["marketing_opt_in"], [True])
+
+        self.assertFalse(profile["marketing_opt_in"])
+        self.assertEqual(result, "pending_opt_out")
+        self.assertFalse(sync.call_args.kwargs["marketing_opt_in"])
+
+    def test_checkout_profile_keeps_owner_email_separate_from_marketing(self):
+        self.db.set_config({
+            "license_owner_email": "holder@example.com",
+            "license_marketing_email": "marketing@example.com",
+        })
+
+        profile = self.routes._get_activation_customer_profile()
+
+        self.assertEqual(profile["email"], "holder@example.com")
+
+    def test_holder_email_change_does_not_change_marketing_email(self):
+        self.db.set_config({
+            "license_owner_email": "old-holder@example.com",
+            "license_marketing_email": "marketing@example.com",
+            "license_marketing_opt_in": "1",
+        })
+        app = Flask(__name__)
+        app.secret_key = "test-secret"
+        app.register_blueprint(self.routes.main_bp)
+
+        with app.test_request_context(
+            "/mi-plan/titular",
+            method="POST",
+            data={
+                "titular_nombre": "Titular",
+                "titular_email": "new-holder@example.com",
+                "titular_telefono": "264555000",
+                "titular_palabra_recuperacion": "",
+            },
+        ):
+            self.routes.mi_plan_guardar_titular.__wrapped__()
+
+        cfg = self.db.get_config()
+        self.assertEqual(cfg["license_owner_email"], "new-holder@example.com")
+        self.assertEqual(cfg["license_marketing_email"], "marketing@example.com")
 
     def test_marketing_consent_does_not_make_terms_optional(self):
         self.assertIn(
@@ -72,14 +129,19 @@ class MarketingConsentTests(unittest.TestCase):
         )
 
     def test_opt_out_clears_email_and_requests_confirmation(self):
-        self.db.set_config({"license_owner_email": "owner@example.com", "license_marketing_opt_in": "1"})
+        self.db.set_config({
+            "license_owner_email": "holder@example.com",
+            "license_marketing_email": "owner@example.com",
+            "license_marketing_opt_in": "1",
+        })
         result, sync = self._save("", False, [True])
         self.assertEqual(result, "pending_opt_out")
         self.assertFalse(sync.call_args.kwargs["marketing_opt_in"])
-        self.assertEqual(self.db.get_config()["license_owner_email"], "")
+        self.assertEqual(self.db.get_config()["license_marketing_email"], "")
+        self.assertEqual(self.db.get_config()["license_owner_email"], "holder@example.com")
 
     def test_change_email_requests_cleanup_then_new_subscription(self):
-        self.db.set_config({"license_owner_email": "old@example.com", "license_marketing_opt_in": "1"})
+        self.db.set_config({"license_marketing_email": "old@example.com", "license_marketing_opt_in": "1"})
         result, sync = self._save("new@example.com", True, [True, True])
         self.assertEqual(result, "pending_opt_in")
         self.assertEqual(
@@ -88,7 +150,7 @@ class MarketingConsentTests(unittest.TestCase):
         )
 
     def test_remote_failure_keeps_only_actual_cleanup_pending(self):
-        self.db.set_config({"license_owner_email": "old@example.com", "license_marketing_opt_in": "1"})
+        self.db.set_config({"license_marketing_email": "old@example.com", "license_marketing_opt_in": "1"})
         result, sync = self._save("new@example.com", True, [False, False])
         self.assertEqual(result, "error")
         self.assertEqual(json.loads(self.db.get_config()["license_marketing_pending_cleanup_emails"]), ["old@example.com"])
@@ -96,7 +158,7 @@ class MarketingConsentTests(unittest.TestCase):
 
     def test_multiple_cleanup_stops_at_first_failure_and_keeps_all_unsent(self):
         self.db.set_config({
-            "license_owner_email": "current@example.com",
+            "license_marketing_email": "current@example.com",
             "license_marketing_opt_in": "1",
             "license_marketing_pending_cleanup_emails": '["a@example.com", "b@example.com", "c@example.com"]',
         })
@@ -110,7 +172,7 @@ class MarketingConsentTests(unittest.TestCase):
 
     def test_pending_confirmation_removes_delivered_cleanup_from_queue(self):
         self.db.set_config({
-            "license_owner_email": "old@example.com",
+            "license_marketing_email": "old@example.com",
             "license_marketing_opt_in": "0",
             "license_marketing_pending_cleanup_email": "old@example.com",
         })
@@ -120,7 +182,7 @@ class MarketingConsentTests(unittest.TestCase):
 
     def test_reactivation_cancels_unsent_cleanup_for_same_email(self):
         self.db.set_config({
-            "license_owner_email": "same@example.com",
+            "license_marketing_email": "same@example.com",
             "license_marketing_opt_in": "0",
             "license_marketing_pending_cleanup_emails": '["same@example.com", "other@example.com"]',
         })
@@ -131,7 +193,7 @@ class MarketingConsentTests(unittest.TestCase):
 
     def test_accepted_subscription_is_not_sent_again(self):
         self.db.set_config({
-            "license_owner_email": "same@example.com",
+            "license_marketing_email": "same@example.com",
             "license_marketing_opt_in": "1",
             "license_marketing_synced_email": "same@example.com",
             "license_marketing_synced_opt_in": "1",
@@ -142,7 +204,7 @@ class MarketingConsentTests(unittest.TestCase):
 
     def test_delivered_previous_cleanup_preserves_current_subscription(self):
         self.db.set_config({
-            "license_owner_email": "old@example.com",
+            "license_marketing_email": "old@example.com",
             "license_marketing_opt_in": "1",
         })
 
