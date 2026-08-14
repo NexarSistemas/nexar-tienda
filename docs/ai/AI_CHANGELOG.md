@@ -2,6 +2,18 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-08-14 - Codex - chore/release-v1.37.0
+
+### Tarea
+Preparar exclusivamente la metadata de versión estable 1.37.0.
+
+### Qué se cambió
+- Se alinearon `VERSION`, README, CHANGELOG e Inno Setup con `1.37.0`.
+- La documentación de release resume el consentimiento opcional de Novedades Nexar y la recuperación segura de DEMO existente.
+
+### Alcance protegido
+- No se modificaron flujos funcionales, licencias, DEMO, Supabase, checkout ni workflows.
+
 ## 2026-08-13 - Codex - feature/issue-189-novedades-nexar
 
 ### Tarea

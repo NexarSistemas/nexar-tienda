@@ -1,4 +1,4 @@
-# Nexar Comercio v1.36.8
+# Nexar Comercio v1.37.0
 
 Sistema integral de gestion comercial para tiendas y comercios minoristas.
 `Nexar Comercio` es la marca visible del producto. `nexar-tienda` se mantiene
@@ -8,7 +8,7 @@ y artefactos existentes.
 Estado actual:
 
 - Estado del repositorio: activo
-- Version actual: `1.36.8`
+- Version actual: `1.37.0`
 - Contexto central del ecosistema: repo externo `nexar-ai-context`, archivo `CONTEXTO_NEXAR.md`
 - Nombre comercial visible: `Nexar Comercio`.
 - Identificador tecnico vigente del repositorio y del producto: `nexar-tienda`.
@@ -16,12 +16,14 @@ Estado actual:
 - Relacion con `nexar-almacen`: si aparece como repo separado, tratarlo tambien como legacy/no activo.
 - En configuracion activa, `LICENSE_PRODUCT` sigue tomando el valor `nexar-tienda` y `NEXAR_RUBRO` se usa para el rubro operativo actual del negocio (`tienda`).
 
-Release comercial estable `v1.36.8`:
+Release comercial estable `v1.37.0`:
 
 - Los instaladores públicos usan nombres estables y enlaces permanentes de descarga.
 - El updater prioriza assets estables y conserva compatibilidad con instaladores legacy.
 - El workflow publica Releases únicamente desde tags coincidentes con `VERSION`.
 - Las validaciones de pull requests se ejecutan sin secretos de release ni acceso al SDK privado.
+- El consentimiento opcional para Novedades Nexar se confirma por email y mantiene separado el email de novedades del email del titular/licencias.
+- La activación recupera DEMO existente mediante identidad fuerte, evita altas duplicadas y ya no muestra falsos estados de falta de Internet.
 
 Desarrollado por Nexar Sistemas - 2026
 
