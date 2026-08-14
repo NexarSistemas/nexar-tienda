@@ -11,6 +11,7 @@ from typing import Any
 
 import requests
 from licensing.planes import get_plan_actions, normalize_plan
+from services.demo_eligibility import hash_identifier
 
 PRODUCTO_DEFAULT = os.getenv("LICENSE_PRODUCT", "nexar-tienda")
 logger = logging.getLogger(__name__)
@@ -612,71 +613,93 @@ def find_demo_requests_for_identity(
         return False, _missing_supabase_config_message("verificar la demo"), []
 
     producto = (producto or PRODUCTO_DEFAULT).strip()
+    activation_id = (activation_id or "").strip()
+    hardware_id = (hardware_id or "").strip()
+    machine_id = (machine_id or "").strip()
+    email = (email or "").strip().lower()
     identifiers = []
     for value in (activation_id, hardware_id, machine_id):
-        normalized = (value or "").strip()
-        if normalized and normalized not in identifiers:
-            identifiers.append(normalized)
+        if value and value not in identifiers:
+            identifiers.append(value)
 
     if not identifiers and not (email or "").strip():
         _set_supabase_debug(operation=operation, status="validation_error", status_code=None, last_error="missing_identity")
         return False, "No se pudo resolver una identidad valida para verificar la demo.", []
 
     request_url = _demo_requests_table_url()
-    params = {
+    base_params = {
         "select": "*",
         "producto": f"eq.{producto}",
         "order": "created_at.desc",
         "limit": str(max(1, min(int(limit or 25), 100))),
     }
+    last_status_code: int | None = None
+
+    def fetch_rows(
+        params: dict[str, str],
+        *,
+        allow_schema_fallback: bool = False,
+    ) -> tuple[bool, str, list[dict[str, Any]]]:
+        nonlocal last_status_code
+        try:
+            resp = requests.get(request_url, headers=_headers(), params=params, timeout=_request_timeout())
+        except requests.RequestException as exc:
+            logger.warning("Error de conexion verificando DEMO previa: %s", exc)
+            message, error = _request_error_message(operation, exc)
+            _set_supabase_debug(operation=operation, status="network_error", status_code=None, last_error=error or "network_error", url=request_url)
+            return False, message, []
+
+        last_status_code = resp.status_code
+        if resp.status_code >= 300:
+            if allow_schema_fallback and _extract_schema_incompatible_fields(resp):
+                logger.info("Columnas de identidad DEMO no disponibles; usando fallback legacy.")
+                return True, "Fallback legacy DEMO habilitado.", []
+            _log_supabase_http_error(operation, request_url, resp)
+            message, error = _response_error_message(operation, resp)
+            _set_supabase_debug(operation=operation, status="http_error", status_code=resp.status_code, last_error=(resp.text or "").strip()[:240] or error, url=request_url)
+            return False, message, []
+
+        try:
+            payload = resp.json()
+        except json.JSONDecodeError:
+            _set_supabase_debug(operation=operation, status="invalid_response", status_code=resp.status_code, last_error="invalid_json", url=request_url)
+            return False, "Supabase devolvio una respuesta invalida al verificar la demo.", []
+        return True, "Verificacion DEMO completada.", payload if isinstance(payload, list) else []
+
+    dedicated_conditions = []
+    if activation_id:
+        dedicated_conditions.extend((
+            f"activation_id.eq.{activation_id}",
+            f"identity_hash.eq.{hash_identifier(producto, activation_id)}",
+        ))
+    if hardware_id:
+        dedicated_conditions.append(f"hardware_id_hash.eq.{hash_identifier(producto, hardware_id)}")
+    if machine_id:
+        dedicated_conditions.append(f"machine_id_hash.eq.{hash_identifier(producto, machine_id)}")
+
+    if dedicated_conditions:
+        ok, message, rows = fetch_rows(
+            {**base_params, "or": "(" + ",".join(dedicated_conditions) + ")"},
+            allow_schema_fallback=True,
+        )
+        if not ok or rows:
+            return ok, message, rows
+
     if identifiers:
-        params["or"] = "(" + ",".join(f"mensaje.ilike.*{identifier}*" for identifier in identifiers) + ")"
-    elif email:
-        params["email"] = f"eq.{email.strip().lower()}"
+        ok, message, rows = fetch_rows({**base_params, "or": "(" + ",".join(f"mensaje.ilike.*{identifier}*" for identifier in identifiers) + ")"})
+        if not ok or rows:
+            return ok, message, rows
 
-    try:
-        resp = requests.get(request_url, headers=_headers(), params=params, timeout=_request_timeout())
-    except requests.RequestException as exc:
-        logger.warning("Error de conexion verificando DEMO previa: %s", exc)
-        message, error = _request_error_message(operation, exc)
-        _set_supabase_debug(
-            operation=operation,
-            status="network_error",
-            status_code=None,
-            last_error=error or "network_error",
-            url=request_url,
-        )
-        return False, message, []
+    if email:
+        ok, message, rows = fetch_rows({**base_params, "email": f"eq.{email}"})
+        if not ok or rows:
+            return ok, message, rows
 
-    if resp.status_code >= 300:
-        _log_supabase_http_error(operation, request_url, resp)
-        message, error = _response_error_message(operation, resp)
-        _set_supabase_debug(
-            operation=operation,
-            status="http_error",
-            status_code=resp.status_code,
-            last_error=(resp.text or "").strip()[:240] or error,
-            url=request_url,
-        )
-        return False, message, []
-
-    try:
-        payload = resp.json()
-    except json.JSONDecodeError:
-        _set_supabase_debug(
-            operation=operation,
-            status="invalid_response",
-            status_code=resp.status_code,
-            last_error="invalid_json",
-            url=request_url,
-        )
-        return False, "Supabase devolvio una respuesta invalida al verificar la demo.", []
-
-    rows = payload if isinstance(payload, list) else []
+    rows = []
     _set_supabase_debug(
         operation=operation,
         status="ok",
-        status_code=resp.status_code,
+        status_code=last_status_code,
         last_error="",
         url=request_url,
     )
