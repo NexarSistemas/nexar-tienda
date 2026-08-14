@@ -4,6 +4,20 @@ Todos los cambios importantes de este proyecto se documentan en este archivo.
 
 ---
 
+## [1.37.0] - 2026-08-14
+
+### Added
+
+- Integración del consentimiento opcional con Novedades Nexar desde activación inicial y Mi Plan, con confirmación por email.
+- Gestión independiente del email destinado a novedades respecto del email del titular/licencias.
+
+### Fixed
+
+- La detección de DEMO previa ahora prioriza las columnas dedicadas de identidad y conserva compatibilidad con registros legacy.
+- Una DEMO existente o vencida deja de provocar intentos duplicados de alta y falsos mensajes de falta de Internet.
+- Los conflictos 409 de DEMO pueden recuperarse mediante reconsulta y resolverse según el estado remoto real.
+- Una DEMO ya utilizada/vencida no vuelve a convertir la instalación en una activación inicial nueva.
+
 ## [1.36.8] - 2026-08-10
 
 ### Changed
