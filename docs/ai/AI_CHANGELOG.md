@@ -2,6 +2,21 @@
 
 Registro de avances hechos por Codex, Copilot, Gemini o ChatGPT.
 
+## 2026-08-27 - Codex - fix/compatibilidad-tiendanube-arca
+
+### Tarea
+Corregir compatibilidad fiscal entre ventas, importación Tiendanube y ARCA.
+
+### Qué se cambió
+- ARCA bloquea de forma segura la emisión de ventas con descuento adicional o
+  interés de financiación: el contrato vigente no registra su imputación por
+  alícuota, por lo que distribuirlos sería inventar semántica fiscal.
+- La importación CSV toma una alícuota local configurable y validada, que se
+  persiste explícitamente solo al crear productos nuevos; el adaptador
+  Tiendanube conserva su formato sin columnas fiscales agregadas.
+- Se centralizaron las alícuotas admitidas para evitar divergencias entre la
+  configuración local y el payload ARCA.
+
 ## 2026-08-14 - Codex - chore/release-v1.37.0
 
 ### Tarea

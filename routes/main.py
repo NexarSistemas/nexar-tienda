@@ -62,6 +62,7 @@ from services import attribute_profiles
 from services import inventory
 from services import catalog_csv_import
 from services import catalog_csv_export, tiendanube_csv_export
+from services import fiscal
 from services.license_sdk import (
     get_current_hwid,
     get_license_debug_state,
@@ -5258,6 +5259,13 @@ def config():
     if request.method == "POST":
         data = request.form.to_dict()
         data["ticket_mostrar_iva"] = "1" if _as_bool(data.get("ticket_mostrar_iva")) else "0"
+        data.setdefault(
+            "iva_predeterminado_importacion",
+            db.get_config_valor("iva_predeterminado_importacion", "21%"),
+        )
+        if not fiscal.normalizar_alicuota_iva(data.get("iva_predeterminado_importacion")):
+            flash("Seleccioná una alícuota de IVA válida para las importaciones.", "warning")
+            return redirect(url_for("config"))
         data.pop("rubro_negocio", None)
         data.pop("rubro_negocio_confirmado", None)
         db.set_config(data)
@@ -5285,6 +5293,9 @@ def config():
         mostrar_aviso_rubro_pendiente=db.debe_mostrar_aviso_rubro_pendiente(),
         rubros_disponibles=get_rubros_disponibles(),
         unidades_disponibles=get_unidades_disponibles(rubro_actual),
+        alicuotas_iva_importacion=sorted(
+            fiscal.ALICUOTAS_IVA.values(), key=lambda item: float(item["rate"])
+        ),
     )
 
 

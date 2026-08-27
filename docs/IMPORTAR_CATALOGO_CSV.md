@@ -20,6 +20,11 @@ valor, precio, costo, stock, SKU, código de barras y visibilidad. Esos nombres
 son exclusivos del adaptador: el catálogo interno usa productos, atributos,
 valores y variantes neutrales.
 
+Tiendanube no informa IVA en este CSV. Antes de importar, Nexar usa la
+alícuota predeterminada configurada localmente en Configuración del Sistema.
+Se persiste en el producto nuevo, sin agregar columnas ni semántica fiscal al
+formato de Tiendanube; las actualizaciones no cambian el IVA existente.
+
 La vista previa no escribe datos. Agrupa las filas por identificador de URL y
 ofrece confirmación explícita; el servidor conserva solamente el plan validado
 en la sesión. La confirmación es atómica: si falla una persistencia, no queda

@@ -91,8 +91,17 @@ class CatalogImportPersistenceTests(unittest.TestCase):
         self.assertEqual(result["created"], 1)
         product = self.db.q("SELECT * FROM productos WHERE codigo_barras=?", ("7790000000001",), fetchone=True)
         self.assertIsNotNone(product)
+        self.assertEqual(product["iva"], "21%")
         with self.assertRaisesRegex(ValueError, "ya fue utilizado"):
             self.service.apply_stored_plan(plan_id, token, self.owner)
+
+    def test_new_product_uses_local_configured_iva_without_csv_column(self):
+        self.db.set_config({"iva_predeterminado_importacion": "10.5%"})
+        self._import(HEADER + "leche,Leche,Alimentos,,,110,50,2,,7790000000098,SI\n")
+
+        product = self.db.q("SELECT iva FROM productos WHERE codigo_barras=?", ("7790000000098",), fetchone=True)
+
+        self.assertEqual(product["iva"], "10.5%")
 
     def test_promotional_price_rounds_to_cents_through_persistence_and_export(self):
         content = "Identificador de URL,Nombre,Nombre de propiedad 1,Valor de propiedad 1,Precio,Precio promocional,Costo,Stock,SKU,Código de barras,Mostrar en tienda\nremera,Remera,Color,Azul,1.235,0.125,1,2,REM-AZ,,SI\n"

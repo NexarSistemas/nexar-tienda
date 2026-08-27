@@ -58,6 +58,21 @@
 
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-white">
+                        <h5 class="mb-0">Configuración fiscal local</h5>
+                    </div>
+                    <div class="card-body">
+                        <label class="form-label" for="iva_predeterminado_importacion">IVA predeterminado para importaciones</label>
+                        <select class="form-select" id="iva_predeterminado_importacion" name="iva_predeterminado_importacion">
+                            {% for alicuota in alicuotas_iva_importacion %}
+                            <option value="{{ alicuota.label }}" {% if cfg.iva_predeterminado_importacion == alicuota.label %}selected{% endif %}>{{ alicuota.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Se aplica localmente a productos nuevos importados. El CSV de Tiendanube no aporta esta información.</div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-white">
                         <h5 class="mb-0">Rubro del Negocio</h5>
                     </div>
                     <div class="card-body">

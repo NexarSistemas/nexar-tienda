@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from io import StringIO
 
 import database as db
-from services import inventory, product_variants
+from services import fiscal, inventory, product_variants
 
 MAX_BYTES = 5 * 1024 * 1024
 MAX_ROWS = 2_000
@@ -190,6 +190,7 @@ def parse_tiendanube_csv(content: bytes) -> list[dict]:
 
 def build_plan(rows: list[dict]) -> dict:
     errors, warnings, products = [], [], {}
+    iva_predeterminado = None
     sku_rows, barcode_rows = {}, {}
     for row in rows:
         for value, bucket, label in ((row["sku"], sku_rows, "SKU"), (row["barcode"], barcode_rows, "codigo de barras")):
@@ -260,7 +261,10 @@ def build_plan(rows: list[dict]) -> dict:
                     row["variant_action"] = "update" if variant else "create"
                     row["variant_id"] = int(variant[0]) if variant else None
                     row["expected_combination_key"] = key
-            planned.append({"action": "update" if matches else "create", "product_id": next(iter(matches), None), "rows": group_rows, "has_variants": has_variants})
+            action = "update" if matches else "create"
+            if action == "create" and iva_predeterminado is None:
+                iva_predeterminado = fiscal.obtener_iva_predeterminado_importacion()
+            planned.append({"action": action, "product_id": next(iter(matches), None), "rows": group_rows, "has_variants": has_variants, "iva": iva_predeterminado})
     finally: conn.close()
     payload = {"products": planned, "errors": errors, "warnings": warnings}
     payload["token"] = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
@@ -373,8 +377,8 @@ def _apply_plan_in_cursor(cursor, plan: dict) -> dict:
             if item["action"] == "update":
                 product_id = item["product_id"]; updated += 1
             else:
-                cursor.execute("INSERT INTO productos (codigo_interno,descripcion,marca,categoria,costo,precio_venta,activo,stock_modo) VALUES (?,?,?,?,?,?,?,'legacy')",
-                    (db._next_codigo_in_cursor(cursor), first["name"], first["brand"], first["category"].split(",")[0].strip(), first["cost"] or 0, first["price"] or 0, int(first["visible"] if first["visible"] is not None else True)))
+                cursor.execute("INSERT INTO productos (codigo_interno,descripcion,marca,categoria,costo,precio_venta,iva,activo,stock_modo) VALUES (?,?,?,?,?,?,?,?,'legacy')",
+                    (db._next_codigo_in_cursor(cursor), first["name"], first["brand"], first["category"].split(",")[0].strip(), first["cost"] or 0, first["price"] or 0, item["iva"], int(first["visible"] if first["visible"] is not None else True)))
                 product_id = int(cursor.lastrowid); cursor.execute("INSERT INTO stock (producto_id,stock_actual,stock_minimo,stock_maximo,proveedor_habitual) VALUES (?,?,?,?,?)", (product_id, 0, 0, 0, "")); created += 1
             if item["has_variants"]:
                 allocations = []

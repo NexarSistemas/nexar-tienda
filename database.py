@@ -1512,6 +1512,7 @@ def init_db():
         (RUBRO_CONFIG_KEY, ''),
         (RUBRO_CONFIRMADO_CONFIG_KEY, '0'),
         ('gastos_categorias', json.dumps(DEFAULT_GASTO_CATEGORIAS, ensure_ascii=False)),
+        ('iva_predeterminado_importacion', '21%'),
         # â”€â”€â”€ SISTEMA DE LICENCIAS RSA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         ('demo_mode', '1'),                 # 1=demo, 0=licencia activa
         ('demo_install_date', ''),          # Fecha de primer arranque (demo)
