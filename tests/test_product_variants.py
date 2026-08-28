@@ -235,6 +235,44 @@ class ProductVariantsTests(unittest.TestCase):
         self.assertIn("podés configurar sus variantes", catalogo_html)
         self.assertIn(f'href="/productos/{producto["id"]}/variantes"', catalogo_html)
 
+    def test_editor_preserva_todas_las_alicuotas_admitidas(self):
+        for iva in ("0%", "2.5%", "5%", "10.5%", "21%", "27%"):
+            producto_id = self._crear_producto(descripcion=f"Producto IVA {iva}")
+            self.database.q("UPDATE productos SET iva=? WHERE id=?", (iva, producto_id), commit=True)
+
+            with self.app.test_client() as client:
+                self._login_admin(client)
+                formulario = client.get(f"/productos/{producto_id}/editar")
+                response = client.post(
+                    f"/productos/{producto_id}/editar",
+                    data={
+                        "csrf_token": "test-token",
+                        "descripcion": f"Producto IVA editado {iva}",
+                        "marca": "",
+                        "categoria": "General",
+                        "tipo_unidad": "unidad",
+                        "unidad": "unidad",
+                        "costo": "100",
+                        "precio_venta": "150",
+                        "iva": iva,
+                        "activo": "1",
+                    },
+                    follow_redirects=False,
+                )
+
+            self.assertEqual(formulario.status_code, 200)
+            self.assertIn(f'value="{iva}" selected', formulario.get_data(as_text=True))
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(self.database.get_producto(producto_id)["iva"], iva)
+
+    def test_formulario_producto_nuevo_mantiene_iva_21_por_defecto(self):
+        with self.app.test_client() as client:
+            self._login_admin(client)
+            response = client.get("/productos/nuevo")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('value="21%" selected', response.get_data(as_text=True))
+
     def test_gestion_de_variantes_conserva_bloqueo_para_vendedor(self):
         producto_id = self._crear_producto(descripcion="Producto permisos gestion")
         self.database.add_usuario(

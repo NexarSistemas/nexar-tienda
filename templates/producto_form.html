@@ -279,9 +279,10 @@
                         <div class="mb-3">
                             <label for="iva" class="form-label">IVA</label>
                             <select class="form-select" id="iva" name="iva">
-                                <option value="0%" {% if producto and producto['iva'] == '0%' %}selected{% endif %}>Exento (0%)</option>
-                                <option value="10.5%" {% if producto and producto['iva'] == '10.5%' %}selected{% endif %}>Reducido (10.5%)</option>
-                                <option value="21%" {% if not producto or producto['iva'] == '21%' %}selected{% endif %}>Regular (21%)</option>
+                                {% set iva_actual = producto['iva'] if producto else '21%' %}
+                                {% for alicuota in alicuotas_iva %}
+                                <option value="{{ alicuota.label }}" {% if iva_actual == alicuota.label %}selected{% endif %}>{{ alicuota.label }}</option>
+                                {% endfor %}
                             </select>
                         </div>
 

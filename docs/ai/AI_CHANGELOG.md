@@ -16,6 +16,8 @@ Corregir compatibilidad fiscal entre ventas, importación Tiendanube y ARCA.
   Tiendanube conserva su formato sin columnas fiscales agregadas.
 - Se centralizaron las alícuotas admitidas para evitar divergencias entre la
   configuración local y el payload ARCA.
+- El editor de productos consume esa misma fuente y conserva cualquier
+  alícuota admitida al guardar cambios no fiscales.
 
 ## 2026-08-14 - Codex - chore/release-v1.37.0
 

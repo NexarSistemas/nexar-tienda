@@ -112,6 +112,11 @@ from services.update_checker import (
     normalize_release_version,
 )
 
+
+def _alicuotas_iva_admitidas():
+    return sorted(fiscal.ALICUOTAS_IVA.values(), key=lambda item: float(item["rate"]))
+
+
 main_bp = Blueprint("main", __name__)
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -3359,6 +3364,7 @@ def producto_nuevo():
         rubros_disponibles=get_rubros_disponibles(),
         unidades_disponibles=unidades_disponibles,
         unidad_actual=unidad_actual,
+        alicuotas_iva=_alicuotas_iva_admitidas(),
     )
 
 
@@ -3443,6 +3449,7 @@ def producto_editar(pid):
         rubros_disponibles=get_rubros_disponibles(),
         unidades_disponibles=unidades_disponibles,
         unidad_actual=unidad_actual,
+        alicuotas_iva=_alicuotas_iva_admitidas(),
     )
 
 
@@ -5293,9 +5300,7 @@ def config():
         mostrar_aviso_rubro_pendiente=db.debe_mostrar_aviso_rubro_pendiente(),
         rubros_disponibles=get_rubros_disponibles(),
         unidades_disponibles=get_unidades_disponibles(rubro_actual),
-        alicuotas_iva_importacion=sorted(
-            fiscal.ALICUOTAS_IVA.values(), key=lambda item: float(item["rate"])
-        ),
+        alicuotas_iva_importacion=_alicuotas_iva_admitidas(),
     )
 
 
