@@ -15,6 +15,7 @@ from modules.arca.services.comprobantes_service import (
     registrar_evento,
 )
 from services.arca_config_service import arca_modo_simulacion_activo, get_config
+from services.fiscal import ALICUOTAS_IVA, normalizar_alicuota_iva
 
 
 logger = logging.getLogger(__name__)
@@ -41,22 +42,6 @@ TIPOS_COMPROBANTE_POR_CONDICION_FISCAL = {
         "codigo": WSFE_TIPO_FACTURA_B,
     },
 }
-ALICUOTAS_IVA = {
-    "0": {"id": 3, "rate": 0.0},
-    "0%": {"id": 3, "rate": 0.0},
-    "2.5": {"id": 9, "rate": 2.5},
-    "2.5%": {"id": 9, "rate": 2.5},
-    "5": {"id": 8, "rate": 5.0},
-    "5%": {"id": 8, "rate": 5.0},
-    "10.5": {"id": 4, "rate": 10.5},
-    "10.5%": {"id": 4, "rate": 10.5},
-    "21": {"id": 5, "rate": 21.0},
-    "21%": {"id": 5, "rate": 21.0},
-    "27": {"id": 6, "rate": 27.0},
-    "27%": {"id": 6, "rate": 27.0},
-}
-
-
 def _clean_text(value: object) -> str:
     return str(value or "").strip()
 
@@ -69,9 +54,14 @@ def _to_float(value: object) -> float:
 
 
 def _normalizar_alicuota(label: object) -> dict[str, float | int]:
-    raw = _clean_text(label).replace(",", ".")
-    normalized = raw[:-1] if raw.endswith("%") else raw
-    return ALICUOTAS_IVA.get(raw) or ALICUOTAS_IVA.get(normalized) or {"id": 5, "rate": 21.0}
+    return normalizar_alicuota_iva(label) or {"id": 5, "rate": 21.0, "label": "21%"}
+
+
+def _venta_tiene_ajustes_fiscales_no_representados(venta: dict[str, object]) -> bool:
+    return any(
+        abs(float(venta.get(campo) or 0)) > 0.000001
+        for campo in ("descuento_adicional", "interes_financiacion")
+    )
 
 
 def _fecha_wsfe(fecha_iso: object) -> str:
@@ -314,6 +304,16 @@ def facturar_venta_desde_existente(venta_id: int | None) -> dict[str, object]:
         return _resultado_error(
             error_code="venta_sin_items",
             mensaje="La venta no tiene ítems para facturar.",
+            venta_id=int(venta_id),
+        )
+
+    if _venta_tiene_ajustes_fiscales_no_representados(venta):
+        return _resultado_error(
+            error_code="ajustes_fiscales_no_soportados",
+            mensaje=(
+                "No se puede emitir ARCA: la venta tiene descuento adicional o interés "
+                "sin una imputación fiscal por alícuota."
+            ),
             venta_id=int(venta_id),
         )
 
